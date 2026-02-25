@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Outputs (large files, regenerable)
+outputs/optimization/
+outputs/diagnostics/
+outputs/reevaluation/
+outputs/reference_sets/
+outputs/baseline/
+outputs/presim/
+outputs/figures/
+
+# Borg MOEA (licensed, not distributed)
+borg/
+*.so
+*.dll
+
+# MOEAFramework
+tools/
+
+# HPC
+*.log
+*.err
+*.out
+slurm-*.out
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.hdf5
+*.json.tmp

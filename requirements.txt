@@ -1,0 +1,22 @@
+# NYCOptimization dependencies
+#
+# Core simulation
+pywrdrb @ git+https://github.com/Pywr-DRB/Pywr-DRB.git@nyc_opt
+
+# Parallel computing
+mpi4py
+
+# Data and numerics
+numpy
+pandas
+
+# Visualization
+matplotlib
+
+# Scenario discovery
+xgboost
+shap
+scikit-learn
+
+# Utilities
+tqdm
