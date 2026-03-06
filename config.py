@@ -23,14 +23,15 @@ BORG_DIR = PROJECT_DIR / "borg"
 
 # Pywr-DRB pre-simulated releases for trimmed model
 PRESIM_DIR = OUTPUTS_DIR / "presim"
+PRESIM_FILE = PRESIM_DIR / "presimulated_releases_mgd.csv"
 
 
 ###############################################################################
 # Simulation Settings
 ###############################################################################
 
-START_DATE = "1945-10-01"
-END_DATE = "2022-09-30"
+START_DATE = "1945-01-01"
+END_DATE = "2022-12-31"
 INFLOW_TYPE = "pub_nhmv10_BC_withObsScaled"
 USE_TRIMMED_MODEL = True
 INITIAL_VOLUME_FRAC = 0.80
@@ -225,42 +226,10 @@ FORMULATIONS["ffmp"] = {
 # Objectives
 ###############################################################################
 
-# Each objective has a name, direction ("minimize" or "maximize"),
-# epsilon (resolution for Borg epsilon-dominance), and a reference to
-# the metric computation function (implemented in src/objectives.py).
-
-OBJECTIVES = OrderedDict({
-    "nyc_reliability": {
-        "direction": "maximize",
-        "epsilon": 0.005,
-        "description": "Fraction of days NYC delivery meets demand",
-    },
-    "nyc_max_deficit_pct": {
-        "direction": "minimize",
-        "epsilon": 1.0,
-        "description": "Maximum monthly shortage as percent of demand",
-    },
-    "montague_reliability": {
-        "direction": "maximize",
-        "epsilon": 0.005,
-        "description": "Fraction of days Montague flow >= target",
-    },
-    "trenton_reliability": {
-        "direction": "maximize",
-        "epsilon": 0.005,
-        "description": "Fraction of days Trenton flow >= target (Jun-Mar)",
-    },
-    "flood_days": {
-        "direction": "minimize",
-        "epsilon": 5.0,
-        "description": "Number of days downstream stage exceeds action threshold",
-    },
-    "min_storage_pct": {
-        "direction": "maximize",
-        "epsilon": 0.5,
-        "description": "Minimum combined NYC storage as pct of capacity",
-    },
-})
+# Objective definitions live in src/objectives.py using the Objective class.
+# The active objective set is selected here by name.
+# Available sets: "default", "drought_duration", "downstream_flood", "comprehensive", "compact"
+ACTIVE_OBJECTIVE_SET = "default"
 
 
 ###############################################################################
@@ -324,9 +293,26 @@ def get_n_vars(formulation_name="ffmp"):
     return len(f["decision_variables"])
 
 
+def get_objective_set(name=None):
+    """Get the active ObjectiveSet instance.
+
+    Args:
+        name: Objective set name. If None, uses ACTIVE_OBJECTIVE_SET from config.
+    """
+    from src.objectives import OBJECTIVE_SETS
+    if name is None:
+        name = ACTIVE_OBJECTIVE_SET
+    if name not in OBJECTIVE_SETS:
+        raise ValueError(
+            f"Unknown objective set '{name}'. "
+            f"Available: {list(OBJECTIVE_SETS.keys())}"
+        )
+    return OBJECTIVE_SETS[name]
+
+
 def get_n_objs():
-    """Get number of objectives."""
-    return len(OBJECTIVES)
+    """Get number of objectives in the active set."""
+    return get_objective_set().n_objs
 
 
 def get_bounds(formulation_name="ffmp"):
@@ -342,7 +328,7 @@ def get_bounds(formulation_name="ffmp"):
 
 def get_epsilons():
     """Get epsilon values for Borg epsilon-dominance, ordered by objective."""
-    return [obj["epsilon"] for obj in OBJECTIVES.values()]
+    return get_objective_set().epsilons
 
 
 def get_var_names(formulation_name="ffmp"):
@@ -353,7 +339,7 @@ def get_var_names(formulation_name="ffmp"):
 
 def get_obj_names():
     """Get ordered list of objective names."""
-    return list(OBJECTIVES.keys())
+    return get_objective_set().names
 
 
 def get_obj_directions():
@@ -362,13 +348,7 @@ def get_obj_directions():
     Borg minimizes all objectives. For maximization objectives, we negate
     the value before returning to Borg and negate again when reading results.
     """
-    directions = []
-    for obj in OBJECTIVES.values():
-        if obj["direction"] == "maximize":
-            directions.append(1)
-        else:
-            directions.append(-1)
-    return directions
+    return get_objective_set().directions
 
 
 def get_baseline_values(formulation_name="ffmp"):
@@ -380,17 +360,16 @@ def get_baseline_values(formulation_name="ffmp"):
 def print_config_summary(formulation_name="ffmp"):
     """Print a summary of the current configuration."""
     f = get_formulation(formulation_name)
+    obj_set = get_objective_set()
     print(f"Formulation: {formulation_name}")
     print(f"Description: {f['description']}")
     print(f"Decision variables: {get_n_vars(formulation_name)}")
-    print(f"Objectives: {get_n_objs()}")
+    print(f"Objective set: {ACTIVE_OBJECTIVE_SET} ({obj_set.n_objs} objectives)")
     print(f"\nDecision Variables:")
     for name, spec in f["decision_variables"].items():
         print(f"  {name}: [{spec['bounds'][0]}, {spec['bounds'][1]}] "
               f"({spec['units']}) baseline={spec['baseline']}")
-    print(f"\nObjectives:")
-    for name, spec in OBJECTIVES.items():
-        print(f"  {name}: {spec['direction']} (eps={spec['epsilon']})")
+    print(f"\n{obj_set.summary()}")
     print(f"\nSimulation: {INFLOW_TYPE}, {START_DATE} to {END_DATE}")
     print(f"Trimmed model: {USE_TRIMMED_MODEL}")
     print(f"Borg NFE: {BORG_SETTINGS['max_evaluations']:,}")

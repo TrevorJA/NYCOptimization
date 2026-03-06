@@ -4,7 +4,9 @@ Trevor Amestoy, PhD Candidate
 Cornell University, Dept of Civil and Environmental Engineering
 Reed Research Group
 
-*Version 0.1, February 2026. This is an iterative planning document.*
+*Version 0.2, February 2026. This is an iterative planning document.*
+
+**Implementation Status (updated 2026-02-27):** Phase 1 infrastructure is complete. The full simulation pipeline (build/run/extract) is implemented and verified against pywrdrb source. Presim generation script is ready. Baseline and Borg scaffolding are in place. Next step: run `00_generate_presim.sh` then `01_run_baseline.sh` to validate the pipeline end-to-end.
 
 ---
 
@@ -118,10 +120,15 @@ The objective set should capture the key competing demands in the DRB system. A 
 ## 5. Methodological Workflow (MORDM-Inspired)
 
 ### Phase 1: Problem Setup and Baseline
-- Finalize objective functions and decision variable bounds for each formulation
-- Implement Borg MOEA Python wrapper for Pywr-DRB simulation-optimization coupling
-- Establish baseline performance of the default 2017 FFMP across all objectives
-- Determine appropriate simulation period and inflow dataset for optimization
+- [x] Finalize objective functions and decision variable bounds for Formulation A (ffmp)
+- [x] Implement Borg MOEA Python wrapper for Pywr-DRB simulation-optimization coupling
+- [x] Implement in-memory simulation path (no HDF5 I/O per evaluation)
+- [x] Create `src/simulation.py` with `run_simulation_inmemory()` and `run_simulation_to_disk()`
+- [x] Create `src/objectives.py` with `Objective`/`ObjectiveSet` classes and `DEFAULT_OBJECTIVES`
+- [x] Create numbered bash workflow (00-05) and supporting Python scripts
+- [ ] Run `00_generate_presim.sh` to generate presim data (one-time, ~5-10 min)
+- [ ] Run `01_run_baseline.sh` to establish FFMP baseline (full model, ~10-30 min)
+- [ ] Verify all 6 objective values compute correctly from baseline run
 
 ### Phase 2: Optimization
 - Run MOEA diagnostics (random seed analysis, hypervolume convergence) for each formulation

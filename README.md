@@ -64,23 +64,36 @@ Three nested formulations are considered, each representing increasing operation
 
 ```
 NYCOptimization/
-├── config.py                           # Central configuration (formulations, objectives, Borg settings)
+├── 00_generate_presim.sh               # Step 0: One-time setup - generate presimulated releases
+├── 01_run_baseline.sh                  # Step 1: Evaluate default FFMP baseline (full model)
+├── 02_run_mmborg.sh                    # Step 2: Launch MM Borg optimization (MPI, trimmed model)
+├── 02_submit_mmborg.slurm              # Step 2: SLURM submission template for Anvil
+├── 03_run_diagnostics.sh               # Step 3: MOEAFramework v5.0 runtime diagnostics
+├── 04_plot_diagnostics.sh              # Step 4: Generate diagnostic figures
+├── 05_reevaluate.sh                    # Step 5: Re-evaluate Pareto solutions (full model)
+├── config.py                           # Central configuration (formulations, objectives, settings)
 ├── requirements.txt                    # Python dependencies
-├── .gitignore
 │
 ├── src/                                # Core modules
-│   ├── __init__.py
+│   ├── simulation.py                   # Pywr-DRB simulation wrapper (DVs -> objectives)
 │   ├── objectives.py                   # Objective metric computation functions
-│   └── simulation.py                   # Pywr-DRB simulation wrapper (DV vector -> objectives)
+│   ├── mmborg.py                       # Multi-Master Borg optimization driver
+│   ├── mmborg_cli.py                   # CLI entry point for mmborg.py
+│   ├── diagnostics.py                  # MOEAFramework v5.0 diagnostic pipeline
+│   ├── load/                           # Data loading utilities
+│   │   ├── results.py                  # Load pywrdrb HDF5 simulation output
+│   │   └── reference_set.py            # Load .ref and .set files
+│   └── plotting/                       # One plot per file (manuscript-quality)
+│       ├── hypervolume_convergence.py
+│       ├── seed_reliability.py
+│       └── parallel_coordinates.py
 │
-├── scripts/                            # Executable workflow scripts
-│   ├── run_baseline.py                 # Run default FFMP baseline evaluation
-│   ├── run_mmborg.py                   # MMBorg optimization driver (MPI)
-│   ├── submit_mmborg.sh                # SLURM job submission for multi-seed optimization
-│   ├── run_diagnostics.sh              # MOEAFramework v5.0 runtime diagnostics
-│   ├── plot_diagnostics.py             # Visualize hypervolume convergence and reliability
-│   ├── run_reevaluation.py             # Re-evaluate policies under stochastic ensembles (MPI)
-│   └── scenario_discovery.py           # XGBoost + SHAP scenario discovery
+├── scripts/                            # Supporting Python scripts (called by numbered bash scripts)
+│   ├── generate_presim.py              # Presimulated releases generation (called by 00_*)
+│   └── run_baseline.py                 # Baseline evaluation logic (called by 01_*)
+│
+├── tests/                              # Test scripts
+│   └── test_simulation_api.py          # Verify pywrdrb model build/run/extract pipeline
 │
 ├── outputs/                            # Generated outputs (git-ignored)
 │   ├── baseline/                       # Baseline FFMP performance
@@ -95,13 +108,13 @@ NYCOptimization/
 │   ├── borg.py                         # Python wrapper (from BorgTraining repo)
 │   └── libborgmm.so                   # Compiled MMBorg shared library
 │
-├── tools/                              # External tools (git-ignored)
-│   └── MOEAFramework-5.0/             # MOEAFramework CLI
+├── notes/                              # Research planning and literature reviews
+│   ├── STUDY_PLAN.md
+│   ├── notes_drb_operations_review.md
+│   ├── notes_dmuu_optimization_review.md
+│   └── brainstorm_methodological_contributions.md
 │
-├── STUDY_PLAN.md                       # Research questions, methods, open questions
-├── notes_drb_operations_review.md      # Literature review: DRB regulations and FFMP
-├── notes_dmuu_optimization_review.md   # Literature review: DMUU and robust optimization
-└── brainstorm_methodological_contributions.md  # Novel contribution ideas
+└── archive/                            # Deprecated scripts (pending deletion)
 ```
 
 ## Relevant Repositories
@@ -119,17 +132,19 @@ This project uses the multi-master Borg MOEA (Hadka and Reed, 2015) to perform t
 
 Relevant WaterProgramming blog posts:
 
-- [Everything You Need to Run Borg MOEA and serial python wrapper – Part 1](https://waterprogramming.wpcomstaging.com/2025/02/04/everything-you-need-to-run-borg-moea-and-serial-python-wrapper-part-1/)
+- [Everything You Need to Run Borg MOEA and serial python wrapper – Part 1](https://waterprogramming.wordpress.com/2025/02/04/everything-you-need-to-run-borg-moea-and-serial-python-wrapper-part-1/)
 
-- [Everything You Need to Run Borg MOEA and Python Wrapper – Part 2](https://waterprogramming.wpcomstaging.com/2025/02/19/everything-you-need-to-run-borg-moea-and-python-wrapper-part-2/)
+- [Everything You Need to Run Borg MOEA and Python Wrapper – Part 2](https://waterprogramming.wordpress.com/2025/02/19/everything-you-need-to-run-borg-moea-and-python-wrapper-part-2/)
 
-- [MM Borg Training Part 1: Setting up parallel scaling experiments with Borg MOEA](https://waterprogramming.wpcomstaging.com/2024/07/30/mm-borg-training-part-1-setting-up-parallel-scaling-experiments-with-borg-moea/)
+- [MM Borg Training Part 1: Setting up parallel scaling experiments with Borg MOEA](https://waterprogramming.wordpress.com/2024/07/30/mm-borg-training-part-1-setting-up-parallel-scaling-experiments-with-borg-moea/)
 
-- [MM Borg Training Part 2: Post-processing parallel scaling experiments using MOEAFramework](https://waterprogramming.wpcomstaging.com/2024/09/24/mm-borg-training-part-2-post-processing-parallel-scaling-experiments-using-moeaframework/)
+- [MM Borg Training Part 2: Post-processing parallel scaling experiments using MOEAFramework](https://waterprogramming.wordpress.com/2024/09/24/mm-borg-training-part-2-post-processing-parallel-scaling-experiments-using-moeaframework/)
 
-- [Performing runtime diagnostics using MOEAFramework](https://waterprogramming.wpcomstaging.com/2024/04/22/performing-runtime-diagnostics-using-moeaframework/)
+- [MM Borg MOEA Python Wrapper – Checkpointing, Runtime and Operator Dynamics using MOEAFramework 5.0](https://waterprogramming.wordpress.com/2025/08/14/mm-borg-moea-python-wrapper-checkpointing-runtime-and-operator-dynamics-using-moea-framework-5-0/)
 
-- [Measuring the parallel performance of the Borg MOEA](https://waterprogramming.wpcomstaging.com/2021/07/26/measuring-the-parallel-performance-of-the-borg-moea/)
+- [Performing runtime diagnostics using MOEAFramework](https://waterprogramming.wordpress.com/2024/04/22/performing-runtime-diagnostics-using-moeaframework/)
+
+- [Measuring the parallel performance of the Borg MOEA](https://waterprogramming.wordpress.com/2021/07/26/measuring-the-parallel-performance-of-the-borg-moea/)
 
 
 ## References

@@ -39,3 +39,4 @@ Thumbs.db
 # Temporary
 *.hdf5
 *.json.tmp
+.claude
