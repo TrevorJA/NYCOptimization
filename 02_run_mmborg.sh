@@ -6,18 +6,19 @@
 # of MM Borg optimization using MPI across multiple nodes. For multiple
 # seeds, submit this script once per seed (varying SEED).
 #
-# Usage (local test with 4 ranks):
-#     mpirun -np 4 bash 02_run_mmborg.sh --seed 1 --islands 1
+# Usage (local test with 4 ranks, 1 island):
+#     bash 02_run_mmborg.sh --seed 1 --islands 1 --nfe 1000 --np 4
 #
 # Usage (SLURM):
-#     sbatch 02_submit_mmborg.slurm   (see template below)
+#     sbatch 02_submit_mmborg.slurm   (see SLURM templates)
 #
 # Arguments (passed as environment variables or flags):
 #     --seed       : Random seed number, 1-indexed (default: 1)
 #     --formulation: Formulation name (default: "ffmp")
 #     --islands    : Number of MM Borg islands (default: 2)
-#     --nfe        : Max function evaluations (default: from config)
+#     --nfe        : Max function evaluations per island (default: from config)
 #     --time       : Max wall time in seconds (optional, overrides NFE)
+#     --np         : Number of MPI ranks for local runs (default: 4)
 #     --checkpoint : Enable checkpointing (flag)
 #     --restore    : Restore from checkpoint file (path)
 #
@@ -34,6 +35,7 @@ cd "$SCRIPT_DIR"
 SEED="${SEED:-1}"
 FORMULATION="${FORMULATION:-ffmp}"
 N_ISLANDS="${N_ISLANDS:-2}"
+N_PROCS="${N_PROCS:-4}"
 MAX_NFE=""
 MAX_TIME=""
 CHECKPOINT=""
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --seed)        SEED="$2"; shift 2;;
         --formulation) FORMULATION="$2"; shift 2;;
         --islands)     N_ISLANDS="$2"; shift 2;;
+        --np)          N_PROCS="$2"; shift 2;;
         --nfe)         MAX_NFE="$2"; shift 2;;
         --time)        MAX_TIME="$2"; shift 2;;
         --checkpoint)  CHECKPOINT="1"; shift;;
@@ -58,6 +61,7 @@ echo "  02: MM Borg Optimization"
 echo "  Formulation: ${FORMULATION}"
 echo "  Seed:        ${SEED}"
 echo "  Islands:     ${N_ISLANDS}"
+echo "  MPI ranks:   ${N_PROCS}"
 echo "============================================"
 
 # Build Python args
@@ -67,4 +71,7 @@ PY_ARGS="--seed ${SEED} --formulation ${FORMULATION} --islands ${N_ISLANDS}"
 [ -n "$CHECKPOINT" ] && PY_ARGS="${PY_ARGS} --checkpoint"
 [ -n "$RESTORE" ] && PY_ARGS="${PY_ARGS} --restore ${RESTORE}"
 
-python3 src/mmborg_cli.py ${PY_ARGS}
+# MM Borg requires MPI — all ranks execute the same Python script,
+# and borg.Configuration.startMPI() handles rank assignment internally.
+# Rank allocation: 1 controller + N_ISLANDS masters + remaining workers.
+mpirun -np ${N_PROCS} python3 src/mmborg_cli.py ${PY_ARGS}

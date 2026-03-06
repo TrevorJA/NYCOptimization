@@ -16,48 +16,137 @@ The study applies Many-Objective Robust Decision Making (MORDM) to: (1) discover
 
 Three nested formulations are considered, each representing increasing operational flexibility:
 
-- **Formulation A (Parameterized FFMP)**: Re-optimize the existing FFMP parameters (MRF baselines, drought factors, storage zone thresholds, flood release limits) within the current rule structure. ~25-35 decision variables.
+- **Formulation A (Parameterized FFMP)**: Re-optimize the existing FFMP parameters (MRF baselines, drought factors, storage zone thresholds, flood release limits) within the current rule structure. ~25 decision variables.
 - **Formulation B (FFMP + Enhanced Flexibility)**: Extend the FFMP framework with additional degrees of freedom (seasonal drought factors, asymmetric storage curves, dynamic blending weights). ~40-60 decision variables.
 - **Formulation C (State-Aware Direct Policy Search)**: Replace rule-based operations with nonlinear policy functions (radial basis functions or multi-layer perceptrons) that map system state to release/diversion decisions. ~100-300 decision variables.
-
-### Candidate Objectives
-
-| Objective | Direction | Stakeholder Relevance |
-|-----------|-----------|----------------------|
-| NYC water supply reliability | Maximize | NYC |
-| NYC drought severity | Minimize | NYC |
-| Montague flow compliance | Maximize | All decree parties |
-| Trenton flow compliance | Maximize | NJ, PA, DE (salt front) |
-| Ecological flow quality | Maximize | Environmental stakeholders |
-| Flood risk | Minimize | Upper Delaware communities |
-| Storage resilience | Maximize | All parties |
 
 
 ## Workflow
 
-### Phase 1: Problem Setup and Baseline
-- Finalize objectives, decision variable bounds, and constraints for each formulation
-- Implement Borg MOEA Python wrapper for Pywr-DRB coupling
-- Characterize default 2017 FFMP baseline performance
+The workflow is organized as numbered bash scripts that should be run in order. Each script is a thin wrapper calling the corresponding Python module.
 
-### Phase 2: Optimization
-- MOEA diagnostics (random seed analysis, hypervolume convergence)
-- MM-Borg optimization on HPC for Formulations A, B, C
-- Generate Pareto-approximate reference sets
+### Step 0: Generate Pre-Simulated Releases (one-time setup)
 
-### Phase 3: Re-evaluation Under Uncertainty
-- Stochastic streamflow ensemble generation (Kirsch-Nowak)
-- Re-evaluate Pareto-approximate policies across ensemble
-- Compute robustness metrics (satisficing, regret, domain criterion)
+Runs the full Pywr-DRB model once and saves non-NYC reservoir releases. These are used by the trimmed model during optimization to avoid re-simulating independent STARFIT reservoirs.
 
-### Phase 4: Scenario Discovery and Analysis
-- PRIM / CART scenario discovery to identify vulnerability conditions
-- Cross-formulation robustness comparison
-- Stakeholder-perspective tradeoff visualization
+```bash
+bash 00_generate_presim.sh
+```
 
-### Phase 5: Synthesis
-- Quantify "value of flexibility" across objective space
-- Identify actionable policy insights for DRB stakeholders
+Output: `outputs/presim/presimulated_releases_mgd.csv` (~5-10 min)
+
+### Step 1: Evaluate Baseline
+
+Runs the default 2017 FFMP policy (no optimization) with the full model and saves HDF5 output plus objective values. This is the "status quo" reference point.
+
+```bash
+bash 01_run_baseline.sh
+# Optional: also test the in-memory simulation path
+bash 01_run_baseline.sh --test-inmemory
+```
+
+Output: `outputs/baseline/ffmp_baseline.hdf5`, `outputs/baseline/ffmp_baseline_objectives.csv`
+
+### Step 2: Run MM Borg Optimization
+
+Launches Multi-Master Borg MOEA optimization using MPI. Uses the trimmed model (requires Step 0) for fast evaluations.
+
+**Local test (4 MPI ranks, 1 island, 1000 NFE):**
+
+```bash
+bash 02_run_mmborg.sh --seed 1 --islands 1 --nfe 1000 --np 4
+```
+
+**HPC submission (multiple seeds):**
+
+```bash
+# Anvil (NSF ACCESS)
+for SEED in $(seq 1 10); do
+    sbatch --export=ALL,SEED=${SEED} 02_submit_mmborg.slurm
+done
+
+# Hopper (Cornell)
+for SEED in $(seq 1 10); do
+    sbatch --export=ALL,SEED=${SEED} 02_submit_mmborg_hopper.slurm
+done
+```
+
+Output: `outputs/optimization/{formulation}/sets/seed_XX_{formulation}.set` and `outputs/optimization/{formulation}/runtime/seed_XX_{formulation}_%d.runtime`
+
+#### MPI Rank Allocation
+
+MM Borg allocates ranks as: **1 controller + N masters (islands) + remaining workers**.
+
+Formula: `ntasks = 1 + N_ISLANDS * (workers_per_island + 1)`
+
+| Cluster | Nodes | Tasks/Node | Total Ranks | Islands | Workers/Island |
+|---------|-------|------------|-------------|---------|----------------|
+| Anvil   | 2     | ~65        | 129         | 2       | 63             |
+| Hopper  | 2     | 40         | 80          | 2       | 38             |
+
+`maxEvaluations` in the config is **per island**. With 2 islands and 1,000,000 NFE, total evaluations = 2,000,000.
+
+### Step 3: MOEA Diagnostics
+
+Runs MOEAFramework v5.0 runtime diagnostics (hypervolume convergence, epsilon progress, seed reliability).
+
+```bash
+bash 03_run_diagnostics.sh
+```
+
+### Step 4: Plot Diagnostics
+
+Generates diagnostic figures from Step 3 output.
+
+```bash
+bash 04_plot_diagnostics.sh
+```
+
+### Step 5: Re-evaluate Pareto Solutions
+
+Re-simulates Pareto-approximate solutions with the full model and saves full HDF5 output for detailed post-hoc analysis.
+
+```bash
+bash 05_reevaluate.sh [formulation] [--max-solutions N]
+```
+
+Output: `outputs/reevaluation/{formulation}/solution_XXXX.hdf5` and `outputs/reevaluation/{formulation}/objectives_summary.csv`
+
+
+## Borg MOEA Setup
+
+### Compilation
+
+Place `borgmm.c` and `mt19937ar.c` in the `borg/` directory (from the `passNFE_ALH_PyCheckpoint` branch of MMBorgMOEA). Also place the revised `borg.py` wrapper from the BorgTraining repository.
+
+```bash
+# Linux (HPC)
+mpicc -shared -fPIC -O3 -o borg/libborgmm.so borg/borgmm.c borg/mt19937ar.c -lm
+
+# Verify
+mpirun -np 4 python3 src/mmborg_cli.py --seed 1 --islands 1 --nfe 100
+```
+
+### Required Files
+
+```
+borg/
+├── borg.py          # Python ctypes wrapper (from BorgTraining repo)
+├── borgmm.c         # MM Borg C source (passNFE_ALH_PyCheckpoint branch)
+├── mt19937ar.c      # Mersenne Twister RNG
+└── libborgmm.so     # Compiled shared library (generated)
+```
+
+### HPC Environment
+
+Both SLURM templates set thread-pinning environment variables to prevent numpy/BLAS thread contention across MPI ranks:
+
+```bash
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+```
 
 
 ## Repository Structure
@@ -68,6 +157,7 @@ NYCOptimization/
 ├── 01_run_baseline.sh                  # Step 1: Evaluate default FFMP baseline (full model)
 ├── 02_run_mmborg.sh                    # Step 2: Launch MM Borg optimization (MPI, trimmed model)
 ├── 02_submit_mmborg.slurm              # Step 2: SLURM submission template for Anvil
+├── 02_submit_mmborg_hopper.slurm       # Step 2: SLURM submission template for Hopper
 ├── 03_run_diagnostics.sh               # Step 3: MOEAFramework v5.0 runtime diagnostics
 ├── 04_plot_diagnostics.sh              # Step 4: Generate diagnostic figures
 ├── 05_reevaluate.sh                    # Step 5: Re-evaluate Pareto solutions (full model)
@@ -76,7 +166,7 @@ NYCOptimization/
 │
 ├── src/                                # Core modules
 │   ├── simulation.py                   # Pywr-DRB simulation wrapper (DVs -> objectives)
-│   ├── objectives.py                   # Objective metric computation functions
+│   ├── objectives.py                   # Objective classes and ObjectiveSet configurations
 │   ├── mmborg.py                       # Multi-Master Borg optimization driver
 │   ├── mmborg_cli.py                   # CLI entry point for mmborg.py
 │   ├── diagnostics.py                  # MOEAFramework v5.0 diagnostic pipeline
@@ -108,13 +198,15 @@ NYCOptimization/
 │   ├── borg.py                         # Python wrapper (from BorgTraining repo)
 │   └── libborgmm.so                   # Compiled MMBorg shared library
 │
-├── notes/                              # Research planning and literature reviews
-│   ├── STUDY_PLAN.md
-│   ├── notes_drb_operations_review.md
-│   ├── notes_dmuu_optimization_review.md
-│   └── brainstorm_methodological_contributions.md
-│
-└── archive/                            # Deprecated scripts (pending deletion)
+└── notes/                              # Research planning and documentation
+    ├── STUDY_PLAN.md                   # Full study design and methodology
+    ├── HANDOFF.md                      # Developer handoff document
+    ├── PLANNING_LOG.md                 # Session-by-session development log
+    ├── objectives.md                   # Mathematical definitions of all objectives
+    ├── decision_vars.md                # Decision variable specifications and bounds
+    ├── notes_drb_operations_review.md
+    ├── notes_dmuu_optimization_review.md
+    └── brainstorm_methodological_contributions.md
 ```
 
 ## Relevant Repositories

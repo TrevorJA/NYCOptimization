@@ -15,11 +15,13 @@
 #     done
 #
 # Adjust nodes, ntasks, and N_ISLANDS based on your allocation.
-# Rule of thumb: ntasks = N_ISLANDS * workers_per_island + N_ISLANDS + 1
+# Rank allocation: 1 controller + N_ISLANDS masters + remaining workers.
+# Formula: ntasks = 1 + N_ISLANDS * (workers_per_island + 1)
+# Example: 2 islands, 63 workers each -> 1 + 2*(63+1) = 129 ranks
 # ===========================================================================
 #SBATCH --job-name=mmborg_ffmp
 #SBATCH --nodes=2
-#SBATCH --ntasks=128
+#SBATCH --ntasks=129
 #SBATCH --time=24:00:00
 #SBATCH --partition=shared
 #SBATCH --account=YOUR_ALLOCATION
@@ -63,7 +65,7 @@ export PYTHONOPTIMIZE=1
 # ---- Run ----
 cd "${SLURM_SUBMIT_DIR}"
 
-mpirun -np ${SLURM_NTASKS} \
+mpirun --bind-to core -np ${SLURM_NTASKS} \
     python3 src/mmborg_cli.py \
         --seed ${SEED} \
         --formulation ${FORMULATION} \
