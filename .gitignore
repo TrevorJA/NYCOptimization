@@ -40,3 +40,8 @@ Thumbs.db
 *.hdf5
 *.json.tmp
 .claude
+
+MOEAFramework-5.0/
+borg.py
+borgmm.c
+mt19937ar.c
