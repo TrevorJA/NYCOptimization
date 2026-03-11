@@ -2,8 +2,7 @@
 mmborg_cli.py - CLI entry point for MM Borg optimization.
 
 Parses command-line arguments and calls run_mmborg().
-Separated from mmborg.py so that the module can be imported
-without triggering argparse.
+Separated from mmborg.py so the module can be imported without argparse.
 """
 
 import sys
@@ -25,14 +24,15 @@ def main():
     parser.add_argument("--time", type=int, default=None,
                         help="Max wall time in seconds")
     parser.add_argument("--checkpoint", action="store_true")
-    parser.add_argument("--restore", type=str, default=None)
+    parser.add_argument("--restore", type=str, default=None,
+                        help="Path to checkpoint file to restore from")
     args = parser.parse_args()
 
-    checkpoint_file = None
+    checkpoint_base = None
     if args.checkpoint:
         ckpt_dir = OUTPUTS_DIR / "optimization" / args.formulation / "checkpoints"
         ckpt_dir.mkdir(parents=True, exist_ok=True)
-        checkpoint_file = str(
+        checkpoint_base = str(
             ckpt_dir / f"seed_{args.seed:02d}_{args.formulation}"
         )
 
@@ -43,8 +43,8 @@ def main():
         max_evaluations=args.nfe,
         max_time=args.time,
         runtime_frequency=BORG_SETTINGS["runtime_frequency"],
-        checkpoint_file=checkpoint_file,
-        restore_file=args.restore,
+        checkpoint_base=checkpoint_base,
+        restore_checkpoint=args.restore,
     )
 
 

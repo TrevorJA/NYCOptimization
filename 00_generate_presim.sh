@@ -1,30 +1,24 @@
 #!/bin/bash
-# ===========================================================================
-# 00_generate_presim.sh - One-time setup: generate pre-simulated releases.
-#
-# Runs a single full Pywr-DRB simulation (no trimming) and extracts releases
-# from the independent STARFIT reservoirs. These are saved to:
-#     outputs/presim/presimulated_releases_mgd.csv
-#
-# The trimmed model used during Borg optimization reads this CSV to replace
-# the independent STARFIT reservoir nodes, reducing per-evaluation runtime
-# from ~30s to ~5-10s.
-#
-# This step only needs to be run ONCE per inflow_type / date range.
-# Re-run with --force if you change START_DATE, END_DATE, or INFLOW_TYPE.
+# Step 0: Run full Pywr-DRB model and save non-NYC (STARFIT) releases
+# for use as boundary conditions in the trimmed optimization model.
 #
 # Usage:
-#     bash 00_generate_presim.sh [--force]
+#   bash 00_generate_presim.sh
+#   sbatch 00_generate_presim.sh
 #
-# Estimated runtime: 3-10 minutes (full 1945-2022 simulation).
-# ===========================================================================
+#SBATCH --job-name=presim
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --time=00:30:00
+#SBATCH --output=logs/presim_%j.out
+#SBATCH --error=logs/presim_%j.err
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+mkdir -p logs
+source venv/bin/activate
 
-echo "============================================"
-echo "  00: Generate Pre-Simulated Releases"
-echo "============================================"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 
 python3 scripts/generate_presim.py "$@"

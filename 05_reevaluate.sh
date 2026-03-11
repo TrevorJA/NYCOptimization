@@ -1,84 +1,63 @@
 #!/bin/bash
-# ===========================================================================
-# 05_reevaluate.sh - Re-evaluate Pareto-approximate solutions.
-#
-# Takes the reference set from step 03 and re-simulates each solution
-# with full HDF5 output. This enables detailed post-hoc analysis,
-# scenario discovery, and robustness assessment.
+# Step 5: Re-simulate Pareto-optimal solutions with the full (untrimmed)
+# Pywr-DRB model and export per-solution HDF5 files + objective summary.
 #
 # Usage:
-#     bash 05_reevaluate.sh [formulation] [--max-solutions N]
+#   bash 05_reevaluate.sh [FORMULATION] [MAX_SOLUTIONS]
+#   bash 05_reevaluate.sh ffmp 50
+#   sbatch 05_reevaluate.sh
 #
-# Arguments:
-#     formulation    : Formulation name (default: "ffmp")
-#     --max-solutions: Limit number of solutions to re-evaluate (default: all)
-#
-# Outputs:
-#     outputs/reevaluation/{formulation}/solution_XXXX.hdf5
-#     outputs/reevaluation/{formulation}/objectives_summary.csv
-# ===========================================================================
+#SBATCH --job-name=reevaluate
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --time=04:00:00
+#SBATCH --output=logs/reevaluate_%j.out
+#SBATCH --error=logs/reevaluate_%j.err
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+mkdir -p logs
+source venv/bin/activate
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 
 FORMULATION="${1:-ffmp}"
 MAX_SOLUTIONS="${2:-0}"
 
-echo "============================================"
-echo "  05: Re-evaluation"
-echo "  Formulation: ${FORMULATION}"
-echo "============================================"
-
-python3 - <<PYEOF
-import sys
-import numpy as np
-import pandas as pd
+python3 -c "
+import sys, numpy as np, pandas as pd
 from pathlib import Path
-
-sys.path.insert(0, ".")
+sys.path.insert(0, '.')
 
 from config import OUTPUTS_DIR, get_n_vars, get_obj_names
 from src.load.reference_set import load_reference_set
 from src.simulation import dvs_to_config, run_simulation_to_disk
 from src.objectives import DEFAULT_OBJECTIVES
 
-formulation = "${FORMULATION}"
-max_solutions = int("${MAX_SOLUTIONS}")
-
-ref_file = OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref"
-reeval_dir = OUTPUTS_DIR / "reevaluation" / formulation
+formulation = '${FORMULATION}'
+max_solutions = int('${MAX_SOLUTIONS}')
+ref_file = OUTPUTS_DIR / 'reference_sets' / f'{formulation}.ref'
+reeval_dir = OUTPUTS_DIR / 'reevaluation' / formulation
 reeval_dir.mkdir(parents=True, exist_ok=True)
 
 n_vars = get_n_vars(formulation)
 dv_data, obj_data = load_reference_set(ref_file, n_vars)
-n_solutions = dv_data.shape[0]
-
-if max_solutions > 0:
-    n_solutions = min(n_solutions, max_solutions)
-
-print(f"Re-evaluating {n_solutions} solutions from {ref_file}")
-
+n_solutions = min(dv_data.shape[0], max_solutions) if max_solutions > 0 else dv_data.shape[0]
 obj_names = get_obj_names()
 all_objectives = []
 
 for i in range(n_solutions):
-    print(f"\n--- Solution {i+1}/{n_solutions} ---")
-    dv_vector = dv_data[i, :]
-    config = dvs_to_config(dv_vector, formulation)
-
-    output_file = reeval_dir / f"solution_{i:04d}.hdf5"
-    data = run_simulation_to_disk(config, output_file)
-
+    print(f'--- Solution {i+1}/{n_solutions} ---')
+    config = dvs_to_config(dv_data[i, :], formulation)
+    data = run_simulation_to_disk(config, reeval_dir / f'solution_{i:04d}.hdf5')
     objs = DEFAULT_OBJECTIVES.compute(data)
     all_objectives.append(objs)
     for name, val in zip(obj_names, objs):
-        print(f"  {name} = {val:.6f}")
+        print(f'  {name} = {val:.6f}')
 
-# Save summary
 summary_df = pd.DataFrame(all_objectives, columns=obj_names)
-summary_csv = reeval_dir / "objectives_summary.csv"
-summary_df.to_csv(summary_csv, index_label="solution_id")
-print(f"\nObjectives summary: {summary_csv}")
-print(f"\n--- Re-evaluation complete ({n_solutions} solutions) ---")
-PYEOF
+summary_csv = reeval_dir / 'objectives_summary.csv'
+summary_df.to_csv(summary_csv, index_label='solution_id')
+print(f'Re-evaluation complete ({n_solutions} solutions) -> {summary_csv}')
+"
