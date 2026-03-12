@@ -25,6 +25,17 @@ Three nested formulations are considered, each representing increasing operation
 
 The workflow is organized as numbered bash scripts that should be run in order. Each script is a thin wrapper calling the corresponding Python module.
 
+
+### Setup venv and dependencies
+
+```bash
+module load python/3.11.5
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ../Pywr-DRB # Requires local Pywr-DRB repo nyc_opt branch
+```
+
+
 ### Step 0: Generate Pre-Simulated Releases (one-time setup)
 
 Runs the full Pywr-DRB model once and saves non-NYC reservoir releases. These are used by the trimmed model during optimization to avoid re-simulating independent STARFIT reservoirs.

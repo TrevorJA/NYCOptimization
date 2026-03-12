@@ -48,7 +48,7 @@ from config import (
 def generate_presim():
     """Run full model and extract presimulated releases."""
     import pywrdrb
-    from pywrdrb.post import generate_presimulated_releases
+    from pywrdrb.pre import generate_presimulated_releases
 
     print("=" * 60)
     print("  Generate Pre-Simulated Releases (trimmed model setup)")

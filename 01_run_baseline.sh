@@ -10,8 +10,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=00:30:00
-#SBATCH --output=logs/baseline_%j.out
-#SBATCH --error=logs/baseline_%j.err
+#SBATCH --output=logs/baseline.out
+#SBATCH --error=logs/baseline.err
 set -euo pipefail
 
 cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
