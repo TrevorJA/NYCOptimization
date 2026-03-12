@@ -19,7 +19,7 @@ Runtime:
     This only needs to be run once per inflow_type / date range combination.
 
 Usage:
-    python scripts/generate_presim.py [--force]
+    python scripts/generate_presim.py
 
 Outputs:
     outputs/presim/presimulated_releases_mgd.csv
@@ -30,7 +30,6 @@ Outputs:
 
 import sys
 import time
-import argparse
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.parent
@@ -46,12 +45,8 @@ from config import (
 )
 
 
-def generate_presim(force: bool = False):
-    """Run full model and extract presimulated releases.
-
-    Args:
-        force: If True, overwrite existing presim file without prompting.
-    """
+def generate_presim():
+    """Run full model and extract presimulated releases."""
     import pywrdrb
     from pywrdrb.post import generate_presimulated_releases
 
@@ -62,15 +57,8 @@ def generate_presim(force: bool = False):
     print(f"  Period      : {START_DATE} to {END_DATE}")
     print(f"  Output dir  : {PRESIM_DIR}")
 
-    # Guard against accidental overwrite
-    if PRESIM_FILE.exists() and not force:
-        print(f"\n  File already exists: {PRESIM_FILE}")
-        resp = input("  Overwrite? [y/N]: ").strip().lower()
-        if resp != "y":
-            print("  Aborted.")
-            return
-    elif PRESIM_FILE.exists() and force:
-        print(f"\n  Overwriting existing file (--force).")
+    if PRESIM_FILE.exists():
+        print(f"\n  Overwriting existing file: {PRESIM_FILE}")
 
     PRESIM_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -140,12 +128,4 @@ def generate_presim(force: bool = False):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Generate pre-simulated releases for the trimmed Pywr-DRB model."
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="Overwrite existing presim file without prompting."
-    )
-    args = parser.parse_args()
-    generate_presim(force=args.force)
+    generate_presim()
