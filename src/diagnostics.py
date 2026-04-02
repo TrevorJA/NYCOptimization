@@ -1,37 +1,49 @@
 """
 diagnostics.py - MOEA runtime diagnostics using MOEAFramework v5.0 CLI.
 
-Provides functions to generate shell commands for the three-step
-MOEAFramework diagnostic workflow:
+Three-step workflow for computing runtime metrics from Borg output:
 
-    1. ResultFileMerger:     runtime files -> per-seed .set files
-    2. ResultFileSeedMerger: per-seed .set files -> cross-seed .ref file
-    3. MetricsEvaluator:     runtime files + .ref -> metrics files
+    1. ResultFileMerger:     runtime files -> merged reference set (.set)
+    2. MetricsEvaluator:     runtime files + .set -> per-snapshot metrics
 
-MOEAFramework v5.0 CLI reference:
-    https://github.com/MOEAFramework/MOEAFramework/blob/master/docs/commandLineTools.md
+MOEAFramework v5.0 requires a registered problem definition (JAR in lib/)
+to parse runtime files correctly (knowing #DVs vs #objectives). The problem
+was created via:
 
-Key v5.0 changes from v4.x:
-    - ReferenceSetMerger   -> ResultFileSeedMerger
-    - ResultFileEvaluator  -> MetricsEvaluator
-    - New --overwrite flag (do NOT use with ResultFileMerger)
-    - CLI invoked via ./cli instead of java -cp ... org.moeaframework...
+    ./MOEAFramework-5.0/cli BuildProblem \\
+        --problemName drb_ffmp \\
+        --language python \\
+        --numberOfVariables 24 \\
+        --numberOfObjectives 6 \\
+        --lowerBound -1000000.0 \\
+        --upperBound 1000000.0 \\
+        --directory MOEAFramework-5.0/native
+
+    cd MOEAFramework-5.0/native/drb_ffmp
+    mkdir -p bin && cp -r META-INF bin
+    javac -classpath "../../lib/*:." -d bin \\
+        src/drb_ffmp/drb_ffmp.java src/drb_ffmp/drb_ffmpProvider.java
+    cp drb_ffmp.py bin/drb_ffmp
+    jar -cf drb_ffmp.jar -C bin META-INF/ -C bin drb_ffmp
+    cp drb_ffmp.jar ../../lib/
+
+The resulting JAR (drb_ffmp.jar) is in MOEAFramework-5.0/lib/ and registers
+the problem name "drb_ffmp" with 24 real-valued DVs and 6 objectives.
 
 References:
-    - WaterProgramming: "Introducing MOEAFramework v5.0" (Mar 2025)
-    - WaterProgramming: "MM Borg Training Part 2" (Sep 2024)
+    - WaterProgramming: "MM Borg MOEA Python Wrapper - Checkpointing,
+      Runtime and Operator Dynamics using MOEA Framework-5.0" (Aug 2025)
     - WaterProgramming: "Performing runtime diagnostics" (Apr 2024)
+    - WaterProgramming: "MM Borg Training Part 2" (Sep 2024)
 """
 
 import subprocess
 from pathlib import Path
 
-from config import (
-    get_n_objs,
-    get_epsilons,
-    OUTPUTS_DIR,
-    DIAGNOSTICS_SETTINGS,
-)
+from config import get_epsilons, OUTPUTS_DIR, DIAGNOSTICS_SETTINGS
+
+# MOEAFramework problem name (must match JAR in lib/)
+MOEA_PROBLEM_NAME = "drb_ffmp"
 
 
 def get_cli_path() -> str:
@@ -39,156 +51,141 @@ def get_cli_path() -> str:
     return DIAGNOSTICS_SETTINGS["moea_framework_jar"]
 
 
-def extract_sets(
+def merge_reference_set(
     formulation: str,
+    seed: int = None,
     runtime_dir: Path = None,
-    sets_dir: Path = None,
-):
-    """Step 1: Extract per-seed approximation sets from runtime files.
+    output_file: Path = None,
+) -> Path:
+    """Merge runtime files into an epsilon-dominated reference set.
 
-    Uses ResultFileMerger to merge all snapshots within a single
-    runtime file into one epsilon-dominated approximation set.
+    Uses ResultFileMerger to combine all snapshots across islands
+    into a single non-dominated set.
 
-    NOTE: For MM Borg, there may be multiple runtime files per seed
-    (one per island, e.g., seed_01_ffmp_0.runtime, seed_01_ffmp_1.runtime).
-    These should be merged together per seed.
+    Args:
+        formulation: Formulation name.
+        seed: Seed number (if None, merges all seeds).
+        runtime_dir: Directory containing .runtime files.
+        output_file: Output .set file path.
+
+    Returns:
+        Path to the merged .set file.
     """
     if runtime_dir is None:
         runtime_dir = OUTPUTS_DIR / "optimization" / formulation / "runtime"
-    if sets_dir is None:
+    if output_file is None:
         sets_dir = OUTPUTS_DIR / "optimization" / formulation / "sets"
-    sets_dir.mkdir(parents=True, exist_ok=True)
+        sets_dir.mkdir(parents=True, exist_ok=True)
+        suffix = f"_seed{seed:02d}" if seed else ""
+        output_file = sets_dir / f"{formulation}{suffix}_merged.set"
 
-    cli = get_cli_path()
-    n_objs = get_n_objs()
     epsilons = ",".join(str(e) for e in get_epsilons())
 
-    runtime_files = sorted(runtime_dir.glob(f"*_{formulation}*.runtime"))
+    # Find runtime files (filter by seed if specified)
+    if seed is not None:
+        pattern = f"seed_{seed:02d}_{formulation}_*.runtime"
+    else:
+        pattern = f"*_{formulation}_*.runtime"
+    runtime_files = sorted(runtime_dir.glob(pattern))
+
     if not runtime_files:
-        raise FileNotFoundError(f"No runtime files in {runtime_dir}")
-
-    # Group runtime files by seed
-    seed_groups = {}
-    for rf in runtime_files:
-        # Extract seed from filename: seed_01_ffmp_0.runtime -> 01
-        parts = rf.stem.split("_")
-        seed = parts[1]  # e.g., "01"
-        seed_groups.setdefault(seed, []).append(rf)
-
-    for seed, files in sorted(seed_groups.items()):
-        set_file = sets_dir / f"seed_{seed}_{formulation}.set"
-        cmd = [
-            cli, "ResultFileMerger",
-            "--dimension", str(n_objs),
-            "--output", str(set_file),
-            "--epsilon", epsilons,
-        ] + [str(f) for f in files]
-
-        print(f"  Merging seed {seed}: {len(files)} runtime file(s)")
-        subprocess.run(cmd, check=True)
-
-    return sets_dir
-
-
-def generate_reference_set(
-    formulation: str,
-    sets_dir: Path = None,
-    ref_file: Path = None,
-):
-    """Step 2: Generate cross-seed reference set.
-
-    Uses ResultFileSeedMerger (v5.0; replaces old ReferenceSetMerger).
-    WARNING: Do NOT use --overwrite flag.
-    """
-    if sets_dir is None:
-        sets_dir = OUTPUTS_DIR / "optimization" / formulation / "sets"
-    if ref_file is None:
-        ref_dir = OUTPUTS_DIR / "reference_sets"
-        ref_dir.mkdir(parents=True, exist_ok=True)
-        ref_file = ref_dir / f"{formulation}.ref"
-
-    cli = get_cli_path()
-    n_objs = get_n_objs()
-    epsilons = ",".join(str(e) for e in get_epsilons())
-
-    set_files = sorted(sets_dir.glob(f"seed_*_{formulation}.set"))
-    if not set_files:
-        raise FileNotFoundError(f"No .set files in {sets_dir}")
+        raise FileNotFoundError(
+            f"No runtime files matching {pattern} in {runtime_dir}"
+        )
 
     cmd = [
-        cli, "ResultFileSeedMerger",
-        "--dimension", str(n_objs),
-        "--output", str(ref_file),
+        get_cli_path(), "ResultFileMerger",
+        "--problem", MOEA_PROBLEM_NAME,
         "--epsilon", epsilons,
-    ] + [str(f) for f in set_files]
+        "--output", str(output_file),
+    ] + [str(f) for f in runtime_files]
 
-    print(f"  Merging {len(set_files)} seed sets -> {ref_file}")
+    print(f"  Merging {len(runtime_files)} runtime files -> {output_file.name}")
     subprocess.run(cmd, check=True)
-
-    # Count solutions
-    n_solutions = sum(
-        1 for line in open(ref_file) if line.strip() and not line.startswith("#")
-    )
-    print(f"  Reference set: {n_solutions} solutions")
-    return ref_file
+    return output_file
 
 
 def compute_metrics(
-    formulation: str,
-    runtime_dir: Path = None,
-    ref_file: Path = None,
-    metrics_dir: Path = None,
-):
-    """Step 3: Compute runtime metrics (hypervolume, GD, epsilon indicator).
+    runtime_file: Path,
+    reference_file: Path,
+    output_file: Path = None,
+) -> Path:
+    """Compute runtime metrics for a single runtime file.
 
-    Uses MetricsEvaluator (v5.0; replaces old ResultFileEvaluator).
+    Uses MetricsEvaluator to compute hypervolume, generational distance,
+    inverted generational distance, spacing, epsilon indicator, and
+    maximum Pareto front error at each NFE snapshot.
+
+    Args:
+        runtime_file: Input .runtime file.
+        reference_file: Reference set (.set or .ref file).
+        output_file: Output .metrics file.
+
+    Returns:
+        Path to the .metrics file.
+    """
+    if output_file is None:
+        metrics_dir = runtime_file.parent.parent / "metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        output_file = metrics_dir / f"{runtime_file.stem}.metrics"
+
+    epsilons = ",".join(str(e) for e in get_epsilons())
+
+    cmd = [
+        get_cli_path(), "MetricsEvaluator",
+        "--problem", MOEA_PROBLEM_NAME,
+        "--epsilon", epsilons,
+        "--input", str(runtime_file),
+        "--reference", str(reference_file),
+        "--output", str(output_file),
+        "--force",
+    ]
+
+    print(f"  Computing metrics: {runtime_file.name} -> {output_file.name}")
+    subprocess.run(cmd, check=True)
+    return output_file
+
+
+def run_diagnostics(
+    formulation: str,
+    seed: int = 1,
+    runtime_dir: Path = None,
+):
+    """Run the full diagnostics workflow for a single seed.
+
+    Steps:
+        1. Merge all island runtime files into a reference set
+        2. Compute metrics for each island's runtime file
+
+    Args:
+        formulation: Formulation name.
+        seed: Seed number.
+        runtime_dir: Directory containing .runtime files.
+
+    Returns:
+        Tuple of (reference_set_path, list_of_metrics_paths).
     """
     if runtime_dir is None:
         runtime_dir = OUTPUTS_DIR / "optimization" / formulation / "runtime"
-    if ref_file is None:
-        ref_file = OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref"
-    if metrics_dir is None:
-        metrics_dir = OUTPUTS_DIR / "diagnostics" / formulation
-    metrics_dir.mkdir(parents=True, exist_ok=True)
 
-    cli = get_cli_path()
-    n_objs = get_n_objs()
-    epsilons = ",".join(str(e) for e in get_epsilons())
+    print(f"\n=== MOEAFramework Diagnostics: {formulation}, seed {seed} ===\n")
 
-    runtime_files = sorted(runtime_dir.glob(f"*_{formulation}*.runtime"))
-    if not runtime_files:
-        raise FileNotFoundError(f"No runtime files in {runtime_dir}")
+    # Step 1: Merge runtime files into reference set
+    print("Step 1: Merging reference set...")
+    ref_file = merge_reference_set(formulation, seed=seed, runtime_dir=runtime_dir)
 
+    # Step 2: Compute metrics for each island runtime file
+    print("\nStep 2: Computing runtime metrics...")
+    pattern = f"seed_{seed:02d}_{formulation}_*.runtime"
+    runtime_files = sorted(runtime_dir.glob(pattern))
+
+    metrics_files = []
     for rf in runtime_files:
-        metrics_file = metrics_dir / f"{rf.stem}.metrics"
-        cmd = [
-            cli, "MetricsEvaluator",
-            "--dimension", str(n_objs),
-            "--input", str(rf),
-            "--reference", str(ref_file),
-            "--epsilon", epsilons,
-            "--output", str(metrics_file),
-        ]
-        print(f"  Evaluating: {rf.stem}")
-        subprocess.run(cmd, check=True)
-
-    return metrics_dir
-
-
-def run_full_diagnostics(formulation: str):
-    """Run the complete 3-step diagnostic workflow."""
-    print(f"=== MOEA Diagnostics: {formulation} ===\n")
-
-    print("Step 1: Extracting approximation sets...")
-    sets_dir = extract_sets(formulation)
-
-    print("\nStep 2: Generating reference set...")
-    ref_file = generate_reference_set(formulation)
-
-    print("\nStep 3: Computing runtime metrics...")
-    metrics_dir = compute_metrics(formulation, ref_file=ref_file)
+        mf = compute_metrics(rf, ref_file)
+        metrics_files.append(mf)
 
     print(f"\n=== Complete ===")
-    print(f"  Sets:       {sets_dir}")
-    print(f"  Reference:  {ref_file}")
-    print(f"  Metrics:    {metrics_dir}")
+    print(f"  Reference set: {ref_file}")
+    print(f"  Metrics files: {[f.name for f in metrics_files]}")
+
+    return ref_file, metrics_files

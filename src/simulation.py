@@ -20,9 +20,11 @@ Memory/I/O design:
 This module is imported by the Borg optimization driver.
 """
 
+import os
 import sys
-import gc
+import copy
 import json
+import time
 import tempfile
 import numpy as np
 import pandas as pd
@@ -45,6 +47,19 @@ from config import (
     get_var_names,
 )
 
+# Allow debug override of simulation date range via environment variables.
+# Set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE (YYYY-MM-DD) before
+# launching mpirun to run a shorter period for fast debugging.
+# Example (5-year debug period, ~13s/eval vs ~150s for full 78-year run):
+#   export PYWRDRB_SIM_START_DATE=2018-01-01
+#   export PYWRDRB_SIM_END_DATE=2022-12-31
+_env_start = os.environ.get("PYWRDRB_SIM_START_DATE")
+_env_end = os.environ.get("PYWRDRB_SIM_END_DATE")
+if _env_start:
+    START_DATE = _env_start
+if _env_end:
+    END_DATE = _env_end
+
 
 ###############################################################################
 # Cached model components
@@ -52,6 +67,22 @@ from config import (
 
 _CACHED_PRESIM_FILE = None
 _PRESIM_SEARCHED = False
+_CACHED_DEFAULTS_CONFIG = None   # Cached NYCOperationsConfig.from_defaults()
+_CACHED_MODEL_DICT = None        # Cached base model dict (avoids make_model per eval)
+
+# CFS→MGD conversion (from pywrdrb.utils.constants)
+_CFS_TO_MGD = 0.645932368556
+
+# Parameter keys affected by decision variables
+_DROUGHT_LEVELS = ["level1a", "level1b", "level1c", "level2", "level3", "level4", "level5"]
+_ZONE_LEVELS = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
+_NYC_RESERVOIRS_OPT = ["cannonsville", "pepacton", "neversink"]
+_DOWNSTREAM_LOCS = ["delMontague", "delTrenton"]
+
+# Evaluation counter for progress reporting
+_EVAL_COUNT = 0
+_EVAL_START_TIME = None
+_EVAL_LOG_INTERVAL = 1  # Print status every N evaluations (set to 1 for debugging)
 
 
 def _find_presim_file() -> Optional[Path]:
@@ -85,11 +116,99 @@ def _require_presim_file() -> Path:
 
 
 ###############################################################################
+# Cached NYCOperationsConfig and Model Dict
+###############################################################################
+
+def _get_cached_defaults():
+    """Return cached NYCOperationsConfig.from_defaults() (avoids re-reading CSVs)."""
+    global _CACHED_DEFAULTS_CONFIG
+    if _CACHED_DEFAULTS_CONFIG is None:
+        from pywrdrb.parameters.nyc_operations_config import NYCOperationsConfig
+        _CACHED_DEFAULTS_CONFIG = NYCOperationsConfig.from_defaults()
+    return _CACHED_DEFAULTS_CONFIG
+
+
+def _get_cached_model_dict(use_trimmed: bool = None):
+    """Build and cache the base model_dict using default config (first call only).
+
+    Subsequent evaluations deep-copy this dict and patch only the DV-affected
+    parameters, avoiding the ~1s cost of make_model() on every eval.
+    """
+    global _CACHED_MODEL_DICT
+    if _CACHED_MODEL_DICT is None:
+        defaults = _get_cached_defaults()
+        mb = _build_model_builder(defaults, use_trimmed=use_trimmed)
+        _CACHED_MODEL_DICT = mb.model_dict
+    return _CACHED_MODEL_DICT
+
+
+def _patch_model_dict(model_dict: dict, nyc_config):
+    """Update DV-affected parameters in a model_dict from NYCOperationsConfig.
+
+    This replaces the full make_model() rebuild by directly setting the
+    parameter values that correspond to decision variables.
+    """
+    params = model_dict["parameters"]
+
+    # --- Constants ---
+    # MRF baselines
+    for key in ["mrf_baseline_cannonsville", "mrf_baseline_pepacton",
+                "mrf_baseline_neversink", "mrf_baseline_delMontague",
+                "mrf_baseline_delTrenton"]:
+        params[key]["value"] = nyc_config.get_constant(key)
+
+    # Max NYC delivery
+    params["max_flow_baseline_delivery_nyc"]["value"] = nyc_config.get_constant(
+        "max_flow_baseline_delivery_nyc"
+    )
+
+    # Drought delivery factors (NYC and NJ, all 7 levels)
+    for level in _DROUGHT_LEVELS:
+        params[f"{level}_factor_delivery_nyc"]["value"] = float(
+            nyc_config.get_constant(f"{level}_factor_delivery_nyc")
+        )
+        params[f"{level}_factor_delivery_nj"]["value"] = float(
+            nyc_config.get_constant(f"{level}_factor_delivery_nj")
+        )
+
+    # Flood release limits (CFS→MGD conversion)
+    for res in _NYC_RESERVOIRS_OPT:
+        cfs_val = nyc_config.get_constant(f"flood_max_release_{res}_cfs")
+        params[f"flood_max_release_{res}"]["value"] = cfs_val * _CFS_TO_MGD
+
+    # --- Daily profiles (366 values) ---
+    # Storage zone thresholds
+    for level in _ZONE_LEVELS:
+        params[level]["values"] = nyc_config.get_storage_zone_profile(level).tolist()
+
+    # MRF daily factor profiles (per reservoir × per level)
+    for level in _DROUGHT_LEVELS:
+        for res in _NYC_RESERVOIRS_OPT:
+            key = f"{level}_factor_mrf_{res}"
+            if key in params:
+                params[key]["values"] = nyc_config.get_mrf_factor_profile(
+                    key, daily=True
+                ).tolist()
+
+    # --- Monthly profiles (12 values) ---
+    # MRF monthly factor profiles (Montague & Trenton × per level)
+    for level in _DROUGHT_LEVELS:
+        for loc in _DOWNSTREAM_LOCS:
+            key = f"{level}_factor_mrf_{loc}"
+            if key in params:
+                params[key]["values"] = nyc_config.get_mrf_factor_profile(
+                    key, daily=False
+                ).tolist()
+
+
+###############################################################################
 # Decision Variable -> NYCOperationsConfig Conversion
 ###############################################################################
 
 def dvs_to_config(dv_vector, formulation_name="ffmp"):
     """Convert a flat decision variable vector to a NYCOperationsConfig.
+
+    Uses cached defaults to avoid re-reading CSVs on every evaluation.
 
     Args:
         dv_vector: Array-like of decision variable values.
@@ -98,11 +217,12 @@ def dvs_to_config(dv_vector, formulation_name="ffmp"):
     Returns:
         NYCOperationsConfig instance.
     """
-    from pywrdrb.parameters.nyc_operations_config import NYCOperationsConfig
+    import copy as _copy
+    base = _get_cached_defaults()
+    config = _copy.deepcopy(base)
 
     var_names = get_var_names(formulation_name)
     params = dict(zip(var_names, dv_vector))
-    config = NYCOperationsConfig.from_defaults()
 
     if formulation_name == "ffmp":
         _apply_ffmp_params(config, params)
@@ -323,59 +443,82 @@ def _write_and_load_model(mb, model_json_path: str):
 
 
 ###############################################################################
-# In-Memory Recorder (skips HDF5 write)
+# Per-Rank Temp Directory
+###############################################################################
+
+# Cached temp dir per process
+_TEMP_DIR = None
+_MPI_RANK = None
+
+
+def _get_mpi_rank() -> int:
+    """Return MPI rank (0 if not in an MPI context)."""
+    global _MPI_RANK
+    if _MPI_RANK is None:
+        try:
+            from mpi4py import MPI
+            _MPI_RANK = MPI.COMM_WORLD.Get_rank()
+        except Exception:
+            _MPI_RANK = 0
+    return _MPI_RANK
+
+
+def _get_temp_dir() -> str:
+    """Get or create a persistent per-process temp directory.
+
+    Uses /dev/shm (RAM-backed tmpfs) when available to avoid NFS I/O
+    contention with many MPI workers writing JSON simultaneously.
+    Falls back to /tmp if /dev/shm is not writable.
+    """
+    global _TEMP_DIR
+    if _TEMP_DIR is None:
+        rank = _get_mpi_rank()
+        # Prefer /dev/shm (RAM filesystem) to avoid NFS contention
+        shm_dir = "/dev/shm"
+        if os.path.isdir(shm_dir) and os.access(shm_dir, os.W_OK):
+            _TEMP_DIR = tempfile.mkdtemp(prefix=f"pywrdrb_opt_r{rank}_", dir=shm_dir)
+        else:
+            _TEMP_DIR = tempfile.mkdtemp(prefix=f"pywrdrb_opt_r{rank}_")
+    return _TEMP_DIR
+
+
+###############################################################################
+# In-Memory Recorder (avoids HDF5 disk I/O and its threading side-effects)
 ###############################################################################
 
 class InMemoryRecorder:
-    """Lightweight recorder that captures simulation data to numpy arrays.
+    """Wrapper around pywrdrb.OutputRecorder that skips HDF5 output.
 
-    Wraps pywrdrb.OutputRecorder but overrides finish() to skip the
-    HDF5 write. Data is still captured during simulation via the
-    internal NumpyArray*Recorder objects.
+    Root cause of prior crash (double-free in pywr C extension):
+      OutputRecorder.finish() called rec.finish() on each individual
+      NumpyArray*Recorder. But pywr's C code ALREADY calls finish() on
+      every registered recorder automatically at the end of model.run().
+      The double-call freed the internal buffer twice → double-free / abort.
 
-    After model.run(), access data via self.recorder_dict[key].data.
+    Fix: replace ALL lifecycle methods on the OutputRecorder wrapper with
+    no-ops. Each NumpyArray*Recorder is registered with the pywr model and
+    receives exactly one lifecycle call (setup/reset/after/finish) from pywr.
+    After model.run() completes, recorder.data is still accessible.
+
+    We also avoid writing HDF5 (which would spawn HDF5 background threads and
+    corrupt the Python GIL state inside Borg's ctypes C→Python callback).
     """
 
     def __init__(self, model):
         from pywrdrb.recorder import OutputRecorder
-        # Use /dev/null as dummy output path (finish is overridden so never written)
-        self._inner = OutputRecorder.__new__(OutputRecorder)
-        self._inner.model = model
-        self._inner.output_filename = "/dev/null"
-        self._inner.recorder_dict = {}
 
-        # Replicate OutputRecorder.__init__ logic for recorder creation
-        from pywr.recorders import (
-            NumpyArrayNodeRecorder,
-            NumpyArrayParameterRecorder,
-            NumpyArrayStorageRecorder,
-        )
-        from pywr.recorders import Recorder
-        from pywrdrb.utils.lists import reservoir_list
+        # Create OutputRecorder (this also registers the individual
+        # NumpyArray*Recorders with the pywr model).
+        self._inner = OutputRecorder(model, output_filename="/dev/null")
 
-        # Register as a Pywr recorder so setup/after/finish are called
-        Recorder.__init__(self._inner, model)
-
-        nodes = [n for n in model.nodes.values() if n.name]
-        parameters = [p for p in model.parameters if p.name]
-
-        for p in parameters:
-            self._inner.recorder_dict[p.name] = NumpyArrayParameterRecorder(model, p)
-        for n in nodes:
-            if n.name.split("_")[0] == "reservoir" and n.name.split("_")[1] in reservoir_list:
-                self._inner.recorder_dict[n.name] = NumpyArrayStorageRecorder(
-                    model, n, proportional=False
-                )
-            else:
-                self._inner.recorder_dict[n.name] = NumpyArrayNodeRecorder(model, n)
-
-        # Monkey-patch finish to skip HDF5 write
-        original_finish = self._inner.finish
-        def finish_no_hdf5():
-            # Call finish on child recorders (frees Cython buffers) but skip to_hdf5()
-            for rec in self._inner.recorder_dict.values():
-                rec.finish()
-        self._inner.finish = finish_no_hdf5
+        # Make ALL wrapper lifecycle methods no-ops.
+        # pywr's C engine calls setup/reset/after/finish on each individual
+        # registered recorder — the wrapper must not double-call them.
+        _noop = lambda: None
+        self._inner.setup = _noop
+        self._inner.reset = _noop
+        self._inner.after = _noop
+        self._inner.finish = _noop
 
     @property
     def recorder_dict(self):
@@ -389,17 +532,13 @@ class InMemoryRecorder:
 def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) -> dict:
     """Extract simulation results from recorder dict into DataFrames.
 
-    Applies the same name mapping as pywrdrb's Output.get_keys_and_column_names_for_results_set()
-    to produce DataFrames with standard pywrdrb node names.
-
     Args:
         recorder_dict: Dict mapping raw pywr names to NumpyArray*Recorder objects.
         datetime_index: Model timestepper datetime index.
         scenario: Scenario index to extract (default 0 for single-scenario runs).
 
     Returns:
-        Dict of DataFrames keyed by results_set name, matching the format
-        expected by objectives.py.
+        Dict of DataFrames keyed by results_set name.
     """
     from pywrdrb.utils.lists import reservoir_list, majorflow_list
 
@@ -407,7 +546,6 @@ def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) ->
     dt_index = pd.DatetimeIndex(datetime_index)
 
     def _build_df(key_filter_fn, name_extract_fn, name_filter=None):
-        """Build a DataFrame from recorders matching a filter."""
         data = {}
         for k in all_keys:
             if key_filter_fn(k):
@@ -421,93 +559,86 @@ def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) ->
 
     results = {}
 
-    # res_storage: "reservoir_X" -> "X" where X in reservoir_list
     results["res_storage"] = _build_df(
         key_filter_fn=lambda k: k.split("_")[0] == "reservoir",
         name_extract_fn=lambda k: k.split("_", 1)[1],
         name_filter=set(reservoir_list),
     )
 
-    # major_flow: "link_X" -> "X" where X in majorflow_list
     results["major_flow"] = _build_df(
         key_filter_fn=lambda k: k.split("_")[0] == "link",
         name_extract_fn=lambda k: k.split("_", 1)[1],
         name_filter=set(majorflow_list),
     )
 
-    # ibt_demands: exact keys "demand_nyc", "demand_nj"
     demand_data = {}
     for k in ["demand_nyc", "demand_nj"]:
         if k in recorder_dict:
             demand_data[k] = recorder_dict[k].data[:, scenario]
     results["ibt_demands"] = pd.DataFrame(demand_data, index=dt_index)
 
-    # ibt_diversions: exact keys "delivery_nyc", "delivery_nj"
     delivery_data = {}
     for k in ["delivery_nyc", "delivery_nj"]:
         if k in recorder_dict:
             delivery_data[k] = recorder_dict[k].data[:, scenario]
     results["ibt_diversions"] = pd.DataFrame(delivery_data, index=dt_index)
 
+    # MRF targets (time-dynamic, vary by drought level and month)
+    mrf_data = {}
+    for k in all_keys:
+        if k.startswith("mrf_target_"):
+            col = k.split("mrf_target_")[1]
+            mrf_data[col] = recorder_dict[k].data[:, scenario]
+    results["mrf_target"] = pd.DataFrame(mrf_data, index=dt_index)
+
     return results
 
 
 ###############################################################################
-# In-Memory Simulation (for optimization, minimal disk I/O)
+# In-Memory Simulation (for optimization)
 ###############################################################################
 
-# Cache the temp directory for model JSON to avoid repeated creation
-_TEMP_DIR = None
-
-
-def _get_temp_dir():
-    """Get or create a persistent temp directory for model JSON files."""
-    global _TEMP_DIR
-    if _TEMP_DIR is None:
-        _TEMP_DIR = tempfile.mkdtemp(prefix="pywrdrb_opt_")
-    return _TEMP_DIR
-
-
 def run_simulation_inmemory(nyc_config, use_trimmed: bool = None) -> dict:
-    """Run Pywr-DRB simulation with minimal disk I/O.
+    """Run Pywr-DRB simulation with no HDF5 disk I/O.
 
-    Writes a temporary model JSON (required by pywr.Model.load) but
-    avoids HDF5 output. Results are extracted directly from in-memory
-    recorders after the simulation completes.
+    Uses cached model dict + parameter patching to avoid rebuilding the
+    model from scratch on every evaluation. The base model_dict is built
+    once (first call), then deep-copied and patched with DV-specific
+    parameter values for each subsequent evaluation.
+
+    Uses /dev/shm for temp JSON to minimize I/O contention under MPI.
 
     Args:
         nyc_config: NYCOperationsConfig instance.
-        use_trimmed: Use trimmed model (fast, requires presim data). Defaults
-            to USE_TRIMMED_MODEL from config.
+        use_trimmed: Use trimmed model. Defaults to USE_TRIMMED_MODEL from config.
 
     Returns:
         Dict of DataFrames keyed by results set name.
     """
     import pywrdrb
 
-    mb = _build_model_builder(nyc_config, use_trimmed=use_trimmed)
-
-    # pywr requires a JSON file to load the model
+    rank = _get_mpi_rank()
     tmp_dir = _get_temp_dir()
-    model_json = str(Path(tmp_dir) / "opt_model.json")
-    model = _write_and_load_model(mb, model_json)
+    model_json = str(Path(tmp_dir) / f"opt_model_r{rank}.json")
 
-    # Attach in-memory recorder (captures data without writing HDF5)
+    # Deep-copy cached base model dict and patch with this eval's parameters
+    base_dict = _get_cached_model_dict(use_trimmed=use_trimmed)
+    model_dict = copy.deepcopy(base_dict)
+    _patch_model_dict(model_dict, nyc_config)
+
+    # Write patched dict to JSON and load (pywr requires JSON file)
+    with open(model_json, "w") as f:
+        json.dump(model_dict, f)
+    model = pywrdrb.Model.load(model_json)
+
     mem_recorder = InMemoryRecorder(model)
-
-    # Run simulation
     model.run()
 
-    # Extract results from in-memory recorder data
+    # Access recorder data BEFORE deleting model (datetime_index lives on model)
     datetime_index = model.timestepper.datetime_index.to_timestamp()
-    data = _extract_results_from_recorder(
-        mem_recorder.recorder_dict, datetime_index
-    )
+    data = _extract_results_from_recorder(mem_recorder.recorder_dict, datetime_index)
 
-    # Cleanup
-    del model, mb, mem_recorder
-    gc.collect()
-
+    del model, mem_recorder
     return data
 
 
@@ -606,6 +737,14 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None):
     Returns:
         List of objective values (Borg-compatible, all minimized).
     """
+    global _EVAL_COUNT, _EVAL_START_TIME
+
+    if _EVAL_START_TIME is None:
+        _EVAL_START_TIME = time.time()
+
+    _EVAL_COUNT += 1
+    t0 = time.time()
+
     if objective_set is None:
         from config import get_objective_set
         objective_set = get_objective_set()
@@ -613,4 +752,21 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None):
     config = dvs_to_config(dv_vector, formulation_name)
     data = run_simulation_inmemory(config)
     objs = objective_set.compute_for_borg(data)
+
+    elapsed = time.time() - t0
+    if _EVAL_COUNT % _EVAL_LOG_INTERVAL == 0 or _EVAL_COUNT == 1:
+        total_elapsed = time.time() - _EVAL_START_TIME
+        avg_time = total_elapsed / _EVAL_COUNT
+        try:
+            from mpi4py import MPI
+            rank = MPI.COMM_WORLD.Get_rank()
+        except Exception:
+            rank = 0
+        obj_str = ", ".join(f"{o:.4f}" for o in objs)
+        sys.stdout.write(
+            f"[Rank {rank}] Eval #{_EVAL_COUNT}: {elapsed:.1f}s this eval, "
+            f"{avg_time:.1f}s avg, {total_elapsed:.0f}s total | objs=[{obj_str}]\n"
+        )
+        sys.stdout.flush()
+
     return objs

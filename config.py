@@ -238,7 +238,7 @@ ACTIVE_OBJECTIVE_SET = "default"
 
 BORG_SETTINGS = {
     "max_evaluations": 1_000_000,    # Per island (total NFE = islands * max_evaluations)
-    "runtime_frequency": 1000,       # Print archive every N NFE
+    "runtime_frequency": 500,        # Archive snapshot every N NFE
     "n_seeds": 10,
 }
 

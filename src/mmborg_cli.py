@@ -26,6 +26,9 @@ def main():
     parser.add_argument("--checkpoint", action="store_true")
     parser.add_argument("--restore", type=str, default=None,
                         help="Path to checkpoint file to restore from")
+    parser.add_argument("--runtime-freq", type=int, default=None,
+                        help="Runtime snapshot frequency (NFE interval). "
+                             "Overrides BORG_SETTINGS['runtime_frequency'] when set.")
     args = parser.parse_args()
 
     checkpoint_base = None
@@ -36,13 +39,15 @@ def main():
             ckpt_dir / f"seed_{args.seed:02d}_{args.formulation}"
         )
 
+    runtime_freq = args.runtime_freq if args.runtime_freq is not None else BORG_SETTINGS["runtime_frequency"]
+
     run_mmborg(
         formulation_name=args.formulation,
         seed=args.seed,
         n_islands=args.islands,
         max_evaluations=args.nfe,
         max_time=args.time,
-        runtime_frequency=BORG_SETTINGS["runtime_frequency"],
+        runtime_frequency=runtime_freq,
         checkpoint_base=checkpoint_base,
         restore_checkpoint=args.restore,
     )

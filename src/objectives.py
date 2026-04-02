@@ -7,16 +7,18 @@ Provides an Objective class and ObjectiveSet container that support:
 - Borg-compatible output (all minimized) with direction handling
 - Epsilon values for Borg epsilon-dominance archiving
 
+Metric design principles:
+- Reliability metrics use WEEKLY aggregation (daily is insensitive;
+  shortages are rare events that daily frequency fails to discriminate).
+- Flow compliance at Montague/Trenton uses TIME-DYNAMIC targets from
+  the simulation (mrf_target), not hardcoded constants.
+- Vulnerability metrics capture the worst-case shortage magnitude.
+- Trenton uses the full simulation period (no a priori seasonal assumption).
+
 Usage:
-    # Use the default set
     from src.objectives import DEFAULT_OBJECTIVES
     values = DEFAULT_OBJECTIVES.compute(data)
     borg_values = DEFAULT_OBJECTIVES.compute_for_borg(data)
-
-    # Create a custom set
-    custom = ObjectiveSet([obj_nyc_supply_reliability_daily,
-                           obj_flood_risk_storage_spill_days,
-                           obj_storage_min_combined_pct])
 """
 
 import numpy as np
@@ -117,19 +119,11 @@ class ObjectiveSet:
         return len(self._objectives)
 
     def compute(self, data: dict) -> list:
-        """Compute all raw objective values from simulation data.
-
-        Returns:
-            List of floats in the order defined by this ObjectiveSet.
-        """
+        """Compute all raw objective values from simulation data."""
         return [obj.compute(data) for obj in self._objectives]
 
     def compute_for_borg(self, data: dict) -> list:
-        """Compute all objectives in Borg-compatible format (all minimized).
-
-        Returns:
-            List of floats, negated where direction is 'maximize'.
-        """
+        """Compute all objectives in Borg-compatible format (all minimized)."""
         return [obj.compute_for_borg(data) for obj in self._objectives]
 
     def summary(self) -> str:
@@ -146,100 +140,129 @@ class ObjectiveSet:
 # Metric Functions
 ###############################################################################
 
-def _nyc_reliability(data: dict) -> float:
-    """Fraction of days NYC delivery meets or exceeds demand.
+# --- NYC Supply ---
 
-    Uses ibt_demands["demand_nyc"] and ibt_diversions["delivery_nyc"].
-    Returns value in [0, 1] where 1.0 = perfect reliability.
+def _nyc_reliability_weekly(data: dict) -> float:
+    """Fraction of weeks NYC delivery meets or exceeds demand.
+
+    A week is "met" if weekly total delivery >= 99% of weekly total demand.
+    Weekly aggregation provides better discrimination than daily for
+    rare shortage events.
     """
     demand = data["ibt_demands"]["demand_nyc"].iloc[WARMUP_DAYS:]
     delivery = data["ibt_diversions"]["delivery_nyc"].iloc[WARMUP_DAYS:]
 
-    # A day is "met" if delivery >= 99% of demand (tolerance for numerical noise)
-    met = (delivery >= 0.99 * demand).sum()
-    total = len(demand)
+    weekly_demand = demand.resample("W").sum()
+    weekly_delivery = delivery.resample("W").sum()
+
+    met = (weekly_delivery >= 0.99 * weekly_demand).sum()
+    total = len(weekly_demand)
     return float(met) / total if total > 0 else 0.0
 
 
-def _nyc_max_deficit_pct(data: dict) -> float:
-    """Maximum monthly shortage as a percentage of monthly demand.
+def _nyc_vulnerability(data: dict) -> float:
+    """Worst single-week NYC shortage as percent of that week's demand.
 
-    Aggregates daily shortages to monthly totals, then finds the
-    worst month. Returns value in [0, 100].
+    Captures the worst-case shortage magnitude. Returns value in [0, 100].
     """
     demand = data["ibt_demands"]["demand_nyc"].iloc[WARMUP_DAYS:]
     delivery = data["ibt_diversions"]["delivery_nyc"].iloc[WARMUP_DAYS:]
 
-    daily_shortage = (demand - delivery).clip(lower=0)
-    monthly_shortage = daily_shortage.resample("ME").sum()
-    monthly_demand = demand.resample("ME").sum()
+    weekly_demand = demand.resample("W").sum()
+    weekly_delivery = delivery.resample("W").sum()
+    weekly_shortage = (weekly_demand - weekly_delivery).clip(lower=0)
 
-    # Avoid division by zero for months with no demand
-    monthly_deficit_pct = np.where(
-        monthly_demand > 0,
-        100.0 * monthly_shortage / monthly_demand,
+    deficit_pct = np.where(
+        weekly_demand > 0,
+        100.0 * weekly_shortage / weekly_demand,
         0.0,
     )
-    return float(np.max(monthly_deficit_pct))
+    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
 
 
-def _nyc_max_consecutive_shortfall(data: dict) -> float:
-    """Maximum consecutive days NYC delivery falls below demand.
+# --- Flow Compliance (time-dynamic targets) ---
 
-    Returns integer count of longest consecutive shortfall streak.
-    A shortfall day is defined as delivery < 99% of demand.
+def _montague_reliability_weekly(data: dict) -> float:
+    """Fraction of weeks flow at Montague meets the time-dynamic MRF target.
+
+    Uses the actual FFMP-driven target from simulation output (varies by
+    drought level and month), not a hardcoded constant.
     """
-    demand = data["ibt_demands"]["demand_nyc"].iloc[WARMUP_DAYS:]
-    delivery = data["ibt_diversions"]["delivery_nyc"].iloc[WARMUP_DAYS:]
-
-    shortfall = (delivery < 0.99 * demand).astype(int)
-    if shortfall.sum() == 0:
-        return 0.0
-
-    # Find longest consecutive run of 1s
-    groups = shortfall.diff().ne(0).cumsum()
-    max_streak = shortfall.groupby(groups).sum().max()
-    return float(max_streak)
-
-
-def _montague_reliability(data: dict) -> float:
-    """Fraction of days flow at Montague meets or exceeds the target.
-
-    Uses fixed Decree-mandated minimum of 1750 CFS (~1131 MGD).
-    """
-    MONTAGUE_TARGET_MGD = 1131.05
     flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    met = (flow >= MONTAGUE_TARGET_MGD).sum()
-    return float(met) / len(flow) if len(flow) > 0 else 0.0
+    target = data["mrf_target"]["delMontague"].iloc[WARMUP_DAYS:]
+
+    weekly_flow = flow.resample("W").mean()
+    weekly_target = target.resample("W").mean()
+
+    met = (weekly_flow >= weekly_target).sum()
+    total = len(weekly_flow)
+    return float(met) / total if total > 0 else 0.0
 
 
-def _trenton_reliability(data: dict) -> float:
-    """Fraction of days flow at Trenton meets the target (Jun 15 - Mar 15).
+def _montague_vulnerability(data: dict) -> float:
+    """Worst single-week Montague flow deficit as percent of target.
 
-    The Trenton target of ~3000 CFS (~1939 MGD) is active during the
-    period June 15 through March 15. Outside this window, there is no
-    binding Trenton target under normal operations.
+    Returns the maximum weekly shortfall below the time-dynamic MRF
+    target, expressed as a percentage of that week's target. [0, 100+].
     """
-    TRENTON_TARGET_MGD = 1938.95
+    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
+    target = data["mrf_target"]["delMontague"].iloc[WARMUP_DAYS:]
+
+    weekly_flow = flow.resample("W").mean()
+    weekly_target = target.resample("W").mean()
+
+    deficit = (weekly_target - weekly_flow).clip(lower=0)
+    deficit_pct = np.where(
+        weekly_target > 0,
+        100.0 * deficit / weekly_target,
+        0.0,
+    )
+    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
+
+
+def _trenton_reliability_weekly(data: dict) -> float:
+    """Fraction of weeks flow at Trenton meets the time-dynamic MRF target.
+
+    Uses the full simulation period (no seasonal assumption).
+    Target comes from FFMP simulation output.
+    """
     flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
+    target = data["mrf_target"]["delTrenton"].iloc[WARMUP_DAYS:]
 
-    # Filter to active period: Jun 15 (DOY 166) through Mar 15 (DOY 74)
-    doy = flow.index.dayofyear
-    active = (doy >= 166) | (doy <= 74)
-    active_flow = flow[active]
+    weekly_flow = flow.resample("W").mean()
+    weekly_target = target.resample("W").mean()
 
-    if len(active_flow) == 0:
-        return 0.0
-    met = (active_flow >= TRENTON_TARGET_MGD).sum()
-    return float(met) / len(active_flow)
+    met = (weekly_flow >= weekly_target).sum()
+    total = len(weekly_flow)
+    return float(met) / total if total > 0 else 0.0
 
+
+def _trenton_vulnerability(data: dict) -> float:
+    """Worst single-week Trenton flow deficit as percent of target.
+
+    Full period, time-dynamic target. [0, 100+].
+    """
+    flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
+    target = data["mrf_target"]["delTrenton"].iloc[WARMUP_DAYS:]
+
+    weekly_flow = flow.resample("W").mean()
+    weekly_target = target.resample("W").mean()
+
+    deficit = (weekly_target - weekly_flow).clip(lower=0)
+    deficit_pct = np.where(
+        weekly_target > 0,
+        100.0 * deficit / weekly_target,
+        0.0,
+    )
+    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
+
+
+# --- Flood Risk ---
 
 def _flood_days(data: dict) -> float:
     """Number of days aggregate NYC storage exceeds spill risk threshold.
 
     Uses 95% of total NYC capacity as a proxy for spill risk.
-    NOTE: This is a crude proxy. A better metric would use actual
-    downstream flow exceedances at gauge locations.
     """
     storage = data["res_storage"][NYC_RESERVOIRS].sum(axis=1).iloc[WARMUP_DAYS:]
     flood_threshold = 0.95 * NYC_TOTAL_CAPACITY
@@ -249,113 +272,80 @@ def _flood_days(data: dict) -> float:
 def _flood_days_downstream(data: dict) -> float:
     """Number of days downstream flow at Montague exceeds flood threshold.
 
-    Uses a flow threshold of 25,000 CFS (~16,148 MGD) at Montague
-    as an action stage proxy. This better captures actual downstream
-    flood risk from reservoir releases.
+    Uses a flow threshold of 25,000 CFS (~16,148 MGD) at Montague.
     """
-    FLOOD_FLOW_THRESHOLD_MGD = 16148.0  # ~25,000 CFS
+    FLOOD_FLOW_THRESHOLD_MGD = 16148.0
     flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
     return float((flow >= FLOOD_FLOW_THRESHOLD_MGD).sum())
 
 
-def _min_storage_pct(data: dict) -> float:
-    """Minimum combined NYC storage as percentage of total capacity.
+# --- Storage Resilience ---
 
-    Captures worst-case drought vulnerability. Returns value in [0, 100].
-    """
+def _min_storage_pct(data: dict) -> float:
+    """Minimum combined NYC storage as percentage of total capacity. [0, 100]."""
     storage = data["res_storage"][NYC_RESERVOIRS].sum(axis=1).iloc[WARMUP_DAYS:]
     return 100.0 * float(storage.min()) / NYC_TOTAL_CAPACITY
 
 
-def _avg_storage_pct(data: dict) -> float:
-    """Average combined NYC storage as percentage of total capacity.
-
-    Captures overall storage utilization. Returns value in [0, 100].
-    """
-    storage = data["res_storage"][NYC_RESERVOIRS].sum(axis=1).iloc[WARMUP_DAYS:]
-    return 100.0 * float(storage.mean()) / NYC_TOTAL_CAPACITY
-
-
-def _montague_deficit_mgd(data: dict) -> float:
-    """Average daily Montague shortfall below target (MGD).
-
-    Only counts days with shortfall. Returns 0.0 if no shortfall.
-    """
-    MONTAGUE_TARGET_MGD = 1131.05
-    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    deficit = (MONTAGUE_TARGET_MGD - flow).clip(lower=0)
-    shortfall_days = (deficit > 0).sum()
-    if shortfall_days == 0:
-        return 0.0
-    return float(deficit.sum()) / shortfall_days
-
-
 ###############################################################################
 # Pre-built Objective Instances
-#
-# Naming convention: obj_<stakeholder/system>_<metric>_<variant>
-# When multiple metrics measure similar things, each variant gets a
-# distinct verbose name so they can coexist without ambiguity.
 ###############################################################################
 
 # --- NYC Supply ---
-
-obj_nyc_supply_reliability_daily = Objective(
-    name="nyc_supply_reliability_daily",
+obj_nyc_reliability_weekly = Objective(
+    name="nyc_reliability_weekly",
     direction="maximize",
-    epsilon=0.005,
-    description="Fraction of days NYC delivery >= 99% of demand",
-    func=_nyc_reliability,
+    epsilon=0.01,
+    description="Fraction of weeks NYC delivery >= 99% of demand",
+    func=_nyc_reliability_weekly,
 )
 
-obj_nyc_drought_max_monthly_deficit_pct = Objective(
-    name="nyc_drought_max_monthly_deficit_pct",
+obj_nyc_vulnerability = Objective(
+    name="nyc_vulnerability",
     direction="minimize",
     epsilon=1.0,
-    description="Worst-month shortage as percent of that month's demand [0-100]",
-    func=_nyc_max_deficit_pct,
-)
-
-obj_nyc_drought_max_consecutive_shortfall_days = Objective(
-    name="nyc_drought_max_consecutive_shortfall_days",
-    direction="minimize",
-    epsilon=5.0,
-    description="Longest streak of consecutive days delivery < 99% demand",
-    func=_nyc_max_consecutive_shortfall,
+    description="Worst-week NYC shortage as pct of demand [0-100]",
+    func=_nyc_vulnerability,
 )
 
 # --- Flow Compliance ---
-
-obj_montague_flow_reliability_daily = Objective(
-    name="montague_flow_reliability_daily",
+obj_montague_reliability_weekly = Objective(
+    name="montague_reliability_weekly",
     direction="maximize",
-    epsilon=0.005,
-    description="Fraction of days Delaware at Montague flow >= 1131 MGD (Decree min)",
-    func=_montague_reliability,
+    epsilon=0.01,
+    description="Fraction of weeks Montague flow >= time-dynamic MRF target",
+    func=_montague_reliability_weekly,
 )
 
-obj_trenton_flow_reliability_seasonal = Objective(
-    name="trenton_flow_reliability_seasonal",
-    direction="maximize",
-    epsilon=0.005,
-    description="Fraction of active-period days (Jun15-Mar15) Trenton flow >= 1939 MGD",
-    func=_trenton_reliability,
-)
-
-obj_montague_flow_avg_deficit_mgd = Objective(
-    name="montague_flow_avg_deficit_mgd",
+obj_montague_vulnerability = Objective(
+    name="montague_vulnerability",
     direction="minimize",
-    epsilon=5.0,
-    description="Mean daily Montague shortfall on violation days (MGD)",
-    func=_montague_deficit_mgd,
+    epsilon=1.0,
+    description="Worst-week Montague deficit as pct of dynamic target",
+    func=_montague_vulnerability,
+)
+
+obj_trenton_reliability_weekly = Objective(
+    name="trenton_reliability_weekly",
+    direction="maximize",
+    epsilon=0.005,
+    description="Fraction of weeks Trenton flow >= time-dynamic MRF target (full period)",
+    func=_trenton_reliability_weekly,
+)
+
+obj_trenton_vulnerability = Objective(
+    name="trenton_vulnerability",
+    direction="minimize",
+    epsilon=1.0,
+    description="Worst-week Trenton deficit as pct of dynamic target",
+    func=_trenton_vulnerability,
 )
 
 # --- Flood Risk ---
-
 obj_flood_risk_storage_spill_days = Objective(
     name="flood_risk_storage_spill_days",
     direction="minimize",
-    epsilon=5.0,
+    epsilon=10.0,
     description="Days aggregate NYC storage > 95% capacity (spill risk proxy)",
     func=_flood_days,
 )
@@ -369,7 +359,6 @@ obj_flood_risk_downstream_flow_days = Objective(
 )
 
 # --- Storage Resilience ---
-
 obj_storage_min_combined_pct = Objective(
     name="storage_min_combined_pct",
     direction="maximize",
@@ -378,70 +367,37 @@ obj_storage_min_combined_pct = Objective(
     func=_min_storage_pct,
 )
 
-obj_storage_avg_combined_pct = Objective(
-    name="storage_avg_combined_pct",
-    direction="maximize",
-    epsilon=1.0,
-    description="Average combined NYC storage as pct of total capacity [0-100]",
-    func=_avg_storage_pct,
-)
-
 
 ###############################################################################
 # Pre-built Objective Sets
-#
-# Multiple sets allow testing different priority framings without
-# committing to a single formulation prematurely.
 ###############################################################################
 
-# Default 6-objective set: monthly deficit variant, storage-proxy flood
+# Default 6-objective set with weekly reliability + vulnerability
 DEFAULT_OBJECTIVES = ObjectiveSet([
-    obj_nyc_supply_reliability_daily,
-    obj_nyc_drought_max_monthly_deficit_pct,
-    obj_montague_flow_reliability_daily,
-    obj_trenton_flow_reliability_seasonal,
+    obj_nyc_reliability_weekly,
+    obj_nyc_vulnerability,
+    obj_montague_reliability_weekly,
+    obj_trenton_reliability_weekly,
     obj_flood_risk_storage_spill_days,
     obj_storage_min_combined_pct,
 ])
 
-# Drought-duration variant: consecutive shortfall days instead of monthly deficit %
-DROUGHT_DURATION_OBJECTIVES = ObjectiveSet([
-    obj_nyc_supply_reliability_daily,
-    obj_nyc_drought_max_consecutive_shortfall_days,
-    obj_montague_flow_reliability_daily,
-    obj_trenton_flow_reliability_seasonal,
+# Extended 8-objective: adds vulnerability metrics for flow compliance
+EXTENDED_OBJECTIVES = ObjectiveSet([
+    obj_nyc_reliability_weekly,
+    obj_nyc_vulnerability,
+    obj_montague_reliability_weekly,
+    obj_montague_vulnerability,
+    obj_trenton_reliability_weekly,
+    obj_trenton_vulnerability,
     obj_flood_risk_storage_spill_days,
-    obj_storage_min_combined_pct,
-])
-
-# Downstream flood variant: Montague flow exceedance instead of storage proxy
-DOWNSTREAM_FLOOD_OBJECTIVES = ObjectiveSet([
-    obj_nyc_supply_reliability_daily,
-    obj_nyc_drought_max_monthly_deficit_pct,
-    obj_montague_flow_reliability_daily,
-    obj_trenton_flow_reliability_seasonal,
-    obj_flood_risk_downstream_flow_days,
-    obj_storage_min_combined_pct,
-])
-
-# Comprehensive 8-objective set: includes both flood metrics and both
-# drought severity metrics. Good for initial exploration before
-# deciding which variants to keep.
-COMPREHENSIVE_OBJECTIVES = ObjectiveSet([
-    obj_nyc_supply_reliability_daily,
-    obj_nyc_drought_max_monthly_deficit_pct,
-    obj_nyc_drought_max_consecutive_shortfall_days,
-    obj_montague_flow_reliability_daily,
-    obj_trenton_flow_reliability_seasonal,
-    obj_flood_risk_storage_spill_days,
-    obj_flood_risk_downstream_flow_days,
     obj_storage_min_combined_pct,
 ])
 
 # Compact 4-objective set for quick diagnostic / debugging runs
 COMPACT_OBJECTIVES = ObjectiveSet([
-    obj_nyc_supply_reliability_daily,
-    obj_montague_flow_reliability_daily,
+    obj_nyc_reliability_weekly,
+    obj_montague_reliability_weekly,
     obj_flood_risk_storage_spill_days,
     obj_storage_min_combined_pct,
 ])
@@ -449,10 +405,6 @@ COMPACT_OBJECTIVES = ObjectiveSet([
 # Registry of named sets for CLI selection
 OBJECTIVE_SETS = {
     "default": DEFAULT_OBJECTIVES,
-    "drought_duration": DROUGHT_DURATION_OBJECTIVES,
-    "downstream_flood": DOWNSTREAM_FLOOD_OBJECTIVES,
-    "comprehensive": COMPREHENSIVE_OBJECTIVES,
+    "extended": EXTENDED_OBJECTIVES,
     "compact": COMPACT_OBJECTIVES,
 }
-
-
