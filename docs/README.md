@@ -17,7 +17,7 @@ Project documentation for NYCOptimization.
 
 ```
 NYCOptimization/
-├── config.py                  # Central config: paths, bounds, formulations, objectives
+├── config.py                  # Paths, simulation settings, system constants (re-exports formulations)
 ├── requirements.txt
 │
 ├── workflow/                  # Numbered pipeline scripts (run in order)
@@ -37,6 +37,10 @@ NYCOptimization/
 │   ├── external_policy.py     # ExternalPolicyParameter + PLMR integration
 │   ├── mmborg.py / mmborg_cli.py
 │   ├── diagnostics.py
+│   ├── formulations/          # Problem formulation registry (split from config.py)
+│   │   ├── __init__.py        # Registry API: get_bounds, get_var_names, make_objective_function, ...
+│   │   ├── ffmp.py            # FFMP formulation dict + _interpolate_factors + N-zone generator
+│   │   └── external.py        # RBF/Tree/ANN architecture registration + get_architecture()
 │   ├── policies/              # RBF, Tree, ANN policy classes
 │   ├── load/                  # HDF5 and .set/.ref file loaders
 │   └── plotting/
