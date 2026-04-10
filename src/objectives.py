@@ -279,6 +279,45 @@ def _flood_days_downstream(data: dict) -> float:
     return float((flow >= FLOOD_FLOW_THRESHOLD_MGD).sum())
 
 
+# --- NJ Supply ---
+
+def _nj_reliability_weekly(data: dict) -> float:
+    """Fraction of weeks NJ delivery meets or exceeds demand.
+
+    Mirrors NYC reliability metric. A week is "met" if weekly total
+    delivery >= 99% of weekly total demand.
+    """
+    demand = data["ibt_demands"]["demand_nj"].iloc[WARMUP_DAYS:]
+    delivery = data["ibt_diversions"]["delivery_nj"].iloc[WARMUP_DAYS:]
+
+    weekly_demand = demand.resample("W").sum()
+    weekly_delivery = delivery.resample("W").sum()
+
+    met = (weekly_delivery >= 0.99 * weekly_demand).sum()
+    total = len(weekly_demand)
+    return float(met) / total if total > 0 else 0.0
+
+
+def _nj_vulnerability(data: dict) -> float:
+    """Worst single-week NJ shortage as percent of that week's demand.
+
+    Mirrors NYC vulnerability metric. Returns value in [0, 100].
+    """
+    demand = data["ibt_demands"]["demand_nj"].iloc[WARMUP_DAYS:]
+    delivery = data["ibt_diversions"]["delivery_nj"].iloc[WARMUP_DAYS:]
+
+    weekly_demand = demand.resample("W").sum()
+    weekly_delivery = delivery.resample("W").sum()
+    weekly_shortage = (weekly_demand - weekly_delivery).clip(lower=0)
+
+    deficit_pct = np.where(
+        weekly_demand > 0,
+        100.0 * weekly_shortage / weekly_demand,
+        0.0,
+    )
+    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
+
+
 # --- Storage Resilience ---
 
 def _min_storage_pct(data: dict) -> float:
@@ -341,6 +380,23 @@ obj_trenton_vulnerability = Objective(
     func=_trenton_vulnerability,
 )
 
+# --- NJ Supply ---
+obj_nj_reliability_weekly = Objective(
+    name="nj_reliability_weekly",
+    direction="maximize",
+    epsilon=0.01,
+    description="Fraction of weeks NJ delivery >= 99% of demand",
+    func=_nj_reliability_weekly,
+)
+
+obj_nj_vulnerability = Objective(
+    name="nj_vulnerability",
+    direction="minimize",
+    epsilon=1.0,
+    description="Worst-week NJ shortage as pct of demand [0-100]",
+    func=_nj_vulnerability,
+)
+
 # --- Flood Risk ---
 obj_flood_risk_storage_spill_days = Objective(
     name="flood_risk_storage_spill_days",
@@ -372,25 +428,32 @@ obj_storage_min_combined_pct = Objective(
 # Pre-built Objective Sets
 ###############################################################################
 
-# Default 6-objective set with weekly reliability + vulnerability
+# Default 7-objective set: NYC + NJ supply, Montague/Trenton compliance,
+# downstream flood risk, storage resilience.
+# Uses downstream flow-based flood metric (Montague > 25,000 CFS action stage)
+# instead of the 95% storage threshold (which is rarely triggered even under
+# FFMP Normal operations).
 DEFAULT_OBJECTIVES = ObjectiveSet([
     obj_nyc_reliability_weekly,
     obj_nyc_vulnerability,
+    obj_nj_reliability_weekly,
     obj_montague_reliability_weekly,
     obj_trenton_reliability_weekly,
-    obj_flood_risk_storage_spill_days,
+    obj_flood_risk_downstream_flow_days,
     obj_storage_min_combined_pct,
 ])
 
-# Extended 8-objective: adds vulnerability metrics for flow compliance
+# Extended: adds vulnerability metrics for all stakeholders
 EXTENDED_OBJECTIVES = ObjectiveSet([
     obj_nyc_reliability_weekly,
     obj_nyc_vulnerability,
+    obj_nj_reliability_weekly,
+    obj_nj_vulnerability,
     obj_montague_reliability_weekly,
     obj_montague_vulnerability,
     obj_trenton_reliability_weekly,
     obj_trenton_vulnerability,
-    obj_flood_risk_storage_spill_days,
+    obj_flood_risk_downstream_flow_days,
     obj_storage_min_combined_pct,
 ])
 
@@ -398,7 +461,7 @@ EXTENDED_OBJECTIVES = ObjectiveSet([
 COMPACT_OBJECTIVES = ObjectiveSet([
     obj_nyc_reliability_weekly,
     obj_montague_reliability_weekly,
-    obj_flood_risk_storage_spill_days,
+    obj_flood_risk_downstream_flow_days,
     obj_storage_min_combined_pct,
 ])
 

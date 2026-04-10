@@ -6,7 +6,7 @@ variable specifications, bounds, names, and the objective function factory.
 
 Exported API
 ------------
-    get_formulation(name)       -> formulation dict
+    get_formulation(name)       -> formulation dict  (supports "ffmp_N" variants)
     get_bounds(name)            -> (lower_array, upper_array)
     get_var_names(name)         -> list of DV names
     get_n_vars(name)            -> int
@@ -15,9 +15,9 @@ Exported API
     get_obj_names()             -> list of objective names
     get_obj_directions()        -> list of direction ints (+1 max, -1 min)
     get_objective_set(name)     -> ObjectiveSet instance
-    make_objective_function(formulation_name, objective_set) -> callable
+    make_objective_function(name, ...) -> callable dispatches FFMP or external policy
     is_external_policy(name)    -> bool
-    generate_ffmp_formulation() -> formulation dict
+    generate_ffmp_formulation(n_zones) -> formulation dict
 
 Circular-import note
 --------------------
@@ -61,45 +61,70 @@ FORMULATIONS = {
 
 
 ###############################################################################
-# DV accessors (no circular-import risk — only touch FORMULATIONS)
+# DV accessors
 ###############################################################################
 
 def get_formulation(name: str = "ffmp") -> dict:
     """Return the formulation dict for *name*.
 
+    Supports dynamic N-zone formulations via the pattern "ffmp_N" where N is
+    the number of storage zone boundary curves (e.g. "ffmp_3", "ffmp_10").
+    N=6 produces a zone count equivalent to the standard 7-level FFMP.
+
     Args:
-        name: Formulation name.  Currently only "ffmp" is defined.
+        name: Formulation name.
 
     Returns:
         Dict with "description" and "decision_variables" keys.
 
     Raises:
-        ValueError: If *name* is not in the registry.
+        ValueError: If *name* is not in the registry and is not an ffmp_N pattern.
     """
-    if name not in FORMULATIONS:
-        raise ValueError(
-            f"Unknown formulation '{name}'. "
-            f"Available: {list(FORMULATIONS.keys())}"
-        )
-    return FORMULATIONS[name]
+    if name in FORMULATIONS:
+        return FORMULATIONS[name]
+    if name.startswith("ffmp_"):
+        try:
+            n = int(name.split("_")[1])
+        except (IndexError, ValueError):
+            pass
+        else:
+            if n >= 1:
+                return generate_ffmp_formulation(n)
+    raise ValueError(
+        f"Unknown formulation '{name}'. "
+        f"Available: {list(FORMULATIONS.keys())} or 'ffmp_N' for N-zone variants."
+    )
 
 
 def get_var_names(formulation_name: str = "ffmp") -> list:
-    """Ordered list of decision variable names."""
+    """Ordered list of decision variable names.
+
+    For external policy architectures, returns generic DV names dv_0..dv_N-1.
+    """
+    if is_external_policy(formulation_name):
+        arch = get_architecture(formulation_name)
+        return [f"dv_{i}" for i in range(arch.n_params)]
     return list(get_formulation(formulation_name)["decision_variables"].keys())
 
 
 def get_n_vars(formulation_name: str = "ffmp") -> int:
     """Number of decision variables."""
+    if is_external_policy(formulation_name):
+        return get_architecture(formulation_name).n_params
     return len(get_formulation(formulation_name)["decision_variables"])
 
 
 def get_bounds(formulation_name: str = "ffmp") -> tuple:
     """Decision variable bounds as a pair of numpy arrays.
 
+    For external policy architectures, delegates to the architecture's
+    get_bounds() method.
+
     Returns:
         (lower, upper) each of shape (n_vars,).
     """
+    if is_external_policy(formulation_name):
+        return get_architecture(formulation_name).get_bounds()
     dvs = get_formulation(formulation_name)["decision_variables"]
     lower = [spec["bounds"][0] for spec in dvs.values()]
     upper = [spec["bounds"][1] for spec in dvs.values()]
@@ -164,28 +189,51 @@ def get_obj_directions(objective_set_name: str = None) -> list:
 # Objective function factory
 ###############################################################################
 
-def make_objective_function(formulation_name: str = "ffmp", objective_set=None):
+def make_objective_function(architecture_name: str = "ffmp",
+                            include_predictions: bool = True):
     """Return a Borg-compatible evaluation callable.
 
-    The returned function maps a flat DV vector to a list of objective values
-    (all sign-adjusted for minimisation).  Suitable for passing directly to
-    Borg as the objective function.
+    Dispatches to the correct evaluation path based on architecture type:
+    - FFMP formulations ("ffmp", "ffmp_N"): uses src.simulation.evaluate()
+    - External policy architectures ("rbf", "tree", "ann"): uses
+      src.external_policy.evaluate_with_policy()
 
     Args:
-        formulation_name: Formulation to evaluate.
-        objective_set: ObjectiveSet instance to use.  If None, uses the
-                       active set from config.ACTIVE_OBJECTIVE_SET.
+        architecture_name: Formulation or architecture name.
+        include_predictions: For external policies, whether to include flow
+            predictions in the state vector. Ignored for FFMP formulations.
 
     Returns:
-        Callable: dv_vector -> list of floats (Borg-compatible).
+        Callable: dv_vector -> list of floats (Borg-compatible, all minimised).
     """
-    from src.simulation import evaluate
+    n_objs = get_n_objs()
+    _penalty = [1e6] * n_objs
 
-    def _fn(dv_vector):
-        return evaluate(
-            dv_vector,
-            formulation_name=formulation_name,
-            objective_set=objective_set,
-        )
+    if is_external_policy(architecture_name):
+        policy = get_architecture(architecture_name)
+        from src.external_policy import evaluate_with_policy
 
-    return _fn
+        def _external_fn(dv_vector):
+            try:
+                policy.set_params(np.asarray(dv_vector))
+                return evaluate_with_policy(
+                    policy,
+                    mode="aggregate",
+                    include_predictions=include_predictions,
+                )
+            except Exception:
+                return _penalty
+
+        return _external_fn
+
+    else:
+        from src.simulation import evaluate
+
+        def _ffmp_fn(dv_vector):
+            try:
+                return evaluate(np.asarray(dv_vector),
+                                formulation_name=architecture_name)
+            except Exception:
+                return _penalty
+
+        return _ffmp_fn

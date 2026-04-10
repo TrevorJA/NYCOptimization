@@ -3,63 +3,108 @@ external.py - External policy architecture registry.
 
 Tracks formulations that use learned or parameterized external policy
 architectures (RBF, ANN, decision-tree, etc.) rather than the FFMP
-rule structure. Currently no such formulations are registered; this
-module is the extension point when they are added.
+rule structure. Built-in architectures (rbf, tree, ann) are registered
+at module load time; add-ons can call register_architecture() directly.
 
 Usage:
     from src.formulations.external import register_architecture, is_external_policy
-
-    # Register a new formulation with an RBF architecture
-    register_architecture(
-        "rbf_6obj",
-        architecture_type="rbf",
-        n_inputs=5,
-        n_outputs=3,
-        n_centers=10,
-    )
 """
 
+import importlib
 
-# Registry: formulation_name -> architecture descriptor dict
+# Max total release budget shared by all single-output aggregate policies.
+# ~sum of the three reservoir flood-max release limits.
+_MAX_TOTAL_RELEASE_MGD = 3000.0
+
+# Registry: name -> architecture descriptor dict
 _EXTERNAL_REGISTRY: dict = {}
 
 
-def register_architecture(formulation_name: str, architecture_type: str, **kwargs):
-    """Register an external policy architecture for a formulation.
+###############################################################################
+# Registration API
+###############################################################################
+
+def register_architecture(name: str, architecture_type: str, **kwargs):
+    """Register an external policy architecture.
 
     Args:
-        formulation_name: Name of the formulation (must also appear in FORMULATIONS).
-        architecture_type: Architecture family string, e.g. "rbf", "ann", "tree".
-        **kwargs: Architecture-specific parameters (n_inputs, n_outputs, etc.).
+        name: Short name used as formulation_name (e.g. "rbf", "ann").
+        architecture_type: Architecture family ("rbf", "ann", "tree").
+        **kwargs: Architecture-specific parameters stored in the descriptor.
     """
-    _EXTERNAL_REGISTRY[formulation_name] = {
+    _EXTERNAL_REGISTRY[name] = {
         "type": architecture_type,
         **kwargs,
     }
 
 
 def is_external_policy(formulation_name: str) -> bool:
-    """Return True if the formulation uses an external policy architecture.
-
-    FFMP-style formulations that map DVs directly to NYCOperationsConfig
-    parameters return False. RBF/ANN/tree formulations return True.
-
-    Args:
-        formulation_name: Formulation name to check.
-
-    Returns:
-        bool
-    """
+    """Return True if the formulation uses an external policy architecture."""
     return formulation_name in _EXTERNAL_REGISTRY
 
 
-def get_architecture(formulation_name: str) -> dict | None:
-    """Return the architecture descriptor for a formulation, or None.
+def get_architecture(formulation_name: str, include_predictions: bool = True):
+    """Return an instantiated (un-parameterized) policy for the named architecture.
 
     Args:
-        formulation_name: Formulation name.
+        formulation_name: Architecture name ("rbf", "tree", "ann").
+        include_predictions: Whether to include flow predictions in state vector.
 
     Returns:
-        Dict with at least a "type" key, or None if not an external policy.
+        PolicyBase instance. Call set_params() before evaluating.
+
+    Raises:
+        ValueError: If formulation_name is not in the registry.
     """
-    return _EXTERNAL_REGISTRY.get(formulation_name)
+    if formulation_name not in _EXTERNAL_REGISTRY:
+        raise ValueError(
+            f"Unknown architecture '{formulation_name}'. "
+            f"Available: {list(_EXTERNAL_REGISTRY.keys())}"
+        )
+    spec = _EXTERNAL_REGISTRY[formulation_name]
+    mod = importlib.import_module(spec["policy_module"])
+    cls = getattr(mod, spec["policy_class"])
+
+    from src.external_policy import build_state_config, N_STATE_TEMPORAL
+    state_config = build_state_config(include_predictions=include_predictions)
+    n_inputs = len(state_config) + N_STATE_TEMPORAL
+
+    kwargs = {k: v for k, v in spec.items()
+              if k not in ("type", "policy_class", "policy_module", "description")}
+    return cls(n_inputs=n_inputs, n_outputs=1, **kwargs)
+
+
+###############################################################################
+# Built-in architecture registrations
+###############################################################################
+
+register_architecture(
+    "rbf",
+    architecture_type="rbf",
+    description="Gaussian RBF policy (6 centers)",
+    policy_class="RBFPolicy",
+    policy_module="src.policies",
+    n_rbf=6,
+    output_max=_MAX_TOTAL_RELEASE_MGD,
+)
+
+register_architecture(
+    "tree",
+    architecture_type="tree",
+    description="Oblique decision tree (depth 3)",
+    policy_class="ObliqueTreePolicy",
+    policy_module="src.policies",
+    depth=3,
+    output_max=_MAX_TOTAL_RELEASE_MGD,
+)
+
+register_architecture(
+    "ann",
+    architecture_type="ann",
+    description="Feedforward ANN (8-8 hidden)",
+    policy_class="ANNPolicy",
+    policy_module="src.policies",
+    h1=8,
+    h2=8,
+    output_max=_MAX_TOTAL_RELEASE_MGD,
+)

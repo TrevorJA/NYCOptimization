@@ -27,8 +27,8 @@ from src.formulations import (
     get_bounds,
     get_var_names,
     get_obj_names,
+    make_objective_function,
 )
-from src.simulation import evaluate
 
 
 def run_mmborg(
@@ -69,16 +69,21 @@ def run_mmborg(
         runtime_frequency = BORG_SETTINGS["runtime_frequency"]
 
     # --- Objective function (passNFE branch passes NFE as second arg) ---
+    # Uses make_objective_function() which dispatches to either:
+    #   - FFMP path (evaluate) for "ffmp", "ffmp_N" formulations
+    #   - External policy path (evaluate_with_policy) for "rbf", "tree", "ann"
+    #
     # IMPORTANT: borg.py's innerFunction only catches KeyboardInterrupt; any
     # other Python exception propagates through the ctypes C→Python boundary
     # and corrupts the GIL state, causing a fatal Python error on the worker.
     # We catch all exceptions here and return a large penalty so Borg keeps
     # running even if a specific DV combination causes a simulation failure.
+    _eval_fn = make_objective_function(formulation_name)
     _penalty = [1e10] * n_objs
 
     def objective(vars, NFE):
         try:
-            return evaluate(np.array(vars), formulation_name=formulation_name)
+            return _eval_fn(np.array(vars))
         except Exception as e:
             try:
                 from mpi4py import MPI
