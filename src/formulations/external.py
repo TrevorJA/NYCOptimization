@@ -43,12 +43,13 @@ def is_external_policy(formulation_name: str) -> bool:
     return formulation_name in _EXTERNAL_REGISTRY
 
 
-def get_architecture(formulation_name: str, include_predictions: bool = True):
+def get_architecture(formulation_name: str, state_spec: str = None):
     """Return an instantiated (un-parameterized) policy for the named architecture.
 
     Args:
         formulation_name: Architecture name ("rbf", "tree", "ann").
-        include_predictions: Whether to include flow predictions in state vector.
+        state_spec: State vector specification ("minimal", "extended", "full").
+            If None, uses STATE_SPEC from config (default "extended").
 
     Returns:
         PolicyBase instance. Call set_params() before evaluating.
@@ -66,7 +67,7 @@ def get_architecture(formulation_name: str, include_predictions: bool = True):
     cls = getattr(mod, spec["policy_class"])
 
     from src.external_policy import build_state_config, N_STATE_TEMPORAL
-    state_config = build_state_config(include_predictions=include_predictions)
+    state_config = build_state_config(state_spec=state_spec)
     n_inputs = len(state_config) + N_STATE_TEMPORAL
 
     kwargs = {k: v for k, v in spec.items()
