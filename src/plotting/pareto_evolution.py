@@ -13,7 +13,7 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 from pathlib import Path
 
-from config import get_obj_names, get_obj_directions, get_n_vars
+from src.formulations import get_obj_names, get_obj_directions, get_n_vars
 
 
 def parse_runtime_snapshots(runtime_file: Path, n_vars: int):

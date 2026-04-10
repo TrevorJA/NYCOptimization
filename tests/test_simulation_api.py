@@ -26,8 +26,8 @@ sys.path.insert(0, str(PROJECT_DIR))
 from config import (
     START_DATE, END_DATE, INFLOW_TYPE, USE_TRIMMED_MODEL,
     INITIAL_VOLUME_FRAC, RESULTS_SETS, NYC_RESERVOIRS,
-    get_baseline_values, get_var_names,
 )
+from src.formulations import get_baseline_values, get_var_names
 
 ###############################################################################
 # Test 1: Build model with ModelBuilder
