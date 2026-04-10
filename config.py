@@ -35,6 +35,11 @@ INFLOW_TYPE = "pub_nhmv10_BC_withObsScaled"
 USE_TRIMMED_MODEL = True
 INITIAL_VOLUME_FRAC = 0.80
 
+# State vector specification for external policy architectures.
+# Options: "minimal" (6-dim), "extended" (9-dim), "full" (15-dim).
+# "extended" is the default for the physics-based reduction experiments.
+STATE_SPEC = "extended"
+
 # Results sets to export from Pywr-DRB simulations
 RESULTS_SETS = [
     "major_flow",
