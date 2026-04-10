@@ -45,6 +45,7 @@ from config import (
     NYC_RESERVOIRS,
 )
 from src.formulations import get_formulation, get_var_names
+from src.formulations.ffmp import _interpolate_factors
 
 # Allow debug override of simulation date range via environment variables.
 # Set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE (YYYY-MM-DD) before
@@ -68,6 +69,8 @@ _CACHED_PRESIM_FILE = None
 _PRESIM_SEARCHED = False
 _CACHED_DEFAULTS_CONFIG = None   # Cached NYCOperationsConfig.from_defaults()
 _CACHED_MODEL_DICT = None        # Cached base model dict (avoids make_model per eval)
+_CACHED_MODEL_DICTS = {}         # Keyed by tuple(drought_levels) for N-zone support
+_CACHED_NZONE_CONFIGS = {}       # Keyed by n_zones
 
 # CFS→MGD conversion (from pywrdrb.utils.constants)
 _CFS_TO_MGD = 0.645932368556
@@ -119,26 +122,73 @@ def _require_presim_file() -> Path:
 ###############################################################################
 
 def _get_cached_defaults():
-    """Return cached NYCOperationsConfig.from_defaults() (avoids re-reading CSVs)."""
+    """Return cached NYCOperationsConfig.from_defaults() (avoids re-reading CSVs).
+
+    Applies a compatibility shim for pywrdrb versions where STORAGE_LEVELS and
+    DROUGHT_LEVELS are dynamic properties that return all rows in storage_zones_df
+    (including MRF factor rows) rather than just the storage zone threshold rows.
+    When detected, we reset storage_zones_df to only the 6 storage zone rows so
+    that n_drought_levels == 7 and update_delivery_constraints() works correctly.
+    """
     global _CACHED_DEFAULTS_CONFIG
     if _CACHED_DEFAULTS_CONFIG is None:
         from pywrdrb.parameters.nyc_operations_config import NYCOperationsConfig
-        _CACHED_DEFAULTS_CONFIG = NYCOperationsConfig.from_defaults()
+        cfg = NYCOperationsConfig.from_defaults()
+        # Shim: if STORAGE_LEVELS returns more than 6 entries (buggy property),
+        # filter storage_zones_df down to just the known 6 zone rows.
+        if len(cfg.STORAGE_LEVELS) != 6:
+            zones_df = cfg.storage_zones_df.loc[_ZONE_LEVELS]
+            object.__setattr__(cfg, 'storage_zones_df', zones_df)
+        _CACHED_DEFAULTS_CONFIG = cfg
     return _CACHED_DEFAULTS_CONFIG
 
 
-def _get_cached_model_dict(use_trimmed: bool = None):
-    """Build and cache the base model_dict using default config (first call only).
+def _get_cached_nzone_defaults(n_zones):
+    """Return cached NYCOperationsConfig for N storage zones."""
+    if n_zones not in _CACHED_NZONE_CONFIGS:
+        _CACHED_NZONE_CONFIGS[n_zones] = build_nzone_config(n_zones)
+    return _CACHED_NZONE_CONFIGS[n_zones]
+
+
+def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None):
+    """Build and cache the base model_dict (first call per level structure only).
 
     Subsequent evaluations deep-copy this dict and patch only the DV-affected
     parameters, avoiding the ~1s cost of make_model() on every eval.
+
+    The cache is keyed by tuple(drought_levels) so that N-zone configs with
+    different parameter names each get their own cached model dict.
     """
-    global _CACHED_MODEL_DICT
-    if _CACHED_MODEL_DICT is None:
-        defaults = _get_cached_defaults()
-        mb = _build_model_builder(defaults, use_trimmed=use_trimmed)
-        _CACHED_MODEL_DICT = mb.model_dict
-    return _CACHED_MODEL_DICT
+    global _CACHED_MODEL_DICT, _CACHED_MODEL_DICTS
+    if nyc_config is None:
+        nyc_config = _get_cached_defaults()
+    drought_levels, _ = _config_levels(nyc_config)
+    key = tuple(drought_levels)
+    if key not in _CACHED_MODEL_DICTS:
+        mb = _build_model_builder(nyc_config, use_trimmed=use_trimmed)
+        _CACHED_MODEL_DICTS[key] = mb.model_dict
+        # Keep legacy single reference in sync for backward compatibility
+        if key == tuple(["level1a", "level1b", "level1c", "level2", "level3", "level4", "level5"]):
+            _CACHED_MODEL_DICT = _CACHED_MODEL_DICTS[key]
+    return _CACHED_MODEL_DICTS[key]
+
+
+def _config_levels(nyc_config):
+    """Return (drought_levels, storage_levels) from config, handling both old and new API.
+
+    The Phase 1 pywrdrb adds DROUGHT_LEVELS and STORAGE_LEVELS as properties.
+    The default config's storage_zones_df includes all profile rows (storage zones
+    AND MRF factor rows), so the STORAGE_LEVELS property returns too many rows.
+    We detect this by checking if the first entry is 'zone_' prefixed (N-zone)
+    or if the result contains known non-zone rows, and fall back to module
+    constants when needed.
+    """
+    raw_storage = nyc_config.STORAGE_LEVELS
+    # N-zone configs have zone_1..zone_N naming (all correct, df is filtered)
+    if raw_storage and raw_storage[0].startswith('zone_'):
+        return nyc_config.DROUGHT_LEVELS, raw_storage
+    # Default config: fall back to the known-correct module-level constants
+    return _DROUGHT_LEVELS, _ZONE_LEVELS
 
 
 def _patch_model_dict(model_dict: dict, nyc_config):
@@ -146,8 +196,12 @@ def _patch_model_dict(model_dict: dict, nyc_config):
 
     This replaces the full make_model() rebuild by directly setting the
     parameter values that correspond to decision variables.
+
+    Works for both the default 7-level config and N-zone configs — drought
+    and storage level names are read dynamically from nyc_config.
     """
     params = model_dict["parameters"]
+    drought_levels, storage_levels = _config_levels(nyc_config)
 
     # --- Constants ---
     # MRF baselines
@@ -161,8 +215,8 @@ def _patch_model_dict(model_dict: dict, nyc_config):
         "max_flow_baseline_delivery_nyc"
     )
 
-    # Drought delivery factors (NYC and NJ, all 7 levels)
-    for level in _DROUGHT_LEVELS:
+    # Drought delivery factors (NYC and NJ, all levels from config)
+    for level in drought_levels:
         params[f"{level}_factor_delivery_nyc"]["value"] = float(
             nyc_config.get_constant(f"{level}_factor_delivery_nyc")
         )
@@ -177,11 +231,11 @@ def _patch_model_dict(model_dict: dict, nyc_config):
 
     # --- Daily profiles (366 values) ---
     # Storage zone thresholds
-    for level in _ZONE_LEVELS:
+    for level in storage_levels:
         params[level]["values"] = nyc_config.get_storage_zone_profile(level).tolist()
 
     # MRF daily factor profiles (per reservoir × per level)
-    for level in _DROUGHT_LEVELS:
+    for level in drought_levels:
         for res in _NYC_RESERVOIRS_OPT:
             key = f"{level}_factor_mrf_{res}"
             if key in params:
@@ -191,13 +245,145 @@ def _patch_model_dict(model_dict: dict, nyc_config):
 
     # --- Monthly profiles (12 values) ---
     # MRF monthly factor profiles (Montague & Trenton × per level)
-    for level in _DROUGHT_LEVELS:
+    for level in drought_levels:
         for loc in _DOWNSTREAM_LOCS:
             key = f"{level}_factor_mrf_{loc}"
             if key in params:
                 params[key]["values"] = nyc_config.get_mrf_factor_profile(
                     key, daily=False
                 ).tolist()
+
+
+###############################################################################
+# N-zone Config Builder
+###############################################################################
+
+def build_nzone_config(n_zones):
+    """Build NYCOperationsConfig with N storage zones by interpolating 7-zone defaults.
+
+    Creates storage zone names zone_1..zone_N (N boundary curves) and drought
+    level names zone_0..zone_N (N+1 levels, where zone_0 = normal operations).
+
+    Args:
+        n_zones: Number of storage zone boundary curves.
+
+    Returns:
+        NYCOperationsConfig instance.
+    """
+    from pywrdrb.parameters.nyc_operations_config import NYCOperationsConfig
+
+    base = NYCOperationsConfig.from_defaults()
+
+    # Resolve default level names robustly — work with both old (class attrs)
+    # and new (property-based) NYCOperationsConfig.
+    default_storage_levels = (
+        base._DEFAULT_STORAGE_LEVELS
+        if hasattr(base, '_DEFAULT_STORAGE_LEVELS')
+        else ['level1b', 'level1c', 'level2', 'level3', 'level4', 'level5']
+    )
+    default_drought_levels = (
+        base._DEFAULT_DROUGHT_LEVELS
+        if hasattr(base, '_DEFAULT_DROUGHT_LEVELS')
+        else ['level1a', 'level1b', 'level1c', 'level2', 'level3', 'level4', 'level5']
+    )
+
+    date_cols = [c for c in base.storage_zones_df.columns if c != 'doy']
+    n_cols = len(date_cols)
+
+    # 1. Interpolate storage zone profiles (6 default rows → N rows)
+    default_profiles = base.storage_zones_df.loc[
+        default_storage_levels, date_cols
+    ].values.astype(float)  # shape (6, 366)
+
+    x_default = np.linspace(0, 1, 6)
+    x_target = np.linspace(0, 1, n_zones)
+    new_profiles = np.zeros((n_zones, n_cols))
+    for col_idx in range(n_cols):
+        new_profiles[:, col_idx] = np.interp(x_target, x_default, default_profiles[:, col_idx])
+
+    zone_names = [f"zone_{i+1}" for i in range(n_zones)]
+    new_storage_df = pd.DataFrame(new_profiles, index=zone_names, columns=date_cols)
+    new_storage_df.index.name = 'profile'
+
+    # 2. Build new constants: copy non-level keys, interpolate delivery factors
+    drought_level_names = ["zone_0"] + zone_names
+    new_constants = {}
+    for k, v in base.constants.items():
+        is_level_key = any(
+            k.startswith(f"{lev}_factor_delivery")
+            for lev in default_drought_levels
+        )
+        if not is_level_key:
+            new_constants[k] = v
+
+    default_nyc = [float(base.constants[f"{lev}_factor_delivery_nyc"])
+                   for lev in default_drought_levels]
+    default_nj = [float(base.constants[f"{lev}_factor_delivery_nj"])
+                  for lev in default_drought_levels]
+    interp_nyc = _interpolate_factors(default_nyc, n_zones + 1)
+    interp_nj = _interpolate_factors(default_nj, n_zones + 1)
+
+    for i, level in enumerate(drought_level_names):
+        new_constants[f"{level}_factor_delivery_nyc"] = interp_nyc[i]
+        new_constants[f"{level}_factor_delivery_nj"] = interp_nj[i]
+
+    # 3. Build mrf_factors_daily_df: storage zone rows + MRF factor rows
+    mrf_daily_data = {}
+    for i, zn in enumerate(zone_names):
+        mrf_daily_data[zn] = new_profiles[i, :]
+
+    for res in ['cannonsville', 'pepacton', 'neversink']:
+        default_mrf = np.array([
+            base.mrf_factors_daily_df.loc[
+                f"{lev}_factor_mrf_{res}", date_cols
+            ].values.astype(float)
+            for lev in default_drought_levels
+        ])  # shape (7, 366)
+        x_def = np.linspace(0, 1, 7)
+        x_tgt = np.linspace(0, 1, n_zones + 1)
+        row_data = {f"{level}_factor_mrf_{res}": np.zeros(n_cols)
+                    for level in drought_level_names}
+        for col_idx in range(n_cols):
+            interp_col = np.interp(x_tgt, x_def, default_mrf[:, col_idx])
+            for j, level in enumerate(drought_level_names):
+                row_data[f"{level}_factor_mrf_{res}"][col_idx] = interp_col[j]
+        mrf_daily_data.update(row_data)
+
+    new_mrf_daily_df = pd.DataFrame(mrf_daily_data).T
+    new_mrf_daily_df.columns = date_cols
+    new_mrf_daily_df.index.name = 'profile'
+
+    # 4. Interpolate MRF monthly profiles
+    month_cols = ['jan', 'feb', 'mar', 'apr', 'may', 'jun',
+                  'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    mrf_monthly_data = {}
+    for loc in ['delMontague', 'delTrenton']:
+        default_mrf = np.array([
+            base.mrf_factors_monthly_df.loc[
+                f"{lev}_factor_mrf_{loc}", month_cols
+            ].values.astype(float)
+            for lev in default_drought_levels
+        ])  # shape (7, 12)
+        x_def = np.linspace(0, 1, 7)
+        x_tgt = np.linspace(0, 1, n_zones + 1)
+        row_data = {f"{level}_factor_mrf_{loc}": np.zeros(12)
+                    for level in drought_level_names}
+        for col_idx in range(12):
+            interp_col = np.interp(x_tgt, x_def, default_mrf[:, col_idx])
+            for j, level in enumerate(drought_level_names):
+                row_data[f"{level}_factor_mrf_{loc}"][col_idx] = interp_col[j]
+        mrf_monthly_data.update(row_data)
+
+    new_mrf_monthly_df = pd.DataFrame(mrf_monthly_data).T
+    new_mrf_monthly_df.columns = month_cols
+    new_mrf_monthly_df.index.name = 'profile'
+
+    return NYCOperationsConfig(
+        storage_zones_df=new_storage_df,
+        mrf_factors_daily_df=new_mrf_daily_df,
+        mrf_factors_monthly_df=new_mrf_monthly_df,
+        constants=new_constants,
+    )
 
 
 ###############################################################################
@@ -217,14 +403,19 @@ def dvs_to_config(dv_vector, formulation_name="ffmp"):
         NYCOperationsConfig instance.
     """
     import copy as _copy
-    base = _get_cached_defaults()
-    config = _copy.deepcopy(base)
 
     var_names = get_var_names(formulation_name)
     params = dict(zip(var_names, dv_vector))
 
     if formulation_name == "ffmp":
+        base = _get_cached_defaults()
+        config = _copy.deepcopy(base)
         _apply_ffmp_params(config, params)
+    elif formulation_name.startswith("ffmp_"):
+        n_zones = int(formulation_name.split("_")[1])
+        base = _get_cached_nzone_defaults(n_zones)
+        config = _copy.deepcopy(base)
+        _apply_nzone_ffmp_params(config, params)
     else:
         raise NotImplementedError(
             f"Formulation '{formulation_name}' not yet implemented."
@@ -316,12 +507,62 @@ def _apply_ffmp_params(config, params: dict):
     _apply_mrf_profile_scaling(config, params)
 
 
+def _apply_nzone_ffmp_params(config, params: dict):
+    """Apply N-zone FFMP params to an NYCOperationsConfig with zone_0..zone_N naming.
+
+    Mirrors _apply_ffmp_params but works with any N-zone config built by
+    build_nzone_config(). DV names use zone_{i} naming; missing DV keys fall
+    back to the interpolated defaults already stored in config.constants.
+    """
+    # MRF baselines
+    config.update_mrf_baselines(
+        cannonsville=params["mrf_cannonsville"],
+        pepacton=params["mrf_pepacton"],
+        neversink=params["mrf_neversink"],
+        montague=params["mrf_montague"],
+        trenton=params["mrf_trenton"],
+    )
+
+    # Delivery constraints — build factor arrays from defaults + DV overrides
+    drought_levels, storage_levels_nz = _config_levels(config)
+    nyc_factors = np.array([
+        params.get(f"nyc_drought_factor_{level}",
+                   float(config.constants[f"{level}_factor_delivery_nyc"]))
+        for level in drought_levels
+    ])
+    nj_factors = np.array([
+        params.get(f"nj_drought_factor_{level}",
+                   float(config.constants[f"{level}_factor_delivery_nj"]))
+        for level in drought_levels
+    ])
+    config.update_delivery_constraints(
+        max_nyc_delivery=params["max_nyc_delivery"],
+        drought_factors_nyc=nyc_factors,
+        drought_factors_nj=nj_factors,
+    )
+
+    # Zone shifts
+    shifts = {level: params.get(f"zone_shift_{level}", 0.0) for level in storage_levels_nz}
+    _apply_zone_shifts(config, shifts)
+
+    # Flood limits
+    config.update_flood_limits(
+        max_release_cannonsville=params["flood_max_cannonsville"],
+        max_release_pepacton=params["flood_max_pepacton"],
+        max_release_neversink=params["flood_max_neversink"],
+    )
+
+    # MRF seasonal scaling
+    _apply_mrf_profile_scaling(config, params)
+
+
 def _apply_zone_shifts(config, shifts: dict):
     """Apply vertical shifts to storage zone thresholds with monotonic constraint.
 
     Operates on config.storage_zones_df (rows=levels, 366 daily columns).
+    Works for both default level1b..level5 and N-zone zone_1..zone_N naming.
     """
-    zone_order = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
+    _, zone_order = _config_levels(config)
     zones = config.storage_zones_df.copy()
     date_cols = [c for c in zones.columns if c != "doy"]
 
@@ -620,8 +861,9 @@ def run_simulation_inmemory(nyc_config, use_trimmed: bool = None) -> dict:
     tmp_dir = _get_temp_dir()
     model_json = str(Path(tmp_dir) / f"opt_model_r{rank}.json")
 
-    # Deep-copy cached base model dict and patch with this eval's parameters
-    base_dict = _get_cached_model_dict(use_trimmed=use_trimmed)
+    # Deep-copy cached base model dict and patch with this eval's parameters.
+    # Pass nyc_config so that N-zone configs get their own correctly-named dict.
+    base_dict = _get_cached_model_dict(use_trimmed=use_trimmed, nyc_config=nyc_config)
     model_dict = copy.deepcopy(base_dict)
     _patch_model_dict(model_dict, nyc_config)
 

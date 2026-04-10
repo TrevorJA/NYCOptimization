@@ -29,8 +29,8 @@ PRESIM_FILE = PRESIM_DIR / "presimulated_releases_mgd.csv"
 # Simulation Settings
 ###############################################################################
 
-START_DATE = "1945-01-01"
-END_DATE = "2022-12-31"
+START_DATE = "1945-10-01"   # Water-year start matching presimulated release data
+END_DATE = "2022-09-30"     # Water-year end matching presimulated release data
 INFLOW_TYPE = "pub_nhmv10_BC_withObsScaled"
 USE_TRIMMED_MODEL = True
 INITIAL_VOLUME_FRAC = 0.80
@@ -131,12 +131,13 @@ from src.formulations import (           # noqa: E402
     get_objective_set,
     make_objective_function,
     is_external_policy,
+    get_architecture,
     generate_ffmp_formulation,
 )
 
 
 ###############################################################################
-# Thin helpers that wrap objective-set logic (kept here for API compatibility)
+# Thin helpers (kept here for API compatibility)
 ###############################################################################
 
 def get_epsilons():
