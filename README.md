@@ -41,7 +41,7 @@ pip install -e ../Pywr-DRB # Requires local Pywr-DRB repo nyc_opt branch
 Runs the full Pywr-DRB model once and saves non-NYC reservoir releases. These are used by the trimmed model during optimization to avoid re-simulating independent STARFIT reservoirs.
 
 ```bash
-bash 00_generate_presim.sh
+bash workflow/00_generate_presim.sh
 ```
 
 Output: `outputs/presim/presimulated_releases_mgd.csv` (~5-10 min)
@@ -51,9 +51,9 @@ Output: `outputs/presim/presimulated_releases_mgd.csv` (~5-10 min)
 Runs the default 2017 FFMP policy (no optimization) with the full model and saves HDF5 output plus objective values. This is the "status quo" reference point.
 
 ```bash
-bash 01_run_baseline.sh
+bash workflow/01_run_baseline.sh
 # Optional: also test the in-memory simulation path
-bash 01_run_baseline.sh --test-inmemory
+bash workflow/01_run_baseline.sh --test-inmemory
 ```
 
 Output: `outputs/baseline/ffmp_baseline.hdf5`, `outputs/baseline/ffmp_baseline_objectives.csv`
@@ -65,7 +65,7 @@ Launches Multi-Master Borg MOEA optimization using MPI. Uses the trimmed model (
 **Local test (4 MPI ranks, 1 island, 1000 NFE):**
 
 ```bash
-bash 02_run_mmborg.sh --seed 1 --islands 1 --nfe 1000 --np 4
+bash workflow/02_run_mmborg.sh --seed 1 --islands 1 --nfe 1000 --np 4
 ```
 
 **HPC submission (multiple seeds):**
@@ -73,12 +73,12 @@ bash 02_run_mmborg.sh --seed 1 --islands 1 --nfe 1000 --np 4
 ```bash
 # Anvil (NSF ACCESS)
 for SEED in $(seq 1 10); do
-    sbatch --export=ALL,SEED=${SEED} 02_submit_mmborg.slurm
+    sbatch --export=ALL,SEED=${SEED} slurm/submit_mmborg.slurm
 done
 
 # Hopper (Cornell)
 for SEED in $(seq 1 10); do
-    sbatch --export=ALL,SEED=${SEED} 02_submit_mmborg_hopper.slurm
+    sbatch --export=ALL,SEED=${SEED} slurm/submit_mmborg_hopper.slurm
 done
 ```
 
@@ -102,7 +102,7 @@ Formula: `ntasks = 1 + N_ISLANDS * (workers_per_island + 1)`
 Runs MOEAFramework v5.0 runtime diagnostics (hypervolume convergence, epsilon progress, seed reliability).
 
 ```bash
-bash 03_run_diagnostics.sh
+bash workflow/03_run_diagnostics.sh
 ```
 
 ### Step 4: Plot Diagnostics
@@ -110,7 +110,7 @@ bash 03_run_diagnostics.sh
 Generates diagnostic figures from Step 3 output.
 
 ```bash
-bash 04_plot_diagnostics.sh
+bash workflow/04_plot_diagnostics.sh
 ```
 
 ### Step 5: Re-evaluate Pareto Solutions
@@ -118,7 +118,7 @@ bash 04_plot_diagnostics.sh
 Re-simulates Pareto-approximate solutions with the full model and saves full HDF5 output for detailed post-hoc analysis.
 
 ```bash
-bash 05_reevaluate.sh [formulation] [--max-solutions N]
+bash workflow/05_reevaluate.sh [formulation] [--max-solutions N]
 ```
 
 Output: `outputs/reevaluation/{formulation}/solution_XXXX.hdf5` and `outputs/reevaluation/{formulation}/objectives_summary.csv`
@@ -164,60 +164,78 @@ export NUMEXPR_NUM_THREADS=1
 
 ```
 NYCOptimization/
-├── 00_generate_presim.sh               # Step 0: One-time setup - generate presimulated releases
-├── 01_run_baseline.sh                  # Step 1: Evaluate default FFMP baseline (full model)
-├── 02_run_mmborg.sh                    # Step 2: Launch MM Borg optimization (MPI, trimmed model)
-├── 02_submit_mmborg.slurm              # Step 2: SLURM submission template for Anvil
-├── 02_submit_mmborg_hopper.slurm       # Step 2: SLURM submission template for Hopper
-├── 03_run_diagnostics.sh               # Step 3: MOEAFramework v5.0 runtime diagnostics
-├── 04_plot_diagnostics.sh              # Step 4: Generate diagnostic figures
-├── 05_reevaluate.sh                    # Step 5: Re-evaluate Pareto solutions (full model)
-├── config.py                           # Central configuration (formulations, objectives, settings)
-├── requirements.txt                    # Python dependencies
+├── config.py                           # Central config: paths, bounds, formulations, objectives
+├── requirements.txt
 │
-├── src/                                # Core modules
-│   ├── simulation.py                   # Pywr-DRB simulation wrapper (DVs -> objectives)
-│   ├── objectives.py                   # Objective classes and ObjectiveSet configurations
-│   ├── mmborg.py                       # Multi-Master Borg optimization driver
-│   ├── mmborg_cli.py                   # CLI entry point for mmborg.py
-│   ├── diagnostics.py                  # MOEAFramework v5.0 diagnostic pipeline
-│   ├── load/                           # Data loading utilities
-│   │   ├── results.py                  # Load pywrdrb HDF5 simulation output
-│   │   └── reference_set.py            # Load .ref and .set files
-│   └── plotting/                       # One plot per file (manuscript-quality)
+├── workflow/                           # Numbered pipeline scripts — run in order
+│   ├── 00_generate_presim.sh           # Step 0: Generate STARFIT presimulated releases (one-time)
+│   ├── 01_run_baseline.sh              # Step 1: Evaluate default FFMP baseline
+│   ├── 02_run_mmborg.sh                # Step 2: Launch MM Borg optimization via MPI
+│   ├── 03_run_diagnostics.sh           # Step 3: MOEAFramework v5.0 runtime diagnostics
+│   ├── 04_plot_diagnostics.sh          # Step 4: Generate diagnostic figures
+│   └── 05_reevaluate.sh               # Step 5: Re-simulate Pareto solutions (full model)
+│
+├── slurm/                              # HPC submission templates and MPI smoke tests
+│   ├── submit_mmborg.slurm             # Anvil (NSF ACCESS)
+│   ├── submit_mmborg_hopper.slurm      # Hopper (Cornell)
+│   └── test_mpi_tiny.sh               # 1-node, 2-NFE MPI sanity check
+│
+├── src/                                # Core library
+│   ├── simulation.py                   # DVs → objectives evaluation wrapper
+│   ├── objectives.py                   # ObjectiveSet + DEFAULT_OBJECTIVES
+│   ├── external_policy.py              # ExternalPolicyParameter + PLMR integration
+│   ├── mmborg.py / mmborg_cli.py       # MM Borg optimization driver + CLI
+│   ├── diagnostics.py                  # MOEAFramework diagnostic pipeline
+│   ├── policies/                       # RBF, Tree, ANN policy classes
+│   ├── load/                           # HDF5 and .set/.ref file loaders
+│   └── plotting/
+│       ├── style.py                    # Shared rcParams, ARCH_COLORS, label dicts
 │       ├── hypervolume_convergence.py
-│       ├── seed_reliability.py
-│       └── parallel_coordinates.py
+│       ├── parallel_coordinates.py
+│       ├── pareto_evolution.py
+│       └── seed_reliability.py
 │
-├── scripts/                            # Supporting Python scripts (called by numbered bash scripts)
-│   ├── generate_presim.py              # Presimulated releases generation (called by 00_*)
-│   └── run_baseline.py                 # Baseline evaluation logic (called by 01_*)
+├── figures/                            # Manuscript figure scripts (one per figure)
+│   ├── fig01_system_map.py
+│   ├── fig02_architecture_schematic.py
+│   ├── fig03_pareto_comparison.py      # Main result: Pareto front comparison
+│   ├── fig04_resolution_curve.py       # HV vs. degrees of freedom
+│   ├── fig05_robustness_degradation.py # OSST robustness analysis
+│   ├── fig06_vulnerability_maps.py     # SHAP attribution
+│   ├── figSI_lhs_diagnostics.py
+│   ├── figSI_convergence.py
+│   └── make_all_figures.py             # Regenerate all figures
 │
-├── tests/                              # Test scripts
-│   └── test_simulation_api.py          # Verify pywrdrb model build/run/extract pipeline
+├── scripts/                            # Operational entry points (called by workflow/)
+│   ├── generate_presim.py
+│   ├── run_baseline.py
+│   ├── run_diagnostics.py
+│   └── quick_sample.py                 # LHS sampling + diagnostic scatter plots
 │
-├── outputs/                            # Generated outputs (git-ignored)
-│   ├── baseline/                       # Baseline FFMP performance
-│   ├── optimization/<formulation>/     # Runtime files and solution sets per seed
-│   ├── diagnostics/<formulation>/      # MOEAFramework metrics
-│   ├── reference_sets/                 # Cross-seed reference sets (.ref)
-│   ├── reevaluation/<formulation>/     # Robustness analysis results
-│   ├── presim/                         # Pre-simulated releases for trimmed model
-│   └── figures/                        # Generated plots
+├── tests/
+│   └── test_simulation_api.py
 │
-├── borg/                               # Borg MOEA files (git-ignored, licensed)
-│   ├── borg.py                         # Python wrapper (from BorgTraining repo)
-│   └── libborgmm.so                   # Compiled MMBorg shared library
+├── docs/                               # Documentation
+│   ├── README.md                       # This index + project structure
+│   └── architecture/                   # External policy (PLMR) design docs
+│       ├── ARCHITECTURE_INDEX.md
+│       ├── ARCHITECTURE_DESIGN.md
+│       ├── DESIGN_SUMMARY.md
+│       ├── DESIGN_Q_AND_A.md
+│       └── IMPLEMENTATION_EXAMPLES.md
 │
-└── notes/                              # Research planning and documentation
-    ├── STUDY_PLAN.md                   # Full study design and methodology
-    ├── HANDOFF.md                      # Developer handoff document
-    ├── PLANNING_LOG.md                 # Session-by-session development log
-    ├── objectives.md                   # Mathematical definitions of all objectives
-    ├── decision_vars.md                # Decision variable specifications and bounds
-    ├── notes_drb_operations_review.md
-    ├── notes_dmuu_optimization_review.md
-    └── brainstorm_methodological_contributions.md
+├── outputs/                            # Generated data (git-ignored)
+│   ├── baseline/
+│   ├── presim/
+│   ├── optimization/<arch>/sets/
+│   ├── diagnostics/
+│   ├── figures/                        # Diagnostic plots
+│   ├── manuscript_figures/             # Publication-quality figures
+│   └── reevaluation/
+│
+└── borg/                               # Borg MOEA files (git-ignored, licensed)
+    ├── borg.py
+    └── libborgmm.so
 ```
 
 ## Relevant Repositories
