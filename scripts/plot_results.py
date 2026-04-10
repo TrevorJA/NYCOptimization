@@ -27,10 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import (
-    get_n_vars, get_obj_names, get_obj_directions,
-    OUTPUTS_DIR, BORG_SETTINGS,
-)
+from config import OUTPUTS_DIR, BORG_SETTINGS
+from src.formulations import get_n_vars, get_obj_names, get_obj_directions
 from src.plotting.parallel_coordinates import plot_parallel_coordinates
 from src.plotting.pareto_evolution import (
     plot_pareto_evolution_scatter,
@@ -104,7 +102,7 @@ def plot_hv_convergence(metrics_files, formulation, seed, runtime_freq, output_f
 def compute_baseline_objectives(formulation):
     """Run a single in-memory simulation with default FFMP DVs."""
     try:
-        from config import get_baseline_values, get_objective_set
+        from src.formulations import get_baseline_values, get_objective_set
         from src.simulation import dvs_to_config, run_simulation_inmemory
 
         baseline_dvs = get_baseline_values(formulation)
