@@ -20,15 +20,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 # borg.py lives at the project root (NYCOptimization/borg.py); no borg/ subdir needed
 
-from config import (
+from config import BORG_SETTINGS, OUTPUTS_DIR, get_epsilons
+from src.formulations import (
     get_n_vars,
     get_n_objs,
     get_bounds,
-    get_epsilons,
     get_var_names,
     get_obj_names,
-    BORG_SETTINGS,
-    OUTPUTS_DIR,
 )
 from src.simulation import evaluate
 

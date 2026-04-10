@@ -1,13 +1,12 @@
 """
 config.py - Central configuration for NYCOptimization study.
 
-Defines problem formulations, decision variable specifications,
-objective functions, simulation settings, and Borg MOEA parameters.
+Contains paths, simulation settings, NYC system constants, and Borg MOEA
+parameters.  Problem formulation logic lives in src/formulations/.
 """
 
 import numpy as np
 from pathlib import Path
-from collections import OrderedDict
 
 ###############################################################################
 # Paths
@@ -65,170 +64,11 @@ NYC_TOTAL_CAPACITY = sum(NYC_RESERVOIR_CAPACITIES.values())  # 270,837 MG
 
 
 ###############################################################################
-# Problem Formulations
+# Active Objective Set
 ###############################################################################
 
-# Each formulation defines a set of decision variables with names, bounds,
-# and a mapping function that converts a flat decision variable vector
-# into a NYCOperationsConfig object.
-
-FORMULATIONS = {}
-
-# ---- Formulation A: Parameterized FFMP ------------------------------------
-# Re-optimize existing FFMP parameters within their plausible ranges.
-# This mirrors the parameter groups from NYCOperationExploration but
-# enables all groups and uses optimization-appropriate bounds.
-
-FORMULATIONS["ffmp"] = {
-    "description": "Parameterized 2017 FFMP rule structure",
-    "decision_variables": OrderedDict({
-
-        # --- MRF baselines (MGD) ---
-        "mrf_cannonsville": {
-            "baseline": 122.8,
-            "bounds": [60.0, 250.0],
-            "units": "MGD",
-        },
-        "mrf_pepacton": {
-            "baseline": 64.63,
-            "bounds": [30.0, 130.0],
-            "units": "MGD",
-        },
-        "mrf_neversink": {
-            "baseline": 48.47,
-            "bounds": [20.0, 100.0],
-            "units": "MGD",
-        },
-        "mrf_montague": {
-            "baseline": 1131.05,
-            "bounds": [800.0, 1500.0],
-            "units": "MGD",
-        },
-        "mrf_trenton": {
-            "baseline": 1938.95,
-            "bounds": [1400.0, 2500.0],
-            "units": "MGD",
-        },
-
-        # --- NYC delivery constraints ---
-        "max_nyc_delivery": {
-            "baseline": 800.0,
-            "bounds": [500.0, 900.0],
-            "units": "MGD",
-        },
-
-        # --- NYC drought factors (L3, L4, L5) ---
-        # L1a-L2 factors are effectively unconstrained (set to large values)
-        "nyc_drought_factor_L3": {
-            "baseline": 0.85,
-            "bounds": [0.60, 1.0],
-            "units": "fraction",
-        },
-        "nyc_drought_factor_L4": {
-            "baseline": 0.70,
-            "bounds": [0.40, 0.95],
-            "units": "fraction",
-        },
-        "nyc_drought_factor_L5": {
-            "baseline": 0.65,
-            "bounds": [0.30, 0.90],
-            "units": "fraction",
-        },
-
-        # --- NJ drought factors (L4, L5) ---
-        "nj_drought_factor_L4": {
-            "baseline": 0.90,
-            "bounds": [0.60, 1.0],
-            "units": "fraction",
-        },
-        "nj_drought_factor_L5": {
-            "baseline": 0.80,
-            "bounds": [0.50, 1.0],
-            "units": "fraction",
-        },
-
-        # --- Storage zone vertical shifts (fraction of capacity) ---
-        # Applied as additive shifts to each drought level threshold curve
-        "zone_shift_level1b": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level1c": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level2": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level3": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level4": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level5": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-
-        # --- Flood release maximums (CFS) ---
-        "flood_max_cannonsville": {
-            "baseline": 4200.0,
-            "bounds": [2000.0, 8000.0],
-            "units": "CFS",
-        },
-        "flood_max_pepacton": {
-            "baseline": 2400.0,
-            "bounds": [1200.0, 5000.0],
-            "units": "CFS",
-        },
-        "flood_max_neversink": {
-            "baseline": 3400.0,
-            "bounds": [1500.0, 7000.0],
-            "units": "CFS",
-        },
-
-        # --- MRF seasonal profile scaling (4 seasons) ---
-        "mrf_profile_scale_winter": {
-            "baseline": 1.0,
-            "bounds": [0.5, 2.0],
-            "units": "multiplier",
-        },
-        "mrf_profile_scale_spring": {
-            "baseline": 1.0,
-            "bounds": [0.5, 2.0],
-            "units": "multiplier",
-        },
-        "mrf_profile_scale_summer": {
-            "baseline": 1.0,
-            "bounds": [0.5, 2.0],
-            "units": "multiplier",
-        },
-        "mrf_profile_scale_fall": {
-            "baseline": 1.0,
-            "bounds": [0.5, 2.0],
-            "units": "multiplier",
-        },
-    }),
-}
-
-
-###############################################################################
-# Objectives
-###############################################################################
-
-# Objective definitions live in src/objectives.py using the Objective class.
-# The active objective set is selected here by name.
-# Available sets: "default", "drought_duration", "downstream_flood", "comprehensive", "compact"
+# Available sets: "default", "drought_duration", "downstream_flood",
+#                 "comprehensive", "compact"
 ACTIVE_OBJECTIVE_SET = "default"
 
 
@@ -245,7 +85,7 @@ BORG_SETTINGS = {
 # Multi-Master Borg parallel configuration
 MMBORG_SETTINGS = {
     "n_islands": None,               # Set per HPC allocation
-    "n_workers_per_island": None,     # Set per HPC allocation
+    "n_workers_per_island": None,    # Set per HPC allocation
     "max_time_hours": 24,
 }
 
@@ -274,87 +114,34 @@ REEVALUATION_SETTINGS = {
 
 
 ###############################################################################
-# Helper Functions
+# Backward-compatible re-exports from src.formulations
+###############################################################################
+# Callers that do `from config import get_bounds` etc. continue to work.
+
+from src.formulations import (           # noqa: E402
+    FORMULATIONS,
+    get_formulation,
+    get_bounds,
+    get_var_names,
+    get_n_vars,
+    get_baseline_values,
+    get_n_objs,
+    get_obj_names,
+    get_obj_directions,
+    get_objective_set,
+    make_objective_function,
+    is_external_policy,
+    generate_ffmp_formulation,
+)
+
+
+###############################################################################
+# Thin helpers that wrap objective-set logic (kept here for API compatibility)
 ###############################################################################
 
-def get_formulation(name="ffmp"):
-    """Get a formulation definition by name."""
-    if name not in FORMULATIONS:
-        raise ValueError(
-            f"Unknown formulation '{name}'. "
-            f"Available: {list(FORMULATIONS.keys())}"
-        )
-    return FORMULATIONS[name]
-
-
-def get_n_vars(formulation_name="ffmp"):
-    """Get number of decision variables for a formulation."""
-    f = get_formulation(formulation_name)
-    return len(f["decision_variables"])
-
-
-def get_objective_set(name=None):
-    """Get the active ObjectiveSet instance.
-
-    Args:
-        name: Objective set name. If None, uses ACTIVE_OBJECTIVE_SET from config.
-    """
-    from src.objectives import OBJECTIVE_SETS
-    if name is None:
-        name = ACTIVE_OBJECTIVE_SET
-    if name not in OBJECTIVE_SETS:
-        raise ValueError(
-            f"Unknown objective set '{name}'. "
-            f"Available: {list(OBJECTIVE_SETS.keys())}"
-        )
-    return OBJECTIVE_SETS[name]
-
-
-def get_n_objs():
-    """Get number of objectives in the active set."""
-    return get_objective_set().n_objs
-
-
-def get_bounds(formulation_name="ffmp"):
-    """Get decision variable bounds as (lower, upper) arrays."""
-    f = get_formulation(formulation_name)
-    lower = []
-    upper = []
-    for var_spec in f["decision_variables"].values():
-        lower.append(var_spec["bounds"][0])
-        upper.append(var_spec["bounds"][1])
-    return np.array(lower), np.array(upper)
-
-
 def get_epsilons():
-    """Get epsilon values for Borg epsilon-dominance, ordered by objective."""
+    """Epsilon values for Borg epsilon-dominance, ordered by objective."""
     return get_objective_set().epsilons
-
-
-def get_var_names(formulation_name="ffmp"):
-    """Get ordered list of decision variable names."""
-    f = get_formulation(formulation_name)
-    return list(f["decision_variables"].keys())
-
-
-def get_obj_names():
-    """Get ordered list of objective names."""
-    return get_objective_set().names
-
-
-def get_obj_directions():
-    """Get list of objective directions (1 for maximize, -1 for minimize).
-
-    Borg minimizes all objectives. For maximization objectives, we negate
-    the value before returning to Borg and negate again when reading results.
-    """
-    return get_objective_set().directions
-
-
-def get_baseline_values(formulation_name="ffmp"):
-    """Get baseline (default FFMP) decision variable values."""
-    f = get_formulation(formulation_name)
-    return np.array([v["baseline"] for v in f["decision_variables"].values()])
 
 
 def print_config_summary(formulation_name="ffmp"):
