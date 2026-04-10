@@ -43,9 +43,8 @@ from config import (
     PRESIM_DIR,
     PRESIM_FILE,
     NYC_RESERVOIRS,
-    get_formulation,
-    get_var_names,
 )
+from src.formulations import get_formulation, get_var_names
 
 # Allow debug override of simulation date range via environment variables.
 # Set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE (YYYY-MM-DD) before
@@ -746,7 +745,7 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None):
     t0 = time.time()
 
     if objective_set is None:
-        from config import get_objective_set
+        from src.formulations import get_objective_set
         objective_set = get_objective_set()
 
     config = dvs_to_config(dv_vector, formulation_name)

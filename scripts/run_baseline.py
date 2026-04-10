@@ -31,11 +31,8 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from config import (
-    get_baseline_values,
-    get_var_names,
-    OUTPUTS_DIR,
-)
+from config import OUTPUTS_DIR
+from src.formulations import get_baseline_values, get_var_names
 from src.simulation import dvs_to_config, run_simulation_to_disk, run_simulation_inmemory
 from src.objectives import DEFAULT_OBJECTIVES
 

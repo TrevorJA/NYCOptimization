@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from config import get_obj_names, get_obj_directions, get_n_vars
+from src.formulations import get_obj_names, get_obj_directions, get_n_vars
 from src.load.reference_set import load_reference_set
 
 
