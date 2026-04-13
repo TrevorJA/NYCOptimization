@@ -2,27 +2,77 @@
 # Step 3: Run MOEAFramework runtime diagnostics — computes hypervolume,
 # generational distance, and builds the global reference set.
 #
+# By default, runs all architectures in parallel as background jobs; the
+# MOEAFramework CLI is I/O bound so there's no contention issue. Pass
+# specific architecture names to run a subset.
+#
 # Usage:
-#   bash 03_run_diagnostics.sh [FORMULATION]
-#   bash 03_run_diagnostics.sh ffmp
-#   sbatch 03_run_diagnostics.sh
+#   bash workflow/03_run_diagnostics.sh                    # all arches (parallel)
+#   bash workflow/03_run_diagnostics.sh ffmp rbf tree      # subset
+#   bash workflow/03_run_diagnostics.sh --serial ffmp      # single arch, serial
+#   sbatch workflow/03_run_diagnostics.sh
 #
 #SBATCH --job-name=diagnostics
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --time=00:30:00
+#SBATCH --cpus-per-task=8
+#SBATCH --time=01:00:00
 #SBATCH --output=logs/diagnostics_%j.out
 #SBATCH --error=logs/diagnostics_%j.err
 set -euo pipefail
 
-cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 mkdir -p logs
 source venv/bin/activate
 
-FORMULATION="${1:-ffmp}"
+SERIAL=false
+ARGS=()
+for a in "$@"; do
+    if [[ "$a" == "--serial" ]]; then
+        SERIAL=true
+    else
+        ARGS+=("$a")
+    fi
+done
 
-python3 -c "
+if [[ ${#ARGS[@]} -eq 0 ]]; then
+    # Default: all registered architectures + FFMP_VR sweep values.
+    N_SWEEP=$(python3 -c "from config import FFMP_VR_N_SWEEP; print(' '.join(str(n) for n in FFMP_VR_N_SWEEP))")
+    TARGETS=(ffmp rbf tree ann)
+    for N in ${N_SWEEP}; do TARGETS+=("ffmp_${N}"); done
+else
+    TARGETS=("${ARGS[@]}")
+fi
+
+echo "=== Diagnostics targets: ${TARGETS[*]} (serial=${SERIAL}) ==="
+
+run_one() {
+    local arch="$1"
+    echo "[${arch}] starting"
+    python3 -c "
 import sys; sys.path.insert(0, '.')
 from src.diagnostics import run_full_diagnostics
-run_full_diagnostics('${FORMULATION}')
-"
+run_full_diagnostics('${arch}')
+" > "logs/diagnostics_${arch}.log" 2>&1
+    echo "[${arch}] done (log: logs/diagnostics_${arch}.log)"
+}
+
+if [[ "${SERIAL}" == "true" ]]; then
+    for t in "${TARGETS[@]}"; do run_one "$t"; done
+else
+    pids=()
+    for t in "${TARGETS[@]}"; do
+        run_one "$t" &
+        pids+=($!)
+    done
+    fail=0
+    for pid in "${pids[@]}"; do
+        wait "$pid" || fail=$((fail + 1))
+    done
+    if [[ $fail -gt 0 ]]; then
+        echo "ERROR: ${fail} diagnostics job(s) failed"
+        exit 1
+    fi
+fi
+
+echo "=== Completed: $(date) ==="

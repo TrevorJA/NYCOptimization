@@ -23,12 +23,28 @@
 
 ## Remaining
 
-### Pre-HPC: Feature Selection Study
-- [ ] Morris sensitivity analysis on 15-dim state vector
-- [ ] Sobol indices on state dimensions
-- [ ] Hierarchical information statistics (HIS) analysis
-- [ ] Reduce state vector to high-information dimensions before HPC runs
-- [ ] Update `src/external_policy.py` `build_state_config()` with reduced state
+### Pre-HPC: State Vector Reduction (Physics-Based)
+- [x] Physics-based state vector design using pywrdrb routing topology (`notes/state_vector_design.md`)
+- [x] Verified routing travel times: Can/Pep→Montague 2d, Nev→Montague 1d, Can/Pep→Trenton 4d, Nev→Trenton 3d
+- [x] Defined Minimal (6-dim) and Extended (9-dim) state specs (approved)
+- [x] Implement configurable `STATE_SPECS` in `build_state_config()` (minimal/extended/full) — commit 82e9545
+- [x] Update policy DV counts in `src/formulations/external.py` for 6-dim and 9-dim
+- [ ] Run LHS comparison: 6-dim vs 9-dim vs 15-dim for all three architectures
+- [ ] Decide final state vector for HPC runs based on LHS results
+
+### Pre-HPC: Publication-Scale Readiness (2026-04-13)
+- [x] Production SLURM scripts for ffmp, rbf, tree, ann (seed array jobs)
+- [x] FFMP_VR N-sweep SLURM script + `FFMP_VR_N_SWEEP` in config.py
+- [x] Env-var overrides for STATE_SPEC and ACTIVE_OBJECTIVE_SET
+- [x] Reproducibility logging (git rev + config snapshot) in SLURM scripts
+- [x] Parallelized re-evaluation (`--njobs` + per-seed output dirs)
+- [x] Parallelized diagnostics (background jobs per architecture)
+- [ ] **DECISION NEEDED**: final `ACTIVE_OBJECTIVE_SET` for publication runs.
+      `fixed_target` is NOT currently registered in `OBJECTIVE_SETS`
+      despite being referenced in docs — register it before HPC submission.
+- [ ] **DECISION NEEDED**: final `STATE_SPEC` for publication runs (awaits LHS comparison)
+- [ ] Validate `test_mpi_tiny.sh` on target HPC cluster
+- [ ] Benchmark trimmed-model eval cost (s/NFE) to set realistic wall times
 
 ### HPC Optimization Runs
 - [ ] Obtain HPC allocation (cluster access)

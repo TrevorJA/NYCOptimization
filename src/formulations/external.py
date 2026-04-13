@@ -102,7 +102,7 @@ register_architecture(
 register_architecture(
     "ann",
     architecture_type="ann",
-    description="Feedforward ANN (8-8 hidden)",
+    description="Feedforward ANN (2x8 hidden layers)",
     policy_class="ANNPolicy",
     policy_module="src.policies",
     h1=8,
