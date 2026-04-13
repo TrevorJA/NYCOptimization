@@ -42,6 +42,20 @@ SLURM submission scripts in `slurm/` for all 4 non-FFMP architectures (rbf, tree
 
 MPI rank formula: `ntasks = 1 + N_ISLANDS × (workers_per_island + 1)`
 
+**Physics-Based State Vector Design**
+
+Replaced statistical feature selection approach (Morris/Sobol/HIS) with physics-based state vector design driven by pywrdrb routing topology. Verified travel times from NYC reservoirs to MRF compliance points using pywrdrb node topology and the FFMP's `TotalReleaseNeededForDownstreamMRF` implementation.
+
+Two approved state vector configurations:
+- **Minimal (6-dim):** combined storage, Montague lag2, Trenton lag4, NJ demand lag4, sin/cos. DV counts: RBF 48, Tree 57, ANN 89.
+- **Extended (9-dim):** adds Neversink storage, Montague lag1, Trenton lag3. DV counts: RBF 66, Tree 78, ANN 121.
+
+Key design insight: the current 15-dim vector contains 6 redundant lag predictions that don't match routing travel times, plus redundant individual storage variables. Aggregate mode means the policy controls total release (volume balancer distributes), so combined storage is the primary state variable. Neversink separated in extended set due to different routing (1-day to Montague vs 2-day for Can/Pep).
+
+Note: in `perfect_foresight` mode, lag predictions are exact and sufficient to meet flow targets. State vector design is based on routing physics, valid in both forecast modes.
+
+See `notes/state_vector_design.md` for full design rationale and implementation plan.
+
 **Manuscript Outline**
 
 Planned figure set documented in `docs/README.md`:

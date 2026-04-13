@@ -54,3 +54,5 @@ mt19937ar.h
 *.so.old
 *.so.bak
 local_notes/
+docs/
+outputs/

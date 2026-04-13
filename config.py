@@ -3,8 +3,13 @@ config.py - Central configuration for NYCOptimization study.
 
 Contains paths, simulation settings, NYC system constants, and Borg MOEA
 parameters.  Problem formulation logic lives in src/formulations/.
+
+Environment overrides (read at import time, useful for HPC SLURM scripts):
+    NYCOPT_STATE_SPEC           -> STATE_SPEC
+    NYCOPT_OBJECTIVE_SET        -> ACTIVE_OBJECTIVE_SET
 """
 
+import os
 import numpy as np
 from pathlib import Path
 
@@ -38,7 +43,7 @@ INITIAL_VOLUME_FRAC = 0.80
 # State vector specification for external policy architectures.
 # Options: "minimal" (6-dim), "extended" (9-dim), "full" (15-dim).
 # "extended" is the default for the physics-based reduction experiments.
-STATE_SPEC = "extended"
+STATE_SPEC = os.environ.get("NYCOPT_STATE_SPEC", "extended")
 
 # Results sets to export from Pywr-DRB simulations
 RESULTS_SETS = [
@@ -72,9 +77,21 @@ NYC_TOTAL_CAPACITY = sum(NYC_RESERVOIR_CAPACITIES.values())  # 270,837 MG
 # Active Objective Set
 ###############################################################################
 
-# Available sets: "default", "drought_duration", "downstream_flood",
-#                 "comprehensive", "compact"
-ACTIVE_OBJECTIVE_SET = "default"
+# Available sets (from src.objectives.OBJECTIVE_SETS): "default", "extended", "compact"
+ACTIVE_OBJECTIVE_SET = os.environ.get("NYCOPT_OBJECTIVE_SET", "default")
+
+
+###############################################################################
+# Variable-Resolution FFMP Sweep
+###############################################################################
+
+# Values of N (storage zone boundary curves) to sweep for the complexity
+# frontier experiment. Each value maps to formulation "ffmp_{N}".
+#
+# NOTE on baseline equivalence: generate_ffmp_formulation(n_zones=6) produces
+# the 7-level zone count of the standard FFMP; values ≥ 6 are higher-resolution
+# variants. The user requirement is N ≥ baseline, so this sweep starts at 6.
+FFMP_VR_N_SWEEP = [6, 8, 10, 14, 20]
 
 
 ###############################################################################
