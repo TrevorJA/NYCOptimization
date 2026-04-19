@@ -5,8 +5,8 @@ Contains paths, simulation settings, NYC system constants, and Borg MOEA
 parameters.  Problem formulation logic lives in src/formulations/.
 
 Environment overrides (read at import time, useful for HPC SLURM scripts):
-    NYCOPT_STATE_SPEC           -> STATE_SPEC
-    NYCOPT_OBJECTIVE_SET        -> ACTIVE_OBJECTIVE_SET
+    NYCOPT_OBJECTIVES           -> ACTIVE_OBJECTIVES (comma-separated names)
+    NYCOPT_STATE_FEATURES       -> STATE_FEATURES    (comma-separated names)
 """
 
 import os
@@ -40,10 +40,37 @@ INFLOW_TYPE = "pub_nhmv10_BC_withObsScaled"
 USE_TRIMMED_MODEL = True
 INITIAL_VOLUME_FRAC = 0.80
 
-# State vector specification for external policy architectures.
-# Options: "minimal" (6-dim), "extended" (9-dim), "full" (15-dim).
-# "extended" is the default for the physics-based reduction experiments.
-STATE_SPEC = os.environ.get("NYCOPT_STATE_SPEC", "extended")
+# State features observed by external policies (RBF/Tree/ANN).
+#
+# Each entry is the name of a feature registered in
+# src.external_policy.STATE_FEATURE_REGISTRY. The default below mirrors
+# the information used by FFMP's decision logic:
+#   - combined NYC storage (drought zone classification)
+#   - Montague non-NYC flow at lag 2d (Montague MRF look-ahead)
+#   - Trenton non-NYC flow at lag 4d  (Trenton MRF look-ahead)
+#   - NJ demand at lag 4d             (Trenton equivalent-flow forecast)
+# sin(DOY) and cos(DOY) are appended automatically by the state extractor
+# (seasonality is always cheap and justifiable).
+#
+# Add features by listing additional registry names or, for ad-hoc use,
+# passing dict entries directly to build_state_config().
+_DEFAULT_STATE_FEATURES = [
+    "combined_nyc_storage_frac",
+    "montague_flow_lag2",
+    "trenton_flow_lag4",
+    "nj_demand_lag4",
+]
+
+
+def _parse_list_env(name: str, default: list[str]) -> list[str]:
+    """Parse a comma-separated environment variable into a list of names."""
+    raw = os.environ.get(name)
+    if not raw:
+        return list(default)
+    return [s.strip() for s in raw.split(",") if s.strip()]
+
+
+STATE_FEATURES = _parse_list_env("NYCOPT_STATE_FEATURES", _DEFAULT_STATE_FEATURES)
 
 # Results sets to export from Pywr-DRB simulations
 RESULTS_SETS = [
@@ -72,13 +99,35 @@ NYC_RESERVOIR_CAPACITIES = {
 }
 NYC_TOTAL_CAPACITY = sum(NYC_RESERVOIR_CAPACITIES.values())  # 270,837 MG
 
+# Fixed MRF targets (MGD) used by fixed-target objective variants.
+# These are the FFMP baseline release floors at Montague and Trenton.
+# Fixed targets are preferred for cross-architecture comparison because
+# they do not depend on the live FFMP step-down logic.
+MONTAGUE_FIXED_TARGET_MGD = 1131.05
+TRENTON_FIXED_TARGET_MGD = 1938.95
+
 
 ###############################################################################
-# Active Objective Set
+# Active Objectives
 ###############################################################################
+# User-facing list of objective names. See src.objectives.OBJECTIVES for
+# the full registry; call src.objectives.list_available_objectives() to print.
+#
+# Guideline: for cross-architecture publication runs, prefer the _fixed
+# flow-compliance variants so that every architecture is scored against
+# the same Montague/Trenton targets.
 
-# Available sets (from src.objectives.OBJECTIVE_SETS): "default", "extended", "compact"
-ACTIVE_OBJECTIVE_SET = os.environ.get("NYCOPT_OBJECTIVE_SET", "default")
+_DEFAULT_OBJECTIVES = [
+    "nyc_reliability_weekly",
+    "nyc_vulnerability",
+    "nj_reliability_weekly",
+    "montague_reliability_weekly_fixed",
+    "trenton_reliability_weekly_fixed",
+    "flood_risk_downstream_flow_days",
+    "storage_min_combined_pct",
+]
+
+ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
 
 
 ###############################################################################
@@ -174,7 +223,7 @@ def print_config_summary(formulation_name="ffmp"):
     print(f"Formulation: {formulation_name}")
     print(f"Description: {f['description']}")
     print(f"Decision variables: {get_n_vars(formulation_name)}")
-    print(f"Objective set: {ACTIVE_OBJECTIVE_SET} ({obj_set.n_objs} objectives)")
+    print(f"Active objectives ({obj_set.n_objs}): {ACTIVE_OBJECTIVES}")
     print(f"\nDecision Variables:")
     for name, spec in f["decision_variables"].items():
         print(f"  {name}: [{spec['bounds'][0]}, {spec['bounds'][1]}] "

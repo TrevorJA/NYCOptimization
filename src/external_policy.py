@@ -40,30 +40,84 @@ from config import (
 )
 
 ###############################################################################
-# State vector specifications
+# State feature registry
 ###############################################################################
-
-# Human-readable descriptions of each supported state spec.
-STATE_SPECS = {
-    "minimal": (
-        "6-dim: combined NYC storage fraction, Montague flow lag2, "
-        "Trenton flow lag4, NJ demand lag4, sin(DOY), cos(DOY)"
-    ),
-    "extended": (
-        "9-dim: adds Neversink storage fraction, Montague flow lag1, "
-        "Trenton flow lag3 to the minimal spec"
-    ),
-    "full": (
-        "15-dim: individual reservoir storage fractions (can, pep, nev), "
-        "Montague lags 1-2, Trenton lags 1-4, NJ demand lags 1-4, sin/cos(DOY)"
-    ),
-}
+# Single source of truth for every feature a policy can observe. Users
+# select features by listing names (strings) in config.STATE_FEATURES, or
+# by passing dict entries directly to build_state_config() for ad-hoc use.
+#
+# Each registry entry is a dict with the same schema consumed by
+# _resolve_state_sources / _extract_state_vector:
+#   - one of: 'combined_nodes' (list), 'node' (str), 'parameter' (str)
+#   - 'attribute' (for nodes)
+#   - 'normalize_by' (scalar divisor; omit for no normalization)
+#
+# sin/cos(DOY) are always appended automatically by _extract_state_vector
+# and are NOT part of this registry.
 
 # Total NYC reservoir capacity (MG) used for combined-storage normalization.
 _TOTAL_NYC_CAPACITY = NYC_TOTAL_CAPACITY  # 270,837.0 MG
 
+# Normalization constants — 99th percentile of historical perfect-foresight
+# predictions (pub_nhmv10_BC_withObsScaled, 1945-2022):
+_MONTAGUE_FLOW_NORM = 18300.0
+_TRENTON_FLOW_NORM = 26000.0
+_NJ_DEMAND_NORM = 105.0
+
 # Number of temporal features appended automatically by _extract_state_vector.
 N_STATE_TEMPORAL = 2  # sin(DOY), cos(DOY)
+
+
+def _make_feature_registry() -> dict:
+    reg: dict = {}
+
+    # --- Storage features ---
+    reg["combined_nyc_storage_frac"] = {
+        "combined_nodes": [f"reservoir_{res}" for res in NYC_RESERVOIRS],
+        "attribute": "volume",
+        "normalize_by": _TOTAL_NYC_CAPACITY,
+    }
+    for res in NYC_RESERVOIRS:
+        reg[f"{res}_storage_frac"] = {
+            "node": f"reservoir_{res}",
+            "attribute": "volume",
+            "normalize_by": NYC_RESERVOIR_CAPACITIES[res],
+        }
+
+    # --- Montague non-NYC flow forecasts (lags 1-2) ---
+    for lag in (1, 2):
+        reg[f"montague_flow_lag{lag}"] = {
+            "parameter": f"predicted_nonnyc_gage_flow_delMontague_lag{lag}",
+            "normalize_by": _MONTAGUE_FLOW_NORM,
+        }
+
+    # --- Trenton non-NYC flow forecasts (lags 1-4) ---
+    for lag in (1, 2, 3, 4):
+        reg[f"trenton_flow_lag{lag}"] = {
+            "parameter": f"predicted_nonnyc_gage_flow_delTrenton_lag{lag}",
+            "normalize_by": _TRENTON_FLOW_NORM,
+        }
+
+    # --- NJ demand forecasts (lags 1-4) ---
+    for lag in (1, 2, 3, 4):
+        reg[f"nj_demand_lag{lag}"] = {
+            "parameter": f"predicted_demand_nj_lag{lag}",
+            "normalize_by": _NJ_DEMAND_NORM,
+        }
+
+    return reg
+
+
+STATE_FEATURE_REGISTRY: dict = _make_feature_registry()
+
+
+def list_available_features() -> str:
+    """Return a formatted listing of all registered state features."""
+    lines = [f"Available state features ({len(STATE_FEATURE_REGISTRY)}):"]
+    for name in STATE_FEATURE_REGISTRY:
+        lines.append(f"  {name}")
+    lines.append("  (sin/cos of DOY are appended automatically.)")
+    return "\n".join(lines)
 
 
 ###############################################################################
@@ -298,145 +352,54 @@ _CONTROLLED_MAX_RELEASE_MGD = {
 }
 
 
-def build_state_config(state_spec: str = None) -> list:
-    """Build the state_config list defining what the policy observes.
+def build_state_config(features=None) -> list:
+    """Assemble a state_config list from feature names and/or inline dicts.
 
-    State vector ordering (sin/cos appended automatically by _extract_state_vector):
+    The default feature list in `config.STATE_FEATURES` mirrors the
+    information used by FFMP's decision logic: combined NYC storage, Montague
+    non-NYC flow at lag 2d, Trenton non-NYC flow at lag 4d, and NJ demand at
+    lag 4d. sin/cos(DOY) are appended automatically by the state extractor.
 
-    Minimal (6-dim):
-      [0] combined NYC storage fraction = (vol_can + vol_pep + vol_nev) / 270837 MG
-      [1] Montague non-NYC flow, lag2
-      [2] Trenton non-NYC flow, lag4
-      [3] NJ demand, lag4
-      [4] sin(DOY)
-      [5] cos(DOY)
-
-    Extended (9-dim): all of minimal, plus:
-      [1] Neversink storage fraction (individual, inserted after combined)
-      [3] Montague non-NYC flow, lag1 (inserted after lag2)
-      [5] Trenton non-NYC flow, lag3 (inserted after lag4)
-      → ordering: combined_storage, neversink_storage, montague_lag2,
-                  montague_lag1, trenton_lag4, trenton_lag3, nj_demand_lag4,
-                  sin(DOY), cos(DOY)
-
-    Full (15-dim): original layout — individual reservoir storage fractions
-      (can, pep, nev) + Montague lags 1-2 + Trenton lags 1-4 +
-      NJ demand lags 1-4 + sin/cos(DOY).
-
-    Normalization constants are set to the 99th percentile of historical
-    perfect-foresight predictions (pub_nhmv10_BC_withObsScaled, 1945-2022):
-      Montague: p99 = 18,256 MGD  → normalize_by = 18300
-      Trenton:  p99 = 25,919 MGD  → normalize_by = 26000
-      NJ demand: p99 = 105 MGD    → normalize_by = 105
-
-    In perfect_foresight mode, lag predictions are exact future values, so
-    the selected lags are sufficient. The design is valid in both forecast modes.
+    Items may be:
+      - str:  look up in STATE_FEATURE_REGISTRY
+      - dict: use directly (must have one of combined_nodes/node/parameter,
+              plus optional 'attribute' and 'normalize_by' keys)
 
     Args:
-        state_spec: "minimal" (6-dim), "extended" (9-dim), or "full" (15-dim).
-                    If None, reads STATE_SPEC from config (default "extended").
+        features: Iterable of str | dict, or None to use config.STATE_FEATURES.
 
     Returns:
-        List of state_config dicts. sin/cos are appended automatically.
+        List of state_config dicts (sin/cos NOT included — appended at extract).
 
     Raises:
-        ValueError: If state_spec is not a known spec name.
+        KeyError: A string feature name is not in the registry.
+        TypeError: An item is neither a string nor a dict.
     """
-    if state_spec is None:
-        from config import STATE_SPEC
-        state_spec = STATE_SPEC
+    if features is None:
+        from config import STATE_FEATURES
+        features = STATE_FEATURES
 
-    if state_spec not in STATE_SPECS:
-        raise ValueError(
-            f"Unknown state_spec '{state_spec}'. Available: {list(STATE_SPECS)}"
-        )
-
-    cfg = []
-
-    if state_spec == "full":
-        # Original layout: individual reservoir storage fractions.
-        for res in NYC_RESERVOIRS:
-            cfg.append({
-                'node': f'reservoir_{res}',
-                'attribute': 'volume',
-                'normalize_by': NYC_RESERVOIR_CAPACITIES[res],
-            })
-        # Montague non-NYC flows (lags 1-2)
-        for lag in [1, 2]:
-            cfg.append({
-                'parameter': f'predicted_nonnyc_gage_flow_delMontague_lag{lag}',
-                'normalize_by': 18300.0,
-            })
-        # Trenton non-NYC flows (lags 1-4)
-        for lag in [1, 2, 3, 4]:
-            cfg.append({
-                'parameter': f'predicted_nonnyc_gage_flow_delTrenton_lag{lag}',
-                'normalize_by': 26000.0,
-            })
-        # NJ demand (lags 1-4)
-        for lag in [1, 2, 3, 4]:
-            cfg.append({
-                'parameter': f'predicted_demand_nj_lag{lag}',
-                'normalize_by': 105.0,
-            })
-        return cfg
-
-    # ------------------------------------------------------------------ #
-    # minimal / extended: physics-based reduced state vectors              #
-    # ------------------------------------------------------------------ #
-
-    # Combined NYC storage fraction (always first)
-    cfg.append({
-        'combined_nodes': [f'reservoir_{res}' for res in NYC_RESERVOIRS],
-        'attribute': 'volume',
-        'normalize_by': _TOTAL_NYC_CAPACITY,
-    })
-
-    if state_spec == "extended":
-        # Neversink storage fraction (individual reservoir)
-        cfg.append({
-            'node': 'reservoir_neversink',
-            'attribute': 'volume',
-            'normalize_by': NYC_RESERVOIR_CAPACITIES['neversink'],
-        })
-
-    # Montague non-NYC flow, lag2 (sufficient for FFMP Montague MRF horizon)
-    cfg.append({
-        'parameter': 'predicted_nonnyc_gage_flow_delMontague_lag2',
-        'normalize_by': 18300.0,
-    })
-
-    if state_spec == "extended":
-        # Montague non-NYC flow, lag1 (adds 1-day resolution)
-        cfg.append({
-            'parameter': 'predicted_nonnyc_gage_flow_delMontague_lag1',
-            'normalize_by': 18300.0,
-        })
-
-    # Trenton non-NYC flow, lag4 (matches Trenton MRF look-ahead horizon)
-    cfg.append({
-        'parameter': 'predicted_nonnyc_gage_flow_delTrenton_lag4',
-        'normalize_by': 26000.0,
-    })
-
-    if state_spec == "extended":
-        # Trenton non-NYC flow, lag3 (adds intermediate horizon)
-        cfg.append({
-            'parameter': 'predicted_nonnyc_gage_flow_delTrenton_lag3',
-            'normalize_by': 26000.0,
-        })
-
-    # NJ demand, lag4 (matches routing lag to Delaware at Trenton)
-    cfg.append({
-        'parameter': 'predicted_demand_nj_lag4',
-        'normalize_by': 105.0,
-    })
-
+    cfg: list = []
+    for item in features:
+        if isinstance(item, dict):
+            cfg.append(dict(item))  # shallow copy to decouple from caller
+        elif isinstance(item, str):
+            if item not in STATE_FEATURE_REGISTRY:
+                raise KeyError(
+                    f"Unknown state feature '{item}'. "
+                    f"Available: {sorted(STATE_FEATURE_REGISTRY)}"
+                )
+            cfg.append(dict(STATE_FEATURE_REGISTRY[item]))
+        else:
+            raise TypeError(
+                f"build_state_config items must be str or dict; "
+                f"got {type(item).__name__}"
+            )
     return cfg
 
 
 def apply_external_policy(model, policy_fn, mode="aggregate",
-                          state_spec: str = None,
+                          state_features=None,
                           reservoir_capacities=None, max_releases=None):
     """Replace FFMP release parameters with external policy via PLMR.
 
@@ -457,8 +420,8 @@ def apply_external_policy(model, policy_fn, mode="aggregate",
               "individual": [release_can, release_pep, release_nev] in MGD
               "aggregate":  [total_release] in MGD (balanced internally)
         mode: "individual" or "aggregate" (default: "aggregate").
-        state_spec: State vector specification ("minimal", "extended", "full").
-            If None, uses STATE_SPEC from config.
+        state_features: List of feature names (or dicts) passed to
+            build_state_config(). None uses config.STATE_FEATURES.
         reservoir_capacities: Dict {name: capacity_MG}.
         max_releases: Dict {name: max_release_MGD}.
 
@@ -475,7 +438,7 @@ def apply_external_policy(model, policy_fn, mode="aggregate",
     CacheClearParameter(model, name="policy_cache_clear")
 
     reservoirs = list(NYC_RESERVOIRS)
-    state_config = build_state_config(state_spec=state_spec)
+    state_config = build_state_config(features=state_features)
     capacities_list = [reservoir_capacities[res] for res in reservoirs]
 
     ext_params = []
@@ -618,15 +581,15 @@ def _build_and_load_model(use_trimmed=None, strip_ffmp=True):
 
 
 def evaluate_with_policy(policy_fn, mode="aggregate",
-                         state_spec: str = None,
+                         state_features=None,
                          objective_set=None, use_trimmed=None):
     """Evaluate an external policy through the Pywr-DRB model.
 
     Args:
         policy_fn: Callable(np.ndarray) -> np.ndarray.
         mode: "individual" or "aggregate" (default: "aggregate").
-        state_spec: State vector spec ("minimal", "extended", "full").
-            If None, uses STATE_SPEC from config.
+        state_features: Feature names / dicts for build_state_config.
+            If None, uses config.STATE_FEATURES.
         objective_set: ObjectiveSet instance. If None, uses active set.
         use_trimmed: Whether to use the trimmed model.
 
@@ -641,7 +604,7 @@ def evaluate_with_policy(policy_fn, mode="aggregate",
 
     _clear_policy_cache()
     model = _build_and_load_model(use_trimmed=use_trimmed)
-    apply_external_policy(model, policy_fn, mode=mode, state_spec=state_spec)
+    apply_external_policy(model, policy_fn, mode=mode, state_features=state_features)
 
     mem_recorder = InMemoryRecorder(model)
     model.run()
@@ -655,7 +618,7 @@ def evaluate_with_policy(policy_fn, mode="aggregate",
 
 
 def run_policy_simulation(policy_fn, mode="aggregate",
-                          state_spec: str = None, use_trimmed=None):
+                          state_features=None, use_trimmed=None):
     """Run a policy simulation and return raw results (no objectives).
 
     Returns:
@@ -665,7 +628,7 @@ def run_policy_simulation(policy_fn, mode="aggregate",
 
     _clear_policy_cache()
     model = _build_and_load_model(use_trimmed=use_trimmed)
-    apply_external_policy(model, policy_fn, mode=mode, state_spec=state_spec)
+    apply_external_policy(model, policy_fn, mode=mode, state_features=state_features)
 
     mem_recorder = InMemoryRecorder(model)
     model.run()

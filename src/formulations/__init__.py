@@ -141,48 +141,40 @@ def get_baseline_values(formulation_name: str = "ffmp") -> np.ndarray:
 # Objective accessors (lazy imports to avoid circular dependency)
 ###############################################################################
 
-def get_objective_set(name: str = None):
-    """Return the active ObjectiveSet instance.
+def get_objective_set(items=None):
+    """Return an ObjectiveSet built from the given (or active) list of items.
 
     Args:
-        name: Objective set name.  If None, reads ACTIVE_OBJECTIVE_SET from
-              config (the default is "default").
+        items: List of objective names (str) and/or Objective instances.
+               If None, reads `config.ACTIVE_OBJECTIVES`.
 
     Returns:
         ObjectiveSet instance.
-
-    Raises:
-        ValueError: If *name* is not in the OBJECTIVE_SETS registry.
     """
-    from src.objectives import OBJECTIVE_SETS
-    if name is None:
-        from config import ACTIVE_OBJECTIVE_SET
-        name = ACTIVE_OBJECTIVE_SET
-    if name not in OBJECTIVE_SETS:
-        raise ValueError(
-            f"Unknown objective set '{name}'. "
-            f"Available: {list(OBJECTIVE_SETS.keys())}"
-        )
-    return OBJECTIVE_SETS[name]
+    from src.objectives import build_objective_set
+    if items is None:
+        from config import ACTIVE_OBJECTIVES
+        items = ACTIVE_OBJECTIVES
+    return build_objective_set(items)
 
 
-def get_n_objs(objective_set_name: str = None) -> int:
-    """Number of objectives in the active (or named) set."""
-    return get_objective_set(objective_set_name).n_objs
+def get_n_objs(items=None) -> int:
+    """Number of objectives in the active (or given) list."""
+    return get_objective_set(items).n_objs
 
 
-def get_obj_names(objective_set_name: str = None) -> list:
+def get_obj_names(items=None) -> list:
     """Ordered list of objective names."""
-    return get_objective_set(objective_set_name).names
+    return get_objective_set(items).names
 
 
-def get_obj_directions(objective_set_name: str = None) -> list:
+def get_obj_directions(items=None) -> list:
     """Objective directions: +1 for maximise, -1 for minimise.
 
     Borg minimises all objectives; ObjectiveSet.compute_for_borg() applies
     the sign flip automatically — callers should not negate manually.
     """
-    return get_objective_set(objective_set_name).directions
+    return get_objective_set(items).directions
 
 
 ###############################################################################
@@ -190,7 +182,7 @@ def get_obj_directions(objective_set_name: str = None) -> list:
 ###############################################################################
 
 def make_objective_function(architecture_name: str = "ffmp",
-                            include_predictions: bool = True):
+                            state_features=None):
     """Return a Borg-compatible evaluation callable.
 
     Dispatches to the correct evaluation path based on architecture type:
@@ -200,8 +192,9 @@ def make_objective_function(architecture_name: str = "ffmp",
 
     Args:
         architecture_name: Formulation or architecture name.
-        include_predictions: For external policies, whether to include flow
-            predictions in the state vector. Ignored for FFMP formulations.
+        state_features: Optional override for the state feature list used by
+            external-policy architectures. None uses config.STATE_FEATURES.
+            Ignored for FFMP formulations.
 
     Returns:
         Callable: dv_vector -> list of floats (Borg-compatible, all minimised).
@@ -210,7 +203,7 @@ def make_objective_function(architecture_name: str = "ffmp",
     _penalty = [1e6] * n_objs
 
     if is_external_policy(architecture_name):
-        policy = get_architecture(architecture_name)
+        policy = get_architecture(architecture_name, state_features=state_features)
         from src.external_policy import evaluate_with_policy
 
         def _external_fn(dv_vector):
@@ -219,7 +212,7 @@ def make_objective_function(architecture_name: str = "ffmp",
                 return evaluate_with_policy(
                     policy,
                     mode="aggregate",
-                    include_predictions=include_predictions,
+                    state_features=state_features,
                 )
             except Exception:
                 return _penalty

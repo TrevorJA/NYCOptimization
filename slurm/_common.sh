@@ -16,8 +16,8 @@
 #   CHECKPOINT    "true" to enable Borg checkpointing (currently race-prone)
 #
 # Also honors these environment overrides (read by config.py):
-#   NYCOPT_STATE_SPEC       state vector spec (minimal|extended|full)
-#   NYCOPT_OBJECTIVE_SET    objective set name (see src/objectives.py)
+#   NYCOPT_STATE_FEATURES   comma-separated feature names (see STATE_FEATURE_REGISTRY)
+#   NYCOPT_OBJECTIVES       comma-separated objective names (see OBJECTIVES registry)
 
 cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 mkdir -p logs
@@ -64,8 +64,8 @@ mkdir -p "${RUN_LOG_DIR}"
     echo "Runtime freq:    ${RUNTIME_FREQ}"
     echo "Debug sim:       ${DEBUG_SIM:-false}"
     echo "Checkpoint:      ${CHECKPOINT:-false}"
-    echo "STATE_SPEC:      ${NYCOPT_STATE_SPEC:-<config default>}"
-    echo "OBJECTIVE_SET:   ${NYCOPT_OBJECTIVE_SET:-<config default>}"
+    echo "STATE_FEATURES:  ${NYCOPT_STATE_FEATURES:-<config default>}"
+    echo "OBJECTIVES:      ${NYCOPT_OBJECTIVES:-<config default>}"
     echo "Python:          $(which python3)"
     echo "Python version:  $(python3 --version 2>&1)"
     echo "---- git ----"

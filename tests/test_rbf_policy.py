@@ -61,7 +61,7 @@ print("Bounds check passed.")
 # 4. Full pipeline test
 # ------------------------------------------------------------------
 print("\nRunning evaluate_with_policy (5-year period)...")
-objs = evaluate_with_policy(policy, mode="aggregate", include_predictions=True)
+objs = evaluate_with_policy(policy, mode="aggregate")
 print(f"Objectives: {objs}")
 assert len(objs) > 0, "No objectives returned"
 assert all(np.isfinite(o) for o in objs), f"Non-finite objectives: {objs}"

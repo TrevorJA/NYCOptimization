@@ -244,11 +244,12 @@ with tempfile.TemporaryDirectory() as tmpdir:
         "ibt_diversions": ibt_diversions_df,
     }
 
-    from src.objectives import DEFAULT_OBJECTIVES
+    from src.formulations import get_objective_set
+    active = get_objective_set()
 
     try:
-        obj_values = DEFAULT_OBJECTIVES.compute(data)
-        obj_names = DEFAULT_OBJECTIVES.names
+        obj_values = active.compute(data)
+        obj_names = active.names
         print("  Objectives computed successfully!")
         for name, val in zip(obj_names, obj_values):
             print(f"    {name} = {val:.6f}")

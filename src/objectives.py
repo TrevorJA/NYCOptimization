@@ -1,24 +1,34 @@
 """
 objectives.py - Objective function framework for NYC reservoir optimization.
 
-Provides an Objective class and ObjectiveSet container that support:
-- Registering individual objective metrics as callable functions
-- Configurable objective sets for testing different priorities
-- Borg-compatible output (all minimized) with direction handling
-- Epsilon values for Borg epsilon-dominance archiving
+Provides an Objective class, ObjectiveSet container, a **name-indexed
+registry** of pre-built metric instances, and a `build_objective_set()`
+assembler. Users select objectives by listing names (strings) or passing
+custom `Objective` instances directly — no pre-defined "sets".
 
 Metric design principles:
 - Reliability metrics use WEEKLY aggregation (daily is insensitive;
   shortages are rare events that daily frequency fails to discriminate).
-- Flow compliance at Montague/Trenton uses TIME-DYNAMIC targets from
-  the simulation (mrf_target), not hardcoded constants.
+- Flow compliance at Montague/Trenton is available in two flavors:
+    * `_fixed`    — against constant FFMP baseline targets
+                    (Montague 1,131 MGD, Trenton 1,939 MGD)
+    * `_dynamic`  — against the simulation's time-varying mrf_target
+  Fixed-target metrics are preferred for cross-architecture comparison
+  because all architectures see the same target; dynamic-target metrics
+  reflect live FFMP step-down logic and are useful for baseline runs only.
 - Vulnerability metrics capture the worst-case shortage magnitude.
-- Trenton uses the full simulation period (no a priori seasonal assumption).
 
 Usage:
-    from src.objectives import DEFAULT_OBJECTIVES
-    values = DEFAULT_OBJECTIVES.compute(data)
-    borg_values = DEFAULT_OBJECTIVES.compute_for_borg(data)
+    from src.objectives import build_objective_set
+    obj_set = build_objective_set([
+        "nyc_reliability_weekly",
+        "nyc_vulnerability",
+        "montague_reliability_weekly_fixed",
+        "trenton_reliability_weekly_fixed",
+        ...
+    ])
+    values = obj_set.compute(data)
+    borg_values = obj_set.compute_for_borg(data)
 """
 
 import numpy as np
@@ -28,6 +38,8 @@ from config import (
     NYC_RESERVOIRS,
     NYC_TOTAL_CAPACITY,
     WARMUP_DAYS,
+    MONTAGUE_FIXED_TARGET_MGD,
+    TRENTON_FIXED_TARGET_MGD,
 )
 
 
@@ -180,81 +192,80 @@ def _nyc_vulnerability(data: dict) -> float:
     return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
 
 
-# --- Flow Compliance (time-dynamic targets) ---
+# --- Flow Compliance ------------------------------------------------------
+# Each downstream gauge has two flavors:
+#   _dynamic : target is the simulation's live mrf_target (FFMP step-down)
+#   _fixed   : target is a constant (FFMP baseline MGD)
+# Fixed-target metrics are recommended for cross-architecture comparison
+# because the target does not vary with the policy being evaluated.
 
-def _montague_reliability_weekly(data: dict) -> float:
-    """Fraction of weeks flow at Montague meets the time-dynamic MRF target.
 
-    Uses the actual FFMP-driven target from simulation output (varies by
-    drought level and month), not a hardcoded constant.
-    """
-    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    target = data["mrf_target"]["delMontague"].iloc[WARMUP_DAYS:]
-
+def _weekly_reliability_vs_target(flow: pd.Series, target) -> float:
     weekly_flow = flow.resample("W").mean()
-    weekly_target = target.resample("W").mean()
-
+    if hasattr(target, "resample"):
+        weekly_target = target.resample("W").mean()
+    else:
+        weekly_target = target  # scalar — broadcasts
     met = (weekly_flow >= weekly_target).sum()
     total = len(weekly_flow)
     return float(met) / total if total > 0 else 0.0
 
 
-def _montague_vulnerability(data: dict) -> float:
-    """Worst single-week Montague flow deficit as percent of target.
+def _weekly_vulnerability_vs_target(flow: pd.Series, target) -> float:
+    weekly_flow = flow.resample("W").mean()
+    if hasattr(target, "resample"):
+        weekly_target = target.resample("W").mean()
+    else:
+        weekly_target = pd.Series(target, index=weekly_flow.index)
+    deficit = (weekly_target - weekly_flow).clip(lower=0)
+    denom = np.where(weekly_target > 0, weekly_target, np.nan)
+    deficit_pct = 100.0 * deficit / denom
+    deficit_pct = np.nan_to_num(deficit_pct, nan=0.0)
+    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
 
-    Returns the maximum weekly shortfall below the time-dynamic MRF
-    target, expressed as a percentage of that week's target. [0, 100+].
-    """
+
+def _montague_reliability_weekly_dynamic(data: dict) -> float:
     flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
     target = data["mrf_target"]["delMontague"].iloc[WARMUP_DAYS:]
-
-    weekly_flow = flow.resample("W").mean()
-    weekly_target = target.resample("W").mean()
-
-    deficit = (weekly_target - weekly_flow).clip(lower=0)
-    deficit_pct = np.where(
-        weekly_target > 0,
-        100.0 * deficit / weekly_target,
-        0.0,
-    )
-    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
+    return _weekly_reliability_vs_target(flow, target)
 
 
-def _trenton_reliability_weekly(data: dict) -> float:
-    """Fraction of weeks flow at Trenton meets the time-dynamic MRF target.
+def _montague_vulnerability_dynamic(data: dict) -> float:
+    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
+    target = data["mrf_target"]["delMontague"].iloc[WARMUP_DAYS:]
+    return _weekly_vulnerability_vs_target(flow, target)
 
-    Uses the full simulation period (no seasonal assumption).
-    Target comes from FFMP simulation output.
-    """
+
+def _montague_reliability_weekly_fixed(data: dict) -> float:
+    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
+    return _weekly_reliability_vs_target(flow, MONTAGUE_FIXED_TARGET_MGD)
+
+
+def _montague_vulnerability_fixed(data: dict) -> float:
+    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
+    return _weekly_vulnerability_vs_target(flow, MONTAGUE_FIXED_TARGET_MGD)
+
+
+def _trenton_reliability_weekly_dynamic(data: dict) -> float:
     flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
     target = data["mrf_target"]["delTrenton"].iloc[WARMUP_DAYS:]
-
-    weekly_flow = flow.resample("W").mean()
-    weekly_target = target.resample("W").mean()
-
-    met = (weekly_flow >= weekly_target).sum()
-    total = len(weekly_flow)
-    return float(met) / total if total > 0 else 0.0
+    return _weekly_reliability_vs_target(flow, target)
 
 
-def _trenton_vulnerability(data: dict) -> float:
-    """Worst single-week Trenton flow deficit as percent of target.
-
-    Full period, time-dynamic target. [0, 100+].
-    """
+def _trenton_vulnerability_dynamic(data: dict) -> float:
     flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
     target = data["mrf_target"]["delTrenton"].iloc[WARMUP_DAYS:]
+    return _weekly_vulnerability_vs_target(flow, target)
 
-    weekly_flow = flow.resample("W").mean()
-    weekly_target = target.resample("W").mean()
 
-    deficit = (weekly_target - weekly_flow).clip(lower=0)
-    deficit_pct = np.where(
-        weekly_target > 0,
-        100.0 * deficit / weekly_target,
-        0.0,
-    )
-    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
+def _trenton_reliability_weekly_fixed(data: dict) -> float:
+    flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
+    return _weekly_reliability_vs_target(flow, TRENTON_FIXED_TARGET_MGD)
+
+
+def _trenton_vulnerability_fixed(data: dict) -> float:
+    flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
+    return _weekly_vulnerability_vs_target(flow, TRENTON_FIXED_TARGET_MGD)
 
 
 # --- Flood Risk ---
@@ -327,147 +338,132 @@ def _min_storage_pct(data: dict) -> float:
 
 
 ###############################################################################
-# Pre-built Objective Instances
+# Objective Registry
 ###############################################################################
+# Single source of truth for all available objective metrics. Users select
+# objectives by listing names from this registry (or by constructing their
+# own `Objective` instances and passing them directly to build_objective_set).
+
+OBJECTIVES: dict[str, Objective] = {}
+
+
+def _register(name, direction, epsilon, description, func):
+    OBJECTIVES[name] = Objective(
+        name=name, direction=direction, epsilon=epsilon,
+        description=description, func=func,
+    )
+
 
 # --- NYC Supply ---
-obj_nyc_reliability_weekly = Objective(
-    name="nyc_reliability_weekly",
-    direction="maximize",
-    epsilon=0.01,
-    description="Fraction of weeks NYC delivery >= 99% of demand",
-    func=_nyc_reliability_weekly,
-)
-
-obj_nyc_vulnerability = Objective(
-    name="nyc_vulnerability",
-    direction="minimize",
-    epsilon=1.0,
-    description="Worst-week NYC shortage as pct of demand [0-100]",
-    func=_nyc_vulnerability,
-)
-
-# --- Flow Compliance ---
-obj_montague_reliability_weekly = Objective(
-    name="montague_reliability_weekly",
-    direction="maximize",
-    epsilon=0.01,
-    description="Fraction of weeks Montague flow >= time-dynamic MRF target",
-    func=_montague_reliability_weekly,
-)
-
-obj_montague_vulnerability = Objective(
-    name="montague_vulnerability",
-    direction="minimize",
-    epsilon=1.0,
-    description="Worst-week Montague deficit as pct of dynamic target",
-    func=_montague_vulnerability,
-)
-
-obj_trenton_reliability_weekly = Objective(
-    name="trenton_reliability_weekly",
-    direction="maximize",
-    epsilon=0.005,
-    description="Fraction of weeks Trenton flow >= time-dynamic MRF target (full period)",
-    func=_trenton_reliability_weekly,
-)
-
-obj_trenton_vulnerability = Objective(
-    name="trenton_vulnerability",
-    direction="minimize",
-    epsilon=1.0,
-    description="Worst-week Trenton deficit as pct of dynamic target",
-    func=_trenton_vulnerability,
-)
+_register("nyc_reliability_weekly", "maximize", 0.01,
+          "Fraction of weeks NYC delivery >= 99% of demand",
+          _nyc_reliability_weekly)
+_register("nyc_vulnerability", "minimize", 1.0,
+          "Worst-week NYC shortage as pct of demand [0-100]",
+          _nyc_vulnerability)
 
 # --- NJ Supply ---
-obj_nj_reliability_weekly = Objective(
-    name="nj_reliability_weekly",
-    direction="maximize",
-    epsilon=0.01,
-    description="Fraction of weeks NJ delivery >= 99% of demand",
-    func=_nj_reliability_weekly,
-)
+_register("nj_reliability_weekly", "maximize", 0.01,
+          "Fraction of weeks NJ delivery >= 99% of demand",
+          _nj_reliability_weekly)
+_register("nj_vulnerability", "minimize", 1.0,
+          "Worst-week NJ shortage as pct of demand [0-100]",
+          _nj_vulnerability)
 
-obj_nj_vulnerability = Objective(
-    name="nj_vulnerability",
-    direction="minimize",
-    epsilon=1.0,
-    description="Worst-week NJ shortage as pct of demand [0-100]",
-    func=_nj_vulnerability,
-)
+# --- Flow Compliance (fixed targets — recommended default) ---
+_register("montague_reliability_weekly_fixed", "maximize", 0.01,
+          "Fraction of weeks Montague flow >= FFMP fixed target "
+          f"({MONTAGUE_FIXED_TARGET_MGD:.0f} MGD)",
+          _montague_reliability_weekly_fixed)
+_register("montague_vulnerability_fixed", "minimize", 1.0,
+          "Worst-week Montague deficit as pct of fixed target",
+          _montague_vulnerability_fixed)
+_register("trenton_reliability_weekly_fixed", "maximize", 0.005,
+          "Fraction of weeks Trenton flow >= FFMP fixed target "
+          f"({TRENTON_FIXED_TARGET_MGD:.0f} MGD)",
+          _trenton_reliability_weekly_fixed)
+_register("trenton_vulnerability_fixed", "minimize", 1.0,
+          "Worst-week Trenton deficit as pct of fixed target",
+          _trenton_vulnerability_fixed)
+
+# --- Flow Compliance (dynamic targets — for baseline diagnostics only) ---
+_register("montague_reliability_weekly_dynamic", "maximize", 0.01,
+          "Fraction of weeks Montague flow >= time-dynamic MRF target",
+          _montague_reliability_weekly_dynamic)
+_register("montague_vulnerability_dynamic", "minimize", 1.0,
+          "Worst-week Montague deficit as pct of dynamic target",
+          _montague_vulnerability_dynamic)
+_register("trenton_reliability_weekly_dynamic", "maximize", 0.005,
+          "Fraction of weeks Trenton flow >= time-dynamic MRF target",
+          _trenton_reliability_weekly_dynamic)
+_register("trenton_vulnerability_dynamic", "minimize", 1.0,
+          "Worst-week Trenton deficit as pct of dynamic target",
+          _trenton_vulnerability_dynamic)
 
 # --- Flood Risk ---
-obj_flood_risk_storage_spill_days = Objective(
-    name="flood_risk_storage_spill_days",
-    direction="minimize",
-    epsilon=10.0,
-    description="Days aggregate NYC storage > 95% capacity (spill risk proxy)",
-    func=_flood_days,
-)
-
-obj_flood_risk_downstream_flow_days = Objective(
-    name="flood_risk_downstream_flow_days",
-    direction="minimize",
-    epsilon=5.0,
-    description="Days Montague flow exceeds 25,000 CFS action stage proxy",
-    func=_flood_days_downstream,
-)
+_register("flood_risk_storage_spill_days", "minimize", 10.0,
+          "Days aggregate NYC storage > 95% capacity (spill risk proxy)",
+          _flood_days)
+_register("flood_risk_downstream_flow_days", "minimize", 5.0,
+          "Days Montague flow exceeds 25,000 CFS action stage proxy",
+          _flood_days_downstream)
 
 # --- Storage Resilience ---
-obj_storage_min_combined_pct = Objective(
-    name="storage_min_combined_pct",
-    direction="maximize",
-    epsilon=0.5,
-    description="Minimum combined NYC storage as pct of total capacity [0-100]",
-    func=_min_storage_pct,
-)
+_register("storage_min_combined_pct", "maximize", 0.5,
+          "Minimum combined NYC storage as pct of total capacity [0-100]",
+          _min_storage_pct)
 
 
 ###############################################################################
-# Pre-built Objective Sets
+# Assembler
 ###############################################################################
 
-# Default 7-objective set: NYC + NJ supply, Montague/Trenton compliance,
-# downstream flood risk, storage resilience.
-# Uses downstream flow-based flood metric (Montague > 25,000 CFS action stage)
-# instead of the 95% storage threshold (which is rarely triggered even under
-# FFMP Normal operations).
-DEFAULT_OBJECTIVES = ObjectiveSet([
-    obj_nyc_reliability_weekly,
-    obj_nyc_vulnerability,
-    obj_nj_reliability_weekly,
-    obj_montague_reliability_weekly,
-    obj_trenton_reliability_weekly,
-    obj_flood_risk_downstream_flow_days,
-    obj_storage_min_combined_pct,
-])
+def build_objective_set(items) -> ObjectiveSet:
+    """Assemble an ObjectiveSet from a list of names and/or Objective instances.
 
-# Extended: adds vulnerability metrics for all stakeholders
-EXTENDED_OBJECTIVES = ObjectiveSet([
-    obj_nyc_reliability_weekly,
-    obj_nyc_vulnerability,
-    obj_nj_reliability_weekly,
-    obj_nj_vulnerability,
-    obj_montague_reliability_weekly,
-    obj_montague_vulnerability,
-    obj_trenton_reliability_weekly,
-    obj_trenton_vulnerability,
-    obj_flood_risk_downstream_flow_days,
-    obj_storage_min_combined_pct,
-])
+    Items may be:
+      - str:       look up in OBJECTIVES registry
+      - Objective: use directly (for custom/ad-hoc metrics)
 
-# Compact 4-objective set for quick diagnostic / debugging runs
-COMPACT_OBJECTIVES = ObjectiveSet([
-    obj_nyc_reliability_weekly,
-    obj_montague_reliability_weekly,
-    obj_flood_risk_downstream_flow_days,
-    obj_storage_min_combined_pct,
-])
+    Example:
+        obj_set = build_objective_set([
+            "nyc_reliability_weekly",
+            "montague_reliability_weekly_fixed",
+            Objective("my_custom", "maximize", 0.01, "...", my_func),
+        ])
 
-# Registry of named sets for CLI selection
-OBJECTIVE_SETS = {
-    "default": DEFAULT_OBJECTIVES,
-    "extended": EXTENDED_OBJECTIVES,
-    "compact": COMPACT_OBJECTIVES,
-}
+    Args:
+        items: Iterable of str | Objective.
+
+    Returns:
+        ObjectiveSet containing the resolved objectives in the given order.
+
+    Raises:
+        KeyError: If a string name is not in OBJECTIVES.
+        TypeError: If an item is neither a string nor an Objective.
+    """
+    resolved = []
+    for item in items:
+        if isinstance(item, Objective):
+            resolved.append(item)
+        elif isinstance(item, str):
+            if item not in OBJECTIVES:
+                raise KeyError(
+                    f"Unknown objective '{item}'. "
+                    f"Available: {sorted(OBJECTIVES)}"
+                )
+            resolved.append(OBJECTIVES[item])
+        else:
+            raise TypeError(
+                f"build_objective_set items must be str or Objective; "
+                f"got {type(item).__name__}"
+            )
+    return ObjectiveSet(resolved)
+
+
+def list_available_objectives() -> str:
+    """Return a formatted table of all registered objectives."""
+    lines = [f"Available objectives ({len(OBJECTIVES)}):"]
+    for name, obj in OBJECTIVES.items():
+        lines.append(f"  {name}  [{obj.direction}, eps={obj.epsilon}]  — {obj.description}")
+    return "\n".join(lines)
