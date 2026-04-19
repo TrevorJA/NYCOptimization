@@ -1,6 +1,6 @@
 #!/bin/bash
 # mmborg_ann.sh — Production MM Borg run for ANN external policy.
-# DV count depends on NYCOPT_STATE_SPEC (extended→121, minimal→89, full→209).
+# DV count depends on NYCOPT_STATE_FEATURES (default 4 features → 137 DVs).
 # Submit as a seed-array job:  sbatch --array=1-10 slurm/mmborg_ann.sh
 #
 #SBATCH --job-name=mmborg_ann
@@ -26,6 +26,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 ARGS="--seed ${SEED} --formulation ${FORMULATION} --islands ${N_ISLANDS} --nfe ${NFE} --runtime-freq ${RUNTIME_FREQ}"
 [[ "${CHECKPOINT}" == "true" ]] && ARGS="${ARGS} --checkpoint"
 
-echo "=== Launching MM-Borg (${FORMULATION}, seed=${SEED}, STATE_SPEC=${NYCOPT_STATE_SPEC:-extended}) ==="
+echo "=== Launching MM-Borg (${FORMULATION}, seed=${SEED}) ==="
 mpirun -np ${NTASKS_MPI} python3 -u src/mmborg_cli.py ${ARGS}
 echo "=== Completed: $(date) ==="

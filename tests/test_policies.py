@@ -282,31 +282,40 @@ class TestPolicyInterface:
 
 class TestStateConfig:
 
-    def test_state_config_with_predictions(self):
+    def test_default_matches_config(self):
         from src.external_policy import build_state_config
-        cfg = build_state_config(include_predictions=True)
-        # 3 storage + 6 flow (2 Montague + 4 Trenton) + 4 NJ demand = 13
-        assert len(cfg) == 13
+        from config import STATE_FEATURES
+        cfg = build_state_config()
+        assert len(cfg) == len(STATE_FEATURES)
 
-    def test_state_config_without_predictions(self):
+    def test_explicit_feature_list(self):
         from src.external_policy import build_state_config
-        cfg = build_state_config(include_predictions=False)
-        # storage only: 3 entries
-        assert len(cfg) == 3
+        cfg = build_state_config([
+            "combined_nyc_storage_frac",
+            "montague_flow_lag2",
+            "trenton_flow_lag4",
+            "nj_demand_lag4",
+        ])
+        assert len(cfg) == 4
+        assert "combined_nodes" in cfg[0]
+        for entry in cfg[1:]:
+            assert "parameter" in entry
 
-    def test_state_config_node_entries(self):
+    def test_unknown_feature_raises(self):
+        import pytest
         from src.external_policy import build_state_config
-        cfg = build_state_config(include_predictions=True)
-        # First 3 entries are reservoir storage nodes
-        for entry in cfg[:3]:
-            assert 'node' in entry, f"Entry missing 'node' key: {entry}"
+        with pytest.raises(KeyError):
+            build_state_config(["not_a_real_feature"])
 
-    def test_state_config_parameter_entries(self):
+    def test_inline_dict_entry(self):
         from src.external_policy import build_state_config
-        cfg = build_state_config(include_predictions=True)
-        # Entries [3:] are parameters (when predictions included)
-        for entry in cfg[3:]:
-            assert 'parameter' in entry, f"Entry missing 'parameter' key: {entry}"
+        custom = {
+            "parameter": "predicted_demand_nj_lag1",
+            "normalize_by": 105.0,
+        }
+        cfg = build_state_config(["combined_nyc_storage_frac", custom])
+        assert len(cfg) == 2
+        assert cfg[1]["parameter"] == "predicted_demand_nj_lag1"
 
 
 # ===========================================================================
@@ -447,38 +456,16 @@ class TestIntegration:
             "Individual and aggregate objectives are identical — unexpected"
         )
 
-    def test_predictions_improve_montague(self):
-        """Policy with predictions should achieve Montague reliability >= without."""
+    def test_feature_list_override(self):
+        """Custom state_features list produces finite objectives."""
         from src.external_policy import evaluate_with_policy
-        from src.objectives import OBJECTIVE_SETS
 
-        obj_set = OBJECTIVE_SETS["default"]
-
-        # Simple moderate-release policy
         def moderate_policy(state):
             return np.array([500.0])
 
-        objs_with = evaluate_with_policy(
-            moderate_policy, mode="aggregate", include_predictions=True
+        minimal = ["combined_nyc_storage_frac", "montague_flow_lag2"]
+        objs = evaluate_with_policy(
+            moderate_policy, mode="aggregate", state_features=minimal
         )
-        objs_without = evaluate_with_policy(
-            moderate_policy, mode="aggregate", include_predictions=False
-        )
-
-        # Both must be valid
-        assert len(objs_with) == self.obj_set.n_objs
-        assert len(objs_without) == self.obj_set.n_objs
-        assert all(np.isfinite(v) for v in objs_with)
-        assert all(np.isfinite(v) for v in objs_without)
-
-        # With a constant policy, predictions don't change behavior —
-        # so objectives should be equal (or with-predictions >= without).
-        # We check that with-predictions Montague reliability is not worse.
-        # Montague reliability is objective index 0 in default set (maximized,
-        # negated for Borg); lower Borg value = better reliability.
-        montague_idx = self.obj_set.names.index("montague_reliability_weekly")
-        assert objs_with[montague_idx] <= objs_without[montague_idx] + 1e-6, (
-            f"Predictions hurt Montague reliability: "
-            f"with={objs_with[montague_idx]:.4f}, "
-            f"without={objs_without[montague_idx]:.4f}"
-        )
+        assert len(objs) == self.obj_set.n_objs
+        assert all(np.isfinite(v) for v in objs)

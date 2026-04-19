@@ -34,7 +34,7 @@ sys.path.insert(0, str(PROJECT_DIR))
 from config import OUTPUTS_DIR
 from src.formulations import get_baseline_values, get_var_names
 from src.simulation import dvs_to_config, run_simulation_to_disk, run_simulation_inmemory
-from src.objectives import DEFAULT_OBJECTIVES
+from src.formulations import get_objective_set
 
 
 def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
@@ -48,6 +48,7 @@ def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
     Returns:
         Tuple of (data dict, objectives list).
     """
+    _ACTIVE_OBJS = get_objective_set()
     baseline_dir = OUTPUTS_DIR / "baseline"
     baseline_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,8 +71,8 @@ def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
     print(f"  Elapsed: {elapsed:.1f}s")
 
     print(f"\n--- Objectives ---")
-    obj_values = DEFAULT_OBJECTIVES.compute(data)
-    obj_names = DEFAULT_OBJECTIVES.names
+    obj_values = _ACTIVE_OBJS.compute(data)
+    obj_names = _ACTIVE_OBJS.names
     for name, val in zip(obj_names, obj_values):
         print(f"  {name} = {val:.6f}")
 
@@ -93,6 +94,7 @@ def run_inmemory_test(formulation: str = "ffmp", use_trimmed: bool = False):
         formulation: Problem formulation name.
         use_trimmed: Use trimmed model. Requires presim data if True.
     """
+    _ACTIVE_OBJS = get_objective_set()
     model_mode = "trimmed" if use_trimmed else "full"
     print(f"\n--- In-memory test ({formulation}, {model_mode} model) ---")
 
@@ -111,8 +113,8 @@ def run_inmemory_test(formulation: str = "ffmp", use_trimmed: bool = False):
         else:
             print(f"  {key}: MISSING or EMPTY")
 
-    obj_values = DEFAULT_OBJECTIVES.compute(data)
-    obj_names = DEFAULT_OBJECTIVES.names
+    obj_values = _ACTIVE_OBJS.compute(data)
+    obj_names = _ACTIVE_OBJS.names
     print(f"\n  Objectives (in-memory):")
     for name, val in zip(obj_names, obj_values):
         print(f"    {name} = {val:.6f}")
@@ -148,7 +150,7 @@ if __name__ == "__main__":
             args.formulation, use_trimmed=args.use_trimmed
         )
         print(f"\n--- Comparison: disk vs in-memory ---")
-        obj_names = DEFAULT_OBJECTIVES.names
+        obj_names = get_objective_set().names
         for name, vd, vm in zip(obj_names, objs_disk, objs_mem):
             diff = abs(vd - vm)
             flag = " <-- MISMATCH" if diff > 1e-6 else ""

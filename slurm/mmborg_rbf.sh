@@ -1,6 +1,6 @@
 #!/bin/bash
 # mmborg_rbf.sh — Production MM Borg run for RBF external policy.
-# DV count depends on NYCOPT_STATE_SPEC (extended→66, minimal→48, full→102).
+# DV count depends on NYCOPT_STATE_FEATURES (default 4 features → 48 DVs).
 # Submit as a seed-array job:  sbatch --array=1-10 slurm/mmborg_rbf.sh
 #
 #SBATCH --job-name=mmborg_rbf
@@ -26,6 +26,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 ARGS="--seed ${SEED} --formulation ${FORMULATION} --islands ${N_ISLANDS} --nfe ${NFE} --runtime-freq ${RUNTIME_FREQ}"
 [[ "${CHECKPOINT}" == "true" ]] && ARGS="${ARGS} --checkpoint"
 
-echo "=== Launching MM-Borg (${FORMULATION}, seed=${SEED}, STATE_SPEC=${NYCOPT_STATE_SPEC:-extended}) ==="
+echo "=== Launching MM-Borg (${FORMULATION}, seed=${SEED}) ==="
 mpirun -np ${NTASKS_MPI} python3 -u src/mmborg_cli.py ${ARGS}
 echo "=== Completed: $(date) ==="

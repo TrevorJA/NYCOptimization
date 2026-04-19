@@ -28,7 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import OUTPUTS_DIR, get_n_vars, get_obj_names
 from src.load.reference_set import load_reference_set
 from src.simulation import dvs_to_config, run_simulation_to_disk
-from src.objectives import DEFAULT_OBJECTIVES
+from src.formulations import get_objective_set
+
+_ACTIVE_OBJS = get_objective_set()
 
 
 def _evaluate_one(task: tuple) -> tuple[int, list[float] | None, str | None]:
@@ -44,7 +46,7 @@ def _evaluate_one(task: tuple) -> tuple[int, list[float] | None, str | None]:
     try:
         cfg = dvs_to_config(dv_vector, formulation)
         data = run_simulation_to_disk(cfg, out_path)
-        objs = list(DEFAULT_OBJECTIVES.compute(data))
+        objs = list(_ACTIVE_OBJS.compute(data))
         return solution_id, objs, None
     except Exception as e:
         return solution_id, None, f"{type(e).__name__}: {e}"

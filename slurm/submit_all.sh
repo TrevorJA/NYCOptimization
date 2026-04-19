@@ -14,8 +14,8 @@
 #   bash slurm/submit_all.sh ffmp rbf         # submit only listed architectures
 #
 # Environment overrides (forwarded to jobs via --export=ALL):
-#   NYCOPT_STATE_SPEC=extended
-#   NYCOPT_OBJECTIVE_SET=default
+#   NYCOPT_STATE_FEATURES="combined_nyc_storage_frac,montague_flow_lag2,..."
+#   NYCOPT_OBJECTIVES="nyc_reliability_weekly,montague_reliability_weekly_fixed,..."
 
 set -euo pipefail
 
