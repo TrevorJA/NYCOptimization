@@ -15,7 +15,7 @@ outputs/presim/
 outputs/figures/
 
 # Borg MOEA (licensed, not distributed)
-borg/
+lib/borg/
 *.so
 *.dll
 
@@ -42,15 +42,6 @@ Thumbs.db
 .claude
 
 MOEAFramework-5.0/
-borg.py
-borg.c
-borg.h
-borgmm.c
-borgmm.h
-borgms.c
-borgms.h
-mt19937ar.c
-mt19937ar.h
 *.so.old
 *.so.bak
 local_notes/

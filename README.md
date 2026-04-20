@@ -128,11 +128,12 @@ Output: `outputs/reevaluation/{formulation}/solution_XXXX.hdf5` and `outputs/ree
 
 ### Compilation
 
-Place `borgmm.c` and `mt19937ar.c` in the `borg/` directory (from the `passNFE_ALH_PyCheckpoint` branch of MMBorgMOEA). Also place the revised `borg.py` wrapper from the BorgTraining repository.
+Place `borgmm.c` and `mt19937ar.c` in the `lib/borg/` directory (from the `passNFE_ALH_PyCheckpoint` branch of MMBorgMOEA). Also place the revised `borg.py` wrapper from the BorgTraining repository.
 
 ```bash
 # Linux (HPC)
-mpicc -shared -fPIC -O3 -o borg/libborgmm.so borg/borgmm.c borg/mt19937ar.c -lm
+mpicc -shared -fPIC -O3 -o lib/borg/libborgmm.so \
+    lib/borg/borgmm.c lib/borg/mt19937ar.c -lm
 
 # Verify
 mpirun -np 4 python3 src/mmborg_cli.py --seed 1 --islands 1 --nfe 100
@@ -141,11 +142,12 @@ mpirun -np 4 python3 src/mmborg_cli.py --seed 1 --islands 1 --nfe 100
 ### Required Files
 
 ```
-borg/
+lib/borg/
 ├── borg.py          # Python ctypes wrapper (from BorgTraining repo)
 ├── borgmm.c         # MM Borg C source (passNFE_ALH_PyCheckpoint branch)
 ├── mt19937ar.c      # Mersenne Twister RNG
-└── libborgmm.so     # Compiled shared library (generated)
+├── libborg.so       # Serial Borg shared library (generated)
+└── libborgmm.so     # MM Borg shared library (generated)
 ```
 
 ### HPC Environment
@@ -233,9 +235,13 @@ NYCOptimization/
 │   ├── manuscript_figures/             # Publication-quality figures
 │   └── reevaluation/
 │
-└── borg/                               # Borg MOEA files (git-ignored, licensed)
-    ├── borg.py
-    └── libborgmm.so
+└── lib/                                # Third-party sources (git-ignored, licensed)
+    └── borg/                           # Borg MOEA (see Borg Setup section above)
+        ├── borg.py
+        ├── borgmm.c
+        ├── mt19937ar.c
+        ├── libborg.so
+        └── libborgmm.so
 ```
 
 ## Relevant Repositories

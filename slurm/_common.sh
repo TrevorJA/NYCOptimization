@@ -29,6 +29,11 @@ mkdir -p logs
 module load python/3.11.5 || true
 source venv/bin/activate
 
+# Make `from borg import ...` work from any CWD. borg.py still loads
+# libborg.so / libborgmm.so relative to CWD, so callers that start MPI
+# (e.g. src/mmborg.py) chdir into lib/borg/ for that call.
+export PYTHONPATH="${PWD}:${PWD}/lib/borg:${PYTHONPATH:-}"
+
 # ---- Thread pinning (prevents BLAS contention across MPI ranks) ----
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
