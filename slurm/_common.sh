@@ -14,6 +14,10 @@
 # Optional:
 #   DEBUG_SIM     "true" to use short 2018-2022 simulation window
 #   CHECKPOINT    "true" to enable Borg checkpointing (currently race-prone)
+#   RUN_SLUG      output directory tag; defaults to ${FORMULATION}. Use a
+#                 distinct slug when varying NYCOPT_STATE_FEATURES or
+#                 NYCOPT_OBJECTIVES so runs don't collide under
+#                 outputs/optimization/.
 #
 # Also honors these environment overrides (read by config.py):
 #   NYCOPT_STATE_FEATURES   comma-separated feature names (see STATE_FEATURE_REGISTRY)
@@ -43,8 +47,11 @@ fi
 # Allocate 200 slots (5 nodes × 40) and run 199 to leave 1 slot headroom.
 NTASKS_MPI=${NTASKS_MPI:-199}
 
+# ---- Output slug (output subdirectory + file prefix) ----
+export RUN_SLUG="${RUN_SLUG:-${FORMULATION}}"
+
 # ---- Reproducibility logging ----
-RUN_TAG="${FORMULATION}_seed${SEED}_${SLURM_JOB_ID:-local}"
+RUN_TAG="${RUN_SLUG}_seed${SEED}_${SLURM_JOB_ID:-local}"
 RUN_LOG_DIR="outputs/run_manifests/${RUN_TAG}"
 mkdir -p "${RUN_LOG_DIR}"
 
@@ -58,6 +65,7 @@ mkdir -p "${RUN_LOG_DIR}"
     echo "Alloc ntasks:    ${SLURM_NTASKS:-?}"
     echo "MPI ntasks used: ${NTASKS_MPI}"
     echo "Formulation:     ${FORMULATION}"
+    echo "Slug:            ${RUN_SLUG}"
     echo "Seed:            ${SEED}"
     echo "N islands:       ${N_ISLANDS}"
     echo "NFE/island:      ${NFE}"

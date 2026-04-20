@@ -19,6 +19,10 @@ def main():
     parser = argparse.ArgumentParser(description="Run MM Borg optimization")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--formulation", type=str, default="ffmp")
+    parser.add_argument("--slug", type=str, default=None,
+                        help="Output directory tag (default: formulation name). "
+                             "Use distinct slugs when varying STATE_FEATURES/OBJECTIVES "
+                             "so results don't collide under outputs/optimization/.")
     parser.add_argument("--islands", type=int, default=2)
     parser.add_argument("--nfe", type=int, default=None)
     parser.add_argument("--time", type=int, default=None,
@@ -31,12 +35,14 @@ def main():
                              "Overrides BORG_SETTINGS['runtime_frequency'] when set.")
     args = parser.parse_args()
 
+    slug = args.slug if args.slug else args.formulation
+
     checkpoint_base = None
     if args.checkpoint:
-        ckpt_dir = OUTPUTS_DIR / "optimization" / args.formulation / "checkpoints"
+        ckpt_dir = OUTPUTS_DIR / "optimization" / slug / "checkpoints"
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_base = str(
-            ckpt_dir / f"seed_{args.seed:02d}_{args.formulation}"
+            ckpt_dir / f"seed_{args.seed:02d}_{slug}"
         )
 
     runtime_freq = args.runtime_freq if args.runtime_freq is not None else BORG_SETTINGS["runtime_frequency"]
@@ -50,6 +56,7 @@ def main():
         runtime_frequency=runtime_freq,
         checkpoint_base=checkpoint_base,
         restore_checkpoint=args.restore,
+        slug=slug,
     )
 
 

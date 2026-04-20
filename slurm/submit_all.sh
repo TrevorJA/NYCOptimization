@@ -34,7 +34,7 @@ done
 # Read the N sweep list from config.py so it stays in one place.
 N_SWEEP=$(python3 -c "from config import FFMP_VR_N_SWEEP; print(' '.join(str(n) for n in FFMP_VR_N_SWEEP))")
 
-# Default targets
+# Default targets.
 if [[ ${#ARGS[@]} -eq 0 ]]; then
     TARGETS=(ffmp rbf tree ann ffmp_vr)
 else

@@ -140,7 +140,7 @@ ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
 # NOTE on baseline equivalence: generate_ffmp_formulation(n_zones=6) produces
 # the 7-level zone count of the standard FFMP; values ≥ 6 are higher-resolution
 # variants. The user requirement is N ≥ baseline, so this sweep starts at 6.
-FFMP_VR_N_SWEEP = [6, 8, 10, 14, 20]
+FFMP_VR_N_SWEEP = [6, 8, 10, 12]
 
 
 ###############################################################################

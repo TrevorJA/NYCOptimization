@@ -25,6 +25,7 @@ set -euo pipefail
 
 cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 mkdir -p logs
+module load python/3.11.5
 source venv/bin/activate
 
 export OMP_NUM_THREADS=1
