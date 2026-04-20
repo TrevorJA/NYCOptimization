@@ -5,22 +5,24 @@ Uses the passNFE_ALH_PyCheckpoint branch of MMBorgMOEA with the
 dict-based Borg constructor and NFE-aware objective function signature.
 
 Compilation (from MMBorgMOEA repo, passNFE_ALH_PyCheckpoint branch):
-    mpicc -shared -fPIC -O3 -o libborgmm.so borgmm.c mt19937ar.c -lm
+    mpicc -shared -fPIC -O3 -o lib/borg/libborgmm.so \\
+        lib/borg/borgmm.c lib/borg/mt19937ar.c -lm
 
-Required files in borg/ directory:
+Required files in lib/borg/:
     - borg.py      (Python wrapper from passNFE_ALH_PyCheckpoint branch)
+    - libborg.so   (serial Borg shared library)
     - libborgmm.so (compiled MM Borg shared library)
 """
 
+import os
 import sys
 import time
 import numpy as np
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-# borg.py lives at the project root (NYCOptimization/borg.py); no borg/ subdir needed
 
-from config import BORG_SETTINGS, OUTPUTS_DIR, get_epsilons
+from config import BORG_SETTINGS, OUTPUTS_DIR, BORG_DIR, get_epsilons
 from src.formulations import (
     get_n_vars,
     get_n_objs,
@@ -59,7 +61,14 @@ def run_mmborg(
             slug (e.g. "smoke_ffmp", "ann_reduced_state") when varying
             STATE_FEATURES/OBJECTIVES so outputs don't collide.
     """
+    # borg.py loads ./libborg.so and ./libborgmm.so relative to CWD, so
+    # cd into lib/borg/ for the import + MPI initialization, then restore.
+    _saved_cwd = os.getcwd()
+    os.chdir(str(BORG_DIR))
     from borg import Borg, Configuration
+    Configuration.startMPI()
+    os.chdir(_saved_cwd)
+    print(f"[MM-Borg] MPI started", flush=True)
 
     if slug is None:
         slug = formulation_name
@@ -129,10 +138,9 @@ def run_mmborg(
         runtime_dir / f"seed_{seed:02d}_{slug}_%d.runtime"
     )
 
-    # --- MPI lifecycle ---
-    Configuration.startMPI()
+    # --- solveMPI ---
     t_start = time.time()
-    print(f"[MM-Borg] MPI started, launching solveMPI...", flush=True)
+    print(f"[MM-Borg] launching solveMPI...", flush=True)
 
     solve_kwargs = {
         "maxEvaluations": max_evaluations,

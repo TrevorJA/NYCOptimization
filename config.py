@@ -23,7 +23,7 @@ OUTPUTS_DIR = PROJECT_DIR / "outputs"
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
 
 # Borg shared libraries (user must compile and place here)
-BORG_DIR = PROJECT_DIR / "borg"
+BORG_DIR = PROJECT_DIR / "lib" / "borg"
 
 # Pywr-DRB pre-simulated releases for trimmed model
 PRESIM_DIR = OUTPUTS_DIR / "presim"
