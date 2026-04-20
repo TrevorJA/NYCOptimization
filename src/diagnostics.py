@@ -40,9 +40,51 @@ References:
 import subprocess
 from pathlib import Path
 
-from config import get_epsilons, OUTPUTS_DIR, DIAGNOSTICS_SETTINGS
+from config import get_epsilons, OUTPUTS_DIR, DIAGNOSTICS_SETTINGS, FFMP_VR_N_SWEEP
 
-# MOEAFramework problem name (must match JAR in lib/)
+# Per-formulation MOEAFramework problem registrations. Each is built as a
+# separate JAR in MOEAFramework-5.0/lib/ with the correct (nvars, nobjs).
+# All use the current 7-objective set.
+#   drb_ffmp     -> 24 DVs
+#   drb_rbf      -> 48 DVs  (4 default state features -> 6 inputs)
+#   drb_tree     -> 57 DVs
+#   drb_ann      -> 137 DVs
+#   drb_ffmp_{N} -> per-N DV count (varies with number of zones).
+#                   Built automatically by slurm/build_ffmp_vr_jars.sh.
+# Slugs can be any string; we infer the formulation family from the suffix
+# (after any run-tag prefix like "smoke_" or "v2_").
+_FORMULATION_TO_PROBLEM = {
+    "ffmp": "drb_ffmp",
+    "rbf":  "drb_rbf",
+    "tree": "drb_tree",
+    "ann":  "drb_ann",
+}
+for _n in FFMP_VR_N_SWEEP:
+    _FORMULATION_TO_PROBLEM[f"ffmp_{_n}"] = f"drb_ffmp_{_n}"
+
+
+def problem_name_for(slug: str) -> str:
+    """Return the MOEAFramework problem name matching a slug's formulation family.
+
+    Strategy: strip a leading ``<tag>_`` prefix until the remaining string is
+    a known formulation family (ffmp/rbf/tree/ann). Works for both plain
+    slugs (``ffmp``) and tagged ones (``smoke_ffmp``, ``v2_rbf``).
+    """
+    s = slug
+    while s:
+        if s in _FORMULATION_TO_PROBLEM:
+            return _FORMULATION_TO_PROBLEM[s]
+        if "_" not in s:
+            break
+        s = s.split("_", 1)[1]
+    raise ValueError(
+        f"Cannot resolve MOEAFramework problem name for slug '{slug}'. "
+        f"Expected the slug to contain one of: "
+        f"{sorted(_FORMULATION_TO_PROBLEM)}."
+    )
+
+
+# Back-compat default (unused when problem_name_for is called)
 MOEA_PROBLEM_NAME = "drb_ffmp"
 
 
@@ -52,7 +94,7 @@ def get_cli_path() -> str:
 
 
 def merge_reference_set(
-    formulation: str,
+    slug: str,
     seed: int = None,
     runtime_dir: Path = None,
     output_file: Path = None,
@@ -63,7 +105,9 @@ def merge_reference_set(
     into a single non-dominated set.
 
     Args:
-        formulation: Formulation name.
+        slug: Run slug (output subdirectory + filename prefix). For simple
+            runs this equals the formulation name; for variant runs it is the
+            user-provided RUN_SLUG that wraps formulation + config variant.
         seed: Seed number (if None, merges all seeds).
         runtime_dir: Directory containing .runtime files.
         output_file: Output .set file path.
@@ -72,20 +116,20 @@ def merge_reference_set(
         Path to the merged .set file.
     """
     if runtime_dir is None:
-        runtime_dir = OUTPUTS_DIR / "optimization" / formulation / "runtime"
+        runtime_dir = OUTPUTS_DIR / "optimization" / slug / "runtime"
     if output_file is None:
-        sets_dir = OUTPUTS_DIR / "optimization" / formulation / "sets"
+        sets_dir = OUTPUTS_DIR / "optimization" / slug / "sets"
         sets_dir.mkdir(parents=True, exist_ok=True)
         suffix = f"_seed{seed:02d}" if seed else ""
-        output_file = sets_dir / f"{formulation}{suffix}_merged.set"
+        output_file = sets_dir / f"{slug}{suffix}_merged.set"
 
     epsilons = ",".join(str(e) for e in get_epsilons())
 
     # Find runtime files (filter by seed if specified)
     if seed is not None:
-        pattern = f"seed_{seed:02d}_{formulation}_*.runtime"
+        pattern = f"seed_{seed:02d}_{slug}_*.runtime"
     else:
-        pattern = f"*_{formulation}_*.runtime"
+        pattern = f"*_{slug}_*.runtime"
     runtime_files = sorted(runtime_dir.glob(pattern))
 
     if not runtime_files:
@@ -95,7 +139,7 @@ def merge_reference_set(
 
     cmd = [
         get_cli_path(), "ResultFileMerger",
-        "--problem", MOEA_PROBLEM_NAME,
+        "--problem", problem_name_for(slug),
         "--epsilon", epsilons,
         "--output", str(output_file),
     ] + [str(f) for f in runtime_files]
@@ -108,6 +152,7 @@ def merge_reference_set(
 def compute_metrics(
     runtime_file: Path,
     reference_file: Path,
+    slug: str,
     output_file: Path = None,
 ) -> Path:
     """Compute runtime metrics for a single runtime file.
@@ -119,6 +164,7 @@ def compute_metrics(
     Args:
         runtime_file: Input .runtime file.
         reference_file: Reference set (.set or .ref file).
+        slug: Run slug (picks the MOEAFramework problem registration).
         output_file: Output .metrics file.
 
     Returns:
@@ -133,7 +179,7 @@ def compute_metrics(
 
     cmd = [
         get_cli_path(), "MetricsEvaluator",
-        "--problem", MOEA_PROBLEM_NAME,
+        "--problem", problem_name_for(slug),
         "--epsilon", epsilons,
         "--input", str(runtime_file),
         "--reference", str(reference_file),
@@ -147,7 +193,7 @@ def compute_metrics(
 
 
 def run_diagnostics(
-    formulation: str,
+    slug: str,
     seed: int = 1,
     runtime_dir: Path = None,
 ):
@@ -158,7 +204,7 @@ def run_diagnostics(
         2. Compute metrics for each island's runtime file
 
     Args:
-        formulation: Formulation name.
+        slug: Run slug (output subdirectory + filename prefix).
         seed: Seed number.
         runtime_dir: Directory containing .runtime files.
 
@@ -166,22 +212,22 @@ def run_diagnostics(
         Tuple of (reference_set_path, list_of_metrics_paths).
     """
     if runtime_dir is None:
-        runtime_dir = OUTPUTS_DIR / "optimization" / formulation / "runtime"
+        runtime_dir = OUTPUTS_DIR / "optimization" / slug / "runtime"
 
-    print(f"\n=== MOEAFramework Diagnostics: {formulation}, seed {seed} ===\n")
+    print(f"\n=== MOEAFramework Diagnostics: {slug}, seed {seed} ===\n")
 
     # Step 1: Merge runtime files into reference set
     print("Step 1: Merging reference set...")
-    ref_file = merge_reference_set(formulation, seed=seed, runtime_dir=runtime_dir)
+    ref_file = merge_reference_set(slug, seed=seed, runtime_dir=runtime_dir)
 
     # Step 2: Compute metrics for each island runtime file
     print("\nStep 2: Computing runtime metrics...")
-    pattern = f"seed_{seed:02d}_{formulation}_*.runtime"
+    pattern = f"seed_{seed:02d}_{slug}_*.runtime"
     runtime_files = sorted(runtime_dir.glob(pattern))
 
     metrics_files = []
     for rf in runtime_files:
-        mf = compute_metrics(rf, ref_file)
+        mf = compute_metrics(rf, ref_file, slug=slug)
         metrics_files.append(mf)
 
     print(f"\n=== Complete ===")
@@ -189,3 +235,47 @@ def run_diagnostics(
     print(f"  Metrics files: {[f.name for f in metrics_files]}")
 
     return ref_file, metrics_files
+
+
+def discover_seeds(slug: str, runtime_dir: Path = None) -> list[int]:
+    """Return sorted list of seed numbers found in the slug's runtime directory.
+
+    Looks for files matching ``seed_NN_{slug}_*.runtime`` and extracts NN.
+    """
+    import re
+
+    if runtime_dir is None:
+        runtime_dir = OUTPUTS_DIR / "optimization" / slug / "runtime"
+
+    pattern = re.compile(rf"^seed_(\d+)_{re.escape(slug)}_.*\.runtime$")
+    seeds = set()
+    if runtime_dir.exists():
+        for f in runtime_dir.iterdir():
+            m = pattern.match(f.name)
+            if m:
+                seeds.add(int(m.group(1)))
+    return sorted(seeds)
+
+
+def run_full_diagnostics(slug: str, seeds: list = None, runtime_dir: Path = None):
+    """Run per-seed diagnostics for every seed present in the slug's output.
+
+    Args:
+        slug: Run slug (output subdirectory + filename prefix).
+        seeds: Optional explicit list of seed numbers. If None, auto-discovers
+            every seed found in ``outputs/optimization/{slug}/runtime``.
+        runtime_dir: Optional explicit runtime directory override.
+
+    Returns:
+        Dict of {seed: (ref_file, metrics_files)}.
+    """
+    if seeds is None:
+        seeds = discover_seeds(slug, runtime_dir=runtime_dir)
+    if not seeds:
+        print(f"[{slug}] no runtime files found; skipping.")
+        return {}
+
+    results = {}
+    for seed in seeds:
+        results[seed] = run_diagnostics(slug, seed=seed, runtime_dir=runtime_dir)
+    return results

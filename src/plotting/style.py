@@ -6,6 +6,9 @@ manuscript figures and diagnostic plots.
 """
 
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+from config import FFMP_VR_N_SWEEP
 
 # ---------------------------------------------------------------------------
 # Architecture metadata
@@ -18,6 +21,8 @@ ARCH_LABELS: dict[str, str] = {
     "tree":  "Oblique Tree (depth 3, 15 inputs)",
     "ann":   "ANN (2×8 hidden, 15 inputs)",
 }
+for _n in FFMP_VR_N_SWEEP:
+    ARCH_LABELS[f"ffmp_{_n}"] = f"FFMP (N={_n} zones)"
 
 #: Distinct color per architecture for overlaid Pareto front comparisons.
 ARCH_COLORS: dict[str, str] = {
@@ -26,6 +31,13 @@ ARCH_COLORS: dict[str, str] = {
     "tree":  "mediumseagreen",
     "ann":   "mediumpurple",
 }
+# N-zone variants get a sequential viridis-family ramp so higher N reads
+# "deeper" complexity at a glance.
+_vr_cmap = cm.get_cmap("viridis")
+for _i, _n in enumerate(FFMP_VR_N_SWEEP):
+    # Sample away from the extremes so the colors print well.
+    _t = 0.15 + 0.70 * (_i / max(1, len(FFMP_VR_N_SWEEP) - 1))
+    ARCH_COLORS[f"ffmp_{_n}"] = _vr_cmap(_t)
 
 # ---------------------------------------------------------------------------
 # Objective labels

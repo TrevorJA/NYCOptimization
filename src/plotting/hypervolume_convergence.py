@@ -8,6 +8,28 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
+def _load_metrics_file(path: Path):
+    """Read a MOEAFramework v5 .metrics file.
+
+    Format: one header line starting with '# ' naming the 6 indicators,
+    followed by whitespace-separated numeric rows — one per runtime
+    snapshot. Returns a DataFrame with the header names as columns or
+    None on failure.
+    """
+    try:
+        with open(path) as fh:
+            first = fh.readline().strip()
+        if first.startswith("#"):
+            cols = first.lstrip("#").split()
+        else:
+            cols = None
+        df = pd.read_csv(path, sep=r"\s+", skiprows=1, header=None, names=cols)
+        return df
+    except Exception as e:
+        print(f"Warning: could not parse {path}: {e}")
+        return None
+
+
 def plot_hypervolume_convergence(
     metrics_dir: Path,
     formulation: str,
@@ -35,17 +57,19 @@ def plot_hypervolume_convergence(
 
     for mf in metrics_files:
         seed_label = mf.stem.split("_")[1]
-        try:
-            df = pd.read_csv(mf, sep=r"\s+", comment="#")
-        except Exception as e:
-            print(f"Warning: Could not load {mf}: {e}")
+        df = _load_metrics_file(mf)
+        if df is None or df.empty:
+            print(f"Warning: empty metrics file {mf.name}")
             continue
 
-        if "Hypervolume" in df.columns and "NFE" in df.columns:
+        # MOEAFramework metrics files have no NFE column. Treat snapshot
+        # index as an NFE proxy (runtime_frequency * (1+index)).
+        x = df.index.values
+        if "Hypervolume" in df.columns:
             ax.plot(
-                df["NFE"], df["Hypervolume"],
+                x, df["Hypervolume"],
                 alpha=0.6, linewidth=1.0,
-                label=f"Seed {seed_label}",
+                label=f"{mf.stem}",
             )
 
     ax.set_xlabel("Number of Function Evaluations (NFE)")

@@ -88,7 +88,7 @@ def get_formulation(name: str = "ffmp") -> dict:
         except (IndexError, ValueError):
             pass
         else:
-            if n >= 1:
+            if n >= 2:
                 return generate_ffmp_formulation(n)
     raise ValueError(
         f"Unknown formulation '{name}'. "

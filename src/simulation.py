@@ -45,7 +45,6 @@ from config import (
     NYC_RESERVOIRS,
 )
 from src.formulations import get_formulation, get_var_names
-from src.formulations.ffmp import _interpolate_factors
 
 # Allow debug override of simulation date range via environment variables.
 # Set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE (YYYY-MM-DD) before
@@ -259,131 +258,21 @@ def _patch_model_dict(model_dict: dict, nyc_config):
 ###############################################################################
 
 def build_nzone_config(n_zones):
-    """Build NYCOperationsConfig with N storage zones by interpolating 7-zone defaults.
+    """Build NYCOperationsConfig with N storage zones via pywrdrb's native interpolation.
 
-    Creates storage zone names zone_1..zone_N (N boundary curves) and drought
-    level names zone_0..zone_N (N+1 levels, where zone_0 = normal operations).
+    Delegates to pywrdrb's NYCOperationsConfig.from_n_zones(N), which linearly
+    interpolates the 6-curve FFMP defaults to N boundary curves (producing N+1
+    drought levels zone_0..zone_N). Byte-level equivalence with the previous
+    local implementation was verified at N ∈ {6, 8, 10, 12}.
 
     Args:
-        n_zones: Number of storage zone boundary curves.
+        n_zones: Number of storage zone boundary curves (>= 2).
 
     Returns:
         NYCOperationsConfig instance.
     """
     from pywrdrb.parameters.nyc_operations_config import NYCOperationsConfig
-
-    base = NYCOperationsConfig.from_defaults()
-
-    # Resolve default level names robustly — work with both old (class attrs)
-    # and new (property-based) NYCOperationsConfig.
-    default_storage_levels = (
-        base._DEFAULT_STORAGE_LEVELS
-        if hasattr(base, '_DEFAULT_STORAGE_LEVELS')
-        else ['level1b', 'level1c', 'level2', 'level3', 'level4', 'level5']
-    )
-    default_drought_levels = (
-        base._DEFAULT_DROUGHT_LEVELS
-        if hasattr(base, '_DEFAULT_DROUGHT_LEVELS')
-        else ['level1a', 'level1b', 'level1c', 'level2', 'level3', 'level4', 'level5']
-    )
-
-    date_cols = [c for c in base.storage_zones_df.columns if c != 'doy']
-    n_cols = len(date_cols)
-
-    # 1. Interpolate storage zone profiles (6 default rows → N rows)
-    default_profiles = base.storage_zones_df.loc[
-        default_storage_levels, date_cols
-    ].values.astype(float)  # shape (6, 366)
-
-    x_default = np.linspace(0, 1, 6)
-    x_target = np.linspace(0, 1, n_zones)
-    new_profiles = np.zeros((n_zones, n_cols))
-    for col_idx in range(n_cols):
-        new_profiles[:, col_idx] = np.interp(x_target, x_default, default_profiles[:, col_idx])
-
-    zone_names = [f"zone_{i+1}" for i in range(n_zones)]
-    new_storage_df = pd.DataFrame(new_profiles, index=zone_names, columns=date_cols)
-    new_storage_df.index.name = 'profile'
-
-    # 2. Build new constants: copy non-level keys, interpolate delivery factors
-    drought_level_names = ["zone_0"] + zone_names
-    new_constants = {}
-    for k, v in base.constants.items():
-        is_level_key = any(
-            k.startswith(f"{lev}_factor_delivery")
-            for lev in default_drought_levels
-        )
-        if not is_level_key:
-            new_constants[k] = v
-
-    default_nyc = [float(base.constants[f"{lev}_factor_delivery_nyc"])
-                   for lev in default_drought_levels]
-    default_nj = [float(base.constants[f"{lev}_factor_delivery_nj"])
-                  for lev in default_drought_levels]
-    interp_nyc = _interpolate_factors(default_nyc, n_zones + 1)
-    interp_nj = _interpolate_factors(default_nj, n_zones + 1)
-
-    for i, level in enumerate(drought_level_names):
-        new_constants[f"{level}_factor_delivery_nyc"] = interp_nyc[i]
-        new_constants[f"{level}_factor_delivery_nj"] = interp_nj[i]
-
-    # 3. Build mrf_factors_daily_df: storage zone rows + MRF factor rows
-    mrf_daily_data = {}
-    for i, zn in enumerate(zone_names):
-        mrf_daily_data[zn] = new_profiles[i, :]
-
-    for res in ['cannonsville', 'pepacton', 'neversink']:
-        default_mrf = np.array([
-            base.mrf_factors_daily_df.loc[
-                f"{lev}_factor_mrf_{res}", date_cols
-            ].values.astype(float)
-            for lev in default_drought_levels
-        ])  # shape (7, 366)
-        x_def = np.linspace(0, 1, 7)
-        x_tgt = np.linspace(0, 1, n_zones + 1)
-        row_data = {f"{level}_factor_mrf_{res}": np.zeros(n_cols)
-                    for level in drought_level_names}
-        for col_idx in range(n_cols):
-            interp_col = np.interp(x_tgt, x_def, default_mrf[:, col_idx])
-            for j, level in enumerate(drought_level_names):
-                row_data[f"{level}_factor_mrf_{res}"][col_idx] = interp_col[j]
-        mrf_daily_data.update(row_data)
-
-    new_mrf_daily_df = pd.DataFrame(mrf_daily_data).T
-    new_mrf_daily_df.columns = date_cols
-    new_mrf_daily_df.index.name = 'profile'
-
-    # 4. Interpolate MRF monthly profiles
-    month_cols = ['jan', 'feb', 'mar', 'apr', 'may', 'jun',
-                  'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-    mrf_monthly_data = {}
-    for loc in ['delMontague', 'delTrenton']:
-        default_mrf = np.array([
-            base.mrf_factors_monthly_df.loc[
-                f"{lev}_factor_mrf_{loc}", month_cols
-            ].values.astype(float)
-            for lev in default_drought_levels
-        ])  # shape (7, 12)
-        x_def = np.linspace(0, 1, 7)
-        x_tgt = np.linspace(0, 1, n_zones + 1)
-        row_data = {f"{level}_factor_mrf_{loc}": np.zeros(12)
-                    for level in drought_level_names}
-        for col_idx in range(12):
-            interp_col = np.interp(x_tgt, x_def, default_mrf[:, col_idx])
-            for j, level in enumerate(drought_level_names):
-                row_data[f"{level}_factor_mrf_{loc}"][col_idx] = interp_col[j]
-        mrf_monthly_data.update(row_data)
-
-    new_mrf_monthly_df = pd.DataFrame(mrf_monthly_data).T
-    new_mrf_monthly_df.columns = month_cols
-    new_mrf_monthly_df.index.name = 'profile'
-
-    return NYCOperationsConfig(
-        storage_zones_df=new_storage_df,
-        mrf_factors_daily_df=new_mrf_daily_df,
-        mrf_factors_monthly_df=new_mrf_monthly_df,
-        constants=new_constants,
-    )
+    return NYCOperationsConfig.from_n_zones(n_zones)
 
 
 ###############################################################################

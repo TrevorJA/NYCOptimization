@@ -40,13 +40,14 @@ def run_mmborg(
     runtime_frequency: int = None,
     checkpoint_base: str = None,
     restore_checkpoint: str = None,
+    slug: str = None,
 ):
     """Execute Multi-Master Borg optimization.
 
     Called by all MPI ranks. Only the controller (rank 0) receives results.
 
     Args:
-        formulation_name: Problem formulation name.
+        formulation_name: Problem formulation name (drives DV bounds & objectives).
         seed: Random seed number (1-indexed).
         n_islands: Number of MM Borg islands.
         max_evaluations: Max NFE per island (default from config).
@@ -54,14 +55,21 @@ def run_mmborg(
         runtime_frequency: NFE interval for runtime snapshots.
         checkpoint_base: Path base for new checkpoint files.
         restore_checkpoint: Path to existing checkpoint file to restore from.
+        slug: Output directory tag. Defaults to formulation_name. Use a distinct
+            slug (e.g. "smoke_ffmp", "ann_reduced_state") when varying
+            STATE_FEATURES/OBJECTIVES so outputs don't collide.
     """
     from borg import Borg, Configuration
+
+    if slug is None:
+        slug = formulation_name
 
     n_vars = get_n_vars(formulation_name)
     n_objs = get_n_objs()
 
-    print(f"[MM-Borg] Pre-MPI setup: {n_vars} vars, {n_objs} objs, "
-          f"{n_islands} islands, {max_evaluations} NFE/island", flush=True)
+    print(f"[MM-Borg] Pre-MPI setup: slug={slug}, formulation={formulation_name}, "
+          f"{n_vars} vars, {n_objs} objs, {n_islands} islands, "
+          f"{max_evaluations} NFE/island", flush=True)
 
     if max_evaluations is None:
         max_evaluations = BORG_SETTINGS["max_evaluations"]
@@ -110,7 +118,7 @@ def run_mmborg(
     )
 
     # --- Output paths ---
-    opt_dir = OUTPUTS_DIR / "optimization" / formulation_name
+    opt_dir = OUTPUTS_DIR / "optimization" / slug
     runtime_dir = opt_dir / "runtime"
     sets_dir = opt_dir / "sets"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -118,7 +126,7 @@ def run_mmborg(
 
     # %d is replaced by island index by MM Borg
     runtime_path = str(
-        runtime_dir / f"seed_{seed:02d}_{formulation_name}_%d.runtime"
+        runtime_dir / f"seed_{seed:02d}_{slug}_%d.runtime"
     )
 
     # --- MPI lifecycle ---
@@ -143,7 +151,7 @@ def run_mmborg(
 
     t_end = time.time()
     if result is not None:
-        set_file = sets_dir / f"seed_{seed:02d}_{formulation_name}.set"
+        set_file = sets_dir / f"seed_{seed:02d}_{slug}.set"
         _write_set_file(result, set_file, formulation_name, seed)
         print(f"[Seed {seed}] {result.size()} solutions -> {set_file}", flush=True)
         print(f"[MM-Borg] Total wall time: {t_end - t_start:.1f}s", flush=True)

@@ -5,6 +5,7 @@
 #SBATCH --job-name=mmborg_ffmp
 #SBATCH --nodes=5
 #SBATCH --ntasks-per-node=40
+#SBATCH --exclusive
 #SBATCH --time=48:00:00
 #SBATCH --output=logs/mmborg_ffmp_seed%a_%A.out
 #SBATCH --error=logs/mmborg_ffmp_seed%a_%A.err
@@ -20,11 +21,11 @@ RUNTIME_FREQ=500
 DEBUG_SIM=false
 CHECKPOINT=false
 
-source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/slurm/_common.sh"
 
-ARGS="--seed ${SEED} --formulation ${FORMULATION} --islands ${N_ISLANDS} --nfe ${NFE} --runtime-freq ${RUNTIME_FREQ}"
+ARGS="--seed ${SEED} --formulation ${FORMULATION} --slug ${RUN_SLUG} --islands ${N_ISLANDS} --nfe ${NFE} --runtime-freq ${RUNTIME_FREQ}"
 [[ "${CHECKPOINT}" == "true" ]] && ARGS="${ARGS} --checkpoint"
 
-echo "=== Launching MM-Borg (${FORMULATION}, seed=${SEED}) ==="
+echo "=== Launching MM-Borg (${FORMULATION}, slug=${RUN_SLUG}, seed=${SEED}) ==="
 mpirun -np ${NTASKS_MPI} python3 -u src/mmborg_cli.py ${ARGS}
 echo "=== Completed: $(date) ==="

@@ -23,11 +23,11 @@ def plot_seed_reliability(
     final_hvs = []
     seed_labels = []
 
+    from src.plotting.hypervolume_convergence import _load_metrics_file
     for mf in metrics_files:
         seed_label = mf.stem.split("_")[1]
-        try:
-            df = pd.read_csv(mf, sep=r"\s+", comment="#")
-        except Exception:
+        df = _load_metrics_file(mf)
+        if df is None or df.empty:
             continue
         if "Hypervolume" in df.columns:
             final_hvs.append(df["Hypervolume"].iloc[-1])
