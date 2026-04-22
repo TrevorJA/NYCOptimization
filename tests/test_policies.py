@@ -28,7 +28,8 @@ sys.path.insert(0, '.')
 import numpy as np
 import pytest
 
-from src.policies import PolicyBase, RBFPolicy, ObliqueTreePolicy, ANNPolicy
+from src.policies import (PolicyBase, RBFPolicy, ObliqueTreePolicy, ANNPolicy,
+                           SplineAdditivePolicy)
 
 # ---------------------------------------------------------------------------
 # Markers
@@ -53,6 +54,12 @@ def tree_policy():
 @pytest.fixture
 def ann_policy():
     return ANNPolicy(n_inputs=15, n_outputs=1, h1=8, h2=8, output_max=3000.0)
+
+
+@pytest.fixture
+def spline_policy():
+    return SplineAdditivePolicy(n_inputs=15, n_outputs=1, grid_size=5,
+                                spline_order=3, output_max=3000.0)
 
 
 # ---------------------------------------------------------------------------
@@ -254,10 +261,93 @@ class TestANNPolicy:
 
 
 # ===========================================================================
+# 2c. SplineAdditivePolicy unit tests
+# ===========================================================================
+
+class TestSplineAdditivePolicy:
+
+    def test_spline_n_params(self, spline_policy):
+        p = spline_policy
+        expected = p._n_inputs * p._n_outputs * p._n_basis + p._n_outputs
+        assert p.n_params == expected
+
+    def test_spline_n_basis_formula(self, spline_policy):
+        p = spline_policy
+        assert p._n_basis == p._G + p._k
+
+    def test_spline_bounds_shape(self, spline_policy):
+        lb, ub = spline_policy.get_bounds()
+        assert len(lb) == spline_policy.n_params
+        assert len(ub) == spline_policy.n_params
+
+    def test_spline_bounds_ordering(self, spline_policy):
+        lb, ub = spline_policy.get_bounds()
+        assert np.all(lb <= ub)
+
+    def test_spline_bounds_split(self, spline_policy):
+        """Coefficient bounds are [-1, 1]; bias bounds are [-3, 3]."""
+        p = spline_policy
+        lb, ub = p.get_bounds()
+        n_coef = p._n_inputs * p._n_outputs * p._n_basis
+        assert np.all(lb[:n_coef] == -1.0)
+        assert np.all(ub[:n_coef] ==  1.0)
+        assert np.all(lb[n_coef:] == -3.0)
+        assert np.all(ub[n_coef:] ==  3.0)
+
+    def test_spline_set_params_wrong_size(self, spline_policy):
+        with pytest.raises(ValueError):
+            spline_policy.set_params(np.zeros(spline_policy.n_params + 1))
+
+    def test_spline_output_shape(self, spline_policy):
+        rng = np.random.default_rng(42)
+        params = _random_valid_params(spline_policy, rng)
+        spline_policy.set_params(params)
+        out = spline_policy(_random_state(spline_policy.n_inputs, rng))
+        assert out.shape == (spline_policy.n_outputs,)
+
+    def test_spline_output_bounds(self, spline_policy):
+        rng = np.random.default_rng(0)
+        for _ in range(100):
+            params = _random_valid_params(spline_policy, rng)
+            spline_policy.set_params(params)
+            out = spline_policy(_random_state(spline_policy.n_inputs, rng))
+            assert np.all(out >= 0.0), f"Output below min: {out}"
+            assert np.all(out <= 3000.0), f"Output above max: {out}"
+
+    def test_spline_handles_boundary_inputs(self, spline_policy):
+        """Inputs exactly at 0 or 1 must not produce NaN."""
+        rng = np.random.default_rng(13)
+        params = _random_valid_params(spline_policy, rng)
+        spline_policy.set_params(params)
+        for x in (0.0, 1.0):
+            out = spline_policy(np.full(spline_policy.n_inputs, x))
+            assert np.all(np.isfinite(out)), f"Non-finite output at x={x}: {out}"
+
+    def test_spline_clamps_out_of_range(self, spline_policy):
+        """Inputs slightly outside [0, 1] are clamped and evaluation stays finite."""
+        rng = np.random.default_rng(14)
+        params = _random_valid_params(spline_policy, rng)
+        spline_policy.set_params(params)
+        drifted = np.full(spline_policy.n_inputs, 1.0001)
+        out = spline_policy(drifted)
+        assert np.all(np.isfinite(out))
+
+    def test_spline_deterministic(self, spline_policy):
+        rng = np.random.default_rng(77)
+        params = _random_valid_params(spline_policy, rng)
+        spline_policy.set_params(params)
+        state = _random_state(spline_policy.n_inputs, rng)
+        out1 = spline_policy(state)
+        out2 = spline_policy(state)
+        assert np.allclose(out1, out2)
+
+
+# ===========================================================================
 # 3. Parametrized interface tests (all policy types)
 # ===========================================================================
 
-@pytest.mark.parametrize("policy_fixture", ["rbf_policy", "tree_policy", "ann_policy"])
+@pytest.mark.parametrize("policy_fixture",
+                         ["rbf_policy", "tree_policy", "ann_policy", "spline_policy"])
 class TestPolicyInterface:
 
     def test_policy_interface(self, policy_fixture, request):
@@ -371,6 +461,16 @@ class TestIntegration:
         assert len(objs) == self.obj_set.n_objs
         assert all(np.isfinite(v) for v in objs), f"Non-finite objectives: {objs}"
 
+    def test_evaluate_spline_policy(self, spline_policy):
+        """SplineAdditivePolicy evaluation returns finite objectives."""
+        from src.external_policy import evaluate_with_policy
+        rng = np.random.default_rng(21)
+        params = _random_valid_params(spline_policy, rng)
+        spline_policy.set_params(params)
+        objs = evaluate_with_policy(spline_policy, mode="aggregate")
+        assert len(objs) == self.obj_set.n_objs
+        assert all(np.isfinite(v) for v in objs), f"Non-finite objectives: {objs}"
+
     def test_make_objective_function_ffmp(self):
         """make_objective_function dispatches correctly for FFMP."""
         from config import make_objective_function, get_baseline_values
@@ -384,6 +484,16 @@ class TestIntegration:
         from config import make_objective_function, get_bounds
         fn = make_objective_function("rbf")
         lb, ub = get_bounds("rbf")
+        dvs = (lb + ub) / 2.0
+        objs = fn(dvs)
+        assert len(objs) == self.obj_set.n_objs
+        assert all(np.isfinite(v) for v in objs)
+
+    def test_make_objective_function_spline(self):
+        """make_objective_function dispatches correctly for the spline architecture."""
+        from config import make_objective_function, get_bounds
+        fn = make_objective_function("spline")
+        lb, ub = get_bounds("spline")
         dvs = (lb + ub) / 2.0
         objs = fn(dvs)
         assert len(objs) == self.obj_set.n_objs

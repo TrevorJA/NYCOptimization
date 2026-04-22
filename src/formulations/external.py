@@ -109,3 +109,14 @@ register_architecture(
     h2=8,
     output_max=_MAX_TOTAL_RELEASE_MGD,
 )
+
+register_architecture(
+    "spline",
+    architecture_type="spline",
+    description="Additive B-spline policy (1-layer KAN / GAM, G=5, k=3)",
+    policy_class="SplineAdditivePolicy",
+    policy_module="src.policies",
+    grid_size=5,
+    spline_order=3,
+    output_max=_MAX_TOTAL_RELEASE_MGD,
+)
