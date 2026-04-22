@@ -6,12 +6,13 @@
 #   - rbf         (10 seeds, array job)
 #   - tree        (10 seeds, array job)
 #   - ann         (10 seeds, array job)
+#   - spline      (10 seeds, array job)
 #   - ffmp_vr     (10 seeds × len(FFMP_VR_N_SWEEP) array jobs, one per N value)
 #
 # Usage:
 #   bash slurm/submit_all.sh                  # submit everything
 #   bash slurm/submit_all.sh --dry-run        # print sbatch commands only
-#   bash slurm/submit_all.sh ffmp rbf         # submit only listed architectures
+#   bash slurm/submit_all.sh ffmp spline      # submit only listed architectures
 #
 # Environment overrides (forwarded to jobs via --export=ALL):
 #   NYCOPT_STATE_FEATURES="combined_nyc_storage_frac,montague_flow_lag2,..."
@@ -36,7 +37,7 @@ N_SWEEP=$(python3 -c "from config import FFMP_VR_N_SWEEP; print(' '.join(str(n) 
 
 # Default targets.
 if [[ ${#ARGS[@]} -eq 0 ]]; then
-    TARGETS=(ffmp rbf tree ann ffmp_vr)
+    TARGETS=(ffmp rbf tree ann spline ffmp_vr)
 else
     TARGETS=("${ARGS[@]}")
 fi
@@ -50,7 +51,7 @@ run() {
 
 for t in "${TARGETS[@]}"; do
     case "$t" in
-        ffmp|rbf|tree|ann)
+        ffmp|rbf|tree|ann|spline)
             run sbatch --export=ALL --array=1-10 "slurm/mmborg_${t}.sh"
             ;;
         ffmp_vr)
