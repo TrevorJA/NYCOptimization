@@ -223,7 +223,7 @@ NYCOptimization/
       __init__.py                   [NEW]
       base.py                       [NEW] PolicyBase ABC
       rbf_policy.py                 [NEW] RBFPolicy
-      tree_policy.py                [NEW] ObliqueTreePolicy
+      tree_policy.py                [NEW] SoftTreePolicy (soft oblique decision tree)
       ann_policy.py                 [NEW] ANNPolicy
 ```
 

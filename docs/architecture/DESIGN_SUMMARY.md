@@ -88,7 +88,7 @@ class PolicyBase(ABC):
         """How to extract state from model (default: 3 storage values)"""
 ```
 
-Subclasses: `RBFPolicy`, `ObliqueTreePolicy`, `ANNPolicy`
+Subclasses: `RBFPolicy`, `SoftTreePolicy` (formerly `ObliqueTreePolicy`; soft probabilistic gating with optimized temperature γ), `ANNPolicy`, `SplineAdditivePolicy`
 
 ### 4. Evaluation Function (src/simulation_policy.py)
 
@@ -263,9 +263,13 @@ DVs = RBF weights (e.g., 20 basis functions × 3 outputs = 60 DVs)
       Output scaling factors
 ```
 
-**ObliqueTreePolicy (D):**
+**SoftTreePolicy (D):**
 ```
-DVs = Tree weights (splits and leaf values, e.g., 50-100 DVs depending on tree depth)
+DVs = Tree weights (split weights and biases, leaf values) + gamma (1 DV)
+      e.g., depth-3 with 6 inputs, 1 output: 7 internals * (6+1) + 8 leaves * 1 + 1 = 58 DVs
+Soft probabilistic gating p_right = sigmoid(gamma * (w . x + b)); output is the
+path-probability-weighted mixture of all leaves. Continuous and differentiable.
+gamma bounds: [1, 20] (optimized jointly with weights/biases/leaves).
 ```
 
 **ANNPolicy (E):**

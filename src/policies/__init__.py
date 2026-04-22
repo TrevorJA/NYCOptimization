@@ -50,9 +50,9 @@ class PolicyBase(ABC):
 
 
 from .rbf_policy import RBFPolicy
-from .tree_policy import ObliqueTreePolicy
+from .tree_policy import SoftTreePolicy
 from .ann_policy import ANNPolicy
 from .spline_additive_policy import SplineAdditivePolicy
 
-__all__ = ["PolicyBase", "RBFPolicy", "ObliqueTreePolicy", "ANNPolicy",
+__all__ = ["PolicyBase", "RBFPolicy", "SoftTreePolicy", "ANNPolicy",
            "SplineAdditivePolicy"]

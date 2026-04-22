@@ -114,7 +114,7 @@ Output: Time series flows and storages
 - `RBFPolicy`: thin-plate spline radial basis function policy
 
 **NYCOptimization/optimization/policies/tree_policy.py** (NEW)
-- `ObliqueTreePolicy`: gradient-boosted tree with oblique splits
+- `SoftTreePolicy`: soft oblique decision tree with sigmoid gating (γ optimized as DV). Output is a path-probability-weighted mixture of leaves, continuous across split boundaries. Replaces the initially-planned hard oblique tree, which produced physically unrealistic piecewise-constant releases.
 
 **NYCOptimization/optimization/policies/ann_policy.py** (NEW)
 - `ANNPolicy`: artificial neural network policy
@@ -1201,7 +1201,7 @@ For 1M evaluations:
 - [ ] Implement `FixedMRFParameter` in pywrdrb/parameters/fixed_target.py
 - [ ] Implement model replacement utilities in NYCOptimization/src/model_builder_utils.py
 - [ ] Implement PolicyBase ABC in NYCOptimization/optimization/policies/base.py
-- [ ] Implement RBFPolicy, ObliqueTreePolicy, ANNPolicy subclasses
+- [ ] Implement RBFPolicy, SoftTreePolicy, ANNPolicy subclasses
 - [ ] Implement variable-resolution FFMP generator in NYCOptimization/optimization/formulations.py
 - [ ] Implement evaluate_with_policy() in NYCOptimization/src/simulation_policy.py
 - [ ] Update simulation.py to dispatch based on formulation_name

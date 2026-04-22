@@ -28,7 +28,7 @@ sys.path.insert(0, '.')
 import numpy as np
 import pytest
 
-from src.policies import (PolicyBase, RBFPolicy, ObliqueTreePolicy, ANNPolicy,
+from src.policies import (PolicyBase, RBFPolicy, SoftTreePolicy, ANNPolicy,
                            SplineAdditivePolicy)
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def rbf_policy():
 
 @pytest.fixture
 def tree_policy():
-    return ObliqueTreePolicy(n_inputs=15, n_outputs=1, depth=3, output_max=3000.0)
+    return SoftTreePolicy(n_inputs=15, n_outputs=1, depth=3, output_max=3000.0)
 
 
 @pytest.fixture
@@ -128,16 +128,17 @@ class TestRBFPolicy:
 
 
 # ===========================================================================
-# 2. ObliqueTreePolicy unit tests
+# 2. SoftTreePolicy unit tests
 # ===========================================================================
 
-class TestObliqueTreePolicy:
+class TestSoftTreePolicy:
 
     def test_tree_n_params(self, tree_policy):
         p = tree_policy
         n_internal = 2 ** p._depth - 1
         n_leaves = 2 ** p._depth
-        expected = n_internal * (p._n_inputs + 1) + n_leaves * p._n_outputs
+        # +1 for the temperature gamma, which is optimized as a DV.
+        expected = n_internal * (p._n_inputs + 1) + n_leaves * p._n_outputs + 1
         assert p.n_params == expected
 
     def test_tree_bounds_shape(self, tree_policy):
@@ -180,34 +181,63 @@ class TestObliqueTreePolicy:
         assert np.allclose(out1, out2)
 
     def test_tree_different_leaves(self):
-        """States that differ on x[0] sign should route to different leaves."""
-        # depth=1: single root node, 2 leaves
-        # Set split weight = [1, 0, 0, ...] with bias = 0.
-        # x[0] < 0  → left leaf; x[0] >= 0 → right leaf.
+        """Soft gating routes states with opposite x[0] sign toward opposite leaves."""
+        # depth=1: single root node, 2 leaves.
+        # w=[1,0,0,...], bias=0, high gamma -> near-hard gating.
+        # x[0] < 0 -> p_right ~ 0 -> leaf0 dominant; x[0] > 0 -> leaf1 dominant.
         n_inputs = 5
-        policy = ObliqueTreePolicy(n_inputs=n_inputs, n_outputs=1, depth=1,
-                                   output_max=100.0)
+        policy = SoftTreePolicy(n_inputs=n_inputs, n_outputs=1, depth=1,
+                                output_max=100.0)
         # n_internal=1, n_leaves=2
-        # param layout: [w0..w4, bias, leaf0_val, leaf1_val]
+        # param layout: [w0..w4, bias, leaf0_val, leaf1_val, gamma]
         w = np.zeros(n_inputs)
         w[0] = 1.0
         bias = 0.0
-        leaf0 = np.array([3.0])   # left leaf  (x[0] < 0)
-        leaf1 = np.array([-3.0])  # right leaf (x[0] >= 0)
-        params = np.concatenate([w, [bias], leaf0, leaf1])
+        leaf0 = np.array([3.0])   # dominant when x[0] < 0
+        leaf1 = np.array([-3.0])  # dominant when x[0] > 0
+        gamma = 10.0              # near-hard gating for a crisp split
+        params = np.concatenate([w, [bias], leaf0, leaf1, [gamma]])
         policy.set_params(params)
 
-        # x[0] < 0 → should go left → leaf0 → sigmoid(3.0) * 100 ≈ 95
+        # x[0] < 0 -> leaf0 mass -> sigmoid(~3) * 100 ~ 95
         state_left = np.array([-1.0] + [0.5] * (n_inputs - 1))
         out_left = policy(state_left)
 
-        # x[0] >= 0 → should go right → leaf1 → sigmoid(-3.0) * 100 ≈ 5
+        # x[0] > 0 -> leaf1 mass -> sigmoid(~-3) * 100 ~ 5
         state_right = np.array([1.0] + [0.5] * (n_inputs - 1))
         out_right = policy(state_right)
 
-        assert out_left[0] > 50.0, f"Left leaf output {out_left[0]} expected > 50"
-        assert out_right[0] < 50.0, f"Right leaf output {out_right[0]} expected < 50"
+        assert out_left[0] > 50.0, f"Left-dominant output {out_left[0]} expected > 50"
+        assert out_right[0] < 50.0, f"Right-dominant output {out_right[0]} expected < 50"
         assert not np.allclose(out_left, out_right)
+
+    def test_tree_is_continuous(self):
+        """Soft gating produces continuous output across the split boundary
+        (hard tree would step; soft tree interpolates)."""
+        n_inputs = 5
+        policy = SoftTreePolicy(n_inputs=n_inputs, n_outputs=1, depth=1,
+                                output_max=100.0)
+        w = np.zeros(n_inputs)
+        w[0] = 1.0
+        # gamma=5 -> moderate softness, still meaningful spread.
+        params = np.concatenate([w, [0.0], [3.0], [-3.0], [5.0]])
+        policy.set_params(params)
+
+        xs = np.linspace(-0.2, 0.2, 9)
+        ys = np.array([policy(np.array([x] + [0.5] * (n_inputs - 1)))[0]
+                       for x in xs])
+        max_step = float(np.max(np.abs(np.diff(ys))))
+        total_range = float(ys.max() - ys.min())
+        assert max_step < 0.5 * total_range, (
+            f"Soft tree looks piecewise-constant across the split: "
+            f"max_step={max_step:.3f} vs total_range={total_range:.3f}"
+        )
+
+    def test_tree_gamma_in_bounds(self, tree_policy):
+        """Gamma DV is the last parameter and bounded to [1, 20]."""
+        lb, ub = tree_policy.get_bounds()
+        assert lb[-1] == SoftTreePolicy._GAMMA_LB
+        assert ub[-1] == SoftTreePolicy._GAMMA_UB
 
 
 # ===========================================================================
@@ -442,7 +472,7 @@ class TestIntegration:
         assert all(np.isfinite(v) for v in objs), f"Non-finite objectives: {objs}"
 
     def test_evaluate_tree_policy(self, tree_policy):
-        """ObliqueTreePolicy evaluation returns finite objectives."""
+        """SoftTreePolicy evaluation returns finite objectives."""
         from src.external_policy import evaluate_with_policy
         rng = np.random.default_rng(55)
         params = _random_valid_params(tree_policy, rng)

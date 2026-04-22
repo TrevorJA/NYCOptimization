@@ -92,8 +92,8 @@ register_architecture(
 register_architecture(
     "tree",
     architecture_type="tree",
-    description="Oblique decision tree (depth 3)",
-    policy_class="ObliqueTreePolicy",
+    description="Soft oblique decision tree (depth 3, optimized gamma)",
+    policy_class="SoftTreePolicy",
     policy_module="src.policies",
     depth=3,
     output_max=_MAX_TOTAL_RELEASE_MGD,

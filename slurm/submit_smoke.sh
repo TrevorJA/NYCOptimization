@@ -36,7 +36,7 @@ for a in "$@"; do
     fi
 done
 
-DEFAULT_TARGETS=(ffmp rbf tree ann ffmp_6)
+DEFAULT_TARGETS=(ffmp rbf tree ann spline ffmp_6)
 if [[ ${#ARGS[@]} -eq 0 ]]; then
     TARGETS=("${DEFAULT_TARGETS[@]}")
 else

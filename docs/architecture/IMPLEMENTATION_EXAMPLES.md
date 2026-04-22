@@ -697,13 +697,13 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None):
     elif formulation_name in ("rbf", "tree", "ann"):
         # Path 2: External policy variants
         from src.simulation_policy import evaluate_with_policy
-        from optimization.policies import RBFPolicy, ObliqueTreePolicy, ANNPolicy
+        from optimization.policies import RBFPolicy, SoftTreePolicy, ANNPolicy
         
         # Instantiate the policy
         if formulation_name == "rbf":
             policy = RBFPolicy()
         elif formulation_name == "tree":
-            policy = ObliqueTreePolicy()
+            policy = SoftTreePolicy()
         elif formulation_name == "ann":
             policy = ANNPolicy()
         else:

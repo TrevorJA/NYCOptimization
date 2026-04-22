@@ -16,20 +16,22 @@ from config import FFMP_VR_N_SWEEP
 
 #: Human-readable name for each policy architecture.
 ARCH_LABELS: dict[str, str] = {
-    "ffmp":  "Parameterized FFMP",
-    "rbf":   "RBF Policy (6 centers, 15 inputs)",
-    "tree":  "Oblique Tree (depth 3, 15 inputs)",
-    "ann":   "ANN (2×8 hidden, 15 inputs)",
+    "ffmp":   "Parameterized FFMP",
+    "rbf":    "RBF Policy (6 centers, 15 inputs)",
+    "tree":   "Soft Oblique Tree (depth 3, optimized γ)",
+    "ann":    "ANN (2×8 hidden, 15 inputs)",
+    "spline": "Spline Additive Policy (G=5, k=3)",
 }
 for _n in FFMP_VR_N_SWEEP:
     ARCH_LABELS[f"ffmp_{_n}"] = f"FFMP (N={_n} zones)"
 
 #: Distinct color per architecture for overlaid Pareto front comparisons.
 ARCH_COLORS: dict[str, str] = {
-    "ffmp":  "steelblue",
-    "rbf":   "darkorange",
-    "tree":  "mediumseagreen",
-    "ann":   "mediumpurple",
+    "ffmp":   "steelblue",
+    "rbf":    "darkorange",
+    "tree":   "mediumseagreen",
+    "ann":    "mediumpurple",
+    "spline": "goldenrod",
 }
 # N-zone variants get a sequential viridis-family ramp so higher N reads
 # "deeper" complexity at a glance.
