@@ -14,14 +14,16 @@
 # Optional:
 #   DEBUG_SIM     "true" to use short 2018-2022 simulation window
 #   CHECKPOINT    "true" to enable Borg checkpointing (currently race-prone)
-#   RUN_SLUG      output directory tag; defaults to ${FORMULATION}. Use a
-#                 distinct slug when varying NYCOPT_STATE_FEATURES or
-#                 NYCOPT_OBJECTIVES so runs don't collide under
-#                 outputs/optimization/.
+#   NYCOPT_ENV_FILE  path to a `slurm/envs/*.env` file. If set, sourced
+#                    before config.py is read so its NYCOPT_* knobs apply.
+#                    SLURM scripts default this to slurm/envs/ffmp_obj7.env
+#                    when no override is provided.
+#   RUN_SLUG      escape hatch — sets the output slug verbatim, bypassing
+#                 derive_slug(). Most users should NOT set this; instead
+#                 author or pick an env file under slurm/envs/.
 #
-# Also honors these environment overrides (read by config.py):
-#   NYCOPT_STATE_FEATURES   comma-separated feature names (see STATE_FEATURE_REGISTRY)
-#   NYCOPT_OBJECTIVES       comma-separated objective names (see OBJECTIVES registry)
+# All NYCOPT_* knobs are documented in
+#   local_notes/configuration/knob_reference.md.
 
 cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 mkdir -p logs
@@ -33,6 +35,20 @@ source venv/bin/activate
 # libborg.so / libborgmm.so relative to CWD, so callers that start MPI
 # (e.g. src/mmborg.py) chdir into lib/borg/ for that call.
 export PYTHONPATH="${PWD}:${PWD}/lib/borg:${PYTHONPATH:-}"
+
+# ---- Source per-experiment env file (if any) ----
+# Default to ffmp_obj7.env to preserve pre-Phase-0 behavior when no file
+# is passed. The env file sets NYCOPT_* knobs that drive derive_slug().
+NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7.env}"
+if [[ -f "${NYCOPT_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${NYCOPT_ENV_FILE}"
+    set +a
+    echo "[_common] sourced env file: ${NYCOPT_ENV_FILE}"
+else
+    echo "[_common] env file not found: ${NYCOPT_ENV_FILE} (using config.py defaults)"
+fi
 
 # ---- Thread pinning (prevents BLAS contention across MPI ranks) ----
 export OMP_NUM_THREADS=1
@@ -52,8 +68,13 @@ fi
 # Allocate 200 slots (5 nodes × 40) and run 199 to leave 1 slot headroom.
 NTASKS_MPI=${NTASKS_MPI:-199}
 
-# ---- Output slug (output subdirectory + file prefix) ----
-export RUN_SLUG="${RUN_SLUG:-${FORMULATION}}"
+# ---- Output slug (auto-derived from active config) ----
+# derive_slug(formulation) reads ACTIVE_OBJECTIVES, INCLUDE_TEMPERATURE_MODEL,
+# STATE_FEATURES, and RUN_SLUG_TAG to compose the canonical slug. An explicit
+# RUN_SLUG env wins outright (escape hatch).
+if [[ -z "${RUN_SLUG:-}" ]]; then
+    export RUN_SLUG="$(python3 -c "from config import derive_slug; print(derive_slug('${FORMULATION}'))")"
+fi
 
 # ---- Reproducibility logging ----
 RUN_TAG="${RUN_SLUG}_seed${SEED}_${SLURM_JOB_ID:-local}"
@@ -69,6 +90,7 @@ mkdir -p "${RUN_LOG_DIR}"
     echo "Nodes:           ${SLURM_JOB_NUM_NODES:-1}"
     echo "Alloc ntasks:    ${SLURM_NTASKS:-?}"
     echo "MPI ntasks used: ${NTASKS_MPI}"
+    echo "Env file:        ${NYCOPT_ENV_FILE}"
     echo "Formulation:     ${FORMULATION}"
     echo "Slug:            ${RUN_SLUG}"
     echo "Seed:            ${SEED}"
@@ -79,6 +101,8 @@ mkdir -p "${RUN_LOG_DIR}"
     echo "Checkpoint:      ${CHECKPOINT:-false}"
     echo "STATE_FEATURES:  ${NYCOPT_STATE_FEATURES:-<config default>}"
     echo "OBJECTIVES:      ${NYCOPT_OBJECTIVES:-<config default>}"
+    echo "TS_ON:           ${NYCOPT_TS_ON:-<config default>}"
+    echo "CLUSTER:         ${NYCOPT_CLUSTER:-<config default>}"
     echo "Python:          $(which python3)"
     echo "Python version:  $(python3 --version 2>&1)"
     echo "---- git ----"
@@ -87,6 +111,7 @@ mkdir -p "${RUN_LOG_DIR}"
 } > "${RUN_LOG_DIR}/manifest.txt"
 
 cp config.py "${RUN_LOG_DIR}/config_snapshot.py" 2>/dev/null || true
+cp "${NYCOPT_ENV_FILE}" "${RUN_LOG_DIR}/env_snapshot.env" 2>/dev/null || true
 git diff HEAD > "${RUN_LOG_DIR}/uncommitted.diff" 2>/dev/null || true
 
 echo "=== Run manifest written to ${RUN_LOG_DIR}/manifest.txt ==="

@@ -1,46 +1,60 @@
 #!/bin/bash
-# submit_all.sh — Submit the full publication-scale MM Borg campaign.
+# submit_all.sh — Submit an MM-Borg campaign described by an env file.
 #
-# Submits:
-#   - ffmp        (10 seeds, array job)
-#   - rbf         (10 seeds, array job)
-#   - tree        (10 seeds, array job)
-#   - ann         (10 seeds, array job)
-#   - spline      (10 seeds, array job)
-#   - ffmp_vr     (10 seeds × len(FFMP_VR_N_SWEEP) array jobs, one per N value)
+# Reads the formulation list from a `slurm/envs/*.env` file (sourced) and
+# expands it into per-architecture sbatch submissions. Each submission
+# carries the env file path forward via --export=ALL,NYCOPT_ENV_FILE so
+# the per-arch SLURM scripts (and _common.sh) see the same knobs.
 #
 # Usage:
-#   bash slurm/submit_all.sh                  # submit everything
-#   bash slurm/submit_all.sh --dry-run        # print sbatch commands only
-#   bash slurm/submit_all.sh ffmp spline      # submit only listed architectures
+#   bash slurm/submit_all.sh                                  # default ffmp_obj7
+#   bash slurm/submit_all.sh slurm/envs/manuscript_obj9_ts.env
+#   bash slurm/submit_all.sh slurm/envs/ann_obj9_ts.env --dry-run
+#   bash slurm/submit_all.sh slurm/envs/ffmp_obj9_ts.env ffmp ffmp_6
+#       (override formulations after env file)
 #
-# Environment overrides (forwarded to jobs via --export=ALL):
-#   NYCOPT_STATE_FEATURES="combined_nyc_storage_frac,montague_flow_lag2,..."
-#   NYCOPT_OBJECTIVES="nyc_reliability_weekly,montague_reliability_weekly_fixed,..."
+# Formulation names ending in `_N` (e.g. ffmp_6, ffmp_10) automatically
+# dispatch to slurm/mmborg_ffmp_vr.sh with N_ZONES set.
 
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 DRY_RUN=false
+ENV_FILE=""
 ARGS=()
 for a in "$@"; do
-    if [[ "$a" == "--dry-run" ]]; then
-        DRY_RUN=true
-    else
-        ARGS+=("$a")
-    fi
+    case "$a" in
+        --dry-run)         DRY_RUN=true ;;
+        slurm/envs/*.env)  ENV_FILE="$a" ;;
+        */*.env|*.env)     ENV_FILE="$a" ;;
+        *)                 ARGS+=("$a") ;;
+    esac
 done
 
-# Read the N sweep list from config.py so it stays in one place.
-N_SWEEP=$(python3 -c "from config import FFMP_VR_N_SWEEP; print(' '.join(str(n) for n in FFMP_VR_N_SWEEP))")
-
-# Default targets.
-if [[ ${#ARGS[@]} -eq 0 ]]; then
-    TARGETS=(ffmp rbf tree ann spline ffmp_vr)
-else
-    TARGETS=("${ARGS[@]}")
+# Default env file preserves pre-Phase-0 behavior.
+ENV_FILE="${ENV_FILE:-slurm/envs/ffmp_obj7.env}"
+if [[ ! -f "${ENV_FILE}" ]]; then
+    echo "ERROR: env file not found: ${ENV_FILE}" >&2
+    exit 1
 fi
+echo "[submit_all] env file: ${ENV_FILE}"
+# Source it so we can read NYCOPT_FORMULATIONS without a python call.
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+
+# Resolve formulation list: explicit args > env file > default.
+if [[ ${#ARGS[@]} -gt 0 ]]; then
+    TARGETS=("${ARGS[@]}")
+elif [[ -n "${NYCOPT_FORMULATIONS:-}" ]]; then
+    IFS=',' read -ra TARGETS <<< "${NYCOPT_FORMULATIONS}"
+else
+    TARGETS=(ffmp ffmp_6 ffmp_8 ffmp_10 ffmp_12 ann)
+fi
+
+echo "[submit_all] targets: ${TARGETS[*]}"
 
 run() {
     echo "+ $*"
@@ -50,22 +64,23 @@ run() {
 }
 
 for t in "${TARGETS[@]}"; do
-    case "$t" in
-        ffmp|rbf|tree|ann|spline)
-            run sbatch --export=ALL --array=1-10 "slurm/mmborg_${t}.sh"
-            ;;
-        ffmp_vr)
-            for N in ${N_SWEEP}; do
-                run sbatch --export=ALL,N_ZONES="${N}" --array=1-10 \
-                    --job-name="mmborg_ffmp_vr_N${N}" \
-                    slurm/mmborg_ffmp_vr.sh
-            done
-            ;;
-        *)
-            echo "Unknown target: $t" >&2
-            exit 1
-            ;;
-    esac
+    t="$(echo "$t" | tr -d ' ')"
+    if [[ "$t" =~ ^ffmp_([0-9]+)$ ]]; then
+        N="${BASH_REMATCH[1]}"
+        run sbatch \
+            --export=ALL,N_ZONES="${N}",NYCOPT_ENV_FILE="${ENV_FILE}" \
+            --array=1-10 \
+            --job-name="mmborg_ffmp_vr_N${N}" \
+            slurm/mmborg_ffmp_vr.sh
+    elif [[ -f "slurm/mmborg_${t}.sh" ]]; then
+        run sbatch \
+            --export=ALL,NYCOPT_ENV_FILE="${ENV_FILE}" \
+            --array=1-10 \
+            "slurm/mmborg_${t}.sh"
+    else
+        echo "ERROR: no SLURM script for target '${t}' (looked for slurm/mmborg_${t}.sh)" >&2
+        exit 1
+    fi
 done
 
 echo "=== Submission complete ==="

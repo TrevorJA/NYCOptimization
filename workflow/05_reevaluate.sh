@@ -1,18 +1,23 @@
 #!/bin/bash
-# Step 5: Re-simulate Pareto-optimal solutions with the full (untrimmed)
-# Pywr-DRB model. Thin wrapper around src/reevaluate.py which supports
-# parallel workers via multiprocessing.Pool.
+# Step 5: Re-simulate Pareto-optimal solutions with the full Pywr-DRB model.
 #
-# Usage:
-#   bash workflow/05_reevaluate.sh [FORMULATION] [MAX_SOLUTIONS] [NJOBS] [SEED]
-#     FORMULATION   architecture name (default: ffmp)
-#     MAX_SOLUTIONS cap on solutions (0 = all)
-#     NJOBS         parallel workers (default: SLURM_CPUS_ON_NODE or 1)
-#     SEED          optional seed number for per-seed output subdir
+# Mode selection (single-node multiprocessing vs MPI multi-node) is driven
+# by `NYCOPT_REEVAL_MODE` from the sourced env file — no CLI flag to remember.
+# Slug auto-derives from active config; outputs land at
+# `outputs/reevaluation/{slug}/deterministic/` (Phase 1) or
+# `outputs/reevaluation/{slug}/ensemble_{id}/` (Phase 3).
 #
-# Examples:
-#   bash workflow/05_reevaluate.sh ffmp 0 16
-#   sbatch workflow/05_reevaluate.sh rbf 0 32 1
+# Usage (single-node fallback / interactive):
+#   bash workflow/05_reevaluate.sh [FORMULATION] [MAX_SOLUTIONS] [SEED]
+#
+# Usage (SLURM with env file):
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7.env \
+#          workflow/05_reevaluate.sh ffmp 0
+#
+# Defaults:
+#   FORMULATION   first positional arg, else "ffmp"
+#   MAX_SOLUTIONS second positional arg, else 0 (all)
+#   SEED          third positional arg (optional, for per-seed output subdir)
 #
 #SBATCH --job-name=reevaluate
 #SBATCH --nodes=1
@@ -25,8 +30,18 @@ set -euo pipefail
 
 cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 mkdir -p logs
-module load python/3.11.5
+module load python/3.11.5 || true
 source venv/bin/activate
+
+# ---- Source per-experiment env file (if any) ----
+NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7.env}"
+if [[ -f "${NYCOPT_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${NYCOPT_ENV_FILE}"
+    set +a
+    echo "[reevaluate] sourced env file: ${NYCOPT_ENV_FILE}"
+fi
 
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
@@ -34,12 +49,40 @@ export OPENBLAS_NUM_THREADS=1
 
 FORMULATION="${1:-ffmp}"
 MAX_SOLUTIONS="${2:-0}"
-NJOBS="${3:-${SLURM_CPUS_ON_NODE:-1}}"
-SEED="${4:-}"
+SEED="${3:-}"
+
+# Mode: env-driven, with single-node default for back-compat.
+MODE="${NYCOPT_REEVAL_MODE:-single}"
+NJOBS="${SLURM_CPUS_ON_NODE:-1}"
 
 ARGS="--formulation ${FORMULATION} --max ${MAX_SOLUTIONS} --njobs ${NJOBS}"
 [[ -n "${SEED}" ]] && ARGS="${ARGS} --seed ${SEED}"
 
-echo "=== Re-evaluation: ${FORMULATION} (njobs=${NJOBS}, seed=${SEED:-all}) ==="
-python3 -m src.reevaluate ${ARGS}
+echo "=== Re-evaluation: formulation=${FORMULATION} mode=${MODE} njobs=${NJOBS} seed=${SEED:-all} ==="
+
+case "${MODE}" in
+    single)
+        python3 -m src.reevaluate ${ARGS}
+        ;;
+    mpi)
+        # Phase 1 placeholder. src.reevaluate_mpi lands in Phase 1 of the
+        # implementation plan; for now, fall back to single-node and warn so
+        # the env-file driven workflow is exercised end-to-end.
+        if python3 -c "import importlib, sys; sys.exit(0 if importlib.util.find_spec('src.reevaluate_mpi') else 1)"; then
+            NTASKS_MPI="$(( ${NYCOPT_REEVAL_NODES:-4} * ${NYCOPT_REEVAL_RANKS:-16} ))"
+            echo "[reevaluate] MPI mode, ${NTASKS_MPI} ranks"
+            mpirun -np "${NTASKS_MPI}" \
+                --mca pml ob1 --mca btl self,vader,tcp \
+                python3 -m src.reevaluate_mpi ${ARGS}
+        else
+            echo "[reevaluate] WARN: src.reevaluate_mpi not yet implemented; running single-node."
+            python3 -m src.reevaluate ${ARGS}
+        fi
+        ;;
+    *)
+        echo "ERROR: unknown NYCOPT_REEVAL_MODE='${MODE}' (expected 'single' or 'mpi')" >&2
+        exit 1
+        ;;
+esac
+
 echo "=== Completed: $(date) ==="
