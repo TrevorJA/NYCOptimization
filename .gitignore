@@ -13,6 +13,16 @@ outputs/reference_sets/
 outputs/baseline/
 outputs/presim/
 outputs/figures/
+outputs/run_manifests/
+
+# Slug-aware figure tree (regenerable PNGs; .py scripts at the figures/
+# root are tracked).
+figures/convergence/
+figures/pareto/
+figures/parallel_coords/
+figures/policy_inspection/
+figures/robustness/
+figures/_exploratory/
 
 # Borg MOEA (licensed, not distributed)
 lib/borg/

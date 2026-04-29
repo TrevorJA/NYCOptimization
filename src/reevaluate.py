@@ -25,7 +25,10 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import OUTPUTS_DIR, get_n_vars, get_obj_names
+from config import (
+    OUTPUTS_DIR, OUTPUT_REEVALUATION_DIR, OUTPUT_REFERENCE_SETS_DIR,
+    derive_slug, get_n_vars, get_obj_names,
+)
 from src.load.reference_set import load_reference_set
 from src.simulation import dvs_to_config, run_simulation_to_disk
 from src.formulations import get_objective_set
@@ -68,8 +71,18 @@ def reevaluate(formulation: str,
     Returns:
         Path to the summary CSV.
     """
-    ref_file = OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref"
-    reeval_dir = OUTPUTS_DIR / "reevaluation" / formulation
+    slug = derive_slug(formulation)
+    # Reference set still keyed by slug (where the optimization wrote it).
+    # Fall back to the formulation-keyed legacy path so re-evals on existing
+    # reference sets keep working.
+    candidate_refs = [
+        OUTPUT_REFERENCE_SETS_DIR / f"{slug}.ref",
+        OUTPUTS_DIR / "reference_sets" / f"{slug}.ref",
+        OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref",
+    ]
+    ref_file = next((p for p in candidate_refs if p.exists()), candidate_refs[0])
+
+    reeval_dir = OUTPUT_REEVALUATION_DIR / slug / "deterministic"
     if seed is not None:
         reeval_dir = reeval_dir / f"seed_{seed:02d}"
     reeval_dir.mkdir(parents=True, exist_ok=True)

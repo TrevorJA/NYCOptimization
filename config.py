@@ -1,17 +1,86 @@
 """
 config.py - Central configuration for NYCOptimization study.
 
-Contains paths, simulation settings, NYC system constants, and Borg MOEA
-parameters.  Problem formulation logic lives in src/formulations/.
+Single source of truth for paths, simulation settings, NYC system constants,
+Borg MOEA parameters, T/S coupling, re-evaluation sizing, and the slug
+naming convention. Problem formulation logic lives in src/formulations/.
 
-Environment overrides (read at import time, useful for HPC SLURM scripts):
+Every methodologic knob has a default constant here and a `NYCOPT_*` env
+override read at import time. SLURM scripts source per-experiment env files
+under slurm/envs/ to set these without relying on remembered CLI flags;
+see local_notes/configuration/knob_reference.md for the full table.
+
+Environment overrides (selected — full list in knob_reference.md):
     NYCOPT_OBJECTIVES           -> ACTIVE_OBJECTIVES (comma-separated names)
     NYCOPT_STATE_FEATURES       -> STATE_FEATURES    (comma-separated names)
+    NYCOPT_FORMULATIONS         -> PRODUCTION_FORMULATIONS (comma-separated)
+    NYCOPT_FFMP_VR_N            -> FFMP_VR_N_SWEEP (comma-separated ints)
+    NYCOPT_TS_ON                -> INCLUDE_{TEMPERATURE,SALINITY}_MODEL (bool)
+    NYCOPT_THERMAL_THRESHOLD_C  -> LORDVILLE_THERMAL_THRESHOLD_C (float)
+    NYCOPT_SALT_FRONT_RM        -> SALT_FRONT_REFERENCE_RM (float)
+    NYCOPT_SALINITY_ASYNC       -> SALINITY_ASYNC_UPDATE (bool)
+    NYCOPT_REEVAL_N             -> REEVAL_REALIZATIONS (int)
+    NYCOPT_REEVAL_NODES         -> REEVAL_NODES (int)
+    NYCOPT_REEVAL_RANKS         -> REEVAL_RANKS_PER_NODE (int)
+    NYCOPT_REEVAL_MODE          -> REEVAL_MODE ("mpi" | "single")
+    NYCOPT_CLUSTER              -> CLUSTER ("anvil" | "hopper")
+    NYCOPT_TEMPERATURE_LSTM_DIR -> TEMPERATURE_LSTM_DIR (path)
+    NYCOPT_SALINITY_LSTM_DIR    -> SALINITY_LSTM_DIR (path)
+    RUN_SLUG_TAG                -> appended as a free-form suffix to derive_slug()
 """
 
 import os
 import numpy as np
 from pathlib import Path
+
+
+###############################################################################
+# Env-parsing helpers
+###############################################################################
+
+def _parse_list_env(name: str, default: list[str]) -> list[str]:
+    """Parse a comma-separated environment variable into a list of names."""
+    raw = os.environ.get(name)
+    if not raw:
+        return list(default)
+    return [s.strip() for s in raw.split(",") if s.strip()]
+
+
+def _parse_int_list_env(name: str, default: list[int]) -> list[int]:
+    """Parse a comma-separated env var into a list of ints."""
+    raw = os.environ.get(name)
+    if not raw:
+        return list(default)
+    return [int(s.strip()) for s in raw.split(",") if s.strip()]
+
+
+def _parse_bool_env(name: str, default: bool) -> bool:
+    """Parse a boolean env var. Truthy: 1, true, yes, on (case-insensitive)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _parse_float_env(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    return float(raw) if raw is not None and raw.strip() else default
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    return int(raw) if raw is not None and raw.strip() else default
+
+
+def _parse_str_env(name: str, default: str) -> str:
+    raw = os.environ.get(name)
+    return raw.strip() if raw is not None and raw.strip() else default
+
+
+def _parse_path_env(name: str, default: Path) -> Path:
+    raw = os.environ.get(name)
+    return Path(raw).expanduser() if raw is not None and raw.strip() else default
+
 
 ###############################################################################
 # Paths
@@ -20,7 +89,9 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).parent
 SRC_DIR = PROJECT_DIR / "src"
 OUTPUTS_DIR = PROJECT_DIR / "outputs"
+FIGURES_DIR = PROJECT_DIR / "figures"
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
+NOTES_DIR = PROJECT_DIR / "local_notes"
 
 # Borg shared libraries (user must compile and place here)
 BORG_DIR = PROJECT_DIR / "lib" / "borg"
@@ -28,6 +99,76 @@ BORG_DIR = PROJECT_DIR / "lib" / "borg"
 # Pywr-DRB pre-simulated releases for trimmed model
 PRESIM_DIR = OUTPUTS_DIR / "presim"
 PRESIM_FILE = PRESIM_DIR / "presimulated_releases_mgd.csv"
+
+# PywrDRB-ML plugin (sibling repo) — temperature + salinity LSTM weights
+PYWRDRB_ML_DIR = _parse_path_env(
+    "NYCOPT_PYWRDRB_ML_DIR",
+    (PROJECT_DIR / ".." / "PywrDRB-ML").resolve(),
+)
+TEMPERATURE_LSTM_DIR = _parse_path_env(
+    "NYCOPT_TEMPERATURE_LSTM_DIR",
+    PYWRDRB_ML_DIR / "models" / "TempLSTM",
+)
+SALINITY_LSTM_DIR = _parse_path_env(
+    "NYCOPT_SALINITY_LSTM_DIR",
+    PYWRDRB_ML_DIR / "models" / "SalinityLSTM",
+)
+
+
+###############################################################################
+# Output category subdirectories (slug-aware, hierarchical)
+###############################################################################
+# Categories below are diagnostic, not publication. Plotting + reeval scripts
+# write to {category}/{slug}/. New categories may be added freely as analyses
+# emerge; the convention is "category by analysis type, slug as inner partition".
+# `_exploratory/` is the workbench area for in-flight analyses; promote a topic
+# to a top-level category once the analysis stabilizes.
+
+OUTPUT_BASELINE_DIR = OUTPUTS_DIR / "baseline"
+OUTPUT_OPTIMIZATION_DIR = OUTPUTS_DIR / "optimization"
+OUTPUT_REEVALUATION_DIR = OUTPUTS_DIR / "reevaluation"
+OUTPUT_DIAGNOSTICS_DIR = OUTPUTS_DIR / "diagnostics"
+OUTPUT_REFERENCE_SETS_DIR = OUTPUTS_DIR / "reference_sets"
+OUTPUT_RUN_MANIFESTS_DIR = OUTPUTS_DIR / "run_manifests"
+
+FIG_CONVERGENCE_DIR = FIGURES_DIR / "convergence"
+FIG_PARETO_DIR = FIGURES_DIR / "pareto"
+FIG_PARALLEL_COORDS_DIR = FIGURES_DIR / "parallel_coords"
+FIG_POLICY_INSPECTION_DIR = FIGURES_DIR / "policy_inspection"
+FIG_ROBUSTNESS_DIR = FIGURES_DIR / "robustness"
+FIG_EXPLORATORY_DIR = FIGURES_DIR / "_exploratory"
+
+
+def output_dir_for(category: str, slug: str) -> Path:
+    """Return a slug-partitioned output subdir, creating it if needed.
+
+    Args:
+        category: One of "baseline", "optimization", "reevaluation",
+            "diagnostics", or any free-form name (auto-created).
+        slug: The methodologic slug from `derive_slug()`.
+    """
+    p = OUTPUTS_DIR / category / slug
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def figure_dir_for(category: str, slug: str) -> Path:
+    """Return a slug-partitioned figure subdir, creating it if needed.
+
+    Args:
+        category: e.g. "convergence", "pareto", "parallel_coords",
+            "policy_inspection", "robustness". Free-form names land
+            under `_exploratory/{slug}/{category}/`.
+        slug: The methodologic slug from `derive_slug()`.
+    """
+    stable = {"convergence", "pareto", "parallel_coords",
+              "policy_inspection", "robustness"}
+    if category in stable:
+        p = FIGURES_DIR / category / slug
+    else:
+        p = FIG_EXPLORATORY_DIR / slug / category
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 ###############################################################################
@@ -60,15 +201,6 @@ _DEFAULT_STATE_FEATURES = [
     "trenton_flow_lag4",
     "nj_demand_lag4",
 ]
-
-
-def _parse_list_env(name: str, default: list[str]) -> list[str]:
-    """Parse a comma-separated environment variable into a list of names."""
-    raw = os.environ.get(name)
-    if not raw:
-        return list(default)
-    return [s.strip() for s in raw.split(",") if s.strip()]
-
 
 STATE_FEATURES = _parse_list_env("NYCOPT_STATE_FEATURES", _DEFAULT_STATE_FEATURES)
 
@@ -140,7 +272,60 @@ ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
 # NOTE on baseline equivalence: generate_ffmp_formulation(n_zones=6) produces
 # the 7-level zone count of the standard FFMP; values ≥ 6 are higher-resolution
 # variants. The user requirement is N ≥ baseline, so this sweep starts at 6.
-FFMP_VR_N_SWEEP = [6, 8, 10, 12]
+FFMP_VR_N_SWEEP = _parse_int_list_env("NYCOPT_FFMP_VR_N", [6, 8, 10, 12])
+
+
+###############################################################################
+# Manuscript Production Defaults
+###############################################################################
+# Default formulation set for the manuscript experiment: structure-preserving
+# FFMP -> resolution-extended FFMP_VR -> structure-free ANN. This is the
+# *default*, not a lock-in: RBF, Tree, Spline remain fully functional and
+# can be added back via NYCOPT_FORMULATIONS or by editing the env file
+# under slurm/envs/. See local_notes/decisions/2026-04-29_manuscript_scope.md.
+
+_DEFAULT_PRODUCTION_FORMULATIONS = (
+    ["ffmp"]
+    + [f"ffmp_{n}" for n in FFMP_VR_N_SWEEP]
+    + ["ann"]
+)
+PRODUCTION_FORMULATIONS = _parse_list_env(
+    "NYCOPT_FORMULATIONS", _DEFAULT_PRODUCTION_FORMULATIONS,
+)
+
+
+###############################################################################
+# Temperature & Salinity LSTM Coupling
+###############################################################################
+# When enabled, the temperature and salinity LSTMs (from PywrDRB-ML) run as
+# pywrdrb Parameters during simulation. By default they are observe-only:
+# control operations (thermal mitigation bank, salinity-feedback MRF rewrite)
+# are held at FFMP defaults. See:
+#   local_notes/methodology/temperature_salinity.md
+#   local_notes/decisions/2026-04-29_ts_observe_only.md
+
+INCLUDE_TEMPERATURE_MODEL = _parse_bool_env("NYCOPT_TS_ON", False)
+INCLUDE_SALINITY_MODEL = _parse_bool_env("NYCOPT_TS_ON", False)
+
+# Threshold above which Lordville thermal exceedance days are counted.
+# 23.89 °C (75 °F) is the DRBC cold-water-fish thermal stress threshold.
+LORDVILLE_THERMAL_THRESHOLD_C = _parse_float_env(
+    "NYCOPT_THERMAL_THRESHOLD_C", 23.89,
+)
+
+# Reference river mile for salt-front excursion. RM 92.47 is the DRBC
+# Trenton salinity standard reference; lower RM means salt has moved
+# farther upstream (worse for water supply at Trenton).
+SALT_FRONT_REFERENCE_RM = _parse_float_env(
+    "NYCOPT_SALT_FRONT_RM", 92.47,
+)
+
+# Salinity coupling mode. When True (default), the salinity LSTM runs in
+# asynchronous mode and does NOT rewrite mrf_target_{Montague,Trenton} —
+# strictly observational. Set False only to *intentionally* let the salinity
+# LSTM feed back into MRF targets. Doing so changes the meaning of the
+# Montague/Trenton dynamic-target objectives.
+SALINITY_ASYNC_UPDATE = _parse_bool_env("NYCOPT_SALINITY_ASYNC", True)
 
 
 ###############################################################################
@@ -174,14 +359,86 @@ DIAGNOSTICS_SETTINGS = {
 ###############################################################################
 # Re-evaluation Settings
 ###############################################################################
+# Centralized knobs for the post-optimization re-simulation step. The MPI
+# variant (Phase 1+) reads cluster sizing from these values, so a single
+# env-file edit reshapes the SLURM submission.
+
+# Number of stochastic realizations per solution. 1 = deterministic single-trace
+# re-eval (Phase 1 default). Phase 3 raises this for ensemble robustness.
+REEVAL_REALIZATIONS = _parse_int_env("NYCOPT_REEVAL_N", 1)
+
+# Re-eval execution mode: "mpi" uses src/reevaluate_mpi.py (multi-node);
+# "single" falls back to src/reevaluate.py (multiprocessing.Pool).
+REEVAL_MODE = _parse_str_env("NYCOPT_REEVAL_MODE", "single")
+
+# Cluster sizing for MPI re-eval. Sourced into SLURM SBATCH directives.
+REEVAL_NODES = _parse_int_env("NYCOPT_REEVAL_NODES", 4)
+REEVAL_RANKS_PER_NODE = _parse_int_env("NYCOPT_REEVAL_RANKS", 16)
 
 REEVALUATION_SETTINGS = {
-    "n_realizations": None,          # TBD
+    "n_realizations": REEVAL_REALIZATIONS,
     "realization_length_years": 70,
     "generator": "kirsch_nowak",
     "climate_scenarios": ["stationary"],
     "robustness_metrics": ["satisficing", "regret"],
 }
+
+
+###############################################################################
+# Cluster Target
+###############################################################################
+# Selects the SLURM template family (Anvil for production, Hopper for smoke
+# tests). _common.sh and workflow/05_reevaluate.sh consult this value when
+# they need cluster-specific defaults (MCA flags, node sizing).
+
+CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
+
+
+###############################################################################
+# Slug Naming Convention
+###############################################################################
+# Slugs identify a methodologic configuration so outputs from different
+# configs never collide. Format:
+#   {formulation}_obj{N_OBJ}{ts_suffix}{state_suffix}{custom_suffix}
+#
+# Examples:
+#   ffmp_obj7                    — current production baseline (no T/S)
+#   ffmp_obj9_ts                 — production after T/S lands
+#   ffmp_6_obj9_ts               — variable-resolution N=6 with T/S
+#   ann_obj9_ts_state4           — ANN with reduced 4-feature state
+#   ffmp_obj9_ts_pilot42         — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
+#
+# `RUN_SLUG_TAG` env appends a free-form suffix; useful for one-off variants
+# without polluting the canonical slug grammar.
+# A non-empty `RUN_SLUG` env wins outright (escape hatch for legacy paths).
+
+def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
+    """Derive a slug from active config + a formulation name.
+
+    Args:
+        formulation: e.g. "ffmp", "ffmp_6", "ann".
+        custom_tag: appended after auto-derived components if non-empty.
+            Falls back to the `RUN_SLUG_TAG` env var.
+
+    Returns:
+        Slug string used as the inner partition under outputs/{category}/
+        and figures/{category}/.
+    """
+    explicit = os.environ.get("RUN_SLUG", "").strip()
+    if explicit:
+        return explicit
+
+    parts = [formulation, f"obj{len(ACTIVE_OBJECTIVES)}"]
+    if INCLUDE_TEMPERATURE_MODEL or INCLUDE_SALINITY_MODEL:
+        parts.append("ts")
+    if len(STATE_FEATURES) != len(_DEFAULT_STATE_FEATURES):
+        parts.append(f"state{len(STATE_FEATURES)}")
+
+    tag = custom_tag if custom_tag else os.environ.get("RUN_SLUG_TAG", "").strip()
+    if tag:
+        parts.append(tag)
+
+    return "_".join(parts)
 
 
 ###############################################################################
