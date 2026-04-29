@@ -65,19 +65,11 @@ case "${MODE}" in
         python3 -m src.reevaluate ${ARGS}
         ;;
     mpi)
-        # Phase 1 placeholder. src.reevaluate_mpi lands in Phase 1 of the
-        # implementation plan; for now, fall back to single-node and warn so
-        # the env-file driven workflow is exercised end-to-end.
-        if python3 -c "import importlib, sys; sys.exit(0 if importlib.util.find_spec('src.reevaluate_mpi') else 1)"; then
-            NTASKS_MPI="$(( ${NYCOPT_REEVAL_NODES:-4} * ${NYCOPT_REEVAL_RANKS:-16} ))"
-            echo "[reevaluate] MPI mode, ${NTASKS_MPI} ranks"
-            mpirun -np "${NTASKS_MPI}" \
-                --mca pml ob1 --mca btl self,vader,tcp \
-                python3 -m src.reevaluate_mpi ${ARGS}
-        else
-            echo "[reevaluate] WARN: src.reevaluate_mpi not yet implemented; running single-node."
-            python3 -m src.reevaluate ${ARGS}
-        fi
+        NTASKS_MPI="$(( ${NYCOPT_REEVAL_NODES:-4} * ${NYCOPT_REEVAL_RANKS:-16} ))"
+        echo "[reevaluate] MPI mode, ${NTASKS_MPI} ranks"
+        mpirun -np "${NTASKS_MPI}" \
+            --mca pml ob1 --mca btl self,vader,tcp \
+            python3 -m src.reevaluate_mpi ${ARGS}
         ;;
     *)
         echo "ERROR: unknown NYCOPT_REEVAL_MODE='${MODE}' (expected 'single' or 'mpi')" >&2

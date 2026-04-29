@@ -15,10 +15,13 @@ Environment overrides (selected — full list in knob_reference.md):
     NYCOPT_STATE_FEATURES       -> STATE_FEATURES    (comma-separated names)
     NYCOPT_FORMULATIONS         -> PRODUCTION_FORMULATIONS (comma-separated)
     NYCOPT_FFMP_VR_N            -> FFMP_VR_N_SWEEP (comma-separated ints)
-    NYCOPT_TS_ON                -> INCLUDE_{TEMPERATURE,SALINITY}_MODEL (bool)
+    NYCOPT_TEMPERATURE_ON       -> INCLUDE_TEMPERATURE_MODEL (bool, default 0)
+    NYCOPT_SALINITY_ON          -> INCLUDE_SALINITY_MODEL    (bool, default 0)
+    NYCOPT_TS_ON                -> shortcut: sets both above (legacy convenience)
     NYCOPT_THERMAL_THRESHOLD_C  -> LORDVILLE_THERMAL_THRESHOLD_C (float)
     NYCOPT_SALT_FRONT_RM        -> SALT_FRONT_REFERENCE_RM (float)
     NYCOPT_SALINITY_ASYNC       -> SALINITY_ASYNC_UPDATE (bool)
+    NYCOPT_LSTM_START_DATE      -> LSTM_START_DATE (LSTM training data start)
     NYCOPT_REEVAL_N             -> REEVAL_REALIZATIONS (int)
     NYCOPT_REEVAL_NODES         -> REEVAL_NODES (int)
     NYCOPT_REEVAL_RANKS         -> REEVAL_RANKS_PER_NODE (int)
@@ -112,6 +115,26 @@ TEMPERATURE_LSTM_DIR = _parse_path_env(
 SALINITY_LSTM_DIR = _parse_path_env(
     "NYCOPT_SALINITY_LSTM_DIR",
     PYWRDRB_ML_DIR / "models" / "SalinityLSTM",
+)
+
+# Specific artifact paths the ModelBuilder options dict consumes.
+# These are YAML/JSON file paths (NOT Python objects) — the parameter
+# classes do their own loading from these paths.
+TEMPERATURE_LSTM_MODEL1 = _parse_path_env(
+    "NYCOPT_TEMPERATURE_LSTM_MODEL1",
+    TEMPERATURE_LSTM_DIR / "TempLSTM1.yml",
+)
+TEMPERATURE_LSTM_MODEL2 = _parse_path_env(
+    "NYCOPT_TEMPERATURE_LSTM_MODEL2",
+    TEMPERATURE_LSTM_DIR / "TempLSTM2.yml",
+)
+TEMPERATURE_LSTM_TAVG2TMAX = _parse_path_env(
+    "NYCOPT_TEMPERATURE_LSTM_TAVG2TMAX",
+    TEMPERATURE_LSTM_DIR / "Tavg2Tmax_coefs.json",
+)
+SALINITY_LSTM_MODEL = _parse_path_env(
+    "NYCOPT_SALINITY_LSTM_MODEL",
+    SALINITY_LSTM_DIR / "SalinityLSTM.yml",
 )
 
 
@@ -297,18 +320,32 @@ PRODUCTION_FORMULATIONS = _parse_list_env(
 ###############################################################################
 # Temperature & Salinity LSTM Coupling
 ###############################################################################
-# When enabled, the temperature and salinity LSTMs (from PywrDRB-ML) run as
-# pywrdrb Parameters during simulation. By default they are observe-only:
-# control operations (thermal mitigation bank, salinity-feedback MRF rewrite)
-# are held at FFMP defaults. See:
+# When enabled, the LSTMs (from PywrDRB-ML) run as pywrdrb Parameters during
+# simulation. Both default off; salinity is the manuscript-active path
+# (temperature is deferred — see decisions/2026-04-29_temperature_lstm_deferred.md).
+#
+# `NYCOPT_TS_ON` is a legacy convenience that turns on whichever LSTM is
+# considered active for the manuscript (currently: salinity only). New
+# scripts should prefer `NYCOPT_SALINITY_ON` / `NYCOPT_TEMPERATURE_ON` for
+# clarity.
+#
+# See:
 #   local_notes/methodology/temperature_salinity.md
 #   local_notes/decisions/2026-04-29_ts_observe_only.md
+#   local_notes/decisions/2026-04-29_temperature_lstm_deferred.md
 
-INCLUDE_TEMPERATURE_MODEL = _parse_bool_env("NYCOPT_TS_ON", False)
-INCLUDE_SALINITY_MODEL = _parse_bool_env("NYCOPT_TS_ON", False)
+_TS_ON_LEGACY = _parse_bool_env("NYCOPT_TS_ON", False)
+INCLUDE_TEMPERATURE_MODEL = _parse_bool_env("NYCOPT_TEMPERATURE_ON", False)
+INCLUDE_SALINITY_MODEL = _parse_bool_env("NYCOPT_SALINITY_ON", _TS_ON_LEGACY)
+
+# LSTM training data window starts in 1979; pre-1979 simulation days are
+# returned as NaN by the LSTM parameters and must be dropped at objective
+# computation time. Set this to the earliest date the LSTMs trust.
+LSTM_START_DATE = _parse_str_env("NYCOPT_LSTM_START_DATE", "1979-01-01")
 
 # Threshold above which Lordville thermal exceedance days are counted.
 # 23.89 °C (75 °F) is the DRBC cold-water-fish thermal stress threshold.
+# (Inactive while INCLUDE_TEMPERATURE_MODEL=False.)
 LORDVILLE_THERMAL_THRESHOLD_C = _parse_float_env(
     "NYCOPT_THERMAL_THRESHOLD_C", 23.89,
 )
@@ -324,8 +361,21 @@ SALT_FRONT_REFERENCE_RM = _parse_float_env(
 # asynchronous mode and does NOT rewrite mrf_target_{Montague,Trenton} —
 # strictly observational. Set False only to *intentionally* let the salinity
 # LSTM feed back into MRF targets. Doing so changes the meaning of the
-# Montague/Trenton dynamic-target objectives.
+# Montague/Trenton dynamic-target objectives. Note: in either mode the LSTM
+# still updates per-timestep and publishes salt_front_location_mu — only the
+# MRF-rewrite side effect is gated.
 SALINITY_ASYNC_UPDATE = _parse_bool_env("NYCOPT_SALINITY_ASYNC", True)
+
+# Extend RESULTS_SETS so pywrdrb.Data().load_output() pulls the LSTM
+# parameter outputs out of the HDF5 (or in-memory recorder). 'salinity'
+# yields columns including 'salt_front_location_mu'; 'temperature' yields
+# 'temperature_after_thermal_release_mu'. Defined as side effect so the
+# constant doesn't change shape based on env at module import; instead the
+# code that uses RESULTS_SETS reads from this single source of truth.
+if INCLUDE_SALINITY_MODEL and "salinity" not in RESULTS_SETS:
+    RESULTS_SETS = list(RESULTS_SETS) + ["salinity"]
+if INCLUDE_TEMPERATURE_MODEL and "temperature" not in RESULTS_SETS:
+    RESULTS_SETS = list(RESULTS_SETS) + ["temperature"]
 
 
 ###############################################################################
@@ -415,6 +465,12 @@ CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
 def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
     """Derive a slug from active config + a formulation name.
 
+    Suffix grammar (LSTM portion):
+      - both temperature + salinity on  -> "_ts"
+      - salinity only                    -> "_sal"
+      - temperature only                 -> "_temp"
+      - neither                          -> (omitted)
+
     Args:
         formulation: e.g. "ffmp", "ffmp_6", "ann".
         custom_tag: appended after auto-derived components if non-empty.
@@ -429,8 +485,12 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
         return explicit
 
     parts = [formulation, f"obj{len(ACTIVE_OBJECTIVES)}"]
-    if INCLUDE_TEMPERATURE_MODEL or INCLUDE_SALINITY_MODEL:
+    if INCLUDE_TEMPERATURE_MODEL and INCLUDE_SALINITY_MODEL:
         parts.append("ts")
+    elif INCLUDE_SALINITY_MODEL:
+        parts.append("sal")
+    elif INCLUDE_TEMPERATURE_MODEL:
+        parts.append("temp")
     if len(STATE_FEATURES) != len(_DEFAULT_STATE_FEATURES):
         parts.append(f"state{len(STATE_FEATURES)}")
 
