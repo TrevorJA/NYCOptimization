@@ -43,8 +43,11 @@ from config import (
     PRESIM_DIR,
     PRESIM_FILE,
     NYC_RESERVOIRS,
+    INCLUDE_SALINITY_MODEL,
+    INCLUDE_TEMPERATURE_MODEL,
 )
 from src.formulations import get_formulation, get_var_names
+from src.ts_options import build_lstm_options_block
 
 # Allow debug override of simulation date range via environment variables.
 # Set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE (YYYY-MM-DD) before
@@ -155,19 +158,28 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None):
     Subsequent evaluations deep-copy this dict and patch only the DV-affected
     parameters, avoiding the ~1s cost of make_model() on every eval.
 
-    The cache is keyed by tuple(drought_levels) so that N-zone configs with
-    different parameter names each get their own cached model dict.
+    Cache key includes drought-level structure AND T/S toggles so that
+    enabling salinity (or temperature) does not silently reuse a cache
+    built without it — same applies in reverse for testing T/S off.
     """
     global _CACHED_MODEL_DICT, _CACHED_MODEL_DICTS
     if nyc_config is None:
         nyc_config = _get_cached_defaults()
     drought_levels, _ = _config_levels(nyc_config)
-    key = tuple(drought_levels)
+    key = (
+        tuple(drought_levels),
+        bool(INCLUDE_TEMPERATURE_MODEL),
+        bool(INCLUDE_SALINITY_MODEL),
+    )
     if key not in _CACHED_MODEL_DICTS:
         mb = _build_model_builder(nyc_config, use_trimmed=use_trimmed)
         _CACHED_MODEL_DICTS[key] = mb.model_dict
         # Keep legacy single reference in sync for backward compatibility
-        if key == tuple(["level1a", "level1b", "level1c", "level2", "level3", "level4", "level5"]):
+        # (only when T/S is off so legacy callers still see a sane default).
+        legacy_levels = tuple(
+            ["level1a", "level1b", "level1c", "level2", "level3", "level4", "level5"]
+        )
+        if key == (legacy_levels, False, False):
             _CACHED_MODEL_DICT = _CACHED_MODEL_DICTS[key]
     return _CACHED_MODEL_DICTS[key]
 
@@ -549,6 +561,10 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None):
         presim_file = _require_presim_file()
         options["presimulated_releases_file"] = str(presim_file)
 
+    # T/S LSTM options. Empty dict if both toggles are off, so this merge
+    # is a no-op for the standard objective set.
+    options.update(build_lstm_options_block())
+
     mb = pywrdrb.ModelBuilder(
         inflow_type=INFLOW_TYPE,
         start_date=START_DATE,
@@ -719,6 +735,31 @@ def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) ->
             col = k.split("mrf_target_")[1]
             mrf_data[col] = recorder_dict[k].data[:, scenario]
     results["mrf_target"] = pd.DataFrame(mrf_data, index=dt_index)
+
+    # Salinity LSTM outputs (only present when INCLUDE_SALINITY_MODEL is on).
+    # The published parameter name is `salt_front_location_mu` (river mile,
+    # 7-day average). Pre-LSTM-start dates produce NaN; downstream metrics
+    # must dropna() rather than treating NaN as a real reading.
+    salinity_keys = [
+        "salt_front_location_mu", "salt_front_location_sd",
+    ]
+    sal_data = {k: recorder_dict[k].data[:, scenario]
+                for k in salinity_keys if k in recorder_dict}
+    if sal_data:
+        results["salinity"] = pd.DataFrame(sal_data, index=dt_index)
+
+    # Temperature LSTM outputs (only when INCLUDE_TEMPERATURE_MODEL is on;
+    # currently inactive — see decisions/2026-04-29_temperature_lstm_deferred.md).
+    temperature_keys = [
+        "temperature_after_thermal_release_mu",
+        "temperature_after_thermal_release_sd",
+        "thermal_release_requirement",
+        "forecasted_temperature_before_thermal_release_mu",
+    ]
+    temp_data = {k: recorder_dict[k].data[:, scenario]
+                 for k in temperature_keys if k in recorder_dict}
+    if temp_data:
+        results["temperature"] = pd.DataFrame(temp_data, index=dt_index)
 
     return results
 

@@ -40,6 +40,8 @@ from config import (
     WARMUP_DAYS,
     MONTAGUE_FIXED_TARGET_MGD,
     TRENTON_FIXED_TARGET_MGD,
+    LORDVILLE_THERMAL_THRESHOLD_C,
+    SALT_FRONT_REFERENCE_RM,
 )
 
 
@@ -337,6 +339,49 @@ def _min_storage_pct(data: dict) -> float:
     return 100.0 * float(storage.min()) / NYC_TOTAL_CAPACITY
 
 
+# --- Salinity (LSTM) ---
+
+def _salt_front_max_rm_excursion(data: dict) -> float:
+    """Maximum upstream excursion of salt front past the reference RM.
+
+    Salt-front position is reported in river miles; lower RM = farther
+    upstream = worse. Excursion = max(reference_RM - position, 0).
+    Positive values mean the salt front intruded past the reference;
+    higher values are worse. Returns 0 when the salt front never
+    crossed the reference. NaN entries (pre-LSTM-start dates) are
+    dropped before computing the max.
+    """
+    if "salinity" not in data:
+        return float("nan")
+    sf = data["salinity"].get("salt_front_location_mu")
+    if sf is None:
+        return float("nan")
+    sf = sf.iloc[WARMUP_DAYS:].dropna()
+    if sf.empty:
+        return 0.0
+    excursion = (SALT_FRONT_REFERENCE_RM - sf).clip(lower=0)
+    return float(excursion.max())
+
+
+# --- Temperature (LSTM) — INACTIVE. Inputs require multivariate
+# meteorology not available for stochastic re-eval scenarios. Kept here
+# so the metric is one config flag away from re-enable.
+
+def _lordville_thermal_exceedance_days(data: dict) -> float:
+    """Number of days max water temp at Lordville exceeds threshold (°C).
+
+    Reads from data["temperature"]["temperature_after_thermal_release_mu"].
+    NaN entries (pre-LSTM-start) are dropped before counting.
+    """
+    if "temperature" not in data:
+        return float("nan")
+    temp = data["temperature"].get("temperature_after_thermal_release_mu")
+    if temp is None:
+        return float("nan")
+    temp = temp.iloc[WARMUP_DAYS:].dropna()
+    return float((temp > LORDVILLE_THERMAL_THRESHOLD_C).sum())
+
+
 ###############################################################################
 # Objective Registry
 ###############################################################################
@@ -412,6 +457,18 @@ _register("flood_risk_downstream_flow_days", "minimize", 5.0,
 _register("storage_min_combined_pct", "maximize", 0.5,
           "Minimum combined NYC storage as pct of total capacity [0-100]",
           _min_storage_pct)
+
+# --- Salinity (LSTM) — active when INCLUDE_SALINITY_MODEL=True ---
+_register("salt_front_max_rm_excursion", "minimize", 0.5,
+          "Max upstream excursion of salt front past "
+          f"{SALT_FRONT_REFERENCE_RM} RM (river miles)",
+          _salt_front_max_rm_excursion)
+
+# --- Temperature (LSTM) — INACTIVE; see decision doc ---
+_register("lordville_thermal_exceedance_days", "minimize", 2.0,
+          f"Days max water temp at Lordville > "
+          f"{LORDVILLE_THERMAL_THRESHOLD_C} °C",
+          _lordville_thermal_exceedance_days)
 
 
 ###############################################################################
