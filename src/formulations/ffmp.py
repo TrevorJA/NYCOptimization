@@ -4,10 +4,16 @@ ffmp.py - Parameterized FFMP (2017 Flexible Flow Management Program) formulation
 Defines decision variables, bounds, and baselines for the FFMP formulation
 that re-optimizes existing FFMP parameters within plausible ranges, and
 supports N-zone variable-resolution variants.
+
+Salt-front-dependent flow-target adjustment DVs (FFMP-family only) are
+merged in conditionally based on `config.SALT_FRONT_PARAM_MODE`. See
+`salt_front_dvs.py` and `decisions/2026-04-29_salt_front_parameterization.md`.
 """
 
 import numpy as np
 from collections import OrderedDict
+
+from .salt_front_dvs import salt_front_dv_specs
 
 
 ###############################################################################
@@ -33,7 +39,61 @@ def _interpolate_factors(default_values, n_target):
 
 
 ###############################################################################
-# Standard FFMP formulation (24 DVs, 7 drought levels)
+# Salt-front DV merge helper
+###############################################################################
+
+def _merge_salt_front_dvs(dvs: OrderedDict, n_drought_levels: int = None) -> OrderedDict:
+    """Append salt-front DVs to the FFMP DV registry per active config.
+
+    Reads `config.SALT_FRONT_PARAM_MODE` and friends at call time so env
+    overrides set in SLURM scripts are honored. Mutates and returns `dvs`.
+    No-op when mode == "fixed" (default).
+
+    Args:
+        dvs: target DV registry (OrderedDict) to extend in place.
+        n_drought_levels: drought-level count of the FFMP variant. When
+            provided, the activation-gate DV's allowed levels resolve to the
+            top 3 indices of this N-zone config (`[N-2, N-1, N]` for
+            n_drought_levels = N+1). When None (stock FFMP), falls back to
+            `config.SALT_FRONT_ACTIVATION_LEVEL_OPTIONS` (= `[4, 5, 6]` by
+            default — matches the standard 7-level FFMP).
+    """
+    # Local import to avoid a partial-import cycle (config.py imports from
+    # this module at top level).
+    from config import (
+        SALT_FRONT_PARAM_MODE,
+        SALT_FRONT_MULTIPLIER_BOUNDS,
+        SALT_FRONT_RM_BAND_BOUNDS,
+        SALT_FRONT_ACTIVATION_LEVEL_OPTIONS,
+        SALT_FRONT_FIXED_ACTIVATION_LEVEL,
+    )
+    if n_drought_levels is not None:
+        # Top 3 drought-level indices for the active N-zone config. Mirrors
+        # the relationship in stock FFMP where [4,5,6] are the top 3 of 7
+        # levels (indices 0..6).
+        activation_options = list(range(n_drought_levels - 3, n_drought_levels))
+        fixed_activation = n_drought_levels - 1
+    else:
+        activation_options = list(SALT_FRONT_ACTIVATION_LEVEL_OPTIONS)
+        fixed_activation = SALT_FRONT_FIXED_ACTIVATION_LEVEL
+    extra = salt_front_dv_specs(
+        SALT_FRONT_PARAM_MODE,
+        multiplier_bounds=SALT_FRONT_MULTIPLIER_BOUNDS,
+        rm_band_bounds=SALT_FRONT_RM_BAND_BOUNDS,
+        activation_options=activation_options,
+        fixed_activation_level=fixed_activation,
+    )
+    for name, spec in extra.items():
+        if name in dvs:
+            raise ValueError(
+                f"Salt-front DV name '{name}' collides with an existing FFMP DV"
+            )
+        dvs[name] = spec
+    return dvs
+
+
+###############################################################################
+# Standard FFMP formulation (24 DVs base, optionally extended via salt_front)
 ###############################################################################
 
 # FFMP decision variable specification.
@@ -180,7 +240,6 @@ FFMP_FORMULATION = {
     }),
 }
 
-
 ###############################################################################
 # Formulation factory
 ###############################################################################
@@ -268,6 +327,15 @@ def generate_ffmp_formulation(n_zones=None):
             "bounds": [0.5, 2.0],
             "units": "multiplier",
         }
+
+    # Merge salt-front DVs (no-op when SALT_FRONT_PARAM_MODE == "fixed").
+    # Safe to call here because generate_ffmp_formulation runs after module
+    # import has completed, so the config-import in _merge_salt_front_dvs
+    # doesn't trigger a partial-import cycle.
+    # Pass n_drought_levels so the activation-gate DV (when active) resolves
+    # to the top 3 indices of THIS N-zone config rather than the default
+    # 7-level [4,5,6].
+    _merge_salt_front_dvs(dvs, n_drought_levels=n_zones + 1)
 
     return {
         "description": f"Parameterized FFMP with {n_zones}-zone storage curves",
