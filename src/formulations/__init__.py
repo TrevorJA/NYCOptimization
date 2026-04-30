@@ -29,8 +29,12 @@ Circular-import note
 
 import numpy as np
 
-from .ffmp import FFMP_FORMULATION, generate_ffmp_formulation
+from .ffmp import FFMP_FORMULATION, generate_ffmp_formulation, _merge_salt_front_dvs
 from .external import is_external_policy, get_architecture, register_architecture
+
+# Sentinel: track which formulation dicts have already had salt-front DVs
+# merged so repeated `get_formulation` calls don't double-merge.
+_SALT_FRONT_MERGED_FLAGS: dict = {}
 
 __all__ = [
     "FORMULATIONS",
@@ -81,7 +85,15 @@ def get_formulation(name: str = "ffmp") -> dict:
         ValueError: If *name* is not in the registry and is not an ffmp_N pattern.
     """
     if name in FORMULATIONS:
-        return FORMULATIONS[name]
+        formulation = FORMULATIONS[name]
+        # Lazily merge salt-front DVs into the registered formulation on
+        # first access. Idempotent via the _SALT_FRONT_MERGED_FLAGS sentinel.
+        # Defer to call time so we don't trigger a partial-import cycle
+        # against config.py at module load.
+        if name in ("ffmp",) and not _SALT_FRONT_MERGED_FLAGS.get(name):
+            _merge_salt_front_dvs(formulation["decision_variables"])
+            _SALT_FRONT_MERGED_FLAGS[name] = True
+        return formulation
     if name.startswith("ffmp_"):
         try:
             n = int(name.split("_")[1])
@@ -89,6 +101,7 @@ def get_formulation(name: str = "ffmp") -> dict:
             pass
         else:
             if n >= 2:
+                # generate_ffmp_formulation already merges salt-front DVs.
                 return generate_ffmp_formulation(n)
     raise ValueError(
         f"Unknown formulation '{name}'. "

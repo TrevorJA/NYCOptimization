@@ -47,6 +47,7 @@ from config import (
     INCLUDE_TEMPERATURE_MODEL,
 )
 from src.formulations import get_formulation, get_var_names
+from src.formulations.salt_front_dvs import apply_salt_front_dvs
 from src.ts_options import build_lstm_options_block
 
 # Allow debug override of simulation date range via environment variables.
@@ -264,6 +265,32 @@ def _patch_model_dict(model_dict: dict, nyc_config):
                     key, daily=False
                 ).tolist()
 
+    # --- Salt-front parameter substitution (FFMP-family + salinity on) ---
+    _patch_salt_front_parameter(model_dict, nyc_config)
+
+
+def _patch_salt_front_parameter(model_dict: dict, nyc_config) -> None:
+    """Substitute the upstream salt-front parameter for our parameterized
+    subclass and inject DV-derived values.
+
+    Reads salt-front options stashed on `nyc_config` by `_stash_salt_front_options`.
+    Idempotent: safe to call on either a fresh or an already-patched model
+    dict. No-op when no salt-front options are stashed (mode=fixed or
+    no-salinity path).
+    """
+    sf_options = getattr(nyc_config, "_salt_front_options", None)
+    if sf_options is None:
+        return
+    params = model_dict.get("parameters", {})
+    for loc in ("delMontague", "delTrenton"):
+        key = f"flow_target_salt_front_adjustment_ratio_{loc}"
+        if key not in params:
+            continue
+        params[key]["type"] = "NYCOptParameterizedSaltFrontAdjustmentRatio"
+        params[key]["multipliers"] = sf_options["multipliers"]
+        params[key]["rm_band_thresholds"] = sf_options["rm_band_thresholds"]
+        params[key]["nyc_drought_emergency_level"] = sf_options["activation_level"]
+
 
 ###############################################################################
 # N-zone Config Builder
@@ -322,6 +349,45 @@ def dvs_to_config(dv_vector, formulation_name="ffmp"):
             f"Formulation '{formulation_name}' not yet implemented."
         )
     return config
+
+
+def _stash_salt_front_options(config, params: dict) -> None:
+    """Compute salt-front DV-derived options and stash on the config object.
+
+    Reads salt-front-DV-named entries from `params` (any subset present),
+    composes the multiplier table / RM thresholds / activation level via
+    `apply_salt_front_dvs`, and attaches the resulting dict to `config`
+    under the `_salt_front_options` attribute. Picked up later by
+    `_patch_model_dict` to substitute the parameter type and inject values.
+
+    No-op when `SALT_FRONT_PARAM_MODE == "fixed"` (no salt-front DVs were
+    appended to the formulation, so `params` won't contain them).
+
+    Activation-level resolution is N-zone aware: when the activation level is
+    NOT a DV, we use `config.n_drought_levels - 1` (which is 6 for stock FFMP
+    and N+0 for FFMP_VR(N=N+0)... e.g. 8 for N=8, 12 for N=12). This matches
+    the upstream `model_builder.py:2704` default and ensures the rule fires
+    at the actual drought-emergency band regardless of N.
+    `SALT_FRONT_FIXED_ACTIVATION_LEVEL` is honored only when `config` does
+    not expose `n_drought_levels` (defensive fallback).
+    """
+    from config import (
+        SALT_FRONT_PARAM_MODE,
+        SALT_FRONT_FIXED_ACTIVATION_LEVEL,
+    )
+    if SALT_FRONT_PARAM_MODE == "fixed":
+        return
+    sf_params = {k: v for k, v in params.items() if k.startswith("sf_")}
+    n_drought = getattr(config, "n_drought_levels", None)
+    if n_drought is not None:
+        fixed_level = int(n_drought) - 1
+    else:
+        fixed_level = SALT_FRONT_FIXED_ACTIVATION_LEVEL
+    sf_options = apply_salt_front_dvs(
+        sf_params,
+        fixed_activation_level=fixed_level,
+    )
+    object.__setattr__(config, "_salt_front_options", sf_options)
 
 
 def _apply_ffmp_params(config, params: dict):
@@ -407,6 +473,9 @@ def _apply_ffmp_params(config, params: dict):
     # MRF seasonal profile scaling
     _apply_mrf_profile_scaling(config, params)
 
+    # Stash salt-front DV-derived options for downstream model-dict patching.
+    _stash_salt_front_options(config, params)
+
 
 def _apply_nzone_ffmp_params(config, params: dict):
     """Apply N-zone FFMP params to an NYCOperationsConfig with zone_0..zone_N naming.
@@ -455,6 +524,9 @@ def _apply_nzone_ffmp_params(config, params: dict):
 
     # MRF seasonal scaling
     _apply_mrf_profile_scaling(config, params)
+
+    # Stash salt-front DV-derived options for downstream model-dict patching.
+    _stash_salt_front_options(config, params)
 
 
 def _apply_zone_shifts(config, shifts: dict):
@@ -764,6 +836,69 @@ def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) ->
     return results
 
 
+def _extract_salinity_records(model, datetime_index, results: dict) -> None:
+    """Extract per-sim-day sf_mu/sf_sd from the salinity LSTM after model.run().
+
+    In sync mode (`asycronized_update=False`, our default), the LSTM advances
+    `ml_model.t` once per simulation day, writing each sim day's flow into
+    `ml_model.X[t, :]` and computing that day's forward pass. With `debug=True`
+    on the salinity options, the per-day `sf_mu`/`sf_sd` is recorded in
+    `ml_model.records` at index `t = sim_day_index` — i.e., `records[0]` is
+    the first sim day's salt-front prediction regardless of the LSTM's own
+    `start_date`.
+
+    We pair `records[0:n_sim]` with the simulation's datetime_index. Replaces
+    `results["salinity"]` with this DataFrame; this is the canonical source of
+    truth for the salinity objective.
+
+    Async mode (`asycronized_update=True`) is intentionally unsupported: in
+    async mode `ml_model.t` never advances during pywrdrb's run loop, so all
+    sim days overwrite `X[0, :]` and the LSTM's forward pass over the full
+    window is dominated by historical training data — not what we want for
+    NYC-policy-driven optimization. See decisions/2026-04-29_salinity_lstm_*.
+
+    Mutates `results` in place when salinity is enabled.
+    """
+    if not INCLUDE_SALINITY_MODEL:
+        return
+    try:
+        salinity_param = model.parameters["salinity_model"]
+    except (KeyError, AttributeError):
+        return
+    ml_model = getattr(salinity_param, "ml_model", None)
+    if ml_model is None or not getattr(ml_model, "debug", False):
+        return
+
+    n_sim = len(datetime_index)
+    sim_index = pd.DatetimeIndex(datetime_index)
+
+    if ml_model.t < n_sim:
+        # Sanity check: under sync mode ml_model.t should equal sim length.
+        # If we land here, async mode is in effect — records[0] holds the
+        # last-sim-day flow's prediction, not a per-day series.
+        print(f"  [salinity extract] WARN: ml_model.t={ml_model.t} < n_sim={n_sim}; "
+              f"records likely incomplete (async mode?). Leaving recorder-based "
+              f"data['salinity'] in place.")
+        return
+
+    sf_mu = np.asarray(ml_model.records.get("sf_mu", [])[:n_sim], dtype=float)
+    sf_sd = np.asarray(ml_model.records.get("sf_sd", [])[:n_sim], dtype=float)
+    if sf_mu.size != n_sim:
+        # Records didn't populate the expected number of days — skip rather
+        # than guess at alignment.
+        print(f"  [salinity extract] WARN: records['sf_mu'][:n_sim] has size "
+              f"{sf_mu.size}, expected {n_sim}. Skipping.")
+        return
+
+    results["salinity"] = pd.DataFrame(
+        {
+            "salt_front_location_mu": sf_mu,
+            "salt_front_location_sd": sf_sd,
+        },
+        index=sim_index,
+    )
+
+
 ###############################################################################
 # In-Memory Simulation (for optimization)
 ###############################################################################
@@ -808,6 +943,7 @@ def run_simulation_inmemory(nyc_config, use_trimmed: bool = None) -> dict:
     # Access recorder data BEFORE deleting model (datetime_index lives on model)
     datetime_index = model.timestepper.datetime_index.to_timestamp()
     data = _extract_results_from_recorder(mem_recorder.recorder_dict, datetime_index)
+    _extract_salinity_records(model, datetime_index, data)
 
     del model, mem_recorder
     return data
@@ -838,6 +974,11 @@ def run_simulation_to_disk(nyc_config, output_file: Path,
 
     mb = _build_model_builder(nyc_config, use_trimmed=use_trimmed)
 
+    # Substitute the salt-front parameter type + values when DVs are active.
+    # The cached path (run_simulation_inmemory) does this in _patch_model_dict;
+    # here we do it inline before the model JSON is written.
+    _patch_salt_front_parameter(mb.model_dict, nyc_config)
+
     model_json = output_file.with_suffix(".json")
     model = _write_and_load_model(mb, str(model_json))
 
@@ -850,6 +991,10 @@ def run_simulation_to_disk(nyc_config, output_file: Path,
 
     # Load results via pywrdrb.Data() for proper name mapping
     data = _load_results_from_hdf5(output_file)
+    # Async-mode salinity LSTM populates only after model.run() finishes.
+    # Compute here and overwrite data["salinity"] with the real time series.
+    datetime_index = model.timestepper.datetime_index.to_timestamp()
+    _extract_salinity_records(model, datetime_index, data)
 
     # Cleanup model JSON (keep HDF5 for analysis)
     model_json.unlink(missing_ok=True)

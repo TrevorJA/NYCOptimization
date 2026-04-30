@@ -357,14 +357,26 @@ SALT_FRONT_REFERENCE_RM = _parse_float_env(
     "NYCOPT_SALT_FRONT_RM", 92.47,
 )
 
-# Salinity coupling mode. When True (default), the salinity LSTM runs in
-# asynchronous mode and does NOT rewrite mrf_target_{Montague,Trenton} —
-# strictly observational. Set False only to *intentionally* let the salinity
-# LSTM feed back into MRF targets. Doing so changes the meaning of the
-# Montague/Trenton dynamic-target objectives. Note: in either mode the LSTM
-# still updates per-timestep and publishes salt_front_location_mu — only the
-# MRF-rewrite side effect is gated.
-SALINITY_ASYNC_UPDATE = _parse_bool_env("NYCOPT_SALINITY_ASYNC", True)
+# Salinity coupling mode. **Default False (sync).**
+# Why sync, not async: in async mode the LSTM does NOT advance its internal
+# time index `ml_model.t` during pywrdrb's run loop, so every sim-day's flow
+# overwrites `X[0, :]` and the LSTM forward pass over the full window is
+# dominated by historical training data. In sync mode the LSTM advances 1
+# step per sim day and produces a per-day sf_mu series that is genuinely
+# responsive to NYC operational decisions — verified by the random-sample
+# diagnostics 2026-04-29.
+#
+# Side effect of sync mode: when the system enters NYC drought emergency
+# (drought_level_agg_nyc_idx == n_drought_levels - 1), the salinity LSTM
+# rewrites mrf_target_{delMontague,delTrenton} via FlowTargetSaltFrontAdj-
+# ustmentRatio. This changes the meaning of the *_dynamic flow-target
+# objectives (montague_reliability_weekly_dynamic etc.). Our default
+# `ACTIVE_OBJECTIVES` uses the `_fixed` variants which are unaffected.
+# Outside drought emergency, the adjustment ratio is 1.0 (no-op).
+#
+# Set True only to *intentionally* disable the LSTM's responsiveness to
+# simulated flows (e.g., to study LSTM sensitivity in isolation).
+SALINITY_ASYNC_UPDATE = _parse_bool_env("NYCOPT_SALINITY_ASYNC", False)
 
 # Extend RESULTS_SETS so pywrdrb.Data().load_output() pulls the LSTM
 # parameter outputs out of the HDF5 (or in-memory recorder). 'salinity'
@@ -376,6 +388,97 @@ if INCLUDE_SALINITY_MODEL and "salinity" not in RESULTS_SETS:
     RESULTS_SETS = list(RESULTS_SETS) + ["salinity"]
 if INCLUDE_TEMPERATURE_MODEL and "temperature" not in RESULTS_SETS:
     RESULTS_SETS = list(RESULTS_SETS) + ["temperature"]
+
+
+###############################################################################
+# Salt-front MRF adjustment parameterization (FFMP-family DVs)
+###############################################################################
+# The salinity LSTM, when enabled in sync mode, drives a salt-front-based
+# adjustment of `mrf_target_{delMontague,delTrenton}` during NYC drought
+# emergency. The adjustment is a lookup table indexed by (RM band, season).
+# By default the table is fixed at the FFMP-Appendix-A values. Setting
+# `NYCOPT_SALT_FRONT_PARAM_MODE` to one of the modes below exposes parts
+# of that table as decision variables for FFMP-family formulations only
+# (RBF/Tree/ANN/Spline are unaffected — they don't use FFMP drought levels
+# so the adjustment never fires for them).
+#
+# Modes (configurable subset of the full operational table):
+#   "fixed"               -> 0 new DVs (default; behavior identical to today)
+#   "multipliers"         -> 15 multiplier cells (5 reference cells pinned 1.0)
+#   "multipliers_with_gate" -> +1 activation drought-level DV (16 total)
+#   "full"                -> +3 RM-band threshold DVs (19 total)
+#
+# See:
+#   local_notes/decisions/2026-04-29_salt_front_parameterization.md
+#   local_notes/methodology/salt_front_adjustment_dvs.md
+
+_SALT_FRONT_PARAM_MODES = ("fixed", "multipliers", "multipliers_with_gate", "full")
+SALT_FRONT_PARAM_MODE = _parse_str_env("NYCOPT_SALT_FRONT_PARAM_MODE", "fixed").lower()
+if SALT_FRONT_PARAM_MODE not in _SALT_FRONT_PARAM_MODES:
+    raise ValueError(
+        f"Invalid SALT_FRONT_PARAM_MODE='{SALT_FRONT_PARAM_MODE}'; "
+        f"expected one of {_SALT_FRONT_PARAM_MODES}"
+    )
+
+# DV bounds for multiplier cells. The FFMP-default values currently span
+# ~0.69–1.19, so a [0.5, 1.5] window gives meaningful exploration room.
+_SALT_FRONT_MULT_BOUNDS_RAW = _parse_str_env(
+    "NYCOPT_SALT_FRONT_MULTIPLIER_BOUNDS", "0.5,1.5"
+)
+SALT_FRONT_MULTIPLIER_BOUNDS = tuple(
+    float(x) for x in _SALT_FRONT_MULT_BOUNDS_RAW.split(",")
+)
+if len(SALT_FRONT_MULTIPLIER_BOUNDS) != 2 or SALT_FRONT_MULTIPLIER_BOUNDS[0] >= SALT_FRONT_MULTIPLIER_BOUNDS[1]:
+    raise ValueError(
+        f"Invalid SALT_FRONT_MULTIPLIER_BOUNDS={SALT_FRONT_MULTIPLIER_BOUNDS}; "
+        "expected 'lo,hi' with lo<hi"
+    )
+
+# RM-band thresholds (lo, mid, hi). Defaults are the DRBC §2.5.3 operational
+# triggers (82.9, 87.0, 92.5). Per-threshold bounds prevent the optimizer
+# from violating physical ordering. Encoded as 3 (lo, hi) tuples in lo->hi
+# order. Stored as flat string for env override; parsed below.
+_SALT_FRONT_RM_BOUNDS_RAW = _parse_str_env(
+    "NYCOPT_SALT_FRONT_RM_BAND_BOUNDS",
+    # lo (82.9 default): allow [76, 86]
+    # mid (87.0 default): allow [84, 90]
+    # hi (92.5 default): allow [89, 95]
+    "76,86;84,90;89,95",
+)
+def _parse_rm_band_bounds(s: str) -> list[tuple[float, float]]:
+    out = []
+    for chunk in s.split(";"):
+        parts = chunk.strip().split(",")
+        if len(parts) != 2:
+            raise ValueError(
+                f"Invalid RM band bound '{chunk}'; expected 'lo,hi'"
+            )
+        lo, hi = float(parts[0]), float(parts[1])
+        if lo >= hi:
+            raise ValueError(f"RM band bound has lo>=hi: {chunk}")
+        out.append((lo, hi))
+    return out
+
+SALT_FRONT_RM_BAND_BOUNDS = _parse_rm_band_bounds(_SALT_FRONT_RM_BOUNDS_RAW)
+if len(SALT_FRONT_RM_BAND_BOUNDS) != 3:
+    raise ValueError(
+        f"SALT_FRONT_RM_BAND_BOUNDS must have 3 entries (lo, mid, hi); got {SALT_FRONT_RM_BAND_BOUNDS}"
+    )
+
+# Allowed activation drought levels when activation is parameterized.
+# In stock FFMP (7-level config), L3=index 4, L4=index 5, L5=index 6.
+# We expose the high-end levels because earlier activation would dramatically
+# change behavior; downstream applications can override via env.
+SALT_FRONT_ACTIVATION_LEVEL_OPTIONS = _parse_int_list_env(
+    "NYCOPT_SALT_FRONT_ACTIVATION_LEVELS", [4, 5, 6]
+)
+
+# When activation is NOT a DV, this fixed level fires the rule. Default 6
+# (= L5 / Drought Emergency) matches FFMP. For N-zone configs this should
+# normally be n_drought_levels - 1; the simulation layer resolves that.
+SALT_FRONT_FIXED_ACTIVATION_LEVEL = _parse_int_env(
+    "NYCOPT_SALT_FRONT_FIXED_ACTIVATION_LEVEL", 6
+)
 
 
 ###############################################################################
@@ -491,6 +594,16 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
         parts.append("sal")
     elif INCLUDE_TEMPERATURE_MODEL:
         parts.append("temp")
+    # Salt-front DV mode (only meaningful when salinity is on AND formulation
+    # is FFMP-family; non-FFMP runs ignore the mode but the suffix still
+    # captures the campaign intent).
+    _sfdv_suffix = {
+        "multipliers":           "sfdv_mult",
+        "multipliers_with_gate": "sfdv_multgate",
+        "full":                  "sfdv_full",
+    }.get(SALT_FRONT_PARAM_MODE, "")
+    if _sfdv_suffix:
+        parts.append(_sfdv_suffix)
     if len(STATE_FEATURES) != len(_DEFAULT_STATE_FEATURES):
         parts.append(f"state{len(STATE_FEATURES)}")
 
