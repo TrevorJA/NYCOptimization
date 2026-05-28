@@ -39,6 +39,7 @@ from config import (
     INFLOW_TYPE,
     USE_TRIMMED_MODEL,
     INITIAL_VOLUME_FRAC,
+    NYC_NJ_DEMAND_SOURCE,
     RESULTS_SETS,
     PRESIM_DIR,
     PRESIM_FILE,
@@ -153,34 +154,46 @@ def _get_cached_nzone_defaults(n_zones):
     return _CACHED_NZONE_CONFIGS[n_zones]
 
 
-def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None):
+def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
+                           ensemble_spec=None):
     """Build and cache the base model_dict (first call per level structure only).
 
     Subsequent evaluations deep-copy this dict and patch only the DV-affected
     parameters, avoiding the ~1s cost of make_model() on every eval.
 
-    Cache key includes drought-level structure AND T/S toggles so that
-    enabling salinity (or temperature) does not silently reuse a cache
-    built without it — same applies in reverse for testing T/S off.
+    Cache key includes drought-level structure, T/S toggles, and ensemble
+    preset name + DU factor signature so that switching ensemble presets
+    (or enabling salinity) does not silently reuse a cache built for a
+    different inflow source.
     """
     global _CACHED_MODEL_DICT, _CACHED_MODEL_DICTS
     if nyc_config is None:
         nyc_config = _get_cached_defaults()
+    if ensemble_spec is None:
+        from src.ensembles import get_ensemble_spec
+        ensemble_spec = get_ensemble_spec("historic_single")
     drought_levels, _ = _config_levels(nyc_config)
     key = (
         tuple(drought_levels),
         bool(INCLUDE_TEMPERATURE_MODEL),
         bool(INCLUDE_SALINITY_MODEL),
+        ensemble_spec.preset_name,
+        ensemble_spec.du_factor_signature,
     )
     if key not in _CACHED_MODEL_DICTS:
-        mb = _build_model_builder(nyc_config, use_trimmed=use_trimmed)
+        mb = _build_model_builder(
+            nyc_config,
+            use_trimmed=use_trimmed,
+            ensemble_spec=ensemble_spec,
+        )
         _CACHED_MODEL_DICTS[key] = mb.model_dict
         # Keep legacy single reference in sync for backward compatibility
-        # (only when T/S is off so legacy callers still see a sane default).
+        # (only when T/S is off, no ensemble, so legacy callers still see
+        # a sane default).
         legacy_levels = tuple(
             ["level1a", "level1b", "level1c", "level2", "level3", "level4", "level5"]
         )
-        if key == (legacy_levels, False, False):
+        if key == (legacy_levels, False, False, "historic_single", ""):
             _CACHED_MODEL_DICT = _CACHED_MODEL_DICTS[key]
     return _CACHED_MODEL_DICTS[key]
 
@@ -609,7 +622,8 @@ def _apply_mrf_profile_scaling(config, params: dict):
 # Model Building Helpers
 ###############################################################################
 
-def _build_model_builder(nyc_config, use_trimmed: bool = None):
+def _build_model_builder(nyc_config, use_trimmed: bool = None,
+                         ensemble_spec=None):
     """Create and configure a ModelBuilder. Shared by both simulation paths.
 
     Args:
@@ -617,6 +631,12 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None):
         use_trimmed: Whether to use the trimmed model. If None, falls back to
             USE_TRIMMED_MODEL from config. Trimmed mode requires that
             00_generate_presim.sh has been run first.
+        ensemble_spec: Optional EnsembleSpec. When ``is_ensemble=True``, the
+            ModelBuilder is configured with the ensemble's ``inflow_type``
+            (which routes pywrdrb's path navigator to the staged HDF5 dir)
+            and ``inflow_ensemble_indices`` so pywr instantiates one scenario
+            per requested realization. When None or ``is_ensemble=False``,
+            the legacy single-trace ``INFLOW_TYPE`` from config is used.
     """
     import pywrdrb
 
@@ -624,28 +644,80 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None):
         use_trimmed = USE_TRIMMED_MODEL
 
     options = {
-        "nyc_nj_demand_source": "historical",
+        "nyc_nj_demand_source": NYC_NJ_DEMAND_SOURCE,
         "use_trimmed_model": use_trimmed,
         "initial_volume_frac": INITIAL_VOLUME_FRAC,
+        # Enable downstream stage recorders at Hale Eddy / Fishs Eddy /
+        # Bridgeville. Required by the action-stage flood objective.
+        "enable_nyc_flood_operations": True,
     }
 
     if use_trimmed:
-        presim_file = _require_presim_file()
-        options["presimulated_releases_file"] = str(presim_file)
+        # Single-trace path: pin the project-local presim CSV.
+        # Ensemble path: leave presimulated_releases_file unset so pywrdrb's
+        # ModelBuilder auto-routes to {flows/inflow_type}/presimulated_releases_mgd.hdf5
+        # (written by STARFITReleaseEnsemblePreprocessor); pywrdrb then wires
+        # PresimulatedReleaseEnsemble parameters to that artifact.
+        if ensemble_spec is None or not ensemble_spec.is_ensemble:
+            presim_file = _require_presim_file()
+            options["presimulated_releases_file"] = str(presim_file)
 
     # T/S LSTM options. Empty dict if both toggles are off, so this merge
     # is a no-op for the standard objective set.
     options.update(build_lstm_options_block())
 
+    # Ensemble routing: register staged HDF5 directory with pywrdrb's path
+    # navigator and pass realization indices through ModelBuilder's options
+    # dict (pywrdrb stores it on self.options.inflow_ensemble_indices and
+    # uses it to size the scenarios block + instantiate FlowEnsemble /
+    # PredictionEnsemble parameters; see Pywr-DRB/.../model_builder.py:547).
+    inflow_type_to_use = INFLOW_TYPE
+    if ensemble_spec is not None and ensemble_spec.is_ensemble:
+        from src.ensembles import register_ensemble_path
+        register_ensemble_path(ensemble_spec.inflow_type)
+        inflow_type_to_use = ensemble_spec.inflow_type
+        options["inflow_ensemble_indices"] = list(
+            ensemble_spec.realization_indices
+        )
+
+    # Ensemble window override: when the spec carries a realization_years
+    # value, the staged HDF5s span a clipped window starting at START_DATE.
+    # Use that window so the pywr timestepper aligns with the staged dates.
+    sim_start = START_DATE
+    sim_end = END_DATE
+    if (
+        ensemble_spec is not None
+        and ensemble_spec.is_ensemble
+        and ensemble_spec.realization_years is not None
+    ):
+        sim_start, sim_end = _ensemble_window(ensemble_spec)
+
     mb = pywrdrb.ModelBuilder(
-        inflow_type=INFLOW_TYPE,
-        start_date=START_DATE,
-        end_date=END_DATE,
+        inflow_type=inflow_type_to_use,
+        start_date=sim_start,
+        end_date=sim_end,
         options=options,
         nyc_operations_config=nyc_config,
     )
     mb.make_model()
     return mb
+
+
+def _ensemble_window(ensemble_spec) -> tuple[str, str]:
+    """Return (start_date, end_date) for an ensemble with realization_years set.
+
+    Starts at the configured START_DATE and ends ``realization_years`` years
+    later (minus one day) so the window matches the staged HDF5's date axis
+    produced by ``KirschNowakGenerator._generate``. Honors the
+    ``PYWRDRB_SIM_START_DATE`` / ``PYWRDRB_SIM_END_DATE`` env overrides
+    indirectly via the module-level ``START_DATE`` (already populated at
+    import time).
+    """
+    if ensemble_spec.realization_years is None:
+        return START_DATE, END_DATE
+    start_ts = pd.Timestamp(START_DATE)
+    end_ts = start_ts + pd.DateOffset(years=int(ensemble_spec.realization_years)) - pd.Timedelta(days=1)
+    return str(start_ts.date()), str(end_ts.date())
 
 
 def _write_and_load_model(mb, model_json_path: str):
@@ -808,6 +880,18 @@ def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) ->
             mrf_data[col] = recorder_dict[k].data[:, scenario]
     results["mrf_target"] = pd.DataFrame(mrf_data, index=dt_index)
 
+    # Downstream stage at reservoir-tail gauges (only when
+    # enable_nyc_flood_operations=True). Columns are gauge IDs:
+    # 01426500 (Hale Eddy, below Cannonsville), 01421000 (Fishs Eddy,
+    # below Pepacton), 01436690 (Bridgeville, below Neversink).
+    stage_data = {}
+    for k in all_keys:
+        if k.startswith("stage_"):
+            col = k.split("stage_", 1)[1]
+            stage_data[col] = recorder_dict[k].data[:, scenario]
+    if stage_data:
+        results["flood_stage"] = pd.DataFrame(stage_data, index=dt_index)
+
     # Salinity LSTM outputs (only present when INCLUDE_SALINITY_MODEL is on).
     # The published parameter name is `salt_front_location_mu` (river mile,
     # 7-day average). Pre-LSTM-start dates produce NaN; downstream metrics
@@ -836,7 +920,28 @@ def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) ->
     return results
 
 
-def _extract_salinity_records(model, datetime_index, results: dict) -> None:
+def _extract_results_per_scenario(recorder_dict, datetime_index,
+                                  n_scenarios: int) -> list:
+    """Extract simulation results for every scenario in a multi-realization run.
+
+    Calls ``_extract_results_from_recorder`` once per scenario index in
+    ``[0, n_scenarios)`` and returns a list of N data dicts (one per
+    realization). Each dict is shape-identical to the legacy single-trace
+    return so existing metric functions work unchanged.
+
+    Salinity LSTM extraction is handled by the ensemble runner (a per-
+    scenario ``_extract_salinity_records`` loop) rather than here, since the
+    LSTM records live on the model — not on the recorder dict.
+    """
+    return [
+        _extract_results_from_recorder(recorder_dict, datetime_index,
+                                       scenario=s)
+        for s in range(n_scenarios)
+    ]
+
+
+def _extract_salinity_records(model, datetime_index, results: dict,
+                              scenario: int = 0) -> None:
     """Extract per-sim-day sf_mu/sf_sd from the salinity LSTM after model.run().
 
     In sync mode (`asycronized_update=False`, our default), the LSTM advances
@@ -847,15 +952,24 @@ def _extract_salinity_records(model, datetime_index, results: dict) -> None:
     the first sim day's salt-front prediction regardless of the LSTM's own
     `start_date`.
 
-    We pair `records[0:n_sim]` with the simulation's datetime_index. Replaces
+    `ml_model.records["sf_mu"]` is shape `(n_sim, n_scenarios)` after the
+    PywrDRB-ML/Pywr-DRB scenario-aware refactor (2026-05-06), even when
+    `n_scenarios=1`. We slice `[:n_sim, scenario]` to pull the per-realization
+    series and pair it with the simulation's datetime_index. Replaces
     `results["salinity"]` with this DataFrame; this is the canonical source of
     truth for the salinity objective.
+
+    Single-trace callers (`run_simulation_inmemory`, `run_simulation_to_disk`)
+    leave `scenario` at its default 0 and get the same series they got pre-
+    refactor. Ensemble callers loop over scenario indices.
 
     Async mode (`asycronized_update=True`) is intentionally unsupported: in
     async mode `ml_model.t` never advances during pywrdrb's run loop, so all
     sim days overwrite `X[0, :]` and the LSTM's forward pass over the full
     window is dominated by historical training data — not what we want for
-    NYC-policy-driven optimization. See decisions/2026-04-29_salinity_lstm_*.
+    NYC-policy-driven optimization. The upstream SalinityLSTMModel.update
+    additionally raises NotImplementedError if asycronized_update=True is
+    combined with n_scenarios > 1.
 
     Mutates `results` in place when salinity is enabled.
     """
@@ -872,23 +986,30 @@ def _extract_salinity_records(model, datetime_index, results: dict) -> None:
     n_sim = len(datetime_index)
     sim_index = pd.DatetimeIndex(datetime_index)
 
-    if ml_model.t < n_sim:
-        # Sanity check: under sync mode ml_model.t should equal sim length.
-        # If we land here, async mode is in effect — records[0] holds the
-        # last-sim-day flow's prediction, not a per-day series.
-        print(f"  [salinity extract] WARN: ml_model.t={ml_model.t} < n_sim={n_sim}; "
+    # Under sync mode `ml_model.t` advances once per sim day after the
+    # first (the gate at salt_front_location.py skips day 1 because
+    # `previous_date < ml_model.current_date`), so the expected count is
+    # `n_sim - 1`. A genuine async-mode misconfiguration would leave
+    # `ml_model.t` near zero.
+    if ml_model.t < n_sim - 1:
+        print(f"  [salinity extract] WARN: ml_model.t={ml_model.t} < n_sim-1={n_sim-1}; "
               f"records likely incomplete (async mode?). Leaving recorder-based "
               f"data['salinity'] in place.")
         return
 
-    sf_mu = np.asarray(ml_model.records.get("sf_mu", [])[:n_sim], dtype=float)
-    sf_sd = np.asarray(ml_model.records.get("sf_sd", [])[:n_sim], dtype=float)
-    if sf_mu.size != n_sim:
-        # Records didn't populate the expected number of days — skip rather
-        # than guess at alignment.
-        print(f"  [salinity extract] WARN: records['sf_mu'][:n_sim] has size "
-              f"{sf_mu.size}, expected {n_sim}. Skipping.")
+    sf_mu_full = np.asarray(ml_model.records.get("sf_mu", []), dtype=float)
+    sf_sd_full = np.asarray(ml_model.records.get("sf_sd", []), dtype=float)
+    if sf_mu_full.ndim != 2 or sf_mu_full.shape[0] < n_sim:
+        print(f"  [salinity extract] WARN: records['sf_mu'] shape "
+              f"{sf_mu_full.shape}; expected (>={n_sim}, n_scenarios). Skipping.")
         return
+    if scenario >= sf_mu_full.shape[1]:
+        print(f"  [salinity extract] WARN: scenario={scenario} out of range "
+              f"for records shape {sf_mu_full.shape}. Skipping.")
+        return
+
+    sf_mu = sf_mu_full[:n_sim, scenario]
+    sf_sd = sf_sd_full[:n_sim, scenario]
 
     results["salinity"] = pd.DataFrame(
         {
@@ -947,6 +1068,89 @@ def run_simulation_inmemory(nyc_config, use_trimmed: bool = None) -> dict:
 
     del model, mem_recorder
     return data
+
+
+def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
+    """Run Pywr-DRB simulation across an inflow ensemble; no HDF5 disk I/O.
+
+    Mirrors :func:`run_simulation_inmemory` with three differences:
+
+      1. The cached base model_dict is keyed on the ensemble preset name +
+         DU factor signature, so different presets cannot cross-contaminate.
+      2. ``ModelBuilder`` is constructed with
+         ``inflow_type=ensemble_spec.inflow_type`` and
+         ``inflow_ensemble_indices=list(ensemble_spec.realization_indices)``,
+         which routes pywrdrb's ``FlowEnsemble`` and ``PredictionEnsemble``
+         parameters to the staged HDF5s under ``STAGED_ENSEMBLE_DIR``.
+      3. Returns a list of N data dicts (one per scenario) instead of a
+         single dict. Each dict has the same shape as
+         :func:`run_simulation_inmemory`'s output, so existing metric
+         functions in ``src/objectives.py`` work unchanged when wrapped by
+         an ``EnsembleObjective`` aggregator.
+
+      4. Salinity LSTM is now scenario-aware (PywrDRB-ML + Pywr-DRB
+         salt_front_location refactor, 2026-05-06): ``ml_model.records``
+         is shape ``(n_sim, n_scenarios)``, and we call
+         :func:`_extract_salinity_records` once per realization to populate
+         ``data_per_real[s]["salinity"]``.
+
+    Args:
+        nyc_config: NYCOperationsConfig instance (DV-applied).
+        ensemble_spec: ``EnsembleSpec`` with ``is_ensemble=True``.
+
+    Returns:
+        list[dict] of length ``ensemble_spec.n_realizations``. Each dict
+        has the same keys as :func:`run_simulation_inmemory`'s return.
+    """
+    import pywrdrb
+
+    if not ensemble_spec.is_ensemble:
+        raise ValueError(
+            f"run_simulation_ensemble_inmemory called with is_ensemble=False "
+            f"preset '{ensemble_spec.preset_name}'. Use run_simulation_inmemory "
+            f"for the single-trace path."
+        )
+
+    rank = _get_mpi_rank()
+    tmp_dir = _get_temp_dir()
+    model_json = str(Path(tmp_dir) / f"opt_model_ensemble_r{rank}.json")
+
+    # Trimmed-mode ensemble: pywrdrb's ModelBuilder auto-routes the trimmed-
+    # model release parameters to PresimulatedReleaseEnsemble (reading from
+    # presimulated_releases_mgd.hdf5 staged by STARFITReleaseEnsemble-
+    # Preprocessor) when both use_trimmed_model=True AND
+    # inflow_ensemble_indices are set. We pass use_trimmed=None so the
+    # cache picks up USE_TRIMMED_MODEL from config, matching the legacy
+    # single-trace behavior.
+    base_dict = _get_cached_model_dict(
+        use_trimmed=None,
+        nyc_config=nyc_config,
+        ensemble_spec=ensemble_spec,
+    )
+    model_dict = copy.deepcopy(base_dict)
+    _patch_model_dict(model_dict, nyc_config)
+
+    with open(model_json, "w") as f:
+        json.dump(model_dict, f)
+    model = pywrdrb.Model.load(model_json)
+
+    mem_recorder = InMemoryRecorder(model)
+    model.run()
+
+    datetime_index = model.timestepper.datetime_index.to_timestamp()
+    data_per_real = _extract_results_per_scenario(
+        mem_recorder.recorder_dict,
+        datetime_index,
+        n_scenarios=ensemble_spec.n_realizations,
+    )
+
+    for s in range(ensemble_spec.n_realizations):
+        _extract_salinity_records(
+            model, datetime_index, data_per_real[s], scenario=s,
+        )
+
+    del model, mem_recorder
+    return data_per_real
 
 
 ###############################################################################
@@ -1038,17 +1242,25 @@ def _load_results_from_hdf5(output_file: Path) -> dict:
 # Borg Evaluation Function
 ###############################################################################
 
-def evaluate(dv_vector, formulation_name="ffmp", objective_set=None):
+def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
+             ensemble_spec=None):
     """Full evaluation pipeline: DVs -> simulation -> objectives.
 
     Called by Borg MOEA for each candidate solution. Uses in-memory
     simulation to minimize I/O overhead.
+
+    Dispatches to either the legacy single-trace path or the ensemble path
+    based on ``ensemble_spec.is_ensemble``. The legacy path (default) is
+    byte-identical to the manuscript baseline.
 
     Args:
         dv_vector: Array of decision variable values.
         formulation_name: Formulation name string.
         objective_set: ObjectiveSet instance. If None, uses the active set
             from config.ACTIVE_OBJECTIVE_SET.
+        ensemble_spec: Optional EnsembleSpec override. If None, uses
+            ``config.SEARCH_ENSEMBLE_SPEC``. The default ``historic_single``
+            preset routes through the legacy single-trace path.
 
     Returns:
         List of objective values (Borg-compatible, all minimized).
@@ -1065,9 +1277,33 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None):
         from src.formulations import get_objective_set
         objective_set = get_objective_set()
 
-    config = dvs_to_config(dv_vector, formulation_name)
-    data = run_simulation_inmemory(config)
-    objs = objective_set.compute_for_borg(data)
+    if ensemble_spec is None:
+        from config import SEARCH_ENSEMBLE_SPEC
+        ensemble_spec = SEARCH_ENSEMBLE_SPEC
+
+    nyc_config = dvs_to_config(dv_vector, formulation_name)
+    if not ensemble_spec.is_ensemble:
+        data = run_simulation_inmemory(nyc_config)
+        objs = objective_set.compute_for_borg(data)
+    else:
+        data_per_real = run_simulation_ensemble_inmemory(
+            nyc_config, ensemble_spec,
+        )
+        # The ensemble dispatch expects an ObjectiveSet built via
+        # `src.objectives_ensemble.build_ensemble_objective_set`, which is
+        # what `formulations.get_objective_set()` returns when
+        # `SEARCH_ENSEMBLE_SPEC.is_ensemble` is True. A legacy single-trace
+        # set leaks through only if a caller hand-built one and passed it
+        # explicitly — fail loudly there rather than silently invoking the
+        # wrong compute path.
+        if not hasattr(objective_set, "compute_for_borg_ensemble"):
+            raise NotImplementedError(
+                "ensemble evaluation requested but ObjectiveSet has no "
+                "compute_for_borg_ensemble. Build the set via "
+                "src.objectives_ensemble.build_ensemble_objective_set or "
+                "pass the active set returned by formulations.get_objective_set()."
+            )
+        objs = objective_set.compute_for_borg_ensemble(data_per_real)
 
     elapsed = time.time() - t0
     if _EVAL_COUNT % _EVAL_LOG_INTERVAL == 0 or _EVAL_COUNT == 1:

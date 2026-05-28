@@ -7,7 +7,9 @@
 # Expected wall time: ~1-2 h on Hopper; 5-y window keeps per-eval cost low.
 #
 # Required env (set by the launcher via --export=ALL):
-#   FORMULATION   ffmp | rbf | tree | ann | ffmp_6 | ffmp_8 | ...
+#   FORMULATION   ffmp | ann | ffmp_8 | ffmp_10 | ffmp_12
+#                 (rbf/tree/spline/ffmp_6 also accepted but require
+#                 their JARs to be rebuilt first if running diagnostics)
 #   N_ZONES       only for ffmp_N formulations (otherwise ignored)
 #
 # Optional env:

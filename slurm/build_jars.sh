@@ -11,7 +11,7 @@
 # Usage:
 #   bash slurm/build_jars.sh                      # use PRODUCTION_FORMULATIONS
 #   bash slurm/build_jars.sh ffmp ann             # explicit list
-#   NYCOPT_ENV_FILE=slurm/envs/manuscript_obj8_sal.env bash slurm/build_jars.sh
+#   NYCOPT_ENV_FILE=slurm/envs/manuscript_obj7_sal.env bash slurm/build_jars.sh
 #
 # Idempotent — safe to re-run after changing config knobs.
 

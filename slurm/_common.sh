@@ -16,7 +16,7 @@
 #   CHECKPOINT    "true" to enable Borg checkpointing (currently race-prone)
 #   NYCOPT_ENV_FILE  path to a `slurm/envs/*.env` file. If set, sourced
 #                    before config.py is read so its NYCOPT_* knobs apply.
-#                    SLURM scripts default this to slurm/envs/ffmp_obj7.env
+#                    SLURM scripts default this to slurm/envs/ffmp_obj7_sal.env
 #                    when no override is provided.
 #   RUN_SLUG      escape hatch — sets the output slug verbatim, bypassing
 #                 derive_slug(). Most users should NOT set this; instead
@@ -37,9 +37,9 @@ source venv/bin/activate
 export PYTHONPATH="${PWD}:${PWD}/lib/borg:${PYTHONPATH:-}"
 
 # ---- Source per-experiment env file (if any) ----
-# Default to ffmp_obj7.env to preserve pre-Phase-0 behavior when no file
+# Default to ffmp_obj7_sal.env to preserve pre-Phase-0 behavior when no file
 # is passed. The env file sets NYCOPT_* knobs that drive derive_slug().
-NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7.env}"
+NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7_sal.env}"
 if [[ -f "${NYCOPT_ENV_FILE}" ]]; then
     set -a
     # shellcheck disable=SC1090

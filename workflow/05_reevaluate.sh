@@ -11,7 +11,7 @@
 #   bash workflow/05_reevaluate.sh [FORMULATION] [MAX_SOLUTIONS] [SEED]
 #
 # Usage (SLURM with env file):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7_sal.env \
 #          workflow/05_reevaluate.sh ffmp 0
 #
 # Defaults:
@@ -34,7 +34,7 @@ module load python/3.11.5 || true
 source venv/bin/activate
 
 # ---- Source per-experiment env file (if any) ----
-NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7.env}"
+NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7_sal.env}"
 if [[ -f "${NYCOPT_ENV_FILE}" ]]; then
     set -a
     # shellcheck disable=SC1090

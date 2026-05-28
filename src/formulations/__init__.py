@@ -157,6 +157,11 @@ def get_baseline_values(formulation_name: str = "ffmp") -> np.ndarray:
 def get_objective_set(items=None):
     """Return an ObjectiveSet built from the given (or active) list of items.
 
+    Resolves names against the **ensemble** registry (``src.objectives_ensemble``)
+    when ``config.SEARCH_ENSEMBLE_SPEC.is_ensemble`` is True; otherwise resolves
+    against the legacy single-trace registry (``src.objectives``). The legacy
+    path is byte-identical to the manuscript baseline.
+
     Args:
         items: List of objective names (str) and/or Objective instances.
                If None, reads `config.ACTIVE_OBJECTIVES`.
@@ -164,10 +169,16 @@ def get_objective_set(items=None):
     Returns:
         ObjectiveSet instance.
     """
-    from src.objectives import build_objective_set
     if items is None:
         from config import ACTIVE_OBJECTIVES
         items = ACTIVE_OBJECTIVES
+
+    from config import SEARCH_ENSEMBLE_SPEC
+    if SEARCH_ENSEMBLE_SPEC.is_ensemble:
+        from src.objectives_ensemble import build_ensemble_objective_set
+        return build_ensemble_objective_set(items)
+
+    from src.objectives import build_objective_set
     return build_objective_set(items)
 
 

@@ -49,36 +49,36 @@ ARCH_LABELS = {
     "ann":   "ANN (2×8 hidden, 15 inputs)",
 }
 
-#: Short per-objective labels for scatter-plot axes (ordered to match DEFAULT_OBJECTIVES).
+#: Short per-objective labels for scatter-plot axes (ordered to match _DEFAULT_OBJECTIVES).
 OBJ_SHORT = [
     "NYC Rel.",
-    "NYC Vuln. %",
-    "NJ Rel.",
+    "NYC Deficit %",
     "Montague\nRel.",
-    "Trenton\nRel.",
+    "Montague\nDeficit %",
+    "Salt Front RM",
     "Flood Days",
     "Min Stor. %",
 ]
 
 #: Parallel-coordinates axis labels (multi-line, direction hint on third line).
 OBJ_AXIS_LABELS = {
-    "nyc_reliability_weekly":          "NYC\nReliability\n(max)",
-    "nyc_vulnerability":               "NYC\nVuln. %\n(min)",
-    "nj_reliability_weekly":           "NJ\nReliability\n(max)",
-    "montague_reliability_weekly":     "Montague\nReliability\n(max)",
-    "trenton_reliability_weekly":      "Trenton\nReliability\n(max)",
-    "flood_risk_downstream_flow_days": "Flood\nDays\n(min)",
-    "storage_min_combined_pct":        "Min\nStorage\n(max)",
+    "nyc_reliability_weekly_decree":          "NYC\nReliability\n(max)",
+    "nyc_max_deficit_weekly_decree":          "NYC Max\nDeficit %\n(min)",
+    "montague_reliability_weekly_decree":     "Montague\nReliability\n(max)",
+    "montague_max_deficit_weekly_decree":     "Montague Max\nDeficit %\n(min)",
+    "salt_front_max_rm":                      "Salt Front\nMax RM\n(min)",
+    "flood_days_downstream_action_anygauge":  "Flood\nDays\n(min)",
+    "storage_min_combined_pct":               "Min\nStorage\n(max)",
 }
 
 #: Six pairwise scatter pairs (0-based objective indices).
 SCATTER_PAIRS = [
-    (0, 3),   # NYC Rel. vs Montague
-    (0, 5),   # NYC Rel. vs Flood Days
-    (3, 5),   # Montague vs Flood Days
+    (0, 2),   # NYC Rel. vs Montague Rel.
+    (1, 3),   # NYC Deficit vs Montague Deficit
+    (4, 5),   # Salt Front vs Flood Days
     (0, 6),   # NYC Rel. vs Min Storage
-    (3, 6),   # Montague vs Min Storage
-    (2, 5),   # NJ Rel. vs Flood Days
+    (2, 4),   # Montague Rel. vs Salt Front
+    (1, 5),   # NYC Deficit vs Flood Days
 ]
 
 
