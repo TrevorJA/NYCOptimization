@@ -136,15 +136,16 @@ class NYCOptParameterizedSaltFrontAdjustmentRatio(FlowTargetSaltFrontAdjustmentR
     def value(self, timestep, scenario_index):
         # Mirror the parent's gate. Note: parent writes to ml_model.records;
         # we keep that behavior so debug logging is unchanged.
+        gid = scenario_index.global_id
         drought_level_agg_nyc_idx = self.drought_level_agg_nyc.get_value(scenario_index)
         ml_model = self.salinity_model.ml_model
-        ml_model.records["drought_idx"][ml_model.t] = drought_level_agg_nyc_idx
+        ml_model.records["drought_idx"][ml_model.t, gid] = drought_level_agg_nyc_idx
 
         if int(round(drought_level_agg_nyc_idx)) != self.nyc_drought_emergency_level:
             return 1.0
 
         if self.ml_model_type == "lstm":
-            sf_mu = ml_model.sf_mu
+            sf_mu = float(np.asarray(ml_model.sf_mu).reshape(-1)[gid])
         elif self.ml_model_type == "rf":
             sf_mu = ml_model.saltfront
         else:
@@ -166,13 +167,13 @@ class NYCOptParameterizedSaltFrontAdjustmentRatio(FlowTargetSaltFrontAdjustmentR
             for months, vals in self._trenton_table.items():
                 if month in months:
                     ratio = vals[idx]
-                    ml_model.records["adj_ratio_Trenton"][ml_model.t] = ratio
+                    ml_model.records["adj_ratio_Trenton"][ml_model.t, gid] = ratio
                     return ratio
         elif self.flow_target == "delMontague":
             for months, vals in self._montague_table.items():
                 if month in months:
                     ratio = vals[idx]
-                    ml_model.records["adj_ratio_Montague"][ml_model.t] = ratio
+                    ml_model.records["adj_ratio_Montague"][ml_model.t, gid] = ratio
                     return ratio
         else:
             raise ValueError(

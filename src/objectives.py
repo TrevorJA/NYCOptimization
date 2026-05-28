@@ -4,28 +4,42 @@ objectives.py - Objective function framework for NYC reservoir optimization.
 Provides an Objective class, ObjectiveSet container, a **name-indexed
 registry** of pre-built metric instances, and a `build_objective_set()`
 assembler. Users select objectives by listing names (strings) or passing
-custom `Objective` instances directly — no pre-defined "sets".
+custom `Objective` instances directly.
 
-Metric design principles:
-- Reliability metrics use WEEKLY aggregation (daily is insensitive;
-  shortages are rare events that daily frequency fails to discriminate).
-- Flow compliance at Montague/Trenton is available in two flavors:
-    * `_fixed`    — against constant FFMP baseline targets
-                    (Montague 1,131 MGD, Trenton 1,939 MGD)
-    * `_dynamic`  — against the simulation's time-varying mrf_target
-  Fixed-target metrics are preferred for cross-architecture comparison
-  because all architectures see the same target; dynamic-target metrics
-  reflect live FFMP step-down logic and are useful for baseline runs only.
-- Vulnerability metrics capture the worst-case shortage magnitude.
+Design principles:
+
+- **Mirrored 1954-Decree pairs for NYC and Montague.** Both quantities
+  (NYC 800 MGD diversion right; Montague 1750 cfs = 1131.05 MGD flow
+  target) are scored against their *static* 1954 Decree values via a
+  matching pair of metrics: a weekly reliability frequency and a max
+  weekly deviation magnitude (% of Decree value). Static targets, not
+  the time-varying live FFMP `mrf_target`, eliminate a gaming pathway
+  where a policy could "succeed" by triggering drought step-downs that
+  lower its own goalpost.
+
+- **Salt-front intrusion** as the worst-case (max-upstream) river-mile
+  position over the simulation. Worst-case framing rather than excursion-
+  past-threshold preserves the Pareto gradient where most policies do
+  not breach the DRBC standard.
+
+- **Operations-attributable flood signal** as days at or above FFMP L1
+  action stage on any of the three reservoir-tail gauges (Hale Eddy,
+  Fishs Eddy, Bridgeville). Locates the metric on tunable downstream
+  releases rather than on mainstem-storm flow at Montague.
+
+- **Storage resilience** as the minimum combined NYC storage % of
+  capacity over the post-warmup period.
 
 Usage:
     from src.objectives import build_objective_set
     obj_set = build_objective_set([
-        "nyc_reliability_weekly",
-        "nyc_vulnerability",
-        "montague_reliability_weekly_fixed",
-        "trenton_reliability_weekly_fixed",
-        ...
+        "nyc_reliability_weekly_decree",
+        "nyc_max_deficit_weekly_decree",
+        "montague_reliability_weekly_decree",
+        "montague_max_deficit_weekly_decree",
+        "salt_front_max_rm",
+        "flood_days_downstream_action_anygauge",
+        "storage_min_combined_pct",
     ])
     values = obj_set.compute(data)
     borg_values = obj_set.compute_for_borg(data)
@@ -34,15 +48,22 @@ Usage:
 import numpy as np
 import pandas as pd
 
+from pywrdrb.flood_thresholds import flood_stage_thresholds
+
 from config import (
     NYC_RESERVOIRS,
     NYC_TOTAL_CAPACITY,
     WARMUP_DAYS,
-    MONTAGUE_FIXED_TARGET_MGD,
-    TRENTON_FIXED_TARGET_MGD,
+    NYC_DECREE_DIVERSION_CAP_MGD,
+    MONTAGUE_DECREE_TARGET_MGD,
     LORDVILLE_THERMAL_THRESHOLD_C,
     SALT_FRONT_REFERENCE_RM,
 )
+
+
+# Reservoir-tail USGS gauges: Hale Eddy below Cannonsville, Fishs Eddy below
+# Pepacton, Bridgeville below Neversink. Used by the action-stage flood metric.
+_DOWNSTREAM_GAUGES = ["01426500", "01421000", "01436690"]
 
 
 ###############################################################################
@@ -140,6 +161,19 @@ class ObjectiveSet:
         """Compute all objectives in Borg-compatible format (all minimized)."""
         return [obj.compute_for_borg(data) for obj in self._objectives]
 
+    def compute_for_borg_ensemble(self, data_per_real: list) -> list:
+        """Compute all objectives across realizations (Borg-minimized).
+
+        Each contained objective must accept ``data_per_real`` (a list of
+        per-realization data dicts) — i.e. it must be an
+        ``EnsembleObjective`` from ``src.objectives_ensemble``. This is
+        duck-typed: regular single-trace ``Objective`` instances will fail
+        loudly when their metric function tries to subscript a list as a
+        dict, which is the desired behavior (a single-trace ObjectiveSet
+        should not be dispatched on the ensemble path).
+        """
+        return [obj.compute_for_borg(data_per_real) for obj in self._objectives]
+
     def summary(self) -> str:
         """Return a formatted summary string."""
         lines = [f"ObjectiveSet ({self.n_objs} objectives):"]
@@ -151,205 +185,106 @@ class ObjectiveSet:
 
 
 ###############################################################################
-# Metric Functions
+# Metric Functions — NYC 1954 Decree pair
 ###############################################################################
+# NYC's 1954 Decree right is up to 800 MGD. The reliability/max-deficit pair
+# scores delivery against `min(demand, 800)` — the effective Decree right per
+# day. Capping demand at 800 ensures voluntary winter low-takes (when demand
+# < 800) are not penalized; only forced shortfalls below the Decree right
+# count. Both metrics normalize to the *static* 800 MGD denominator so a
+# 50-MGD shortfall reads identically in summer and winter.
 
-# --- NYC Supply ---
 
-def _nyc_reliability_weekly(data: dict) -> float:
-    """Fraction of weeks NYC delivery meets or exceeds demand.
+def _nyc_reliability_weekly_decree(data: dict) -> float:
+    """Fraction of weeks NYC delivery meets its 1954 Decree right.
 
-    A week is "met" if weekly total delivery >= 99% of weekly total demand.
-    Weekly aggregation provides better discrimination than daily for
-    rare shortage events.
+    Demand is capped at the 800 MGD Decree cap before comparison. A week
+    is "met" if weekly total delivery >= 99% of weekly total capped demand.
+    Range [0, 1].
     """
-    demand = data["ibt_demands"]["demand_nyc"].iloc[WARMUP_DAYS:]
+    demand = (
+        data["ibt_demands"]["demand_nyc"]
+        .iloc[WARMUP_DAYS:]
+        .clip(upper=NYC_DECREE_DIVERSION_CAP_MGD)
+    )
     delivery = data["ibt_diversions"]["delivery_nyc"].iloc[WARMUP_DAYS:]
-
     weekly_demand = demand.resample("W").sum()
     weekly_delivery = delivery.resample("W").sum()
-
     met = (weekly_delivery >= 0.99 * weekly_demand).sum()
     total = len(weekly_demand)
     return float(met) / total if total > 0 else 0.0
 
 
-def _nyc_vulnerability(data: dict) -> float:
-    """Worst single-week NYC shortage as percent of that week's demand.
+def _nyc_max_deficit_weekly_decree(data: dict) -> float:
+    """Worst single-week NYC delivery deficit as % of 1954 Decree cap.
 
-    Captures the worst-case shortage magnitude. Returns value in [0, 100].
+    Per-week deficit is `max(0, weekly_mean_capped_demand - weekly_mean_delivery)`,
+    normalized to the static 800 MGD Decree value. Returns the max over
+    post-warmup weeks. Range [0, 100] pp.
     """
-    demand = data["ibt_demands"]["demand_nyc"].iloc[WARMUP_DAYS:]
-    delivery = data["ibt_diversions"]["delivery_nyc"].iloc[WARMUP_DAYS:]
-
-    weekly_demand = demand.resample("W").sum()
-    weekly_delivery = delivery.resample("W").sum()
-    weekly_shortage = (weekly_demand - weekly_delivery).clip(lower=0)
-
-    deficit_pct = np.where(
-        weekly_demand > 0,
-        100.0 * weekly_shortage / weekly_demand,
-        0.0,
+    demand = (
+        data["ibt_demands"]["demand_nyc"]
+        .iloc[WARMUP_DAYS:]
+        .clip(upper=NYC_DECREE_DIVERSION_CAP_MGD)
     )
-    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
+    delivery = data["ibt_diversions"]["delivery_nyc"].iloc[WARMUP_DAYS:]
+    weekly_demand = demand.resample("W").mean()
+    weekly_delivery = delivery.resample("W").mean()
+    deficit = (weekly_demand - weekly_delivery).clip(lower=0)
+    deficit_pct = 100.0 * deficit / NYC_DECREE_DIVERSION_CAP_MGD
+    return float(deficit_pct.max()) if len(deficit_pct) > 0 else 0.0
 
 
-# --- Flow Compliance ------------------------------------------------------
-# Each downstream gauge has two flavors:
-#   _dynamic : target is the simulation's live mrf_target (FFMP step-down)
-#   _fixed   : target is a constant (FFMP baseline MGD)
-# Fixed-target metrics are recommended for cross-architecture comparison
-# because the target does not vary with the policy being evaluated.
+###############################################################################
+# Metric Functions — Montague 1954 Decree pair
+###############################################################################
+# Montague's 1954 Decree target is 1750 cfs = 1131.05 MGD. The reliability/
+# max-deficit pair scores weekly-mean Montague flow against the static
+# Decree value. Mirror of the NYC pair: same weekly aggregation, same
+# % normalization, same units (pp) for max deficit.
 
 
-def _weekly_reliability_vs_target(flow: pd.Series, target) -> float:
+def _montague_reliability_weekly_decree(data: dict) -> float:
+    """Fraction of weeks weekly-mean Montague flow >= 1954 Decree target.
+
+    Range [0, 1]. Will not saturate at 1.0 because under any FFMP drought
+    step-down (L2-L5) releases drop below 1131.05 MGD by design.
+    """
+    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
     weekly_flow = flow.resample("W").mean()
-    if hasattr(target, "resample"):
-        weekly_target = target.resample("W").mean()
-    else:
-        weekly_target = target  # scalar — broadcasts
-    met = (weekly_flow >= weekly_target).sum()
+    met = (weekly_flow >= MONTAGUE_DECREE_TARGET_MGD).sum()
     total = len(weekly_flow)
     return float(met) / total if total > 0 else 0.0
 
 
-def _weekly_vulnerability_vs_target(flow: pd.Series, target) -> float:
+def _montague_max_deficit_weekly_decree(data: dict) -> float:
+    """Worst single-week Montague flow deficit as % of 1954 Decree target.
+
+    Per-week deficit is `max(0, decree_target - weekly_mean_flow)`,
+    normalized to the static 1131.05 MGD Decree value. Returns the max
+    over post-warmup weeks. Range [0, 100] pp.
+    """
+    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
     weekly_flow = flow.resample("W").mean()
-    if hasattr(target, "resample"):
-        weekly_target = target.resample("W").mean()
-    else:
-        weekly_target = pd.Series(target, index=weekly_flow.index)
-    deficit = (weekly_target - weekly_flow).clip(lower=0)
-    denom = np.where(weekly_target > 0, weekly_target, np.nan)
-    deficit_pct = 100.0 * deficit / denom
-    deficit_pct = np.nan_to_num(deficit_pct, nan=0.0)
-    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
+    deficit = (MONTAGUE_DECREE_TARGET_MGD - weekly_flow).clip(lower=0)
+    deficit_pct = 100.0 * deficit / MONTAGUE_DECREE_TARGET_MGD
+    return float(deficit_pct.max()) if len(deficit_pct) > 0 else 0.0
 
 
-def _montague_reliability_weekly_dynamic(data: dict) -> float:
-    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    target = data["mrf_target"]["delMontague"].iloc[WARMUP_DAYS:]
-    return _weekly_reliability_vs_target(flow, target)
+###############################################################################
+# Metric Functions — Salt-front intrusion (LSTM)
+###############################################################################
 
 
-def _montague_vulnerability_dynamic(data: dict) -> float:
-    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    target = data["mrf_target"]["delMontague"].iloc[WARMUP_DAYS:]
-    return _weekly_vulnerability_vs_target(flow, target)
+def _salt_front_max_rm(data: dict) -> float:
+    """Maximum (most-upstream) salt-front position over the sim, in RM.
 
-
-def _montague_reliability_weekly_fixed(data: dict) -> float:
-    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    return _weekly_reliability_vs_target(flow, MONTAGUE_FIXED_TARGET_MGD)
-
-
-def _montague_vulnerability_fixed(data: dict) -> float:
-    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    return _weekly_vulnerability_vs_target(flow, MONTAGUE_FIXED_TARGET_MGD)
-
-
-def _trenton_reliability_weekly_dynamic(data: dict) -> float:
-    flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
-    target = data["mrf_target"]["delTrenton"].iloc[WARMUP_DAYS:]
-    return _weekly_reliability_vs_target(flow, target)
-
-
-def _trenton_vulnerability_dynamic(data: dict) -> float:
-    flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
-    target = data["mrf_target"]["delTrenton"].iloc[WARMUP_DAYS:]
-    return _weekly_vulnerability_vs_target(flow, target)
-
-
-def _trenton_reliability_weekly_fixed(data: dict) -> float:
-    flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
-    return _weekly_reliability_vs_target(flow, TRENTON_FIXED_TARGET_MGD)
-
-
-def _trenton_vulnerability_fixed(data: dict) -> float:
-    flow = data["major_flow"]["delTrenton"].iloc[WARMUP_DAYS:]
-    return _weekly_vulnerability_vs_target(flow, TRENTON_FIXED_TARGET_MGD)
-
-
-# --- Flood Risk ---
-
-def _flood_days(data: dict) -> float:
-    """Number of days aggregate NYC storage exceeds spill risk threshold.
-
-    Uses 95% of total NYC capacity as a proxy for spill risk.
-    """
-    storage = data["res_storage"][NYC_RESERVOIRS].sum(axis=1).iloc[WARMUP_DAYS:]
-    flood_threshold = 0.95 * NYC_TOTAL_CAPACITY
-    return float((storage >= flood_threshold).sum())
-
-
-def _flood_days_downstream(data: dict) -> float:
-    """Number of days downstream flow at Montague exceeds flood threshold.
-
-    Uses a flow threshold of 25,000 CFS (~16,148 MGD) at Montague.
-    """
-    FLOOD_FLOW_THRESHOLD_MGD = 16148.0
-    flow = data["major_flow"]["delMontague"].iloc[WARMUP_DAYS:]
-    return float((flow >= FLOOD_FLOW_THRESHOLD_MGD).sum())
-
-
-# --- NJ Supply ---
-
-def _nj_reliability_weekly(data: dict) -> float:
-    """Fraction of weeks NJ delivery meets or exceeds demand.
-
-    Mirrors NYC reliability metric. A week is "met" if weekly total
-    delivery >= 99% of weekly total demand.
-    """
-    demand = data["ibt_demands"]["demand_nj"].iloc[WARMUP_DAYS:]
-    delivery = data["ibt_diversions"]["delivery_nj"].iloc[WARMUP_DAYS:]
-
-    weekly_demand = demand.resample("W").sum()
-    weekly_delivery = delivery.resample("W").sum()
-
-    met = (weekly_delivery >= 0.99 * weekly_demand).sum()
-    total = len(weekly_demand)
-    return float(met) / total if total > 0 else 0.0
-
-
-def _nj_vulnerability(data: dict) -> float:
-    """Worst single-week NJ shortage as percent of that week's demand.
-
-    Mirrors NYC vulnerability metric. Returns value in [0, 100].
-    """
-    demand = data["ibt_demands"]["demand_nj"].iloc[WARMUP_DAYS:]
-    delivery = data["ibt_diversions"]["delivery_nj"].iloc[WARMUP_DAYS:]
-
-    weekly_demand = demand.resample("W").sum()
-    weekly_delivery = delivery.resample("W").sum()
-    weekly_shortage = (weekly_demand - weekly_delivery).clip(lower=0)
-
-    deficit_pct = np.where(
-        weekly_demand > 0,
-        100.0 * weekly_shortage / weekly_demand,
-        0.0,
-    )
-    return float(np.max(deficit_pct)) if len(deficit_pct) > 0 else 0.0
-
-
-# --- Storage Resilience ---
-
-def _min_storage_pct(data: dict) -> float:
-    """Minimum combined NYC storage as percentage of total capacity. [0, 100]."""
-    storage = data["res_storage"][NYC_RESERVOIRS].sum(axis=1).iloc[WARMUP_DAYS:]
-    return 100.0 * float(storage.min()) / NYC_TOTAL_CAPACITY
-
-
-# --- Salinity (LSTM) ---
-
-def _salt_front_max_rm_excursion(data: dict) -> float:
-    """Maximum upstream excursion of salt front past the reference RM.
-
-    Salt-front position is reported in river miles; lower RM = farther
-    upstream = worse. Excursion = max(reference_RM - position, 0).
-    Positive values mean the salt front intruded past the reference;
-    higher values are worse. Returns 0 when the salt front never
-    crossed the reference. NaN entries (pre-LSTM-start dates) are
-    dropped before computing the max.
+    Delaware River miles increase upstream from the bay mouth, so a
+    HIGHER river-mile value means the salt front intruded farther
+    upstream — worse for water supply at Trenton. The objective is the
+    single worst (largest-RM) day after the warmup window. NaN entries
+    (e.g. the gate-skipped first sim day) are dropped before computing
+    the max.
     """
     if "salinity" not in data:
         return float("nan")
@@ -358,14 +293,51 @@ def _salt_front_max_rm_excursion(data: dict) -> float:
         return float("nan")
     sf = sf.iloc[WARMUP_DAYS:].dropna()
     if sf.empty:
-        return 0.0
-    excursion = (SALT_FRONT_REFERENCE_RM - sf).clip(lower=0)
-    return float(excursion.max())
+        return float("nan")
+    return float(sf.max())
 
 
-# --- Temperature (LSTM) — INACTIVE. Inputs require multivariate
-# meteorology not available for stochastic re-eval scenarios. Kept here
-# so the metric is one config flag away from re-enable.
+###############################################################################
+# Metric Functions — Flood risk below NYC reservoirs
+###############################################################################
+
+
+def _flood_days_downstream_action_anygauge(data: dict) -> float:
+    """Days at or above FFMP L1 action stage on any reservoir-tail gauge.
+
+    A day counts if **any** of Hale Eddy (below Cannonsville), Fishs Eddy
+    (below Pepacton), or Bridgeville (below Neversink) is at or above its
+    action stage threshold. Action stage is the FFMP L1 release cutoff,
+    operationally meaningful and tunable by NYC release decisions
+    (unlike Montague mainstem flow which is dominated by exogenous
+    storms). Returns count of post-warmup days. Range [0, n_days].
+    """
+    stage = data["flood_stage"][_DOWNSTREAM_GAUGES].iloc[WARMUP_DAYS:]
+    thresh = pd.Series(
+        {g: flood_stage_thresholds[g]["action"] for g in _DOWNSTREAM_GAUGES}
+    )
+    over = stage.ge(thresh, axis=1)
+    return float(over.any(axis=1).sum())
+
+
+###############################################################################
+# Metric Functions — Storage resilience
+###############################################################################
+
+
+def _min_storage_pct(data: dict) -> float:
+    """Minimum combined NYC storage as percentage of total capacity. [0, 100]."""
+    storage = data["res_storage"][NYC_RESERVOIRS].sum(axis=1).iloc[WARMUP_DAYS:]
+    return 100.0 * float(storage.min()) / NYC_TOTAL_CAPACITY
+
+
+###############################################################################
+# Metric Functions — Lordville thermal (INACTIVE)
+###############################################################################
+# Inputs require multivariate meteorology not available for stochastic
+# re-eval scenarios. Kept here so the metric is one config flag away from
+# re-enable. See local_notes/decisions/2026-04-29_temperature_lstm_deferred.md.
+
 
 def _lordville_thermal_exceedance_days(data: dict) -> float:
     """Number of days max water temp at Lordville exceeds threshold (°C).
@@ -399,70 +371,41 @@ def _register(name, direction, epsilon, description, func):
     )
 
 
-# --- NYC Supply ---
-_register("nyc_reliability_weekly", "maximize", 0.01,
-          "Fraction of weeks NYC delivery >= 99% of demand",
-          _nyc_reliability_weekly)
-_register("nyc_vulnerability", "minimize", 1.0,
-          "Worst-week NYC shortage as pct of demand [0-100]",
-          _nyc_vulnerability)
+# --- NYC 1954 Decree pair (right = 800 MGD) ---
+_register("nyc_reliability_weekly_decree", "maximize", 0.01,
+          "Fraction of weeks NYC delivery >= 99% of capped demand "
+          f"({NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree cap)",
+          _nyc_reliability_weekly_decree)
+_register("nyc_max_deficit_weekly_decree", "minimize", 1.0,
+          "Worst-week NYC delivery deficit as pct of "
+          f"{NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree cap [0-100]",
+          _nyc_max_deficit_weekly_decree)
 
-# --- NJ Supply ---
-_register("nj_reliability_weekly", "maximize", 0.01,
-          "Fraction of weeks NJ delivery >= 99% of demand",
-          _nj_reliability_weekly)
-_register("nj_vulnerability", "minimize", 1.0,
-          "Worst-week NJ shortage as pct of demand [0-100]",
-          _nj_vulnerability)
+# --- Montague 1954 Decree pair (target = 1750 cfs = 1131.05 MGD) ---
+_register("montague_reliability_weekly_decree", "maximize", 0.01,
+          "Fraction of weeks Montague weekly-mean flow >= "
+          f"{MONTAGUE_DECREE_TARGET_MGD:.0f} MGD Decree target",
+          _montague_reliability_weekly_decree)
+_register("montague_max_deficit_weekly_decree", "minimize", 1.0,
+          "Worst-week Montague flow deficit as pct of "
+          f"{MONTAGUE_DECREE_TARGET_MGD:.0f} MGD Decree target [0-100]",
+          _montague_max_deficit_weekly_decree)
 
-# --- Flow Compliance (fixed targets — recommended default) ---
-_register("montague_reliability_weekly_fixed", "maximize", 0.01,
-          "Fraction of weeks Montague flow >= FFMP fixed target "
-          f"({MONTAGUE_FIXED_TARGET_MGD:.0f} MGD)",
-          _montague_reliability_weekly_fixed)
-_register("montague_vulnerability_fixed", "minimize", 1.0,
-          "Worst-week Montague deficit as pct of fixed target",
-          _montague_vulnerability_fixed)
-_register("trenton_reliability_weekly_fixed", "maximize", 0.005,
-          "Fraction of weeks Trenton flow >= FFMP fixed target "
-          f"({TRENTON_FIXED_TARGET_MGD:.0f} MGD)",
-          _trenton_reliability_weekly_fixed)
-_register("trenton_vulnerability_fixed", "minimize", 1.0,
-          "Worst-week Trenton deficit as pct of fixed target",
-          _trenton_vulnerability_fixed)
+# --- Salt-front intrusion (LSTM, active when INCLUDE_SALINITY_MODEL=True) ---
+_register("salt_front_max_rm", "minimize", 0.5,
+          "Max (most-upstream) salt-front river mile reached over sim "
+          f"(DRBC reference: RM {SALT_FRONT_REFERENCE_RM})",
+          _salt_front_max_rm)
 
-# --- Flow Compliance (dynamic targets — for baseline diagnostics only) ---
-_register("montague_reliability_weekly_dynamic", "maximize", 0.01,
-          "Fraction of weeks Montague flow >= time-dynamic MRF target",
-          _montague_reliability_weekly_dynamic)
-_register("montague_vulnerability_dynamic", "minimize", 1.0,
-          "Worst-week Montague deficit as pct of dynamic target",
-          _montague_vulnerability_dynamic)
-_register("trenton_reliability_weekly_dynamic", "maximize", 0.005,
-          "Fraction of weeks Trenton flow >= time-dynamic MRF target",
-          _trenton_reliability_weekly_dynamic)
-_register("trenton_vulnerability_dynamic", "minimize", 1.0,
-          "Worst-week Trenton deficit as pct of dynamic target",
-          _trenton_vulnerability_dynamic)
+# --- Flood risk below NYC reservoirs (action-stage at any tail gauge) ---
+_register("flood_days_downstream_action_anygauge", "minimize", 3.0,
+          "Days any of Hale Eddy/Fishs Eddy/Bridgeville >= FFMP L1 action stage",
+          _flood_days_downstream_action_anygauge)
 
-# --- Flood Risk ---
-_register("flood_risk_storage_spill_days", "minimize", 10.0,
-          "Days aggregate NYC storage > 95% capacity (spill risk proxy)",
-          _flood_days)
-_register("flood_risk_downstream_flow_days", "minimize", 5.0,
-          "Days Montague flow exceeds 25,000 CFS action stage proxy",
-          _flood_days_downstream)
-
-# --- Storage Resilience ---
+# --- Storage resilience ---
 _register("storage_min_combined_pct", "maximize", 0.5,
           "Minimum combined NYC storage as pct of total capacity [0-100]",
           _min_storage_pct)
-
-# --- Salinity (LSTM) — active when INCLUDE_SALINITY_MODEL=True ---
-_register("salt_front_max_rm_excursion", "minimize", 0.5,
-          "Max upstream excursion of salt front past "
-          f"{SALT_FRONT_REFERENCE_RM} RM (river miles)",
-          _salt_front_max_rm_excursion)
 
 # --- Temperature (LSTM) — INACTIVE; see decision doc ---
 _register("lordville_thermal_exceedance_days", "minimize", 2.0,
@@ -484,8 +427,8 @@ def build_objective_set(items) -> ObjectiveSet:
 
     Example:
         obj_set = build_objective_set([
-            "nyc_reliability_weekly",
-            "montague_reliability_weekly_fixed",
+            "nyc_reliability_weekly_decree",
+            "montague_reliability_weekly_decree",
             Objective("my_custom", "maximize", 0.01, "...", my_func),
         ])
 

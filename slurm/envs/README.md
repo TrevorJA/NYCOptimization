@@ -12,14 +12,15 @@ statements — those belong in scripts that source these files.
 
 ```bash
 # Submit a campaign described by an env file:
-bash slurm/submit_all.sh slurm/envs/ffmp_obj7.env
+bash slurm/submit_all.sh slurm/envs/ffmp_obj7_sal.env
 
 # Or pin a single architecture run:
-sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ffmp_obj9_ts.env \
+sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7_sal.env \
        slurm/mmborg_ffmp.sh
 
 # Re-evaluate using a chosen env file:
-sbatch slurm/envs/ann_obj9_ts.env workflow/05_reevaluate.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ann_obj7_sal.env \
+       workflow/05_reevaluate.sh ffmp 0
 ```
 
 ## Knob reference
@@ -32,7 +33,7 @@ for the full table of `NYCOPT_*` env variables and their defaults.
 Filenames follow the slug grammar so the env file's name matches the slug
 its outputs land under:
 
-- `ffmp_obj7.env` → outputs at `outputs/{cat}/ffmp_obj7/`
-- `ffmp_obj9_ts.env` → outputs at `outputs/{cat}/ffmp_obj9_ts/`
+- `ffmp_obj7_sal.env` → outputs at `outputs/{cat}/ffmp_obj7_sal/`
+- `wcu_obj7_sal_n5.env` → outputs at `outputs/{cat}/ffmp_obj7_sal_wcu5/` (ensemble; `wcu5` slug fragment is appended)
 
 See [local_notes/methodology/slug_convention.md](../../local_notes/methodology/slug_convention.md).
