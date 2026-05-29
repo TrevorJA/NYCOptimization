@@ -46,21 +46,14 @@ from config import get_epsilons, OUTPUTS_DIR, DIAGNOSTICS_SETTINGS, FFMP_VR_N_SW
 # separate JAR in MOEAFramework-5.0/lib/ with the correct (nvars, nobjs).
 # All use the current 7-objective set.
 #   drb_ffmp     -> 24 DVs
-#   drb_rbf      -> 48 DVs  (4 default state features -> 6 inputs)
-#   drb_ann      -> 137 DVs
 #   drb_ffmp_{N} -> per-N DV count (varies with number of zones).
 #                   Built automatically by slurm/build_jars.sh.
 # Slugs can be any string; we infer the formulation family by finding the
 # longest contiguous token-substring that matches a known formulation. This
 # handles both prefix-tag slugs (``smoke_ffmp``) and suffix-tag variant slugs
-# (``ann_reduced_state``, ``ffmp_8_extended``).
-#
-# rbf/tree/spline are intentionally not registered — their JARs were retired
-# 2026-04-30 alongside the manuscript-scope decision. Re-add their entries
-# here and run `bash slurm/build_jars.sh rbf tree spline` to revive.
+# (``ffmp_8_extended``).
 _FORMULATION_TO_PROBLEM = {
     "ffmp": "drb_ffmp",
-    "ann":  "drb_ann",
 }
 for _n in FFMP_VR_N_SWEEP:
     _FORMULATION_TO_PROBLEM[f"ffmp_{_n}"] = f"drb_ffmp_{_n}"
@@ -72,8 +65,8 @@ def problem_name_for(slug: str) -> str:
     Strategy: split the slug on ``_`` and search every contiguous token-window
     (longest first) for a match in ``_FORMULATION_TO_PROBLEM``. Handles:
       - plain slugs: ``ffmp`` -> drb_ffmp
-      - prefix-tag (smoke/version): ``smoke_ffmp``, ``v2_ann`` -> drb_ffmp / drb_ann
-      - suffix-tag (variant): ``ann_reduced_state``, ``ffmp_weekly_only``
+      - prefix-tag (smoke/version): ``smoke_ffmp`` -> drb_ffmp
+      - suffix-tag (variant): ``ffmp_weekly_only`` -> drb_ffmp
       - multi-token formulation names: ``ffmp_8`` -> drb_ffmp_8
         (matched in preference to the shorter ``ffmp`` token within the same slug)
     """

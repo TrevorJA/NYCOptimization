@@ -58,8 +58,8 @@ def run_mmborg(
         checkpoint_base: Path base for new checkpoint files.
         restore_checkpoint: Path to existing checkpoint file to restore from.
         slug: Output directory tag. Defaults to formulation_name. Use a distinct
-            slug (e.g. "smoke_ffmp", "ann_reduced_state") when varying
-            STATE_FEATURES/OBJECTIVES so outputs don't collide.
+            slug (e.g. "smoke_ffmp", "ffmp_alt_ensemble") when varying
+            ensemble preset / OBJECTIVES so outputs don't collide.
     """
     # borg.py loads ./libborg.so and ./libborgmm.so relative to CWD, so
     # cd into lib/borg/ for the import + MPI initialization, then restore.
@@ -86,9 +86,7 @@ def run_mmborg(
         runtime_frequency = BORG_SETTINGS["runtime_frequency"]
 
     # --- Objective function (passNFE branch passes NFE as second arg) ---
-    # Uses make_objective_function() which dispatches to either:
-    #   - FFMP path (evaluate) for "ffmp", "ffmp_N" formulations
-    #   - External policy path (evaluate_with_policy) for "rbf", "tree", "ann"
+    # Uses make_objective_function() for "ffmp" / "ffmp_N" formulations.
     #
     # IMPORTANT: borg.py's innerFunction only catches KeyboardInterrupt; any
     # other Python exception propagates through the ctypes C→Python boundary

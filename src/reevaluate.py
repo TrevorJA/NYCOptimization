@@ -9,7 +9,7 @@ and launch one job per seed.
 
 Example
 -------
-    python -m src.reevaluate --formulation rbf --seed 1 --njobs 16
+    python -m src.reevaluate --formulation ffmp --seed 1 --njobs 16
     python -m src.reevaluate --formulation ffmp_10 --njobs 32 --max 50
 """
 

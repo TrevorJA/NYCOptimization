@@ -1,11 +1,15 @@
 #!/bin/bash
-# Step 2: Launch multi-master Borg MOEA optimization via MPI.
+# Step 5: Launch multi-master Borg MOEA optimization via MPI.
+#
+# Single-formulation entry point. For larger campaigns spanning all FFMP
+# layer configs + ensembles, prefer slurm/submit_all.sh with the appropriate
+# slurm/envs/*.env file.
 #
 # Edit the settings below, then submit:
-#   sbatch 02_run_mmborg.sh
+#   sbatch workflow/05_run_mmborg.sh
 #
 # For multiple seeds, copy this file or loop:
-#   for s in 1 2 3 4 5; do sed "s/^SEED=.*/SEED=$s/" 02_run_mmborg.sh | sbatch; done
+#   for s in 1 2 3 4 5; do sed "s/^SEED=.*/SEED=$s/" workflow/05_run_mmborg.sh | sbatch; done
 
 #SBATCH --job-name=mmborg_ffmp
 #SBATCH --nodes=5

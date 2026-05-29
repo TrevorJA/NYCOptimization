@@ -1,11 +1,11 @@
 #!/bin/bash
-# Step 1: Evaluate the default FFMP policy (no optimization) and save
+# Step 4: Evaluate the default FFMP policy (no optimization) and save
 # baseline objective values for comparison.
 #
 # Usage:
-#   bash 01_run_baseline.sh
-#   sbatch 01_run_baseline.sh
-#   NYCOPT_ENV_FILE=slurm/envs/manuscript_obj7_sal.env bash 01_run_baseline.sh
+#   bash workflow/04_run_baseline.sh
+#   sbatch workflow/04_run_baseline.sh
+#   NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7_sal.env bash workflow/04_run_baseline.sh
 #
 #SBATCH --job-name=baseline
 #SBATCH --nodes=1
@@ -31,7 +31,7 @@ if [[ -n "${NYCOPT_ENV_FILE:-}" && -f "${NYCOPT_ENV_FILE}" ]]; then
     # shellcheck disable=SC1090
     source "${NYCOPT_ENV_FILE}"
     set +a
-    echo "[01_run_baseline] sourced env file: ${NYCOPT_ENV_FILE}"
+    echo "[04_run_baseline] sourced env file: ${NYCOPT_ENV_FILE}"
 fi
 
 export OMP_NUM_THREADS=1

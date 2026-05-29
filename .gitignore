@@ -24,6 +24,7 @@ figures/policy_inspection/
 figures/robustness/
 figures/_exploratory/
 figures/*
+!figures/README.md
 
 # Borg MOEA (licensed, not distributed)
 lib/borg/

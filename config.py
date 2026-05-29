@@ -2,17 +2,16 @@
 config.py - Central configuration for NYCOptimization study.
 
 Single source of truth for paths, simulation settings, NYC system constants,
-Borg MOEA parameters, T/S coupling, re-evaluation sizing, and the slug
-naming convention. Problem formulation logic lives in src/formulations/.
+Borg MOEA parameters, T/S coupling, re-evaluation sizing, ensemble selection,
+and the slug naming convention. Problem formulation logic lives in
+src/formulations/ (FFMP + variable-resolution FFMP).
 
 Every methodologic knob has a default constant here and a `NYCOPT_*` env
 override read at import time. SLURM scripts source per-experiment env files
-under slurm/envs/ to set these without relying on remembered CLI flags;
-see local_notes/configuration/knob_reference.md for the full table.
+under slurm/envs/ to set these without relying on remembered CLI flags.
 
-Environment overrides (selected — full list in knob_reference.md):
+Environment overrides (selected):
     NYCOPT_OBJECTIVES           -> ACTIVE_OBJECTIVES (comma-separated names)
-    NYCOPT_STATE_FEATURES       -> STATE_FEATURES    (comma-separated names)
     NYCOPT_INFLOW_TYPE          -> INFLOW_TYPE (pywrdrb inflow-dataset key)
     NYCOPT_FORMULATIONS         -> PRODUCTION_FORMULATIONS (comma-separated)
     NYCOPT_FFMP_VR_N            -> FFMP_VR_N_SWEEP (comma-separated ints)
@@ -22,7 +21,7 @@ Environment overrides (selected — full list in knob_reference.md):
     NYCOPT_THERMAL_THRESHOLD_C  -> LORDVILLE_THERMAL_THRESHOLD_C (float)
     NYCOPT_SALT_FRONT_RM        -> SALT_FRONT_REFERENCE_RM (float)
     NYCOPT_SALINITY_ASYNC       -> SALINITY_ASYNC_UPDATE (bool)
-    NYCOPT_LSTM_START_DATE      -> LSTM_START_DATE (earliest sim day the salinity LSTM updates; defaults to START_DATE since 2026-04-30)
+    NYCOPT_LSTM_START_DATE      -> LSTM_START_DATE
     NYCOPT_REEVAL_N             -> REEVAL_REALIZATIONS (int)
     NYCOPT_REEVAL_NODES         -> REEVAL_NODES (int)
     NYCOPT_REEVAL_RANKS         -> REEVAL_RANKS_PER_NODE (int)
@@ -242,29 +241,6 @@ if NYC_NJ_DEMAND_SOURCE not in _NYC_NJ_DEMAND_SOURCE_MODES:
         f"expected one of {_NYC_NJ_DEMAND_SOURCE_MODES}"
     )
 
-# State features observed by external policies (RBF/Tree/ANN).
-#
-# Each entry is the name of a feature registered in
-# src.external_policy.STATE_FEATURE_REGISTRY. The default below mirrors
-# the information used by FFMP's decision logic:
-#   - combined NYC storage (drought zone classification)
-#   - Montague non-NYC flow at lag 2d (Montague MRF look-ahead)
-#   - Trenton non-NYC flow at lag 4d  (Trenton MRF look-ahead)
-#   - NJ demand at lag 4d             (Trenton equivalent-flow forecast)
-# sin(DOY) and cos(DOY) are appended automatically by the state extractor
-# (seasonality is always cheap and justifiable).
-#
-# Add features by listing additional registry names or, for ad-hoc use,
-# passing dict entries directly to build_state_config().
-_DEFAULT_STATE_FEATURES = [
-    "combined_nyc_storage_frac",
-    "montague_flow_lag2",
-    "trenton_flow_lag4",
-    "nj_demand_lag4",
-]
-
-STATE_FEATURES = _parse_list_env("NYCOPT_STATE_FEATURES", _DEFAULT_STATE_FEATURES)
-
 # Results sets to export from Pywr-DRB simulations
 RESULTS_SETS = [
     "major_flow",
@@ -343,18 +319,14 @@ FFMP_VR_N_SWEEP = _parse_int_list_env("NYCOPT_FFMP_VR_N", [8, 10, 12])
 
 
 ###############################################################################
-# Manuscript Production Defaults
+# Production Formulation Set
 ###############################################################################
-# Default formulation set for the manuscript experiment: structure-preserving
-# FFMP -> resolution-extended FFMP_VR -> structure-free ANN. This is the
-# *default*, not a lock-in: RBF, Tree, Spline remain fully functional and
-# can be added back via NYCOPT_FORMULATIONS or by editing the env file
-# under slurm/envs/. See local_notes/decisions/2026-04-29_manuscript_scope.md.
+# Default formulation set: base FFMP + variable-resolution FFMP at each N
+# in FFMP_VR_N_SWEEP. Override via NYCOPT_FORMULATIONS or per-experiment
+# env file under slurm/envs/.
 
 _DEFAULT_PRODUCTION_FORMULATIONS = (
-    ["ffmp"]
-    + [f"ffmp_{n}" for n in FFMP_VR_N_SWEEP]
-    + ["ann"]
+    ["ffmp"] + [f"ffmp_{n}" for n in FFMP_VR_N_SWEEP]
 )
 PRODUCTION_FORMULATIONS = _parse_list_env(
     "NYCOPT_FORMULATIONS", _DEFAULT_PRODUCTION_FORMULATIONS,
@@ -448,19 +420,13 @@ if INCLUDE_TEMPERATURE_MODEL and "temperature" not in RESULTS_SETS:
 # emergency. The adjustment is a lookup table indexed by (RM band, season).
 # By default the table is fixed at the FFMP-Appendix-A values. Setting
 # `NYCOPT_SALT_FRONT_PARAM_MODE` to one of the modes below exposes parts
-# of that table as decision variables for FFMP-family formulations only
-# (RBF/Tree/ANN/Spline are unaffected — they don't use FFMP drought levels
-# so the adjustment never fires for them).
+# of that table as decision variables.
 #
 # Modes (configurable subset of the full operational table):
 #   "fixed"               -> 0 new DVs (default; behavior identical to today)
 #   "multipliers"         -> 15 multiplier cells (5 reference cells pinned 1.0)
 #   "multipliers_with_gate" -> +1 activation drought-level DV (16 total)
 #   "full"                -> +3 RM-band threshold DVs (19 total)
-#
-# See:
-#   local_notes/decisions/2026-04-29_salt_front_parameterization.md
-#   local_notes/methodology/salt_front_adjustment_dvs.md
 
 _SALT_FRONT_PARAM_MODES = ("fixed", "multipliers", "multipliers_with_gate", "full")
 SALT_FRONT_PARAM_MODE = _parse_str_env("NYCOPT_SALT_FRONT_PARAM_MODE", "fixed").lower()
@@ -598,6 +564,27 @@ CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
 
 
 ###############################################################################
+# Ensemble Presets (manuscript experiment design)
+###############################################################################
+# Six ensembles compose the methodological contribution: three probabilistic
+# (random sub-samples of the large stochastic ensemble) and three space-filling
+# (LHS sub-samples over hydrologic-metric space). Sizes and LHS seeds are
+# left as TODO until the ensemble-design discussion finalizes them.
+#
+# Each preset name here is also expected to be registered in src.ensembles
+# (or its successor) so SEARCH_ENSEMBLE_SPEC can resolve it at run time.
+
+ENSEMBLE_PRESETS = {
+    "prob_small":  {"kind": "probabilistic", "n_realizations": None, "seed": None},
+    "prob_medium": {"kind": "probabilistic", "n_realizations": None, "seed": None},
+    "prob_large":  {"kind": "probabilistic", "n_realizations": None, "seed": None},
+    "lhs_small":   {"kind": "space_filling", "n_realizations": None, "lhs_seed": None},
+    "lhs_medium":  {"kind": "space_filling", "n_realizations": None, "lhs_seed": None},
+    "lhs_large":   {"kind": "space_filling", "n_realizations": None, "lhs_seed": None},
+}
+
+
+###############################################################################
 # Ensemble Evaluation
 ###############################################################################
 # The MOEA evaluator can run a candidate policy on a single historic streamflow
@@ -657,14 +644,14 @@ if (
 ###############################################################################
 # Slugs identify a methodologic configuration so outputs from different
 # configs never collide. Format:
-#   {formulation}_obj{N_OBJ}{ts_suffix}{state_suffix}{custom_suffix}
+#   {formulation}_obj{N_OBJ}{ts_suffix}{sfdv_suffix}{ensemble_suffix}{custom_suffix}
 #
 # Examples:
 #   ffmp_obj7                    — current production baseline (no T/S)
-#   ffmp_obj9_ts                 — production after T/S lands
-#   ffmp_6_obj9_ts               — variable-resolution N=6 with T/S
-#   ann_obj9_ts_state4           — ANN with reduced 4-feature state
-#   ffmp_obj9_ts_pilot42         — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
+#   ffmp_obj7_sal                — salinity LSTM on
+#   ffmp_8_obj7_sal              — variable-resolution N=8 with salinity
+#   ffmp_obj7_sal_lhs_small      — FFMP, salinity on, LHS small ensemble
+#   ffmp_obj7_sal_pilot42        — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
 #
 # `RUN_SLUG_TAG` env appends a free-form suffix; useful for one-off variants
 # without polluting the canonical slug grammar.
@@ -679,12 +666,12 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
       - temperature only                 -> "_temp"
       - neither                          -> (omitted)
 
-    Ensemble portion (after sfdv, before state-feature suffix):
-      - SEARCH_ENSEMBLE_SPEC.slug_fragment when non-empty (e.g. "wcu5").
+    Ensemble portion:
+      - SEARCH_ENSEMBLE_SPEC.slug_fragment when non-empty.
         ``historic_single`` ships an empty fragment to preserve legacy slugs.
 
     Args:
-        formulation: e.g. "ffmp", "ffmp_6", "ann".
+        formulation: e.g. "ffmp", "ffmp_8".
         custom_tag: appended after auto-derived components if non-empty.
             Falls back to the `RUN_SLUG_TAG` env var.
 
@@ -703,9 +690,6 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
         parts.append("sal")
     elif INCLUDE_TEMPERATURE_MODEL:
         parts.append("temp")
-    # Salt-front DV mode (only meaningful when salinity is on AND formulation
-    # is FFMP-family; non-FFMP runs ignore the mode but the suffix still
-    # captures the campaign intent).
     _sfdv_suffix = {
         "multipliers":           "sfdv_mult",
         "multipliers_with_gate": "sfdv_multgate",
@@ -715,8 +699,6 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
         parts.append(_sfdv_suffix)
     if SEARCH_ENSEMBLE_SPEC.slug_fragment:
         parts.append(SEARCH_ENSEMBLE_SPEC.slug_fragment)
-    if len(STATE_FEATURES) != len(_DEFAULT_STATE_FEATURES):
-        parts.append(f"state{len(STATE_FEATURES)}")
 
     tag = custom_tag if custom_tag else os.environ.get("RUN_SLUG_TAG", "").strip()
     if tag:
@@ -742,8 +724,6 @@ from src.formulations import (           # noqa: E402
     get_obj_directions,
     get_objective_set,
     make_objective_function,
-    is_external_policy,
-    get_architecture,
     generate_ffmp_formulation,
 )
 

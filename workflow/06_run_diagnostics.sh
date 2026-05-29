@@ -1,19 +1,18 @@
 #!/bin/bash
-# Step 3: Run MOEAFramework runtime diagnostics — computes hypervolume,
+# Step 6: Run MOEAFramework runtime diagnostics — computes hypervolume,
 # generational distance, and builds the global reference set.
 #
-# By default, runs all architectures in parallel as background jobs; the
-# MOEAFramework CLI is I/O bound so there's no contention issue. Pass
-# specific slug names to run a subset. Slugs equal formulation names for
-# plain production runs; smoke-test / variant runs use custom slugs like
-# smoke_ffmp or ann_reduced_state.
+# By default, runs ffmp + variable-resolution FFMP at each N in
+# FFMP_VR_N_SWEEP in parallel as background jobs. The MOEAFramework CLI
+# is I/O bound so there's no contention issue. Pass specific slug names
+# to run a subset.
 #
 # Usage:
-#   bash workflow/03_run_diagnostics.sh                         # all default slugs (parallel)
-#   bash workflow/03_run_diagnostics.sh ffmp rbf                # subset
-#   bash workflow/03_run_diagnostics.sh smoke_ffmp smoke_rbf    # custom slugs
-#   bash workflow/03_run_diagnostics.sh --serial ffmp           # single, serial
-#   sbatch workflow/03_run_diagnostics.sh
+#   bash workflow/06_run_diagnostics.sh                         # all default slugs (parallel)
+#   bash workflow/06_run_diagnostics.sh ffmp ffmp_8             # subset
+#   bash workflow/06_run_diagnostics.sh smoke_ffmp              # custom slugs
+#   bash workflow/06_run_diagnostics.sh --serial ffmp           # single, serial
+#   sbatch workflow/06_run_diagnostics.sh
 #
 #SBATCH --job-name=diagnostics
 #SBATCH --nodes=1
@@ -40,9 +39,9 @@ for a in "$@"; do
 done
 
 if [[ ${#ARGS[@]} -eq 0 ]]; then
-    # Default: all registered architectures + FFMP_VR sweep values.
+    # Default: base FFMP + variable-resolution FFMP sweep values.
     N_SWEEP=$(python3 -c "from config import FFMP_VR_N_SWEEP; print(' '.join(str(n) for n in FFMP_VR_N_SWEEP))")
-    TARGETS=(ffmp rbf tree ann)
+    TARGETS=(ffmp)
     for N in ${N_SWEEP}; do TARGETS+=("ffmp_${N}"); done
 else
     TARGETS=("${ARGS[@]}")

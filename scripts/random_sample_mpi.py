@@ -49,8 +49,6 @@ from src.formulations import (
     get_bounds,
     get_var_names,
     get_objective_set,
-    is_external_policy,
-    get_architecture,
 )
 from src.simulation import dvs_to_config, run_simulation_inmemory
 
@@ -67,11 +65,7 @@ def _get_mpi_context():
 
 def _sample_random_dvs(formulation: str, rng: np.random.Generator,
                        n_samples: int) -> np.ndarray:
-    """Uniform random samples within DV bounds. Shape (n_samples, n_vars).
-
-    Uses `get_bounds` (which handles both FFMP-family registered formulations
-    and external-policy architectures like ANN/RBF/tree/spline).
-    """
+    """Uniform random samples within DV bounds. Shape (n_samples, n_vars)."""
     lows, highs = get_bounds(formulation)
     return rng.uniform(low=lows, high=highs, size=(n_samples, len(lows)))
 
@@ -79,10 +73,6 @@ def _sample_random_dvs(formulation: str, rng: np.random.Generator,
 def _run_one(sample_id: int, dv: np.ndarray, formulation: str,
              objective_set) -> dict:
     """Simulate one DV vector and return summary dict.
-
-    Dispatches based on architecture: FFMP-family formulations go through
-    `dvs_to_config` + `run_simulation_inmemory`; external-policy
-    architectures (ANN/RBF/tree/spline) go through `run_policy_simulation`.
 
     Includes:
       - All active objective values (NaN on failure)
@@ -92,14 +82,8 @@ def _run_one(sample_id: int, dv: np.ndarray, formulation: str,
     out = {"sample_id": sample_id, "elapsed_s": float("nan")}
     t0 = time.perf_counter()
     try:
-        if is_external_policy(formulation):
-            from src.external_policy import run_policy_simulation
-            policy = get_architecture(formulation)
-            policy.set_params(np.asarray(dv, dtype=float))
-            data = run_policy_simulation(policy, mode="aggregate")
-        else:
-            cfg = dvs_to_config(dv, formulation)
-            data = run_simulation_inmemory(cfg, use_trimmed=True)
+        cfg = dvs_to_config(dv, formulation)
+        data = run_simulation_inmemory(cfg, use_trimmed=True)
         objs = objective_set.compute(data)
         out["elapsed_s"] = time.perf_counter() - t0
         for name, val in zip(objective_set.names, objs):
@@ -147,10 +131,9 @@ def main():
     rng = np.random.default_rng(args.seed)
     samples = _sample_random_dvs(args.formulation, rng, args.n)
 
-    # Baseline is only meaningful for FFMP-family formulations (where the
-    # registered DV defaults reproduce the historical FFMP rules). External
-    # architectures (ANN, RBF, tree, spline) have no canonical baseline —
-    # skip the baseline row in that case.
+    # FFMP-family formulations always carry registered DV defaults that
+    # reproduce the historical FFMP rules — include that baseline row when
+    # available.
     has_baseline = True
     try:
         baseline_dv = np.asarray(get_baseline_values(args.formulation), dtype=float)
@@ -168,7 +151,7 @@ def main():
     if is_root:
         print(f"=== Random-sample MPI diagnostic ===", flush=True)
         print(f"  formulation: {args.formulation}", flush=True)
-        print(f"  n samples:   {args.n}{' (+ baseline)' if has_baseline else ' (no baseline — external policy)'}", flush=True)
+        print(f"  n samples:   {args.n}{' (+ baseline)' if has_baseline else ''}", flush=True)
         print(f"  seed:        {args.seed}", flush=True)
         print(f"  active obj:  {len(ACTIVE_OBJECTIVES)}", flush=True)
         print(f"  ranks:       {size}", flush=True)

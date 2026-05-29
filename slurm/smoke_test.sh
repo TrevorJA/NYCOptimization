@@ -1,5 +1,5 @@
 #!/bin/bash
-# smoke_test.sh — small-NFE end-to-end pipeline check for one architecture.
+# smoke_test.sh — small-NFE end-to-end pipeline check for one formulation.
 #
 # Designed to be launched once per FORMULATION via slurm/submit_smoke.sh.
 # Default settings: 500 NFE/island, 2 islands, DEBUG_SIM (2018-2022),
@@ -7,9 +7,9 @@
 # Expected wall time: ~1-2 h on Hopper; 5-y window keeps per-eval cost low.
 #
 # Required env (set by the launcher via --export=ALL):
-#   FORMULATION   ffmp | ann | ffmp_8 | ffmp_10 | ffmp_12
-#                 (rbf/tree/spline/ffmp_6 also accepted but require
-#                 their JARs to be rebuilt first if running diagnostics)
+#   FORMULATION   ffmp | ffmp_8 | ffmp_10 | ffmp_12
+#                 (ffmp_6 is structurally identical to ffmp; other ffmp_N
+#                 values require their MOEAFramework JAR built first)
 #   N_ZONES       only for ffmp_N formulations (otherwise ignored)
 #
 # Optional env:

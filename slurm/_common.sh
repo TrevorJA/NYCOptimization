@@ -1,11 +1,11 @@
 #!/bin/bash
-# _common.sh — shared setup sourced by per-architecture SLURM scripts.
+# _common.sh — shared setup sourced by FFMP / FFMP-VR SLURM scripts.
 #
 # Sourced after SBATCH directives. Does NOT call `set -e` itself; each
 # caller controls its own error handling.
 #
 # Expected caller-set vars:
-#   FORMULATION   architecture name (ffmp, rbf, tree, ann, ffmp_N)
+#   FORMULATION   formulation name (ffmp or ffmp_N)
 #   SEED          optimization seed (int)
 #   N_ISLANDS     MM Borg islands
 #   NFE           NFE per island
@@ -21,9 +21,6 @@
 #   RUN_SLUG      escape hatch — sets the output slug verbatim, bypassing
 #                 derive_slug(). Most users should NOT set this; instead
 #                 author or pick an env file under slurm/envs/.
-#
-# All NYCOPT_* knobs are documented in
-#   local_notes/configuration/knob_reference.md.
 
 cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 mkdir -p logs
@@ -70,8 +67,8 @@ NTASKS_MPI=${NTASKS_MPI:-199}
 
 # ---- Output slug (auto-derived from active config) ----
 # derive_slug(formulation) reads ACTIVE_OBJECTIVES, INCLUDE_TEMPERATURE_MODEL,
-# STATE_FEATURES, and RUN_SLUG_TAG to compose the canonical slug. An explicit
-# RUN_SLUG env wins outright (escape hatch).
+# SALT_FRONT_PARAM_MODE, SEARCH_ENSEMBLE_SPEC, and RUN_SLUG_TAG to compose
+# the canonical slug. An explicit RUN_SLUG env wins outright (escape hatch).
 if [[ -z "${RUN_SLUG:-}" ]]; then
     export RUN_SLUG="$(python3 -c "from config import derive_slug; print(derive_slug('${FORMULATION}'))")"
 fi
@@ -99,8 +96,8 @@ mkdir -p "${RUN_LOG_DIR}"
     echo "Runtime freq:    ${RUNTIME_FREQ}"
     echo "Debug sim:       ${DEBUG_SIM:-false}"
     echo "Checkpoint:      ${CHECKPOINT:-false}"
-    echo "STATE_FEATURES:  ${NYCOPT_STATE_FEATURES:-<config default>}"
     echo "OBJECTIVES:      ${NYCOPT_OBJECTIVES:-<config default>}"
+    echo "ENSEMBLE:        ${NYCOPT_ENSEMBLE_PRESET:-<config default>}"
     echo "TS_ON:           ${NYCOPT_TS_ON:-<config default>}"
     echo "CLUSTER:         ${NYCOPT_CLUSTER:-<config default>}"
     echo "Python:          $(which python3)"
