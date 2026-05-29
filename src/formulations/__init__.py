@@ -3,6 +3,7 @@ src/formulations/__init__.py - Formulation registry for NYCOptimization.
 
 This module is the single source of truth for problem formulations: decision
 variable specifications, bounds, names, and the objective function factory.
+Supports FFMP and variable-resolution FFMP only.
 
 Exported API
 ------------
@@ -15,8 +16,7 @@ Exported API
     get_obj_names()             -> list of objective names
     get_obj_directions()        -> list of direction ints (+1 max, -1 min)
     get_objective_set(name)     -> ObjectiveSet instance
-    make_objective_function(name, ...) -> callable dispatches FFMP or external policy
-    is_external_policy(name)    -> bool
+    make_objective_function(name) -> callable for Borg evaluation
     generate_ffmp_formulation(n_zones) -> formulation dict
 
 Circular-import note
@@ -30,7 +30,6 @@ Circular-import note
 import numpy as np
 
 from .ffmp import FFMP_FORMULATION, generate_ffmp_formulation, _merge_salt_front_dvs
-from .external import is_external_policy, get_architecture, register_architecture
 
 # Sentinel: track which formulation dicts have already had salt-front DVs
 # merged so repeated `get_formulation` calls don't double-merge.
@@ -48,9 +47,6 @@ __all__ = [
     "get_obj_directions",
     "get_objective_set",
     "make_objective_function",
-    "is_external_policy",
-    "get_architecture",
-    "register_architecture",
     "generate_ffmp_formulation",
 ]
 
@@ -110,34 +106,21 @@ def get_formulation(name: str = "ffmp") -> dict:
 
 
 def get_var_names(formulation_name: str = "ffmp") -> list:
-    """Ordered list of decision variable names.
-
-    For external policy architectures, returns generic DV names dv_0..dv_N-1.
-    """
-    if is_external_policy(formulation_name):
-        arch = get_architecture(formulation_name)
-        return [f"dv_{i}" for i in range(arch.n_params)]
+    """Ordered list of decision variable names."""
     return list(get_formulation(formulation_name)["decision_variables"].keys())
 
 
 def get_n_vars(formulation_name: str = "ffmp") -> int:
     """Number of decision variables."""
-    if is_external_policy(formulation_name):
-        return get_architecture(formulation_name).n_params
     return len(get_formulation(formulation_name)["decision_variables"])
 
 
 def get_bounds(formulation_name: str = "ffmp") -> tuple:
     """Decision variable bounds as a pair of numpy arrays.
 
-    For external policy architectures, delegates to the architecture's
-    get_bounds() method.
-
     Returns:
         (lower, upper) each of shape (n_vars,).
     """
-    if is_external_policy(formulation_name):
-        return get_architecture(formulation_name).get_bounds()
     dvs = get_formulation(formulation_name)["decision_variables"]
     lower = [spec["bounds"][0] for spec in dvs.values()]
     upper = [spec["bounds"][1] for spec in dvs.values()]
@@ -205,20 +188,11 @@ def get_obj_directions(items=None) -> list:
 # Objective function factory
 ###############################################################################
 
-def make_objective_function(architecture_name: str = "ffmp",
-                            state_features=None):
-    """Return a Borg-compatible evaluation callable.
-
-    Dispatches to the correct evaluation path based on architecture type:
-    - FFMP formulations ("ffmp", "ffmp_N"): uses src.simulation.evaluate()
-    - External policy architectures ("rbf", "tree", "ann"): uses
-      src.external_policy.evaluate_with_policy()
+def make_objective_function(formulation_name: str = "ffmp"):
+    """Return a Borg-compatible evaluation callable for a FFMP formulation.
 
     Args:
-        architecture_name: Formulation or architecture name.
-        state_features: Optional override for the state feature list used by
-            external-policy architectures. None uses config.STATE_FEATURES.
-            Ignored for FFMP formulations.
+        formulation_name: "ffmp" or "ffmp_N" (N-zone variable-resolution FFMP).
 
     Returns:
         Callable: dv_vector -> list of floats (Borg-compatible, all minimised).
@@ -226,31 +200,13 @@ def make_objective_function(architecture_name: str = "ffmp",
     n_objs = get_n_objs()
     _penalty = [1e6] * n_objs
 
-    if is_external_policy(architecture_name):
-        policy = get_architecture(architecture_name, state_features=state_features)
-        from src.external_policy import evaluate_with_policy
+    from src.simulation import evaluate
 
-        def _external_fn(dv_vector):
-            try:
-                policy.set_params(np.asarray(dv_vector))
-                return evaluate_with_policy(
-                    policy,
-                    mode="aggregate",
-                    state_features=state_features,
-                )
-            except Exception:
-                return _penalty
+    def _ffmp_fn(dv_vector):
+        try:
+            return evaluate(np.asarray(dv_vector),
+                            formulation_name=formulation_name)
+        except Exception:
+            return _penalty
 
-        return _external_fn
-
-    else:
-        from src.simulation import evaluate
-
-        def _ffmp_fn(dv_vector):
-            try:
-                return evaluate(np.asarray(dv_vector),
-                                formulation_name=architecture_name)
-            except Exception:
-                return _penalty
-
-        return _ffmp_fn
+    return _ffmp_fn

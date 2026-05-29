@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--formulation", type=str, default="ffmp")
     parser.add_argument("--slug", type=str, default=None,
                         help="Output directory tag (default: formulation name). "
-                             "Use distinct slugs when varying STATE_FEATURES/OBJECTIVES "
+                             "Use distinct slugs when varying ensemble preset/OBJECTIVES "
                              "so results don't collide under outputs/optimization/.")
     parser.add_argument("--islands", type=int, default=2)
     parser.add_argument("--nfe", type=int, default=None)

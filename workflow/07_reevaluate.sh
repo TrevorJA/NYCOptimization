@@ -1,18 +1,18 @@
 #!/bin/bash
-# Step 5: Re-simulate Pareto-optimal solutions with the full Pywr-DRB model.
+# Step 7: Re-simulate Pareto-optimal solutions with the full Pywr-DRB model.
 #
 # Mode selection (single-node multiprocessing vs MPI multi-node) is driven
 # by `NYCOPT_REEVAL_MODE` from the sourced env file — no CLI flag to remember.
 # Slug auto-derives from active config; outputs land at
-# `outputs/reevaluation/{slug}/deterministic/` (Phase 1) or
-# `outputs/reevaluation/{slug}/ensemble_{id}/` (Phase 3).
+# `outputs/reevaluation/{slug}/deterministic/` or
+# `outputs/reevaluation/{slug}/ensemble_{id}/`.
 #
 # Usage (single-node fallback / interactive):
-#   bash workflow/05_reevaluate.sh [FORMULATION] [MAX_SOLUTIONS] [SEED]
+#   bash workflow/07_reevaluate.sh [FORMULATION] [MAX_SOLUTIONS] [SEED]
 #
 # Usage (SLURM with env file):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7_sal.env \
-#          workflow/05_reevaluate.sh ffmp 0
+#          workflow/07_reevaluate.sh ffmp 0
 #
 # Defaults:
 #   FORMULATION   first positional arg, else "ffmp"

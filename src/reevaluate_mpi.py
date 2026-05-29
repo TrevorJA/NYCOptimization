@@ -107,7 +107,7 @@ def reevaluate_mpi(
     """Re-simulate Pareto solutions across MPI ranks.
 
     Args:
-        formulation: Formulation / architecture name (e.g. "ffmp", "ann").
+        formulation: Formulation name (e.g. "ffmp", "ffmp_10").
         seed: Optional seed number. If provided, outputs land under a
             seed_NN subdir to avoid collision across multi-seed reruns.
         max_solutions: Cap on number of solutions (0 = all).
