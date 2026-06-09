@@ -19,7 +19,7 @@ Runtime:
     This only needs to be run once per inflow_type / date range combination.
 
 Usage:
-    python scripts/generate_presim.py
+    python scripts/main/generate_presim.py
 
 Outputs:
     outputs/presim/presimulated_releases_mgd.csv
@@ -32,7 +32,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
 from config import (

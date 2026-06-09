@@ -233,7 +233,7 @@ def test_evaluate_raises_when_ensemble_objset_missing(monkeypatch, wcu5_spec):
 @pytest.mark.skipif(
     not STAGED_ENSEMBLE.exists(),
     reason="Staged Kirsch–Nowak ensemble HDF5 not present; "
-           "run workflow/00_build_ensemble.sh first.",
+           "run the workflow/01-03 ensemble pipeline first.",
 )
 @slow
 def test_ensemble_returns_list_of_n_distinct_data_dicts(wcu5_spec):

@@ -78,9 +78,9 @@ NYCOptimization/
 │   ├── load/
 │   └── plotting/
 ├── scripts/
-│   ├── ensemble/              # stubs for ensemble generation/sub-sampling/prep
-│   ├── generate_presim.py, run_baseline.py, run_diagnostics.py
-│   ├── build_ensemble.py, random_sample_mpi.py, ...
+│   ├── main/                  # production pipeline scripts (called by workflow/)
+│   ├── supplemental/          # benchmarks, diagnostic samplers, smoke tests
+│   └── temporary/             # ad-hoc / non-manuscript sandbox
 ├── workflow/                  # numbered 00..07 pipeline
 ├── slurm/                     # FFMP and FFMP-VR SLURM templates + envs/
 ├── tests/                     # simulation/ensemble/objective tests

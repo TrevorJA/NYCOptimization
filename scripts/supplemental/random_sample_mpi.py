@@ -20,10 +20,10 @@ Optional env:
     PYWRDRB_SIM_END_DATE=2022-12-31
 
 Usage (interactive, single rank — for debug):
-    python scripts/random_sample_mpi.py --n 10 --seed 42 --formulation ffmp
+    python scripts/supplemental/random_sample_mpi.py --n 10 --seed 42 --formulation ffmp
 
 Usage (MPI):
-    mpirun -np 11 python scripts/random_sample_mpi.py --n 10 --seed 42
+    mpirun -np 11 python scripts/supplemental/random_sample_mpi.py --n 10 --seed 42
 
 Usage (SLURM, recommended):
     sbatch slurm/random_sample.sh
@@ -40,7 +40,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
 from config import OUTPUTS_DIR, derive_slug, ACTIVE_OBJECTIVES, INCLUDE_SALINITY_MODEL

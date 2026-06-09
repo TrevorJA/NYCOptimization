@@ -11,11 +11,11 @@ Model mode:
     the full model is more accurate (all STARFIT reservoirs simulate freely).
 
     The trimmed model path (use_trimmed=True) is available for quick tests
-    after running 00_generate_presim.sh, but is not recommended for the
-    final baseline result.
+    after running workflow/00_generate_presim.sh, but is not recommended
+    for the final baseline result.
 
 Usage:
-    python scripts/run_baseline.py [--formulation ffmp] [--use-trimmed] [--test-inmemory]
+    python scripts/main/run_baseline.py [--formulation ffmp] [--use-trimmed] [--test-inmemory]
 
 Outputs:
     outputs/baseline/{formulation}_baseline.hdf5
@@ -28,7 +28,7 @@ import argparse
 import pandas as pd
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
 from config import OUTPUTS_DIR

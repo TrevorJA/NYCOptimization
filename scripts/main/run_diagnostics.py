@@ -3,11 +3,11 @@ run_diagnostics.py - Compute runtime metrics via MOEAFramework.
 
 Runs the MOEAFramework diagnostics pipeline (reference set merging +
 MetricsEvaluator) on Borg runtime files. Produces .metrics files that
-can be plotted separately by plot_results.py.
+downstream figure scripts can read.
 
 Usage:
-    python scripts/run_diagnostics.py [--slug ffmp] [--seed 1]
-    python scripts/run_diagnostics.py --formulation ffmp    # alias for --slug
+    python scripts/main/run_diagnostics.py [--slug ffmp] [--seed 1]
+    python scripts/main/run_diagnostics.py --formulation ffmp    # alias for --slug
 
 Produces:
     outputs/optimization/{slug}/sets/{slug}_seed{seed}_merged.set
@@ -18,7 +18,7 @@ import sys
 import argparse
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.diagnostics import run_diagnostics
 
