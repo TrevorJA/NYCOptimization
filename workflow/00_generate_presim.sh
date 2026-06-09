@@ -21,4 +21,4 @@ source venv/bin/activate
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
-python3 scripts/generate_presim.py "$@"
+python3 scripts/main/generate_presim.py "$@"

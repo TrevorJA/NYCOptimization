@@ -1,16 +1,16 @@
 #!/bin/bash
 # bench_ensemble.sh — wall-clock benchmark for an ensemble simulation eval.
 #
-# Calls scripts/bench_ensemble_eval.py inside a SLURM allocation so the
-# measurement reflects compute-node behavior (login-node bench is forbidden:
-# >3 min runs on the home node violate cluster etiquette).
+# Calls scripts/supplemental/bench_ensemble_eval.py inside a SLURM allocation
+# so the measurement reflects compute-node behavior (login-node bench is
+# forbidden: >3 min runs on the home node violate cluster etiquette).
 #
 # The active ensemble preset comes from NYCOPT_ENSEMBLE_PRESET, sourced from
-# an env file under slurm/envs/. Defaults to slurm/envs/build_wcu_kirsch_n5.env.
+# an env file under slurm/envs/.
 #
 # Usage:
 #   sbatch slurm/bench_ensemble.sh
-#   NYCOPT_ENV_FILE=slurm/envs/build_wcu_kirsch_n5.env sbatch slurm/bench_ensemble.sh
+#   NYCOPT_ENV_FILE=slurm/envs/<preset>.env sbatch slurm/bench_ensemble.sh
 #   sbatch --export=ALL,N_EVALS=3 slurm/bench_ensemble.sh
 #
 #SBATCH --job-name=bench_ensemble
@@ -30,9 +30,8 @@ source /etc/profile.d/lmod.sh 2>/dev/null || true
 module load python/3.11.5 || true
 source venv/bin/activate
 
-# Source the per-experiment env file. Default points at the N=5 smoke
-# preset; override by setting NYCOPT_ENV_FILE before sbatch.
-NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/build_wcu_kirsch_n5.env}"
+# Source the per-experiment env file (override via NYCOPT_ENV_FILE before sbatch).
+NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7_sal.env}"
 if [[ -f "${NYCOPT_ENV_FILE}" ]]; then
     set -a
     # shellcheck disable=SC1090
@@ -57,7 +56,7 @@ FORMULATION="${FORMULATION:-ffmp}"
 
 echo "=== bench_ensemble: preset=${NYCOPT_ENSEMBLE_PRESET} formulation=${FORMULATION} n_evals=${N_EVALS} ==="
 echo "    started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-python3 -u scripts/bench_ensemble_eval.py \
+python3 -u scripts/supplemental/bench_ensemble_eval.py \
     --formulation "${FORMULATION}" \
     --n-evals "${N_EVALS}"
 echo "=== completed: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="

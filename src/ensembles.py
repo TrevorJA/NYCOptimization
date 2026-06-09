@@ -26,6 +26,7 @@ Plan reference:
     /home/fs02/pmr82_0001/tja73/.claude/plans/in-this-session-i-tranquil-feigenbaum.md
 """
 
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
@@ -160,24 +161,57 @@ PRESETS: dict[str, EnsembleSpec] = {
 # Resolver + helpers
 ###############################################################################
 
+_KN_SLUG_RE = re.compile(r"^kn_(\d+)yr_n(\d+)$")
+
+
+def kirsch_nowak_slug(n_years: int, n_realizations: int) -> str:
+    """Build the canonical ``kn_{Y}yr_n{N}`` slug for a Kirsch-Nowak ensemble."""
+    return f"kn_{n_years}yr_n{n_realizations}"
+
+
+def _spec_from_kn_slug(slug: str) -> EnsembleSpec | None:
+    """Build an ``EnsembleSpec`` from a ``kn_{Y}yr_n{N}`` slug, or None if it doesn't match."""
+    m = _KN_SLUG_RE.match(slug)
+    if m is None:
+        return None
+    n_years, n_realizations = int(m.group(1)), int(m.group(2))
+    return EnsembleSpec(
+        preset_name=slug,
+        inflow_type=slug,
+        realization_indices=tuple(range(n_realizations)),
+        is_ensemble=True,
+        source_kind="synhydro_kn",
+        slug_fragment=slug,
+        realization_years=n_years,
+    )
+
+
 def get_ensemble_spec(preset_name: str) -> EnsembleSpec:
     """Resolve a preset name to its ``EnsembleSpec``.
 
-    Raises
-    ------
-    KeyError
-        If ``preset_name`` is not registered.
+    First checks the static ``PRESETS`` registry; if no match, falls back to
+    parsing the ``kn_{Y}yr_n{N}`` slug grammar for ensembles staged by
+    ``scripts/main/generate_stochastic_ensemble.py``. Raises ``KeyError`` if
+    neither resolves.
     """
-    if preset_name not in PRESETS:
-        raise KeyError(
-            f"Unknown ensemble preset '{preset_name}'. "
-            f"Available presets: {list_presets()}"
-        )
-    return PRESETS[preset_name]
+    if preset_name in PRESETS:
+        return PRESETS[preset_name]
+    spec = _spec_from_kn_slug(preset_name)
+    if spec is not None:
+        return spec
+    raise KeyError(
+        f"Unknown ensemble preset '{preset_name}'. "
+        f"Available presets: {list_presets()} "
+        f"(or any 'kn_{{Y}}yr_n{{N}}' slug for a Step-1-staged ensemble)."
+    )
 
 
 def list_presets() -> list[str]:
-    """Return the registered preset names in sorted order."""
+    """Return the registered named preset names in sorted order.
+
+    Does not enumerate ``kn_{Y}yr_n{N}`` slugs — those resolve lazily through
+    ``get_ensemble_spec`` and the slug space is unbounded.
+    """
     return sorted(PRESETS)
 
 

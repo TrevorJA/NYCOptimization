@@ -25,7 +25,7 @@ module load python/3.11.5 || true
 source venv/bin/activate
 
 # Source per-experiment env file if provided (NYCOPT_* knobs apply at config
-# import time inside scripts/run_baseline.py).
+# import time inside scripts/main/run_baseline.py).
 if [[ -n "${NYCOPT_ENV_FILE:-}" && -f "${NYCOPT_ENV_FILE}" ]]; then
     set -a
     # shellcheck disable=SC1090
@@ -37,4 +37,4 @@ fi
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
-python3 scripts/run_baseline.py "$@"
+python3 scripts/main/run_baseline.py "$@"

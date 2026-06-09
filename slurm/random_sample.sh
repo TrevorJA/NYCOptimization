@@ -53,6 +53,6 @@ NTASKS_MPI="${SLURM_NTASKS:-$((N_SAMPLES + 1))}"
 
 echo "=== Launching MPI random sample (N=${N_SAMPLES}, seed=${SEED}, formulation=${FORMULATION}) ==="
 echo "    ranks=${NTASKS_MPI}"
-mpirun -np "${NTASKS_MPI}" python3 -u scripts/random_sample_mpi.py \
+mpirun -np "${NTASKS_MPI}" python3 -u scripts/supplemental/random_sample_mpi.py \
     --n "${N_SAMPLES}" --seed "${SEED}" --formulation "${FORMULATION}"
 echo "=== Completed: $(date) ==="

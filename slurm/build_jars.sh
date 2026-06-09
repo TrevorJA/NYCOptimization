@@ -2,11 +2,11 @@
 # build_jars.sh — Build MOEAFramework problem JARs for the active formulation
 # set and active objective count.
 #
-# Generalizes the older `build_ffmp_vr_jars.sh` to work for ANY formulation
-# in `PRODUCTION_FORMULATIONS` (or a user-supplied list), reading the per-arch
-# DV count from `src.formulations.get_n_vars(name)` and the objective count
-# from `src.formulations.get_n_objs()`. This keeps the JARs in lock-step with
-# the active config (e.g., salinity-on adds an obj; salt-front DVs add DVs).
+# Builds one JAR per formulation in `PRODUCTION_FORMULATIONS` (or a
+# user-supplied list), reading the per-formulation DV count from
+# `src.formulations.get_n_vars(name)` and the objective count from
+# `src.formulations.get_n_objs()`. Keeps the JARs in lock-step with the
+# active config (e.g., salinity-on adds an obj; salt-front DVs add DVs).
 #
 # Usage:
 #   bash slurm/build_jars.sh                      # use PRODUCTION_FORMULATIONS

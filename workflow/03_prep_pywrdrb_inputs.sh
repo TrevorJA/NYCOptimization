@@ -26,4 +26,4 @@ module load python/3.11.5 || true
 source venv/bin/activate
 
 echo "[03_prep_pywrdrb_inputs] TODO: format subsampled ensembles into pywrdrb HDF5 inputs."
-python3 scripts/ensemble/prep_pywrdrb_inputs.py "$@"
+python3 scripts/main/prep_pywrdrb_inputs.py "$@"

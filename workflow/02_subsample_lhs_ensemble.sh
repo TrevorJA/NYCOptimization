@@ -25,4 +25,4 @@ module load python/3.11.5 || true
 source venv/bin/activate
 
 echo "[02_subsample_lhs_ensemble] TODO: implement LHS subsampling over hydrologic-metric space."
-python3 scripts/ensemble/subsample_lhs_ensemble.py "$@"
+python3 scripts/main/subsample_lhs_ensemble.py "$@"

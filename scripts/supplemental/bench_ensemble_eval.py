@@ -12,9 +12,9 @@ Use this from a SLURM batch job (see ``slurm/bench_ensemble.sh``); do not run
 on a login node — a single full-window N=5 eval is in the 10–20 minute range.
 
 Usage:
-    python scripts/bench_ensemble_eval.py
-    python scripts/bench_ensemble_eval.py --n-evals 3
-    python scripts/bench_ensemble_eval.py --formulation ffmp --n-evals 1
+    python scripts/supplemental/bench_ensemble_eval.py
+    python scripts/supplemental/bench_ensemble_eval.py --n-evals 3
+    python scripts/supplemental/bench_ensemble_eval.py --formulation ffmp --n-evals 1
 
 The selected preset is read from ``config.SEARCH_ENSEMBLE_SPEC`` at import.
 Override via ``NYCOPT_ENSEMBLE_PRESET`` in the calling environment (the
@@ -30,7 +30,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
 import numpy as np  # noqa: E402

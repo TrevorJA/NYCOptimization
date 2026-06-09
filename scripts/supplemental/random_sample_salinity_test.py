@@ -17,7 +17,7 @@ Optional env:
     PYWRDRB_SIM_END_DATE=2022-12-31
 
 Usage:
-    python scripts/random_sample_salinity_test.py [--n 10] [--seed 42]
+    python scripts/supplemental/random_sample_salinity_test.py [--n 10] [--seed 42]
         [--formulation ffmp]
 """
 
@@ -31,7 +31,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
 from config import OUTPUTS_DIR, derive_slug, ACTIVE_OBJECTIVES, INCLUDE_SALINITY_MODEL

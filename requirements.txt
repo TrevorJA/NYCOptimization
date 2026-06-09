@@ -3,6 +3,8 @@
 # Core simulation
 pywrdrb @ git+https://github.com/Pywr-DRB/Pywr-DRB.git@nyc_opt
 
+synhydro @ git+https://github.com/TrevorJA/SynHydro.git
+
 # Parallel computing
 mpi4py
 
