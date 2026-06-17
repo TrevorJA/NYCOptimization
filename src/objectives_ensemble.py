@@ -38,7 +38,6 @@ from typing import Callable, Literal
 
 import numpy as np
 
-from config import SALT_FRONT_REFERENCE_RM
 from src.objectives import OBJECTIVES, Objective, ObjectiveSet
 
 
@@ -118,14 +117,19 @@ class EnsembleObjective:
 ###############################################################################
 # Documented in `local_notes/decisions/2026-05-06_satisficing_thresholds.md`.
 
+# Per-objective satisficing thresholds (the across-realization "acceptable"
+# level). These are the analyst-chosen satisficing levels, distinct from the
+# Decree thresholds baked into the temporal metrics. Placeholder values pending
+# the random-DV sensitivity experiment; override via NYCOPT_SAT_THRESHOLDS.
 _DEFAULT_THRESHOLDS: dict[str, float] = {
-    "nyc_reliability_weekly_decree__sat95":              0.95,
-    "nyc_max_deficit_weekly_decree__sat10pp":            10.0,
-    "montague_reliability_weekly_decree__sat85":         0.85,
-    "montague_max_deficit_weekly_decree__sat25pp":       25.0,
-    "salt_front_max_rm__sat92rm":                        SALT_FRONT_REFERENCE_RM,
-    "flood_days_downstream_action_anygauge__sat30d":     30.0,
-    "storage_min_combined_pct__sat25":                   25.0,
+    "nyc_delivery_reliability_weekly__sat95":     0.95,
+    "nyc_delivery_deficit_cvar90_pct__sat10":     10.0,
+    "montague_flow_reliability_weekly__sat85":    0.85,
+    "montague_flow_deficit_cvar90_pct__sat25":    25.0,
+    "trenton_flow_reliability_weekly__sat85":     0.85,
+    "nj_delivery_reliability_weekly__sat95":      0.95,
+    "downstream_flood_days_minor__sat10":         10.0,
+    "nyc_storage_p5_pct__sat25":                  25.0,
 }
 
 
@@ -153,20 +157,22 @@ def _resolve_thresholds() -> dict[str, float]:
 #   - maximize-base  -> "ge"  (raw >= threshold satisfies)
 #   - minimize-base  -> "le"  (raw <= threshold satisfies)
 _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"], float]] = [
-    ("nyc_reliability_weekly_decree",
-     "nyc_reliability_weekly_decree__sat95",          "ge", 0.02),
-    ("nyc_max_deficit_weekly_decree",
-     "nyc_max_deficit_weekly_decree__sat10pp",        "le", 0.02),
-    ("montague_reliability_weekly_decree",
-     "montague_reliability_weekly_decree__sat85",     "ge", 0.02),
-    ("montague_max_deficit_weekly_decree",
-     "montague_max_deficit_weekly_decree__sat25pp",   "le", 0.02),
-    ("salt_front_max_rm",
-     "salt_front_max_rm__sat92rm",                    "le", 0.02),
-    ("flood_days_downstream_action_anygauge",
-     "flood_days_downstream_action_anygauge__sat30d", "le", 0.02),
-    ("storage_min_combined_pct",
-     "storage_min_combined_pct__sat25",               "ge", 0.02),
+    ("nyc_delivery_reliability_weekly",
+     "nyc_delivery_reliability_weekly__sat95",   "ge", 0.02),
+    ("nyc_delivery_deficit_cvar90_pct",
+     "nyc_delivery_deficit_cvar90_pct__sat10",   "le", 0.02),
+    ("montague_flow_reliability_weekly",
+     "montague_flow_reliability_weekly__sat85",  "ge", 0.02),
+    ("montague_flow_deficit_cvar90_pct",
+     "montague_flow_deficit_cvar90_pct__sat25",  "le", 0.02),
+    ("trenton_flow_reliability_weekly",
+     "trenton_flow_reliability_weekly__sat85",   "ge", 0.02),
+    ("nj_delivery_reliability_weekly",
+     "nj_delivery_reliability_weekly__sat95",    "ge", 0.02),
+    ("downstream_flood_days_minor",
+     "downstream_flood_days_minor__sat10",       "le", 0.02),
+    ("nyc_storage_p5_pct",
+     "nyc_storage_p5_pct__sat25",                "ge", 0.02),
 ]
 
 

@@ -5,13 +5,14 @@
 # so the measurement reflects compute-node behavior (login-node bench is
 # forbidden: >3 min runs on the home node violate cluster etiquette).
 #
-# The active ensemble preset comes from NYCOPT_ENSEMBLE_PRESET, sourced from
-# an env file under slurm/envs/.
+# The active search ensemble comes from the scenario design
+# (NYCOPT_SCENARIO_DESIGN), sourced from an env file under slurm/envs/. Use an
+# ensemble-based design (e.g. smoke_ensemble) — historic is single-trace.
 #
 # Usage:
-#   sbatch slurm/bench_ensemble.sh
-#   NYCOPT_ENV_FILE=slurm/envs/<preset>.env sbatch slurm/bench_ensemble.sh
-#   sbatch --export=ALL,N_EVALS=3 slurm/bench_ensemble.sh
+#   sbatch slurm/supplemental/bench_ensemble.sh
+#   NYCOPT_ENV_FILE=slurm/envs/<preset>.env sbatch slurm/supplemental/bench_ensemble.sh
+#   sbatch --export=ALL,N_EVALS=3 slurm/supplemental/bench_ensemble.sh
 #
 #SBATCH --job-name=bench_ensemble
 #SBATCH --nodes=1
@@ -23,7 +24,7 @@
 
 set -euo pipefail
 
-cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 mkdir -p logs
 
 source /etc/profile.d/lmod.sh 2>/dev/null || true
@@ -54,7 +55,7 @@ export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
 N_EVALS="${N_EVALS:-2}"
 FORMULATION="${FORMULATION:-ffmp}"
 
-echo "=== bench_ensemble: preset=${NYCOPT_ENSEMBLE_PRESET} formulation=${FORMULATION} n_evals=${N_EVALS} ==="
+echo "=== bench_ensemble: scenario=${NYCOPT_SCENARIO_DESIGN:-<default>} formulation=${FORMULATION} n_evals=${N_EVALS} ==="
 echo "    started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 python3 -u scripts/supplemental/bench_ensemble_eval.py \
     --formulation "${FORMULATION}" \

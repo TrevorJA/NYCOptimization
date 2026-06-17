@@ -1,16 +1,16 @@
 """
-tests/test_objectives_ensemble.py - Unit tests for the v1 ensemble objective
+tests/test_objectives_ensemble.py - Unit tests for the ensemble objective
 framework in src.objectives_ensemble.
 
 Covers:
   1. SatisficingAgg ge / le / NaN handling.
   2. EnsembleObjective wraps a base Objective and applies the aggregator
-     once per realization, including the salt-front objective on a synthetic
-     two-realization data_per_real list.
-  3. build_ensemble_objective_set resolves the 7 v1 names to maximise-direction
-     EnsembleObjectives that ObjectiveSet accepts.
-  4. ObjectiveSet.compute_for_borg_ensemble returns a 7-element vector of
-     negated maximised satisficing rates, all in [-1, 0].
+     once per realization, including the (now diagnostic) salt-front objective
+     on a synthetic two-realization data_per_real list.
+  3. build_ensemble_objective_set resolves the active ensemble names to
+     maximise-direction EnsembleObjectives that ObjectiveSet accepts.
+  4. ObjectiveSet.compute_for_borg_ensemble returns negated maximised
+     satisficing rates, all in [-1, 0].
   5. NYCOPT_SAT_THRESHOLDS env override patches the registry without code
      changes.
 
@@ -97,14 +97,22 @@ def _make_salinity_data(peak_rm: float, n_days: int = 400) -> dict:
     }
 
 
-def test_ensemble_objective_wraps_base_per_realization():
-    salt_le = SatisficingAgg(threshold=92.47, kind="le")
-    ens = EnsembleObjective(
-        base=OBJECTIVES["salt_front_max_rm"],
-        aggregator=salt_le,
-        name="salt_front_max_rm__test",
+def _salt_front_ensemble_objective() -> EnsembleObjective:
+    """A one-off ensemble wrapper around the diagnostic salt-front base metric.
+
+    Salt-front is no longer in the active ENSEMBLE_OBJECTIVES registry, but the
+    base metric is still registered, so it remains a convenient fixture for the
+    wrapping/compute tests."""
+    return EnsembleObjective(
+        base=OBJECTIVES["salt_front_intrusion_max_rm"],
+        aggregator=SatisficingAgg(threshold=92.47, kind="le"),
+        name="salt_front_intrusion_max_rm__test",
         epsilon=0.02,
     )
+
+
+def test_ensemble_objective_wraps_base_per_realization():
+    ens = _salt_front_ensemble_objective()
     data_per_real = [
         _make_salinity_data(peak_rm=90.0),   # satisfies (<=92.47)
         _make_salinity_data(peak_rm=95.0),   # fails
@@ -144,38 +152,39 @@ def test_ensemble_objective_calls_base_once_per_realization():
 # build_ensemble_objective_set + ObjectiveSet.compute_for_borg_ensemble
 # ---------------------------------------------------------------------------
 
-V1_ENSEMBLE_NAMES = [
-    "nyc_reliability_weekly_decree__sat95",
-    "nyc_max_deficit_weekly_decree__sat10pp",
-    "montague_reliability_weekly_decree__sat85",
-    "montague_max_deficit_weekly_decree__sat25pp",
-    "salt_front_max_rm__sat92rm",
-    "flood_days_downstream_action_anygauge__sat30d",
-    "storage_min_combined_pct__sat25",
+ENSEMBLE_NAMES = [
+    "nyc_delivery_reliability_weekly__sat95",
+    "nyc_delivery_deficit_cvar90_pct__sat10",
+    "montague_flow_reliability_weekly__sat85",
+    "montague_flow_deficit_cvar90_pct__sat25",
+    "trenton_flow_reliability_weekly__sat85",
+    "nj_delivery_reliability_weekly__sat95",
+    "downstream_flood_days_minor__sat10",
+    "nyc_storage_p5_pct__sat25",
 ]
 
 
-def test_registry_has_seven_objectives():
-    assert set(ENSEMBLE_OBJECTIVES) == set(V1_ENSEMBLE_NAMES)
+def test_registry_matches_expected_names():
+    assert set(ENSEMBLE_OBJECTIVES) == set(ENSEMBLE_NAMES)
 
 
-def test_build_ensemble_set_returns_seven_maximize():
-    obj_set = build_ensemble_objective_set(V1_ENSEMBLE_NAMES)
+def test_build_ensemble_set_returns_all_maximize():
+    obj_set = build_ensemble_objective_set(ENSEMBLE_NAMES)
     assert isinstance(obj_set, ObjectiveSet)
-    assert obj_set.n_objs == 7
-    assert obj_set.names == V1_ENSEMBLE_NAMES
+    assert obj_set.n_objs == len(ENSEMBLE_NAMES)
+    assert obj_set.names == ENSEMBLE_NAMES
     assert all(d == 1 for d in obj_set.directions)  # all maximize
 
 
 def test_build_ensemble_set_rejects_legacy_name():
     with pytest.raises(KeyError, match="Unknown ensemble objective"):
-        build_ensemble_objective_set(["salt_front_max_rm"])  # legacy name
+        build_ensemble_objective_set(["salt_front_max_rm"])  # legacy/base name
 
 
-def test_compute_for_borg_ensemble_salt_front_only():
-    """End-to-end: feed only the salt-front ensemble objective a 2-realization
+def test_compute_for_borg_ensemble_single_objective():
+    """End-to-end: feed a one-objective ObjectiveSet a 2-realization
     data_per_real and confirm the Borg vector is the negated 0.5."""
-    obj_set = build_ensemble_objective_set(["salt_front_max_rm__sat92rm"])
+    obj_set = ObjectiveSet([_salt_front_ensemble_objective()])
     data_per_real = [
         _make_salinity_data(peak_rm=90.0),
         _make_salinity_data(peak_rm=95.0),
@@ -186,17 +195,18 @@ def test_compute_for_borg_ensemble_salt_front_only():
 
 def test_borg_vector_is_in_negated_unit_interval(monkeypatch):
     """Every element of compute_for_borg_ensemble must be in [-1, 0]."""
-    # Patch each base Objective.compute to return a finite value so the
-    # non-salinity metrics don't NaN-out on a synthetic data dict that
-    # doesn't carry their input keys (ibt_demands, major_flow, etc.).
+    # Patch each base Objective.compute to return a finite, satisficing value so
+    # the metrics don't NaN-out on a synthetic data dict that doesn't carry
+    # their input keys (ibt_demands, major_flow, etc.).
     monkey_results = {
-        "salt_front_max_rm":                       91.0,   # le 92.47 ⇒ satisfies
-        "nyc_reliability_weekly_decree":           0.99,
-        "nyc_max_deficit_weekly_decree":           5.0,
-        "montague_reliability_weekly_decree":      0.90,
-        "montague_max_deficit_weekly_decree":      15.0,
-        "flood_days_downstream_action_anygauge":   10.0,
-        "storage_min_combined_pct":                40.0,
+        "nyc_delivery_reliability_weekly":   0.99,   # ge 0.95 ⇒ satisfies
+        "nyc_delivery_deficit_cvar90_pct":   5.0,    # le 10  ⇒ satisfies
+        "montague_flow_reliability_weekly":  0.90,   # ge 0.85 ⇒ satisfies
+        "montague_flow_deficit_cvar90_pct":  15.0,   # le 25  ⇒ satisfies
+        "trenton_flow_reliability_weekly":   0.90,   # ge 0.85 ⇒ satisfies
+        "nj_delivery_reliability_weekly":    0.99,   # ge 0.95 ⇒ satisfies
+        "downstream_flood_days_minor":       10.0,   # le 10  ⇒ satisfies
+        "nyc_storage_p5_pct":                40.0,   # ge 25  ⇒ satisfies
     }
     for base_name, val in monkey_results.items():
         monkeypatch.setattr(
@@ -204,10 +214,10 @@ def test_borg_vector_is_in_negated_unit_interval(monkeypatch):
             lambda _d, v=val: v,
         )
 
-    obj_set = build_ensemble_objective_set(V1_ENSEMBLE_NAMES)
-    data_per_real = [_make_salinity_data(peak_rm=90.0) for _ in range(3)]
+    obj_set = build_ensemble_objective_set(ENSEMBLE_NAMES)
+    data_per_real = [{} for _ in range(3)]
     borg = obj_set.compute_for_borg_ensemble(data_per_real)
-    assert len(borg) == 7
+    assert len(borg) == len(ENSEMBLE_NAMES)
     for v in borg:
         assert -1.0 <= v <= 0.0
 
@@ -219,13 +229,13 @@ def test_borg_vector_is_in_negated_unit_interval(monkeypatch):
 def test_env_threshold_override(monkeypatch):
     monkeypatch.setenv(
         "NYCOPT_SAT_THRESHOLDS",
-        json.dumps({"salt_front_max_rm__sat92rm": 80.0}),
+        json.dumps({"nyc_delivery_reliability_weekly__sat95": 0.80}),
     )
     importlib.reload(obj_ens)
     try:
-        agg = obj_ens.ENSEMBLE_OBJECTIVES["salt_front_max_rm__sat92rm"].aggregator
+        agg = obj_ens.ENSEMBLE_OBJECTIVES["nyc_delivery_reliability_weekly__sat95"].aggregator
         assert isinstance(agg, obj_ens.SatisficingAgg)
-        assert agg.threshold == pytest.approx(80.0)
+        assert agg.threshold == pytest.approx(0.80)
     finally:
         monkeypatch.delenv("NYCOPT_SAT_THRESHOLDS", raising=False)
         importlib.reload(obj_ens)

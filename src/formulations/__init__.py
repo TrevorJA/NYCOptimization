@@ -156,8 +156,12 @@ def get_objective_set(items=None):
         from config import ACTIVE_OBJECTIVES
         items = ACTIVE_OBJECTIVES
 
+    # SEARCH_ENSEMBLE_SPEC is None when the active scenario design has no search
+    # ensemble wired yet; the single-trace registry (objective *definitions* are
+    # identical across paths) is the safe default for non-optimization tasks
+    # such as diagnostics and re-evaluation.
     from config import SEARCH_ENSEMBLE_SPEC
-    if SEARCH_ENSEMBLE_SPEC.is_ensemble:
+    if SEARCH_ENSEMBLE_SPEC is not None and SEARCH_ENSEMBLE_SPEC.is_ensemble:
         from src.objectives_ensemble import build_ensemble_objective_set
         return build_ensemble_objective_set(items)
 

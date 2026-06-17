@@ -7,9 +7,12 @@
 # Expected caller-set vars:
 #   FORMULATION   formulation name (ffmp or ffmp_N)
 #   SEED          optimization seed (int)
-#   N_ISLANDS     MM Borg islands
-#   NFE           NFE per island
-#   RUNTIME_FREQ  runtime snapshot interval
+#
+# Algorithm settings (islands, NFE, runtime freq, MPI rank count) are NO LONGER
+# caller-set — they come from the active MOEA config (src/moea_config.py),
+# selected by NYCOPT_MOEA_CONFIG in the env file. The scenario design comes from
+# NYCOPT_SCENARIO_DESIGN. This block reads them back from config so the shell and
+# Python agree on a single source of truth.
 #
 # Optional:
 #   DEBUG_SIM     "true" to use short 2018-2022 simulation window
@@ -22,7 +25,7 @@
 #                 derive_slug(). Most users should NOT set this; instead
 #                 author or pick an env file under slurm/envs/.
 
-cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 mkdir -p logs
 
 module load python/3.11.5 || true
@@ -60,17 +63,39 @@ if [[ "${DEBUG_SIM:-false}" == "true" ]]; then
     export PYWRDRB_SIM_END_DATE="2022-12-31"
 fi
 
-# ---- MPI task count formula: 1 + N_ISLANDS × (workers + 1) ----
-# With N_ISLANDS=2, workers_per_island=98  → 1 + 2×99 = 199 ranks
-# Allocate 200 slots (5 nodes × 40) and run 199 to leave 1 slot headroom.
-NTASKS_MPI=${NTASKS_MPI:-199}
-
-# ---- Output slug (auto-derived from active config) ----
-# derive_slug(formulation) reads ACTIVE_OBJECTIVES, INCLUDE_TEMPERATURE_MODEL,
-# SALT_FRONT_PARAM_MODE, SEARCH_ENSEMBLE_SPEC, and RUN_SLUG_TAG to compose
-# the canonical slug. An explicit RUN_SLUG env wins outright (escape hatch).
+# ---- Run identity, derived from the active config (single source of truth) ----
+# One Python call reads back: scenario design name, moea slug, MOEA config name,
+# MPI rank count, islands, NFE/island, runtime freq. The shell and the driver
+# then agree on identical values without any value-carrying flags.
+mapfile -t _CFG < <(python3 -c "
+import config
+mc = config.ACTIVE_MOEA_CONFIG
+print(config.active_scenario_name())
+print(config.derive_slug('${FORMULATION}'))
+print(mc.name)
+print(mc.total_ntasks_mpi if mc.total_ntasks_mpi is not None else '')
+print(mc.n_islands if mc.n_islands is not None else '')
+print(mc.max_evaluations if mc.max_evaluations is not None else '')
+print(mc.runtime_frequency if mc.runtime_frequency is not None else '')
+")
+SCENARIO="${_CFG[0]}"
+# RUN_SLUG escape hatch wins outright; otherwise use the derived moea slug.
 if [[ -z "${RUN_SLUG:-}" ]]; then
-    export RUN_SLUG="$(python3 -c "from config import derive_slug; print(derive_slug('${FORMULATION}'))")"
+    export RUN_SLUG="${_CFG[1]}"
+fi
+MOEA_CONFIG_NAME="${_CFG[2]}"
+N_ISLANDS="${_CFG[4]}"
+NFE="${_CFG[5]}"
+RUNTIME_FREQ="${_CFG[6]}"
+
+# MPI rank count. Precedence: caller override (NTASKS_MPI already set) wins, then
+# the config's 1 + islands*(workers+1), then the SLURM allocation minus 1.
+if [[ -n "${NTASKS_MPI:-}" ]]; then
+    :  # caller override wins (e.g. smoke_test.sh sizing to its allocation)
+elif [[ -n "${_CFG[3]}" ]]; then
+    NTASKS_MPI="${_CFG[3]}"
+else
+    NTASKS_MPI="$(( ${SLURM_NTASKS:-200} - 1 ))"
 fi
 
 # ---- Reproducibility logging ----
@@ -89,6 +114,8 @@ mkdir -p "${RUN_LOG_DIR}"
     echo "MPI ntasks used: ${NTASKS_MPI}"
     echo "Env file:        ${NYCOPT_ENV_FILE}"
     echo "Formulation:     ${FORMULATION}"
+    echo "Scenario design: ${SCENARIO}"
+    echo "MOEA config:     ${MOEA_CONFIG_NAME}"
     echo "Slug:            ${RUN_SLUG}"
     echo "Seed:            ${SEED}"
     echo "N islands:       ${N_ISLANDS}"
@@ -97,7 +124,8 @@ mkdir -p "${RUN_LOG_DIR}"
     echo "Debug sim:       ${DEBUG_SIM:-false}"
     echo "Checkpoint:      ${CHECKPOINT:-false}"
     echo "OBJECTIVES:      ${NYCOPT_OBJECTIVES:-<config default>}"
-    echo "ENSEMBLE:        ${NYCOPT_ENSEMBLE_PRESET:-<config default>}"
+    echo "SCENARIO_DESIGN: ${NYCOPT_SCENARIO_DESIGN:-<config default>}"
+    echo "MOEA_CONFIG:     ${NYCOPT_MOEA_CONFIG:-<config default>}"
     echo "TS_ON:           ${NYCOPT_TS_ON:-<config default>}"
     echo "CLUSTER:         ${NYCOPT_CLUSTER:-<config default>}"
     echo "Python:          $(which python3)"

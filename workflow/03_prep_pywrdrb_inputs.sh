@@ -3,7 +3,7 @@
 # under outputs/synthetic_ensembles/{inflow_type}/.
 #
 # Placeholder — implementation deferred. Expected to produce, for each
-# ensemble preset (see config.ENSEMBLE_PRESETS):
+# scenario design's search ensemble (see src/scenario_designs.py):
 #   catchment_inflow_mgd.hdf5    per-realization inflows
 #   predicted_inflows_mgd.hdf5   per-realization Montague/Trenton lag forecasts
 #

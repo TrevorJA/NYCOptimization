@@ -7,19 +7,19 @@
 # the per-formulation SLURM scripts (and _common.sh) see the same knobs.
 #
 # Usage:
-#   bash slurm/submit_all.sh                                  # default ffmp_obj7_sal
-#   bash slurm/submit_all.sh slurm/envs/ffmp_obj7_sal.env
-#   bash slurm/submit_all.sh slurm/envs/ffmp_obj7_sal.env --dry-run
-#   bash slurm/submit_all.sh slurm/envs/ffmp_obj7_sal.env ffmp ffmp_8
+#   bash slurm/main/submit_all.sh                                  # default ffmp_obj7_sal
+#   bash slurm/main/submit_all.sh slurm/envs/ffmp_obj7_sal.env
+#   bash slurm/main/submit_all.sh slurm/envs/ffmp_obj7_sal.env --dry-run
+#   bash slurm/main/submit_all.sh slurm/envs/ffmp_obj7_sal.env ffmp ffmp_8
 #       (override formulations after env file)
 #
 # Formulation names ending in `_N` (e.g. ffmp_8, ffmp_10) automatically
-# dispatch to slurm/mmborg_ffmp_vr.sh with N_ZONES set; everything else
-# is expected to be base FFMP (slurm/mmborg_ffmp.sh).
+# dispatch to slurm/main/mmborg_ffmp_vr.sh with N_ZONES set; everything else
+# is expected to be base FFMP (slurm/main/mmborg_ffmp.sh).
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 DRY_RUN=false
 ENV_FILE=""
@@ -72,12 +72,12 @@ for t in "${TARGETS[@]}"; do
             --export=ALL,N_ZONES="${N}",NYCOPT_ENV_FILE="${ENV_FILE}" \
             --array=1-10 \
             --job-name="mmborg_ffmp_vr_N${N}" \
-            slurm/mmborg_ffmp_vr.sh
+            slurm/main/mmborg_ffmp_vr.sh
     elif [[ "$t" == "ffmp" ]]; then
         run sbatch \
             --export=ALL,NYCOPT_ENV_FILE="${ENV_FILE}" \
             --array=1-10 \
-            slurm/mmborg_ffmp.sh
+            slurm/main/mmborg_ffmp.sh
     else
         echo "ERROR: unsupported target '${t}' (only 'ffmp' and 'ffmp_<N>' are supported)" >&2
         exit 1

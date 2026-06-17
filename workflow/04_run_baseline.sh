@@ -17,7 +17,7 @@ set -euo pipefail
 
 # `cd ..` so we land at the project root regardless of whether the script
 # was invoked from project root or workflow/. workflow/01_run_baseline.sh
-# now mirrors slurm/_common.sh in supporting NYCOPT_ENV_FILE.
+# now mirrors slurm/main/_common.sh in supporting NYCOPT_ENV_FILE.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SLURM_SUBMIT_DIR:-${SCRIPT_DIR}/..}"
 mkdir -p logs

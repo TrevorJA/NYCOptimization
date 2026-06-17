@@ -1,5 +1,8 @@
 # Figures
 
-Figure scripts to be replanned from scratch under the new ensemble-design methodological focus.
+Manuscript figure scripts. Each script writes its PNG/PDF outputs alongside
+itself.
 
-Delete this file when adding figure scripts.
+| Script | Figure |
+|---|---|
+| `scenario_design_schematic.py` | Conceptual schematic of the six scenario designs (forcing space vs. hazard space), candidate Fig. 1. Synthetic illustrative data; no pipeline dependencies. |

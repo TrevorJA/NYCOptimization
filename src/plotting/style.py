@@ -40,23 +40,23 @@ for _i, _n in enumerate(FFMP_VR_N_SWEEP):
 #: Short per-objective labels for scatter-plot axes (ordered to match _DEFAULT_OBJECTIVES).
 OBJ_SHORT: list[str] = [
     "NYC Rel.",
-    "NYC Deficit %",
+    "NYC Deficit %\n(CVaR90)",
     "Montague\nRel.",
-    "Montague\nDeficit %",
-    "Salt Front RM",
-    "Flood Days",
-    "Min Stor. %",
+    "Montague\nDeficit %\n(CVaR90)",
+    "Trenton\nRel.",
+    "Flood Days\n(minor)",
+    "Stor. p5 %",
 ]
 
 #: Parallel-coordinates axis labels (multi-line, direction hint on third line).
 OBJ_AXIS_LABELS: dict[str, str] = {
-    "nyc_reliability_weekly_decree":          "NYC\nReliability\n(max)",
-    "nyc_max_deficit_weekly_decree":          "NYC Max\nDeficit %\n(min)",
-    "montague_reliability_weekly_decree":     "Montague\nReliability\n(max)",
-    "montague_max_deficit_weekly_decree":     "Montague Max\nDeficit %\n(min)",
-    "salt_front_max_rm":                      "Salt Front\nMax RM\n(min)",
-    "flood_days_downstream_action_anygauge":  "Flood\nDays\n(min)",
-    "storage_min_combined_pct":               "Min\nStorage\n(max)",
+    "nyc_delivery_reliability_weekly":   "NYC\nReliability\n(max)",
+    "nyc_delivery_deficit_cvar90_pct":   "NYC Deficit %\nCVaR90\n(min)",
+    "montague_flow_reliability_weekly":  "Montague\nReliability\n(max)",
+    "montague_flow_deficit_cvar90_pct":  "Montague Deficit %\nCVaR90\n(min)",
+    "trenton_flow_reliability_weekly":   "Trenton\nReliability\n(max)",
+    "downstream_flood_days_minor":       "Flood\nDays\n(min)",
+    "nyc_storage_p5_pct":                "Storage\np5 %\n(max)",
 }
 
 # ---------------------------------------------------------------------------
