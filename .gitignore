@@ -57,6 +57,8 @@ MOEAFramework-5.0/
 *.so.old
 *.so.bak
 local_notes/
-docs/
+docs/notes/literature/pdfs/
+docs/notes/literature/notes/
+
 outputs/
 /slurm/envs/* 
