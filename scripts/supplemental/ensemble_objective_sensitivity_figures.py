@@ -47,7 +47,12 @@ from src.objectives_ensemble import (  # noqa: E402
     _REGISTRY_SPEC,
     _resolve_thresholds,
 )
-from src.plotting.style import apply_style  # noqa: E402
+from src.plotting.style import (  # noqa: E402
+    annotated_corr_heatmap,
+    apply_style,
+    label_for as _label,
+    save_figure,
+)
 from src.sensitivity_common import kendall_tau_b, spearman_and_flagged  # noqa: E402
 
 import matplotlib  # noqa: E402
@@ -55,24 +60,8 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-#: Compact labels for the active/base objectives (falls back to the name).
-SHORT_LABELS: dict = {
-    "nyc_delivery_reliability_weekly": "NYC delivery rel.",
-    "nyc_delivery_deficit_cvar90_pct": "NYC deficit CVaR90",
-    "montague_flow_reliability_weekly": "Montague rel.",
-    "montague_flow_deficit_cvar90_pct": "Montague deficit CVaR90",
-    "trenton_flow_reliability_weekly": "Trenton rel.",
-    "nj_delivery_reliability_weekly": "NJ delivery rel.",
-    "downstream_flood_days_minor": "Flood days (minor)",
-    "nyc_storage_p5_pct": "Storage p5",
-}
-
 #: Across-realization operators (display order); the figure axes use these keys.
 _OPERATORS = ("satisficing", "mean", "p90", "cvar90")
-
-
-def _label(name: str) -> str:
-    return SHORT_LABELS.get(name, name)
 
 
 def _threshold_kind_by_base() -> dict:
@@ -203,8 +192,7 @@ def fig_tau_vs_k(df: pd.DataFrame, out_stub: Path) -> None:
     ax.set_ylim(min(0.0, df["tau_min"].min()) - 0.02, 1.02)
     ax.legend(loc="lower right", fontsize=7, frameon=True, ncol=2)
     fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(out_stub.with_suffix(f".{ext}"))
+    save_figure(fig, out_stub)
     plt.close(fig)
 
 
@@ -248,27 +236,18 @@ def fig_operator_agreement(taus_by_obj: dict, out_stub: Path) -> None:
                              squeeze=False)
     for ax in axes.flat:
         ax.axis("off")
+    im = None
     for idx, name in enumerate(names):
         ax = axes[idx // cols][idx % cols]
         ax.axis("on")
-        mat = taus_by_obj[name]
-        im = ax.imshow(np.ma.masked_invalid(mat), cmap="RdBu_r", vmin=-1, vmax=1)
-        ax.set_xticks(range(len(_OPERATORS)))
-        ax.set_yticks(range(len(_OPERATORS)))
-        ax.set_xticklabels(_OPERATORS, rotation=45, ha="right", fontsize=6)
-        ax.set_yticklabels(_OPERATORS, fontsize=6)
+        # Operators are plotted verbatim (not objective names), so label_fn=str.
+        im = annotated_corr_heatmap(ax, taus_by_obj[name], _OPERATORS,
+                                    label_fn=str, fontsize=6)
         ax.set_title(_label(name), fontsize=8)
-        for i in range(len(_OPERATORS)):
-            for j in range(len(_OPERATORS)):
-                if np.isfinite(mat[i, j]):
-                    ax.text(j, i, f"{mat[i, j]:.2f}", ha="center", va="center",
-                            fontsize=5,
-                            color="white" if abs(mat[i, j]) > 0.55 else "black")
     fig.suptitle(r"Across-realization operator agreement (Kendall $\tau_b$ of "
                  "DV rankings)", fontsize=10)
     fig.colorbar(im, ax=axes, fraction=0.02, pad=0.02, label=r"$\tau_b$")
-    for ext in ("png", "pdf"):
-        fig.savefig(out_stub.with_suffix(f".{ext}"))
+    save_figure(fig, out_stub)
     plt.close(fig)
 
 
@@ -286,45 +265,23 @@ def full_satisficing_frame(metrics: np.ndarray, obj_names: list,
     return pd.DataFrame(data)
 
 
-def fig_redundancy(spearman: pd.DataFrame, threshold: float, out_stub: Path,
-                   historic_csv: "Path | None") -> None:
-    """F(c): ensemble-objective Spearman heatmap, beside the historic one if present."""
-    historic = None
-    if historic_csv is not None and historic_csv.exists():
-        historic = pd.read_csv(historic_csv, index_col=0)
+def fig_redundancy(spearman: pd.DataFrame, threshold: float, out_stub: Path) -> None:
+    """F(c): ensemble-objective Spearman redundancy heatmap (single panel).
 
-    panels = [("Ensemble objectives", spearman)]
-    if historic is not None:
-        panels = [("Historic trace", historic), ("Ensemble objectives", spearman)]
-
-    fig, axes = plt.subplots(1, len(panels),
-                             figsize=(0.55 * spearman.shape[0] * len(panels) + 3,
-                                      0.55 * spearman.shape[0] + 2.2),
-                             squeeze=False)
-    im = None
-    for ax, (title, mat) in zip(axes[0], panels):
-        names = list(mat.columns)
-        m = len(names)
-        im = ax.imshow(np.ma.masked_invalid(mat.values.astype(float)),
-                       cmap="RdBu_r", vmin=-1, vmax=1)
-        ax.set_xticks(range(m))
-        ax.set_yticks(range(m))
-        ax.set_xticklabels([_label(n) for n in names], rotation=45, ha="right",
-                           fontsize=6)
-        ax.set_yticklabels([_label(n) for n in names], fontsize=6)
-        ax.set_title(title, fontsize=9)
-        for i in range(m):
-            for j in range(m):
-                v = mat.values[i, j]
-                if np.isfinite(v):
-                    ax.text(j, i, f"{v:.2f}", ha="center", va="center",
-                            fontsize=5,
-                            color="white" if abs(v) > 0.55 else "black")
-    fig.suptitle(rf"Objective redundancy (Spearman $\rho$); flag $|\rho|>{threshold}$",
-                 fontsize=10)
-    fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02, label=r"Spearman $\rho$")
-    for ext in ("png", "pdf"):
-        fig.savefig(out_stub.with_suffix(f".{ext}"))
+    Compare against the historic experiment's ``redundancy_heatmap`` figure
+    rather than re-rendering it here (the historic panel is that experiment's
+    deliverable; duplicating it would just repeat the same matrix).
+    """
+    m = spearman.shape[0]
+    fig, ax = plt.subplots(figsize=(0.62 * m + 2.5, 0.62 * m + 2.0))
+    im = annotated_corr_heatmap(ax, spearman.values, list(spearman.columns),
+                                box_threshold=threshold, fontsize=7)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label(r"Spearman $\rho$")
+    ax.set_title(r"Ensemble-objective redundancy (Spearman $\rho$)" "\n"
+                 rf"boxed cells: $|\rho| > {threshold}$", fontsize=10)
+    fig.tight_layout()
+    save_figure(fig, out_stub)
     plt.close(fig)
 
 
@@ -388,8 +345,7 @@ def main() -> None:
     flagged.to_csv(scfg.ensemble_table_path("redundancy_flagged"), index=False)
     if spearman.shape[0] >= 2:
         fig_redundancy(spearman, scfg.ENS_RHO_FLAG_THRESHOLD,
-                       scfg.ensemble_figure_path("redundancy", "pdf").with_suffix(""),
-                       historic_csv=scfg.spearman_csv_path())
+                       scfg.ensemble_figure_path("redundancy", "pdf").with_suffix(""))
 
     # (d) threshold sensitivity
     thr_df = threshold_sensitivity(metrics, obj_names, tk)

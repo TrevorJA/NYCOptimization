@@ -24,7 +24,6 @@ Usage:
 from __future__ import annotations
 
 import sys
-from itertools import combinations
 from pathlib import Path
 
 import numpy as np
@@ -38,39 +37,23 @@ import supplemental_config as scfg  # noqa: E402  (env-then-config contract)
 scfg.configure_historic_env()  # set experiment env before config is imported
 
 from src.objectives import OBJECTIVES  # noqa: E402
-from src.plotting.style import apply_style, FIGSIZE_SINGLE  # noqa: E402
+from src.plotting.style import (  # noqa: E402
+    annotated_corr_heatmap,
+    apply_style,
+    FIGSIZE_SINGLE,
+    label_for as _label,
+    save_figure,
+)
 from src.sensitivity_common import spearman_and_flagged  # noqa: E402
 
 import matplotlib  # noqa: E402
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.patches import Rectangle  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Labels and ordering
 # ---------------------------------------------------------------------------
-
-#: Compact labels for every registry objective (style.OBJ_SHORT covers only the
-#: 7 active ones; the diagnostics need labels too). Falls back to the name.
-SHORT_LABELS: dict[str, str] = {
-    "nyc_delivery_reliability_weekly": "NYC delivery rel.",
-    "nyc_delivery_deficit_cvar90_pct": "NYC deficit CVaR90",
-    "nyc_delivery_deficit_max_pct": "NYC deficit max",
-    "nj_delivery_reliability_weekly": "NJ delivery rel.",
-    "montague_flow_reliability_weekly": "Montague rel.",
-    "montague_flow_deficit_cvar90_pct": "Montague deficit CVaR90",
-    "montague_flow_deficit_max_pct": "Montague deficit max",
-    "trenton_flow_reliability_weekly": "Trenton rel.",
-    "trenton_flow_deficit_cvar90_pct": "Trenton deficit CVaR90",
-    "downstream_flood_days_minor": "Flood days (minor)",
-    "downstream_flood_days_action": "Flood days (action)",
-    "downstream_flood_days_major": "Flood days (major)",
-    "nyc_storage_p5_pct": "Storage p5",
-    "nyc_storage_min_pct": "Storage min",
-    "salt_front_intrusion_max_rm": "Salt front max RM",
-    "lordville_temp_exceedance_days": "Lordville temp days",
-}
 
 #: Plot order grouping each replaced metric next to its stable replacement so
 #: the discrimination figure reads as a side-by-side comparison.
@@ -92,10 +75,6 @@ PREFERRED_ORDER: list[str] = [
     "nyc_storage_min_pct",
     "lordville_temp_exceedance_days",
 ]
-
-def _label(name: str) -> str:
-    """Compact display label for an objective name."""
-    return SHORT_LABELS.get(name, name)
 
 
 def _ordered_objectives(columns) -> list:
@@ -221,48 +200,23 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
     if baseline is not None:
         ax.legend(loc="lower right", fontsize=8, frameon=True)
     fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(out_stub.with_suffix(f".{ext}"))
+    save_figure(fig, out_stub)
     plt.close(fig)
 
 
 def fig_redundancy_heatmap(spearman: pd.DataFrame, threshold: float,
                            out_stub: Path):
     """F2: annotated Spearman heatmap with |rho| > threshold cells boxed."""
-    names = list(spearman.columns)
-    m = len(names)
+    m = spearman.shape[0]
     fig, ax = plt.subplots(figsize=(0.62 * m + 2.5, 0.62 * m + 2.0))
-
-    data = spearman.values.astype(float)
-    masked = np.ma.masked_invalid(data)
-    cmap = plt.get_cmap("RdBu_r").copy()
-    cmap.set_bad("lightgrey")
-    im = ax.imshow(masked, cmap=cmap, vmin=-1, vmax=1, aspect="equal")
-
-    ax.set_xticks(range(m))
-    ax.set_yticks(range(m))
-    ax.set_xticklabels([_label(n) for n in names], rotation=45, ha="right",
-                       fontsize=7)
-    ax.set_yticklabels([_label(n) for n in names], fontsize=7)
-
-    for i in range(m):
-        for j in range(m):
-            val = data[i, j]
-            if not np.isfinite(val):
-                continue
-            ax.text(j, i, f"{val:.2f}", ha="center", va="center", fontsize=6,
-                    color="white" if abs(val) > 0.55 else "black")
-            if i != j and abs(val) > threshold:
-                ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
-                                       edgecolor="black", lw=1.6))
-
+    im = annotated_corr_heatmap(ax, spearman.values, list(spearman.columns),
+                                box_threshold=threshold, fontsize=7)
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label("Spearman ρ")
     ax.set_title(f"Objective redundancy (Spearman ρ)\n"
                  f"boxed cells: |ρ| > {threshold}", fontsize=10)
     fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(out_stub.with_suffix(f".{ext}"))
+    save_figure(fig, out_stub)
     plt.close(fig)
 
 
