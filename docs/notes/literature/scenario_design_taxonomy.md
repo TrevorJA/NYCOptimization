@@ -1,0 +1,76 @@
+# A Taxonomy of Scenario Design Approaches for Optimization Under Uncertainty
+
+*Last updated: 2026-06-11 (v4, revised after two independent referee-style reviews, one OR/stochastic-programming and one DMDU/water). Citations already in the RQ1 review are author-year only (see `optimization_scenario_sampling_review.md`). Citations new to this document are listed in full at the end. Per-study quantities live in `scenario_design_tables.md`. Terminology follows `docs/notes/terminology.md`.*
+
+---
+
+## Scope and basis of the hierarchy
+
+**Scope.** The taxonomy classifies methods by the *composition* of the scenario set, i.e., which scenarios are in it and why. Three adjacent questions are deliberately excluded as orthogonal axes. First, noise-handling and budget-allocation protocols (explicit averaging, resampling schedules, dynamic replication allocation; Jin & Branke 2005, Rakshit et al. 2017, Syberfeldt et al. 2010). Second, how per-scenario performance is aggregated into search objectives (expected value, percentiles, robustness metrics as in Many-Objective Robust Optimization; Bartholomew & Kwakkel 2020), a formulation question that interacts with, but is distinct from, composition. Third, multistage scenario-*tree* construction, where branching and non-anticipativity structure dominate (Høyland & Wallace 2001 build such trees; nested-distance theory in Pflug & Pichler 2014); this taxonomy addresses single-stage, fan-type scenario sets, which is the form an MOEA evaluation ensemble takes. Designs are included whether or not they have historically been applied to the search phase. Opportunistic multi-model projection ensembles enter as candidate pools for the selection rows (II.4, III.4, IV) rather than as designed compositions; their tacit equal weighting ("model democracy") is itself contested.
+
+**Basis.** The top level of the hierarchy is the criterion that defines a good scenario set. It unites two binaries that the source literatures use to describe themselves. Stochastic programming distinguishes *distribution-driven* from *problem-driven* scenario generation (the distinction is formalized by Fairbrother et al. 2022 and surveyed by Chou & Messina 2023), where quality means fidelity to a distribution or relevance to the decision problem, respectively. The climate stress-testing tradition distinguishes *top-down* probability-led scenario use from *bottom-up* coverage of a condition space (Brown et al. 2012, Prudhomme et al. 2010, Fowler et al. 2024). A fourth, judgment-based family predates both and remains active in the storyline literature, which frames risk by plausibility rather than probability (Shepherd et al. 2018, Sillmann et al. 2021). The second level splits each family by the space in which its criterion is applied. In water resources, closed-loop policy search is the consumer of this scenario information (Herman et al. 2020), and the families are complementary parts of one methodological landscape, routinely combined within a single study, e.g., distribution-driven generation of a large ensemble, coverage- or relevance-based selection from it, and representative out-of-sample re-evaluation afterward.
+
+---
+
+## The taxonomy
+
+| Approach | Design space | Treatment of scenario probability | Information used in selection | Representative references |
+|---|---|---|---|---|
+| **I. Judgment-based scenarios** (*criterion: expert judgment and precedent*) | | | | |
+| I.1 Reference or baseline trace | n/a (single fixed trace) | none assigned; implicit stationarity (future resembles the record) | precedent (the observed record) | Kasprzyk et al. 2013; Giuliani et al. 2016 |
+| I.2 Design events (design drought, event of record) | event magnitude and duration | non-probabilistic: plausibility | expert judgment, regulatory precedent | Hogarty 1970; Watts et al. 2012 |
+| I.3 Narrative and storyline scenarios | qualitative, physically self-consistent event pathways | non-probabilistic: plausibility | expert judgment, process reasoning | Shepherd et al. 2018; Sillmann et al. 2021 |
+| **II. Distribution-driven generation and reduction** (*criterion: fidelity to an assumed or learned distribution*) | | | | |
+| II.1 Random sampling (SAA), incl. resampling of the empirical record | input | probabilistic: representative | assumed or empirical distribution | Kleywegt et al. 2002; Brodeur et al. 2020; Hamilton et al. 2022 |
+| II.2 Variance-reduced sampling (LHS, QMC on input random variables) | input | probabilistic: representative | assumed distribution | McKay et al. 1979; Homem-de-Mello & Bayraksan 2014 |
+| II.3 Constructive property matching | moment | probabilistic: representative | target statistics of the assumed distribution | Høyland & Wallace 2001 |
+| II.4 Optimal discretization, reduction, and aggregation | scenario (path) space, compared under a probability metric | probabilistic: representative | assumed or empirical distribution | Dupačová et al. 2003; Hoffmann et al. 2020; Rujeerapaiboon et al. 2022 |
+| II.5 Deep generative simulation (GANs, VAEs) | learned latent space, mapped to sequence space | probabilistic: representative (implicitly, of the training data) | observed data (learned distribution) | Chen et al. 2018 |
+| **III. Bottom-up coverage designs (scenario-neutral, stress testing)** (*criterion: even spanning of a condition space*) | | | | |
+| III.1 Exposure-space grids and response surfaces | forcing attributes (exposure space) | non-probabilistic: coverage | perturbation ranges | Prudhomme et al. 2010; Brown et al. 2012; Culley et al. 2016 |
+| III.2 Space-filling sampling of deeply uncertain factor ranges (SOW ensembles) | input | non-probabilistic: coverage | factor ranges plus a space-filling design | Quinn et al. 2018; Hadjimichael et al. 2020; Reed et al. 2022 |
+| III.3 Inverse and controlled generation to attribute targets | forcing attributes or realized flow metrics, as generator targets | non-probabilistic: coverage | target coordinates | Borgomeo et al. 2015; Guo et al. 2018; Zaniolo et al. 2024 |
+| III.4 Coverage-based subset selection from realized ensembles | realized flow metrics (or projected-change features) | non-probabilistic: coverage | attributes measured on candidate scenarios | Cannon 2015; Zatarain Salazar et al. 2017; Bonham et al. 2024 |
+| **IV. Problem-driven selection** (*criterion: relevance to the decision problem*) | | | | |
+| IV.1 Problem-based generation, reduction, and clustering | input (scenario) space | probabilistic: problem-conditioned (probabilities re-optimized or aggregated) | optimization problem structure (objectives, recourse costs) | Fairbrother et al. 2022; Bertsimas & Mundru 2023; Keutchayan et al. 2023 |
+| IV.2 Importance sampling and importance subsampling | input (scenario) space | probabilistic: importance-weighted | an impact functional (from baseline simulations or a surrogate) | Infanger 1992; Hilbers et al. 2019 |
+| IV.3 Vulnerability- and diversity-based selection (multi-scenario MORDM, regret-based selection) | outcome and scenario-descriptor space | non-probabilistic: relevance and diversity | baseline or candidate-policy simulations (scenario discovery) | Watson & Kasprzyk 2017; Eker & Kwakkel 2018; Cohen et al. 2021 |
+| IV.4 Adaptive selection during search (active learning) | candidate pool in input or realized-metric space | non-probabilistic: informativeness | initial candidate pool plus simulations accumulated during search | Giudici et al. 2020 |
+
+---
+
+## Notes on the columns and levels
+
+**Design space** is the coordinate system in which scenarios are defined or selected, and contains only coordinate systems; selection mechanisms live in the other columns. "Realized flow metrics" corresponds to this project's hazard space, a deliberate coinage whose nearest published analogues are flow-regime characteristic spaces (Nazemi et al. 2013) and drought duration-deficit spaces (Borgomeo et al. 2015).
+
+**Treatment of scenario probability** follows the established distinction between probabilistic and non-probabilistic characterizations of uncertain futures (Maier et al. 2016). The probabilistic stem subdivides into *representative* (statistically faithful to the target distribution), *importance-weighted* (deliberately biased with corrective weights), and *problem-conditioned* (probabilities re-optimized or aggregated so a reduced problem reproduces the full problem's value, as in optimization-based reduction and problem-driven clustering). The non-probabilistic stem subdivides by rationale: *plausibility* (storylines and design events), *coverage* (bottom-up designs, which deliberately span ranges wider than the currently plausible and may overlay probability ex post, as in decision scaling), *relevance and diversity* (selection toward policy-stressing and mutually distinct conditions, with scenario discovery in the Bryant & Lempert 2010 lineage as the usual engine, and diversity selection per Carlsen et al. 2016), and *informativeness* (expected value of information to the ongoing search). Construction-time treatment is separable from evaluation-time treatment; any non-probabilistic set can be paired with representative out-of-sample re-evaluation.
+
+**Information used in selection** operationalizes the distribution-driven vs problem-driven distinction (Fairbrother et al. 2022): judgment and precedent (I), the assumed or empirical distribution alone (II), attributes computable on scenarios before any system simulation (III), and information about the decision problem itself, from objective structure up to accumulated policy simulations (IV). The gradient is one of increasing dependence on the decision problem and its simulations, which is the principal practical trade-off among the families, since selection that needs no simulations is reusable across formulations and objective sets.
+
+Three boundary notes. Statistical compression of large ensembles (support points, Mak & Joseph 2018; twinning, Vakayil & Joseph 2022) belongs to II.4 and serves this project as the representativeness-preserving contrast subsampler. Distributionally robust optimization with Wasserstein ambiguity sets (Mohajerin Esfahani & Kuhn 2018) is the modern OR neighbor of Family IV that chooses an ambiguity set around the empirical distribution rather than a fixed scenario set, and is noted here for completeness. Resampling of serially correlated records (block bootstrap, II.1) is the dependent-data variant of empirical SAA and behaves differently from i.i.d. sampling in convergence terms.
+
+---
+
+## Positioning and use
+
+The proposed evaluation-ensemble design occupies III.4, coverage-based subset selection in realized flow metrics, fed by II.1/III.2 generation of the master ensemble. Within Family III the sub-groups form a progression of design spaces toward the system, from forcing attributes (III.1) through generator inputs (III.2) and attribute targets (III.3) to metrics measured on realized sequences (III.4). What distinguishes the proposed design within III.4 is scale and destination, subsampling a very large stochastic ensemble of short sequences and using the result as the MOEA search ensemble. The precedents we identified select among climate projections (Cannon 2015, Lutz et al. 2016), stratify on a single flow dimension (Zatarain Salazar et al. 2017), rotate resampled subsets inside search without designed coverage (Brodeur et al. 2020), or subsample for post-hoc robustness ranking (Bonham et al. 2024). The nearest search-phase relatives sit in Family IV, multi-scenario MORDM and robustness-aggregating search (Watson & Kasprzyk 2017, Eker & Kwakkel 2018, Bartholomew & Kwakkel 2020), which require simulations before or during selection where III.4 selection is computable from the scenarios alone.
+
+The Kaut & Wallace (2007) quality criteria, in-sample stability and out-of-sample stability and bias, are method-agnostic and judge any scenario set used in optimization, including coverage-driven sets; they supply the common yardstick for the planned ensemble comparison.
+
+If a condensed manuscript version is needed, drop the references column and keep all rows, since the family headers alone lose the design-space progression that motivates III.4.
+
+---
+
+## References introduced in this document (not in the RQ1 review)
+
+- Bertsimas, D. & Mundru, N. (2023). Optimization-based scenario reduction for data-driven two-stage stochastic optimization. *Operations Research*, 71(4), 1343-1361. doi:10.1287/opre.2022.2265
+- Bryant, B. P. & Lempert, R. J. (2010). Thinking inside the box: A participatory, computer-assisted approach to scenario discovery. *Technological Forecasting and Social Change*, 77(1), 34-49. doi:10.1016/j.techfore.2009.08.002
+- Chen, Y., Wang, Y., Kirschen, D. & Zhang, B. (2018). Model-free renewable scenario generation using generative adversarial networks. *IEEE Transactions on Power Systems*, 33(3), 3265-3275. doi:10.1109/TPWRS.2018.2794541
+- Keutchayan, J., Ortmann, J. & Rei, W. (2023). Problem-driven scenario clustering in stochastic optimization. *Computational Management Science*, 20, 13. doi:10.1007/s10287-023-00446-2
+- Mohajerin Esfahani, P. & Kuhn, D. (2018). Data-driven distributionally robust optimization using the Wasserstein metric: Performance guarantees and tractable reformulations. *Mathematical Programming*, 171, 115-166. doi:10.1007/s10107-017-1172-1
+- Pflug, G. Ch. & Pichler, A. (2014). *Multistage Stochastic Optimization*. Springer Series in Operations Research and Financial Engineering. doi:10.1007/978-3-319-08843-3
+- Reed, P. M., Hadjimichael, A., Malek, K., et al. (2022). *Addressing Uncertainty in MultiSector Dynamics Research*. UC-eBook (msdbook.org). doi:10.5281/zenodo.6110623
+- Shepherd, T. G., et al. (2018). Storylines: An alternative approach to representing uncertainty in physical aspects of climate change. *Climatic Change*, 151, 555-571. doi:10.1007/s10584-018-2317-9
+- Sillmann, J., et al. (2021). Event-based storylines to address climate risk. *Earth's Future*, 9, e2020EF001783. doi:10.1029/2020EF001783
+
+A hydrologic deep-generative exemplar for II.5 is absent from the current corpus; the gap is noted rather than papered over, and II.5 is retained because the method class is established in adjacent sectors.
