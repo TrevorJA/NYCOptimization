@@ -5,8 +5,12 @@ All figure scripts import from here to ensure consistent aesthetics across
 manuscript figures and diagnostic plots.
 """
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import numpy as np
+from matplotlib.patches import Rectangle
 
 from config import FFMP_VR_N_SWEEP
 
@@ -47,6 +51,34 @@ OBJ_SHORT: list[str] = [
     "Flood Days\n(minor)",
     "Stor. p5 %",
 ]
+
+#: Compact single-line labels for **every** registry objective (recommended set
+#: plus the diagnostics they replace). Shared by the objective-sensitivity
+#: diagnostic figure scripts; ``label_for`` falls back to the raw name.
+OBJECTIVE_LABELS: dict[str, str] = {
+    "nyc_delivery_reliability_weekly": "NYC delivery rel.",
+    "nyc_delivery_deficit_cvar90_pct": "NYC deficit CVaR90",
+    "nyc_delivery_deficit_max_pct": "NYC deficit max",
+    "nj_delivery_reliability_weekly": "NJ delivery rel.",
+    "montague_flow_reliability_weekly": "Montague rel.",
+    "montague_flow_deficit_cvar90_pct": "Montague deficit CVaR90",
+    "montague_flow_deficit_max_pct": "Montague deficit max",
+    "trenton_flow_reliability_weekly": "Trenton rel.",
+    "trenton_flow_deficit_cvar90_pct": "Trenton deficit CVaR90",
+    "downstream_flood_days_minor": "Flood days (minor)",
+    "downstream_flood_days_action": "Flood days (action)",
+    "downstream_flood_days_major": "Flood days (major)",
+    "nyc_storage_p5_pct": "Storage p5",
+    "nyc_storage_min_pct": "Storage min",
+    "salt_front_intrusion_max_rm": "Salt front max RM",
+    "lordville_temp_exceedance_days": "Lordville temp days",
+}
+
+
+def label_for(name: str) -> str:
+    """Compact display label for an objective (or any) name; falls back to it."""
+    return OBJECTIVE_LABELS.get(name, name)
+
 
 #: Parallel-coordinates axis labels (multi-line, direction hint on third line).
 OBJ_AXIS_LABELS: dict[str, str] = {
@@ -105,3 +137,69 @@ def apply_style() -> None:
         "axes.spines.top":   False,
         "axes.spines.right": False,
     })
+
+
+# ---------------------------------------------------------------------------
+# Shared figure helpers
+# ---------------------------------------------------------------------------
+
+#: Output formats for diagnostic figures. PNG only for now (drop vector copies).
+FIGURE_FORMATS: tuple = ("png",)
+
+
+def save_figure(fig, out_stub) -> None:
+    """Save ``fig`` to ``{out_stub}.{ext}`` for each format in ``FIGURE_FORMATS``.
+
+    Args:
+        fig: Matplotlib figure.
+        out_stub: Path or str without an extension (any existing suffix is replaced).
+    """
+    stub = Path(out_stub)
+    for ext in FIGURE_FORMATS:
+        fig.savefig(stub.with_suffix(f".{ext}"))
+
+
+def annotated_corr_heatmap(ax, data, labels, *, label_fn=label_for,
+                           box_threshold=None, fontsize: int = 6,
+                           vmin: float = -1.0, vmax: float = 1.0):
+    """Draw an annotated correlation/agreement heatmap on ``ax``.
+
+    Shared by the redundancy (Spearman) and operator-agreement (Kendall tau_b)
+    diagnostics. NaN cells render grey; cells with ``|value| > box_threshold``
+    (off-diagonal) are outlined.
+
+    Args:
+        ax: Target axes.
+        data: Square 2-D array of correlation/agreement values.
+        labels: Row/column names (length matches ``data``).
+        label_fn: Maps a name to its tick label (default :func:`label_for`).
+        box_threshold: If set, outline off-diagonal cells exceeding it.
+        fontsize: Tick-label font size (cell annotations use ``fontsize - 1``).
+        vmin: Colour-scale minimum.
+        vmax: Colour-scale maximum.
+
+    Returns:
+        The ``AxesImage`` (for an external colorbar).
+    """
+    arr = np.asarray(data, dtype=float)
+    m = len(labels)
+    cmap = plt.get_cmap("RdBu_r").copy()
+    cmap.set_bad("lightgrey")
+    im = ax.imshow(np.ma.masked_invalid(arr), cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.set_xticks(range(m))
+    ax.set_yticks(range(m))
+    ax.set_xticklabels([label_fn(n) for n in labels], rotation=45, ha="right",
+                       fontsize=fontsize)
+    ax.set_yticklabels([label_fn(n) for n in labels], fontsize=fontsize)
+    for i in range(m):
+        for j in range(m):
+            v = arr[i, j]
+            if not np.isfinite(v):
+                continue
+            ax.text(j, i, f"{v:.2f}", ha="center", va="center",
+                    fontsize=max(5, fontsize - 1),
+                    color="white" if abs(v) > 0.55 else "black")
+            if box_threshold is not None and i != j and abs(v) > box_threshold:
+                ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
+                                       edgecolor="black", lw=1.6))
+    return im
