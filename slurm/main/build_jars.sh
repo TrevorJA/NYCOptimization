@@ -9,15 +9,15 @@
 # active config (e.g., salinity-on adds an obj; salt-front DVs add DVs).
 #
 # Usage:
-#   bash slurm/build_jars.sh                      # use PRODUCTION_FORMULATIONS
-#   bash slurm/build_jars.sh ffmp ffmp_8          # explicit list
-#   NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7_sal.env bash slurm/build_jars.sh
+#   bash slurm/main/build_jars.sh                      # use PRODUCTION_FORMULATIONS
+#   bash slurm/main/build_jars.sh ffmp ffmp_8          # explicit list
+#   NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7_sal.env bash slurm/main/build_jars.sh
 #
 # Idempotent — safe to re-run after changing config knobs.
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 MOEA_DIR="MOEAFramework-5.0"
 NATIVE_DIR="${MOEA_DIR}/native"

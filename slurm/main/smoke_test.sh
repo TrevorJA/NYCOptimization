@@ -1,10 +1,17 @@
 #!/bin/bash
 # smoke_test.sh — small-NFE end-to-end pipeline check for one formulation.
 #
-# Designed to be launched once per FORMULATION via slurm/submit_smoke.sh.
+# Designed to be launched once per FORMULATION via slurm/main/submit_smoke.sh.
 # Default settings: 500 NFE/island, 2 islands, DEBUG_SIM (2018-2022),
 # 2 nodes × 40 tasks (79 MPI ranks used: 1 controller + 2×39 workers).
 # Expected wall time: ~1-2 h on Hopper; 5-y window keeps per-eval cost low.
+#
+# Algorithm settings (islands, NFE, runtime-freq) come from the smoke MOEA
+# config (src/moea_config.py), forced here via NYCOPT_MOEA_CONFIG=smoke. The
+# scenario design comes from the env file / NYCOPT_SCENARIO_DESIGN (default
+# historic). The MPI rank count is sized to this script's allocation, not the
+# config (smoke's worker count targets a local machine), via the NTASKS_MPI
+# caller override that _common.sh honors.
 #
 # Required env (set by the launcher via --export=ALL):
 #   FORMULATION   ffmp | ffmp_8 | ffmp_10 | ffmp_12
@@ -13,9 +20,8 @@
 #   N_ZONES       only for ffmp_N formulations (otherwise ignored)
 #
 # Optional env:
-#   RUN_SLUG      defaults to smoke_${FORMULATION}
 #   SEED          defaults to 1
-#   NFE           defaults to 500
+#   NYCOPT_MOEA_CONFIG  defaults to smoke (tiny NFE)
 #
 #SBATCH --job-name=smoke
 #SBATCH --nodes=2
@@ -33,22 +39,19 @@ if [[ -z "${FORMULATION:-}" ]]; then
 fi
 
 SEED="${SEED:-1}"
-N_ISLANDS="${N_ISLANDS:-2}"
-NFE="${NFE:-500}"
-RUNTIME_FREQ="${RUNTIME_FREQ:-50}"
 DEBUG_SIM="${DEBUG_SIM:-true}"
 CHECKPOINT=false
-RUN_SLUG="${RUN_SLUG:-smoke_${FORMULATION}}"
-# Override default 199-rank formula: smoke allocates 2 × 40 = 80 slots;
-# MM Borg needs 1 + N_ISLANDS*(workers+1) ranks. 2 islands × 39 workers + 1 = 79.
+# Force the smoke algorithm config (tiny NFE) unless the caller overrides it.
+export NYCOPT_MOEA_CONFIG="${NYCOPT_MOEA_CONFIG:-smoke}"
+# Smoke allocates 2 × 40 = 80 slots; MM Borg needs 1 + islands*(workers+1).
+# 2 islands × 39 workers + 1 = 79. Caller override of the config's MPI sizing.
 NTASKS_MPI=79
+export DEBUG_SIM NTASKS_MPI
 
-export RUN_SLUG DEBUG_SIM NTASKS_MPI
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/slurm/main/_common.sh"
 
-source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/slurm/_common.sh"
+ARGS="--seed ${SEED} --formulation ${FORMULATION}"
 
-ARGS="--seed ${SEED} --formulation ${FORMULATION} --slug ${RUN_SLUG} --islands ${N_ISLANDS} --nfe ${NFE} --runtime-freq ${RUNTIME_FREQ}"
-
-echo "=== SMOKE TEST: formulation=${FORMULATION} slug=${RUN_SLUG} seed=${SEED} NFE=${NFE} ==="
+echo "=== SMOKE TEST: ${SCENARIO}/${RUN_SLUG} seed=${SEED} (${NYCOPT_MOEA_CONFIG}) ==="
 mpirun -np ${NTASKS_MPI} python3 -u src/mmborg_cli.py ${ARGS}
 echo "=== Completed: $(date) ==="

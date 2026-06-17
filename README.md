@@ -12,10 +12,13 @@ streamflow ensembles used during MOEA evaluation**.
 ensemble (LHS-subsampled from a larger stochastic ensemble) yields more
 robust MOEA results than a random probabilistic ensemble of the same size.
 
-The planned experiment is **N × 6** optimization runs: N FFMP-layer
-configurations (base FFMP + variable-resolution FFMP at N ∈ {8, 10, 12})
-crossed with 6 streamflow ensembles (3 probabilistic of increasing size,
-3 LHS space-filling of increasing size; see `config.ENSEMBLE_PRESETS`).
+The planned experiment crosses FFMP-layer configurations (base FFMP +
+variable-resolution FFMP at N ∈ {8, 10, 12}) with the six **scenario designs**
+for the MOEA evaluation ensemble (`src/scenario_designs.py`, `SCENARIO_DESIGNS`;
+see `docs/notes/methods/experimental_design.md`). Each run is specified by two
+named identifiers — a scenario design and a MOEA algorithm config
+(`src/moea_config.py`) — and outputs land under
+`outputs/{scenario}/{moea_slug}/`.
 
 ## Setup
 
@@ -52,20 +55,20 @@ Python module under `scripts/`.
 | 7 | `07_reevaluate.sh` | Re-simulate Pareto solutions with the full model |
 
 For HPC campaigns across all FFMP layer configs and ensemble presets,
-use `slurm/submit_all.sh` with a per-experiment env file from
+use `slurm/main/submit_all.sh` with a per-experiment env file from
 `slurm/envs/`.
 
 ## MM Borg MPI sizing
 
 `ntasks = 1 + N_ISLANDS * (workers_per_island + 1)`; `maxEvaluations`
 is per island. Thread-pinning env vars (`OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`,
-etc.) are set in `slurm/_common.sh` to prevent BLAS contention across ranks.
+etc.) are set in `slurm/main/_common.sh` to prevent BLAS contention across ranks.
 
 ## Repository structure
 
 ```
 NYCOptimization/
-├── config.py                  # paths, constants, ENSEMBLE_PRESETS, slug grammar
+├── config.py                  # paths, constants, run-axis selection, slug grammar
 ├── src/
 │   ├── simulation.py          # DVs -> objectives
 │   ├── objectives.py          # objective registry + ObjectiveSet

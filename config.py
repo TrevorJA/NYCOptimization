@@ -29,7 +29,8 @@ Environment overrides (selected):
     NYCOPT_CLUSTER              -> CLUSTER ("anvil" | "hopper")
     NYCOPT_TEMPERATURE_LSTM_DIR -> TEMPERATURE_LSTM_DIR (path)
     NYCOPT_SALINITY_LSTM_DIR    -> SALINITY_LSTM_DIR (path)
-    NYCOPT_ENSEMBLE_PRESET      -> SEARCH_ENSEMBLE_SPEC (name from src.ensembles.PRESETS)
+    NYCOPT_SCENARIO_DESIGN      -> ACTIVE_SCENARIO_DESIGN (src.scenario_designs) -> SEARCH_ENSEMBLE_SPEC
+    NYCOPT_MOEA_CONFIG          -> ACTIVE_MOEA_CONFIG (src.moea_config) -> BORG/MMBORG settings
     NYCOPT_REEVAL_ENSEMBLE_PRESET -> REEVAL_ENSEMBLE_SPEC (name from src.ensembles.PRESETS)
     NYCOPT_ENSEMBLE_INDICES     -> overrides realization_indices on SEARCH_ENSEMBLE_SPEC
     NYCOPT_ENSEMBLE_KN_YEARS    -> ENSEMBLE_KN_YEARS (Step 1 Kirsch-Nowak generator)
@@ -159,57 +160,63 @@ SALINITY_LSTM_MODEL = _parse_path_env(
 
 
 ###############################################################################
-# Output category subdirectories (slug-aware, hierarchical)
+# Output tree (two-axis, hierarchical)
 ###############################################################################
-# Categories below are diagnostic, not publication. Plotting + reeval scripts
-# write to {category}/{slug}/. New categories may be added freely as analyses
-# emerge; the convention is "category by analysis type, slug as inner partition".
-# `_exploratory/` is the workbench area for in-flight analyses; promote a topic
-# to a top-level category once the analysis stabilizes.
+# Run outputs are partitioned as outputs/{scenario}/{moea_slug}/{artifact}/,
+# where {scenario} is ACTIVE_SCENARIO_DESIGN.name, {moea_slug} is derive_slug(),
+# and {artifact} is the output type (sets, runtime, metrics, reeval,
+# diagnostics, ...). Cross-design comparison reads across {scenario} dirs.
+#
+# A few non-run outputs keep a flat top-level home (manifests, presim).
 
-OUTPUT_BASELINE_DIR = OUTPUTS_DIR / "baseline"
-OUTPUT_OPTIMIZATION_DIR = OUTPUTS_DIR / "optimization"
-OUTPUT_REEVALUATION_DIR = OUTPUTS_DIR / "reevaluation"
-OUTPUT_DIAGNOSTICS_DIR = OUTPUTS_DIR / "diagnostics"
 OUTPUT_REFERENCE_SETS_DIR = OUTPUTS_DIR / "reference_sets"
 OUTPUT_RUN_MANIFESTS_DIR = OUTPUTS_DIR / "run_manifests"
+OUTPUT_BASELINE_DIR = OUTPUTS_DIR / "baseline"
+# Ad-hoc diagnostics not tied to a single run (benchmarks, samplers). Per-run
+# diagnostics use run_output_dir(scenario, slug, "diagnostics") instead.
+OUTPUT_DIAGNOSTICS_DIR = OUTPUTS_DIR / "diagnostics"
 
-FIG_CONVERGENCE_DIR = FIGURES_DIR / "convergence"
-FIG_PARETO_DIR = FIGURES_DIR / "pareto"
-FIG_PARALLEL_COORDS_DIR = FIGURES_DIR / "parallel_coords"
-FIG_POLICY_INSPECTION_DIR = FIGURES_DIR / "policy_inspection"
-FIG_ROBUSTNESS_DIR = FIGURES_DIR / "robustness"
 FIG_EXPLORATORY_DIR = FIGURES_DIR / "_exploratory"
 
 
-def output_dir_for(category: str, slug: str) -> Path:
-    """Return a slug-partitioned output subdir, creating it if needed.
+def run_output_dir(scenario: str, moea_slug: str, artifact: str) -> Path:
+    """Return a run's artifact subdir, creating it if needed.
 
     Args:
-        category: One of "baseline", "optimization", "reevaluation",
-            "diagnostics", or any free-form name (auto-created).
-        slug: The methodologic slug from `derive_slug()`.
+        scenario: Scenario-design name (top-level partition); typically
+            ``active_scenario_name()``.
+        moea_slug: The moea slug from ``derive_slug()``.
+        artifact: Output type, e.g. "sets", "runtime", "metrics", "reeval",
+            "diagnostics", "checkpoints".
+
+    Returns:
+        ``outputs/{scenario}/{moea_slug}/{artifact}/`` (created).
     """
-    p = OUTPUTS_DIR / category / slug
+    p = OUTPUTS_DIR / scenario / moea_slug / artifact
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def figure_dir_for(category: str, slug: str) -> Path:
-    """Return a slug-partitioned figure subdir, creating it if needed.
+def figure_dir_for(scenario: str, moea_slug: str, kind: str) -> Path:
+    """Return a two-axis-partitioned figure subdir, creating it if needed.
 
     Args:
-        category: e.g. "convergence", "pareto", "parallel_coords",
-            "policy_inspection", "robustness". Free-form names land
-            under `_exploratory/{slug}/{category}/`.
-        slug: The methodologic slug from `derive_slug()`.
+        scenario: Scenario-design name (top-level partition).
+        moea_slug: The moea slug from ``derive_slug()``.
+        kind: e.g. "convergence", "pareto", "parallel_coords",
+            "policy_inspection", "robustness". Free-form names land under an
+            ``_exploratory/`` subdir.
+
+    Returns:
+        ``figures/{scenario}/{moea_slug}/{kind}/`` (created), or the
+        ``_exploratory`` variant for non-stable kinds.
     """
     stable = {"convergence", "pareto", "parallel_coords",
               "policy_inspection", "robustness"}
-    if category in stable:
-        p = FIGURES_DIR / category / slug
+    if kind in stable:
+        p = FIGURES_DIR / scenario / moea_slug / kind
     else:
-        p = FIG_EXPLORATORY_DIR / slug / category
+        p = FIG_EXPLORATORY_DIR / scenario / moea_slug / kind
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -269,9 +276,10 @@ WARMUP_DAYS = 365
 # fully specifies which ensemble is being built.
 #
 # These knobs do NOT affect optimization runs — they only describe Step 1
-# generation. To select a *built* ensemble for optimization or re-eval, set
-# NYCOPT_ENSEMBLE_PRESET to its kn_{Y}yr_n{N} slug (resolved on the fly by
-# src.ensembles.get_ensemble_spec).
+# generation. To use a *built* ensemble during optimization, point a scenario
+# design (src/scenario_designs.py) at it via its ensemble_preset (e.g. a
+# kn_{Y}yr_n{N} slug, resolved on the fly by src.ensembles.get_ensemble_spec);
+# for re-eval set NYCOPT_REEVAL_ENSEMBLE_PRESET.
 
 ENSEMBLE_KN_YEARS        = _parse_int_env("NYCOPT_ENSEMBLE_KN_YEARS", 50)
 ENSEMBLE_KN_REALIZATIONS = _parse_int_env("NYCOPT_ENSEMBLE_KN_REALIZATIONS", 1000)
@@ -300,6 +308,8 @@ NYC_TOTAL_CAPACITY = sum(NYC_RESERVOIR_CAPACITIES.values())  # 270,837 MG
 # could "succeed" by triggering drought step-downs that lower its own target.
 NYC_DECREE_DIVERSION_CAP_MGD = 800.0     # NYC right under 1954 Decree
 MONTAGUE_DECREE_TARGET_MGD = 1131.05     # = 1750 cfs, 1954 Supreme Court Decree
+TRENTON_DECREE_TARGET_MGD = 1938.95      # Trenton-equiv. flow objective (mrf_baseline_delTrenton)
+NJ_DELIVERY_CAP_MGD = 100.0              # NJ diversion baseline (monthly-avg D&R Canal right)
 
 
 ###############################################################################
@@ -308,19 +318,26 @@ MONTAGUE_DECREE_TARGET_MGD = 1131.05     # = 1750 cfs, 1954 Supreme Court Decree
 # User-facing list of objective names. See src.objectives.OBJECTIVES for
 # the full registry; call src.objectives.list_available_objectives() to print.
 #
-# The default 7-objective set pairs NYC and Montague compliance against the
-# 1954 Supreme Court Decree quantities (mirrored reliability + max-deficit
-# pair for each), plus three single-axis metrics: salt-front intrusion,
-# downstream flood days, and storage resilience.
+# The default 7-objective set spans every stakeholder axis Pywr-DRB simulates:
+#   - NYC supply: weekly delivery reliability + tail (CVaR90) delivery deficit
+#   - Montague flow Decree (NYC's downstream obligation): reliability + CVaR90 deficit
+#   - Trenton flow Decree (lower-basin / NJ obligation; also repels salinity): reliability
+#   - downstream flood exposure: days any reservoir-tail gauge >= NWS minor flood stage
+#   - storage resilience: 5th-percentile combined NYC storage
+# Worst-case extremes (max-deficit, min-storage, salt-front-max) were replaced
+# with stable tail/percentile/count forms (see docs/notes/methods/objective_definitions.md
+# §1-2; Quinn et al. 2017; Bonham et al. 2024). The full registry in
+# src.objectives.OBJECTIVES also exposes diagnostic variants (max-deficit,
+# min-storage, flood-major/action, salt-front, NJ delivery) for easy swapping.
 
 _DEFAULT_OBJECTIVES = [
-    "nyc_reliability_weekly_decree",
-    "nyc_max_deficit_weekly_decree",
-    "montague_reliability_weekly_decree",
-    "montague_max_deficit_weekly_decree",
-    "salt_front_max_rm",
-    "flood_days_downstream_action_anygauge",
-    "storage_min_combined_pct",
+    "nyc_delivery_reliability_weekly",
+    "nyc_delivery_deficit_cvar90_pct",
+    "montague_flow_reliability_weekly",
+    "montague_flow_deficit_cvar90_pct",
+    "trenton_flow_reliability_weekly",
+    "downstream_flood_days_minor",
+    "nyc_storage_p5_pct",
 ]
 
 ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
@@ -522,20 +539,37 @@ SALT_FRONT_FIXED_ACTIVATION_LEVEL = _parse_int_env(
 
 
 ###############################################################################
-# Borg MOEA Settings
+# Borg MOEA Settings (algorithm axis)
 ###############################################################################
+# Algorithm settings now live in a named, versioned registry
+# (src/moea_config.py). The active config is selected by NYCOPT_MOEA_CONFIG and
+# is the second axis (alongside the scenario design) that specifies a run. The
+# legacy BORG_SETTINGS / MMBORG_SETTINGS dicts are kept as the public read
+# surface for existing callers, but are now *projected* from ACTIVE_MOEA_CONFIG
+# rather than hand-edited. Change algorithm settings by editing/selecting a
+# MOEAConfig, not these dicts.
+
+from src.moea_config import get_moea_config   # noqa: E402
+
+NYCOPT_MOEA_CONFIG = _parse_str_env("NYCOPT_MOEA_CONFIG", "smoke")
+ACTIVE_MOEA_CONFIG = get_moea_config(NYCOPT_MOEA_CONFIG)
+
+# Slug grammar: the MOEA-config name is appended to the moea slug for every
+# config except the production default, keeping production output paths clean
+# while disambiguating dev/experimental algorithm variants.
+_DEFAULT_MOEA_SLUG_CONFIG = "production"
 
 BORG_SETTINGS = {
-    "max_evaluations": 1_000_000,    # Per island (total NFE = islands * max_evaluations)
-    "runtime_frequency": 500,        # Archive snapshot every N NFE
-    "n_seeds": 10,
+    "max_evaluations": ACTIVE_MOEA_CONFIG.max_evaluations,  # Per island
+    "runtime_frequency": ACTIVE_MOEA_CONFIG.runtime_frequency,
+    "n_seeds": ACTIVE_MOEA_CONFIG.n_seeds,
 }
 
 # Multi-Master Borg parallel configuration
 MMBORG_SETTINGS = {
-    "n_islands": None,               # Set per HPC allocation
-    "n_workers_per_island": None,    # Set per HPC allocation
-    "max_time_hours": 24,
+    "n_islands": ACTIVE_MOEA_CONFIG.n_islands,
+    "n_workers_per_island": ACTIVE_MOEA_CONFIG.n_workers_per_island,
+    "max_time_hours": ACTIVE_MOEA_CONFIG.max_time_hours,
 }
 
 
@@ -588,101 +622,112 @@ CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
 
 
 ###############################################################################
-# Ensemble Presets (manuscript experiment design)
+# Scenario design + ensemble evaluation (scenario axis)
 ###############################################################################
-# Six ensembles compose the methodological contribution: three probabilistic
-# (random sub-samples of the large stochastic ensemble) and three space-filling
-# (LHS sub-samples over hydrologic-metric space). Sizes and LHS seeds are
-# left as TODO until the ensemble-design discussion finalizes them.
+# The scenario design is the first of the two run axes (the other is the MOEA
+# config above). It names the construction recipe for the streamflow ensemble
+# used during search — the methodological contribution of the study. Designs
+# are registered in src/scenario_designs.py; the active one is selected by
+# NYCOPT_SCENARIO_DESIGN and becomes the TOP level of the output tree:
+#   outputs/{scenario}/{moea_slug}/...
 #
-# Each preset name here is also expected to be registered in src.ensembles
-# (or its successor) so SEARCH_ENSEMBLE_SPEC can resolve it at run time.
-
-ENSEMBLE_PRESETS = {
-    "prob_small":  {"kind": "probabilistic", "n_realizations": None, "seed": None},
-    "prob_medium": {"kind": "probabilistic", "n_realizations": None, "seed": None},
-    "prob_large":  {"kind": "probabilistic", "n_realizations": None, "seed": None},
-    "lhs_small":   {"kind": "space_filling", "n_realizations": None, "lhs_seed": None},
-    "lhs_medium":  {"kind": "space_filling", "n_realizations": None, "lhs_seed": None},
-    "lhs_large":   {"kind": "space_filling", "n_realizations": None, "lhs_seed": None},
-}
-
-
-###############################################################################
-# Ensemble Evaluation
-###############################################################################
-# The MOEA evaluator can run a candidate policy on a single historic streamflow
-# trace (legacy default) or on a multi-realization ensemble. Both modes are
-# represented as ``EnsembleSpec`` instances from src.ensembles; the legacy
-# default is the ``historic_single`` preset, which preserves byte-identical
-# behavior of all pre-existing runs.
+# The MOEA evaluator runs a candidate policy on whatever ensemble the active
+# scenario design resolves to (an ``EnsembleSpec`` from src.ensembles). The
+# legacy single-trace default is the ``historic`` design (-> ``historic_single``
+# preset), which preserves byte-identical behavior of all pre-existing runs.
 #
 # Two specs are resolved at import time:
-#   SEARCH_ENSEMBLE_SPEC  - used inside Borg's evaluate() during optimization.
-#   REEVAL_ENSEMBLE_SPEC  - used by src/reevaluate.py + reevaluate_mpi.py.
-#
-# When SEARCH_ENSEMBLE_SPEC.is_ensemble is True we emit a slug fragment so
-# outputs land under a distinct directory; the historic_single preset emits
-# no fragment to keep legacy paths unchanged. Re-eval output is partitioned
-# further by the re-eval preset name (see workflow/05_reevaluate.sh).
+#   SEARCH_ENSEMBLE_SPEC  - from ACTIVE_SCENARIO_DESIGN; used inside Borg's
+#                           evaluate() during optimization.
+#   REEVAL_ENSEMBLE_SPEC  - the held-out test ensemble; used by
+#                           src/reevaluate.py + reevaluate_mpi.py. Still selected
+#                           directly by preset name for now (its design is an
+#                           open decision — see experimental_design.md #3).
 
 from src.ensembles import (             # noqa: E402
     get_ensemble_spec,
     with_indices_override,
 )
+from src.scenario_designs import get_scenario_design   # noqa: E402
 
-NYCOPT_ENSEMBLE_PRESET = _parse_str_env("NYCOPT_ENSEMBLE_PRESET", "historic_single")
+NYCOPT_SCENARIO_DESIGN = _parse_str_env("NYCOPT_SCENARIO_DESIGN", "historic")
+ACTIVE_SCENARIO_DESIGN = get_scenario_design(NYCOPT_SCENARIO_DESIGN)
+
 NYCOPT_REEVAL_ENSEMBLE_PRESET = _parse_str_env(
     "NYCOPT_REEVAL_ENSEMBLE_PRESET", "historic_single",
 )
 
-SEARCH_ENSEMBLE_SPEC = get_ensemble_spec(NYCOPT_ENSEMBLE_PRESET)
+# Resolve the search ensemble. Designs whose construction is not yet wired
+# (everything except historic / smoke_ensemble) leave SEARCH_ENSEMBLE_SPEC None
+# so config stays importable — diagnostics/reeval/plotting on such a design's
+# outputs only need active_scenario_name(). Optimization fails fast with a clear
+# message (see src/mmborg.py) when the spec is None.
+try:
+    SEARCH_ENSEMBLE_SPEC = ACTIVE_SCENARIO_DESIGN.resolve_search_spec()
+except NotImplementedError as _e:
+    SEARCH_ENSEMBLE_SPEC = None
+    print(
+        f"  [config] NOTE: scenario design '{ACTIVE_SCENARIO_DESIGN.name}' has "
+        f"no search ensemble wired yet; optimization is unavailable for it "
+        f"(diagnostics/reeval/plotting on its outputs still work). {_e}"
+    )
 REEVAL_ENSEMBLE_SPEC = get_ensemble_spec(NYCOPT_REEVAL_ENSEMBLE_PRESET)
 
-# Optional realization-index override on the search preset. Useful for smoke
-# testing a subset of an N=300 ensemble without authoring a new preset.
+# Optional realization-index override on the search ensemble. Useful for smoke
+# testing a subset of a large ensemble without authoring a new preset.
 _ensemble_indices_override = _parse_int_list_env("NYCOPT_ENSEMBLE_INDICES", [])
-if _ensemble_indices_override:
+if _ensemble_indices_override and SEARCH_ENSEMBLE_SPEC is not None:
     SEARCH_ENSEMBLE_SPEC = with_indices_override(
         SEARCH_ENSEMBLE_SPEC, _ensemble_indices_override,
     )
 
 # Selection-bias guard (Bonham 2024): re-eval ensemble should be independent
-# of the search ensemble. Warn loudly if a user accidentally points both at
-# the same preset and the spec is actually an ensemble (single-trace re-eval
-# with single-trace search is the legacy case and need not warn).
+# of the search ensemble. Warn loudly if both resolve to the same preset and
+# the search spec is actually an ensemble (single-trace re-eval with
+# single-trace search is the legacy case and need not warn).
 if (
-    SEARCH_ENSEMBLE_SPEC.is_ensemble
-    and NYCOPT_REEVAL_ENSEMBLE_PRESET == NYCOPT_ENSEMBLE_PRESET
+    SEARCH_ENSEMBLE_SPEC is not None
+    and SEARCH_ENSEMBLE_SPEC.is_ensemble
+    and NYCOPT_REEVAL_ENSEMBLE_PRESET == SEARCH_ENSEMBLE_SPEC.preset_name
 ):
     print(
-        f"  [config] WARN: search and re-eval ensemble preset are identical "
-        f"('{NYCOPT_ENSEMBLE_PRESET}'). This is a selection-bias risk per "
-        f"Bonham (2024) — prefer an independent re-eval preset (different "
-        f"seed and/or realization indices)."
+        f"  [config] WARN: search and re-eval ensemble resolve to the same "
+        f"preset ('{SEARCH_ENSEMBLE_SPEC.preset_name}'). This is a "
+        f"selection-bias risk per Bonham (2024) — prefer an independent "
+        f"re-eval preset (different seed and/or realization indices)."
     )
 
 
 ###############################################################################
 # Slug Naming Convention
 ###############################################################################
-# Slugs identify a methodologic configuration so outputs from different
-# configs never collide. Format:
-#   {formulation}_obj{N_OBJ}{ts_suffix}{sfdv_suffix}{ensemble_suffix}{custom_suffix}
+# A run is partitioned on two axes: the scenario design (top-level output dir,
+# from ACTIVE_SCENARIO_DESIGN.name) and the moea slug below. derive_slug()
+# builds the moea slug — the problem-definition identity plus the non-default
+# algorithm-config name. The ensemble is NOT in the slug; it is the parent
+# {scenario} directory. Format:
+#   {formulation}_obj{N_OBJ}{ts_suffix}{sfdv_suffix}{moea_cfg_suffix}{custom_suffix}
 #
-# Examples:
-#   ffmp_obj7                    — current production baseline (no T/S)
+# Full output path: outputs/{scenario}/{moea_slug}/{artifact}/
+#
+# Examples (moea slug only):
+#   ffmp_obj7                    — FFMP, 7 objectives, production algo config
 #   ffmp_obj7_sal                — salinity LSTM on
 #   ffmp_8_obj7_sal              — variable-resolution N=8 with salinity
-#   ffmp_obj7_sal_lhs_small      — FFMP, salinity on, LHS small ensemble
+#   ffmp_obj7_sal_smoke          — dev smoke algorithm config
 #   ffmp_obj7_sal_pilot42        — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
 #
 # `RUN_SLUG_TAG` env appends a free-form suffix; useful for one-off variants
 # without polluting the canonical slug grammar.
 # A non-empty `RUN_SLUG` env wins outright (escape hatch for legacy paths).
 
+def active_scenario_name() -> str:
+    """Return the active scenario-design name (top-level output partition)."""
+    return ACTIVE_SCENARIO_DESIGN.name
+
+
 def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
-    """Derive a slug from active config + a formulation name.
+    """Derive the moea slug from active config + a formulation name.
 
     Suffix grammar (LSTM portion):
       - both temperature + salinity on  -> "_ts"
@@ -690,9 +735,9 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
       - temperature only                 -> "_temp"
       - neither                          -> (omitted)
 
-    Ensemble portion:
-      - SEARCH_ENSEMBLE_SPEC.slug_fragment when non-empty.
-        ``historic_single`` ships an empty fragment to preserve legacy slugs.
+    Algorithm portion:
+      - ACTIVE_MOEA_CONFIG.name appended unless it is the production default,
+        keeping production paths clean while disambiguating dev variants.
 
     Args:
         formulation: e.g. "ffmp", "ffmp_8".
@@ -700,8 +745,8 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
             Falls back to the `RUN_SLUG_TAG` env var.
 
     Returns:
-        Slug string used as the inner partition under outputs/{category}/
-        and figures/{category}/.
+        The moea slug, used as the inner partition under
+        outputs/{scenario}/ and figures/{scenario}/.
     """
     explicit = os.environ.get("RUN_SLUG", "").strip()
     if explicit:
@@ -721,8 +766,8 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
     }.get(SALT_FRONT_PARAM_MODE, "")
     if _sfdv_suffix:
         parts.append(_sfdv_suffix)
-    if SEARCH_ENSEMBLE_SPEC.slug_fragment:
-        parts.append(SEARCH_ENSEMBLE_SPEC.slug_fragment)
+    if ACTIVE_MOEA_CONFIG.name != _DEFAULT_MOEA_SLUG_CONFIG:
+        parts.append(ACTIVE_MOEA_CONFIG.name)
 
     tag = custom_tag if custom_tag else os.environ.get("RUN_SLUG_TAG", "").strip()
     if tag:
@@ -776,14 +821,22 @@ def print_config_summary(formulation_name="ffmp"):
     print(f"\n{obj_set.summary()}")
     print(f"\nSimulation: {INFLOW_TYPE}, {START_DATE} to {END_DATE}")
     print(f"Trimmed model: {USE_TRIMMED_MODEL}")
-    print(f"Borg NFE: {BORG_SETTINGS['max_evaluations']:,}")
-    print(f"Seeds: {BORG_SETTINGS['n_seeds']}")
-    print(
-        f"\nSearch ensemble: preset='{SEARCH_ENSEMBLE_SPEC.preset_name}', "
-        f"is_ensemble={SEARCH_ENSEMBLE_SPEC.is_ensemble}, "
-        f"N={SEARCH_ENSEMBLE_SPEC.n_realizations}, "
-        f"inflow_type='{SEARCH_ENSEMBLE_SPEC.inflow_type}'"
-    )
+    print(f"Scenario design: {ACTIVE_SCENARIO_DESIGN.name} "
+          f"({ACTIVE_SCENARIO_DESIGN.family})")
+    _nfe = BORG_SETTINGS['max_evaluations']
+    print(f"MOEA config: {ACTIVE_MOEA_CONFIG.name} "
+          f"(NFE/island={_nfe:,} seeds={BORG_SETTINGS['n_seeds']})"
+          if _nfe is not None else
+          f"MOEA config: {ACTIVE_MOEA_CONFIG.name} (NFE/island=TBD, seeds=TBD)")
+    if SEARCH_ENSEMBLE_SPEC is None:
+        print("\nSearch ensemble: <not wired for this scenario design>")
+    else:
+        print(
+            f"\nSearch ensemble: preset='{SEARCH_ENSEMBLE_SPEC.preset_name}', "
+            f"is_ensemble={SEARCH_ENSEMBLE_SPEC.is_ensemble}, "
+            f"N={SEARCH_ENSEMBLE_SPEC.n_realizations}, "
+            f"inflow_type='{SEARCH_ENSEMBLE_SPEC.inflow_type}'"
+        )
     print(
         f"Re-eval ensemble: preset='{REEVAL_ENSEMBLE_SPEC.preset_name}', "
         f"is_ensemble={REEVAL_ENSEMBLE_SPEC.is_ensemble}, "

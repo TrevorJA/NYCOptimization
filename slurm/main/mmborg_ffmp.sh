@@ -1,6 +1,6 @@
 #!/bin/bash
 # mmborg_ffmp.sh — Production MM Borg run for standard FFMP (24 DVs).
-# Submit as a seed-array job:  sbatch --array=1-10 slurm/mmborg_ffmp.sh
+# Submit as a seed-array job:  sbatch --array=1-10 slurm/main/mmborg_ffmp.sh
 #
 #SBATCH --job-name=mmborg_ffmp
 #SBATCH --nodes=5
@@ -13,19 +13,19 @@
 
 set -euo pipefail
 
+# Algorithm settings (islands/NFE/runtime-freq) come from the active MOEA config
+# (NYCOPT_MOEA_CONFIG in the env file), not from this script. The scenario design
+# comes from NYCOPT_SCENARIO_DESIGN. _common.sh reads both back from config.
 FORMULATION="ffmp"
 SEED="${SLURM_ARRAY_TASK_ID:-1}"
-N_ISLANDS=2
-NFE=1000000
-RUNTIME_FREQ=500
 DEBUG_SIM=false
 CHECKPOINT=false
 
-source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/slurm/_common.sh"
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/slurm/main/_common.sh"
 
-ARGS="--seed ${SEED} --formulation ${FORMULATION} --slug ${RUN_SLUG} --islands ${N_ISLANDS} --nfe ${NFE} --runtime-freq ${RUNTIME_FREQ}"
+ARGS="--seed ${SEED} --formulation ${FORMULATION}"
 [[ "${CHECKPOINT}" == "true" ]] && ARGS="${ARGS} --checkpoint"
 
-echo "=== Launching MM-Borg (${FORMULATION}, slug=${RUN_SLUG}, seed=${SEED}) ==="
+echo "=== Launching MM-Borg (${SCENARIO}/${RUN_SLUG}, seed=${SEED}) ==="
 mpirun -np ${NTASKS_MPI} python3 -u src/mmborg_cli.py ${ARGS}
 echo "=== Completed: $(date) ==="

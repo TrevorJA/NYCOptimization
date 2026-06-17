@@ -40,14 +40,20 @@ References:
 import subprocess
 from pathlib import Path
 
-from config import get_epsilons, OUTPUTS_DIR, DIAGNOSTICS_SETTINGS, FFMP_VR_N_SWEEP
+from config import (
+    get_epsilons,
+    DIAGNOSTICS_SETTINGS,
+    FFMP_VR_N_SWEEP,
+    active_scenario_name,
+    run_output_dir,
+)
 
 # Per-formulation MOEAFramework problem registrations. Each is built as a
 # separate JAR in MOEAFramework-5.0/lib/ with the correct (nvars, nobjs).
 # All use the current 7-objective set.
 #   drb_ffmp     -> 24 DVs
 #   drb_ffmp_{N} -> per-N DV count (varies with number of zones).
-#                   Built automatically by slurm/build_jars.sh.
+#                   Built automatically by slurm/main/build_jars.sh.
 # Slugs can be any string; we infer the formulation family by finding the
 # longest contiguous token-substring that matches a known formulation. This
 # handles both prefix-tag slugs (``smoke_ffmp``) and suffix-tag variant slugs
@@ -100,6 +106,7 @@ def merge_reference_set(
     seed: int = None,
     runtime_dir: Path = None,
     output_file: Path = None,
+    scenario: str = None,
 ) -> Path:
     """Merge runtime files into an epsilon-dominated reference set.
 
@@ -107,21 +114,22 @@ def merge_reference_set(
     into a single non-dominated set.
 
     Args:
-        slug: Run slug (output subdirectory + filename prefix). For simple
-            runs this equals the formulation name; for variant runs it is the
-            user-provided RUN_SLUG that wraps formulation + config variant.
+        slug: Run moea slug (inner output subdirectory + filename prefix).
         seed: Seed number (if None, merges all seeds).
         runtime_dir: Directory containing .runtime files.
         output_file: Output .set file path.
+        scenario: Scenario-design name (top-level output partition). Defaults
+            to the active scenario design.
 
     Returns:
         Path to the merged .set file.
     """
+    if scenario is None:
+        scenario = active_scenario_name()
     if runtime_dir is None:
-        runtime_dir = OUTPUTS_DIR / "optimization" / slug / "runtime"
+        runtime_dir = run_output_dir(scenario, slug, "runtime")
     if output_file is None:
-        sets_dir = OUTPUTS_DIR / "optimization" / slug / "sets"
-        sets_dir.mkdir(parents=True, exist_ok=True)
+        sets_dir = run_output_dir(scenario, slug, "sets")
         suffix = f"_seed{seed:02d}" if seed else ""
         output_file = sets_dir / f"{slug}{suffix}_merged.set"
 
@@ -198,6 +206,7 @@ def run_diagnostics(
     slug: str,
     seed: int = 1,
     runtime_dir: Path = None,
+    scenario: str = None,
 ):
     """Run the full diagnostics workflow for a single seed.
 
@@ -206,21 +215,27 @@ def run_diagnostics(
         2. Compute metrics for each island's runtime file
 
     Args:
-        slug: Run slug (output subdirectory + filename prefix).
+        slug: Run moea slug (inner output subdirectory + filename prefix).
         seed: Seed number.
         runtime_dir: Directory containing .runtime files.
+        scenario: Scenario-design name (top-level output partition). Defaults
+            to the active scenario design.
 
     Returns:
         Tuple of (reference_set_path, list_of_metrics_paths).
     """
+    if scenario is None:
+        scenario = active_scenario_name()
     if runtime_dir is None:
-        runtime_dir = OUTPUTS_DIR / "optimization" / slug / "runtime"
+        runtime_dir = run_output_dir(scenario, slug, "runtime")
 
-    print(f"\n=== MOEAFramework Diagnostics: {slug}, seed {seed} ===\n")
+    print(f"\n=== MOEAFramework Diagnostics: {scenario}/{slug}, seed {seed} ===\n")
 
     # Step 1: Merge runtime files into reference set
     print("Step 1: Merging reference set...")
-    ref_file = merge_reference_set(slug, seed=seed, runtime_dir=runtime_dir)
+    ref_file = merge_reference_set(
+        slug, seed=seed, runtime_dir=runtime_dir, scenario=scenario,
+    )
 
     # Step 2: Compute metrics for each island runtime file
     print("\nStep 2: Computing runtime metrics...")
@@ -239,15 +254,17 @@ def run_diagnostics(
     return ref_file, metrics_files
 
 
-def discover_seeds(slug: str, runtime_dir: Path = None) -> list[int]:
+def discover_seeds(slug: str, runtime_dir: Path = None, scenario: str = None) -> list[int]:
     """Return sorted list of seed numbers found in the slug's runtime directory.
 
     Looks for files matching ``seed_NN_{slug}_*.runtime`` and extracts NN.
     """
     import re
 
+    if scenario is None:
+        scenario = active_scenario_name()
     if runtime_dir is None:
-        runtime_dir = OUTPUTS_DIR / "optimization" / slug / "runtime"
+        runtime_dir = run_output_dir(scenario, slug, "runtime")
 
     pattern = re.compile(rf"^seed_(\d+)_{re.escape(slug)}_.*\.runtime$")
     seeds = set()
@@ -259,25 +276,33 @@ def discover_seeds(slug: str, runtime_dir: Path = None) -> list[int]:
     return sorted(seeds)
 
 
-def run_full_diagnostics(slug: str, seeds: list = None, runtime_dir: Path = None):
+def run_full_diagnostics(
+    slug: str, seeds: list = None, runtime_dir: Path = None, scenario: str = None,
+):
     """Run per-seed diagnostics for every seed present in the slug's output.
 
     Args:
-        slug: Run slug (output subdirectory + filename prefix).
+        slug: Run moea slug (inner output subdirectory + filename prefix).
         seeds: Optional explicit list of seed numbers. If None, auto-discovers
-            every seed found in ``outputs/optimization/{slug}/runtime``.
+            every seed found in ``outputs/{scenario}/{slug}/runtime``.
         runtime_dir: Optional explicit runtime directory override.
+        scenario: Scenario-design name (top-level output partition). Defaults
+            to the active scenario design.
 
     Returns:
         Dict of {seed: (ref_file, metrics_files)}.
     """
+    if scenario is None:
+        scenario = active_scenario_name()
     if seeds is None:
-        seeds = discover_seeds(slug, runtime_dir=runtime_dir)
+        seeds = discover_seeds(slug, runtime_dir=runtime_dir, scenario=scenario)
     if not seeds:
-        print(f"[{slug}] no runtime files found; skipping.")
+        print(f"[{scenario}/{slug}] no runtime files found; skipping.")
         return {}
 
     results = {}
     for seed in seeds:
-        results[seed] = run_diagnostics(slug, seed=seed, runtime_dir=runtime_dir)
+        results[seed] = run_diagnostics(
+            slug, seed=seed, runtime_dir=runtime_dir, scenario=scenario,
+        )
     return results

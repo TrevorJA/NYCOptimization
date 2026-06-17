@@ -177,25 +177,52 @@ def _slug_with_env(env_overrides: dict) -> str:
 
 
 @pytest.mark.slow
-def test_derive_slug_legacy_unchanged():
-    """historic_single (default) emits no ensemble fragment."""
-    slug = _slug_with_env({})
-    # Default config: ffmp_obj7 (no T/S, no sfdv, no state mismatch, no ensemble fragment)
+def test_derive_slug_production_clean():
+    """Production MOEA config emits a clean slug with no algorithm suffix and
+    no ensemble fragment (the ensemble is the parent {scenario} dir)."""
+    slug = _slug_with_env({"NYCOPT_MOEA_CONFIG": "production"})
     assert slug.startswith("ffmp_obj7")
     assert "wcu" not in slug
+    assert "smoke" not in slug
 
 
 @pytest.mark.slow
-def test_derive_slug_wcu_fragment_appears():
-    slug = _slug_with_env({"NYCOPT_ENSEMBLE_PRESET": "wcu_kirsch_n5"})
-    assert "wcu5" in slug
+def test_derive_slug_moea_config_suffix():
+    """A non-default MOEA config name is appended to the slug."""
+    slug = _slug_with_env({"NYCOPT_MOEA_CONFIG": "smoke"})
+    assert slug.endswith("_smoke")
+
+
+@pytest.mark.slow
+def test_ensemble_not_in_slug_is_scenario_dir():
+    """The search ensemble is the parent {scenario} dir, NOT part of the slug."""
+    env = {"NYCOPT_SCENARIO_DESIGN": "smoke_ensemble", "NYCOPT_MOEA_CONFIG": "production"}
+    slug = _slug_with_env(env)
+    assert "wcu" not in slug and "smoke_ensemble" not in slug
+    # The scenario name is the partition instead.
+    code = (
+        "import sys; sys.path.insert(0, '.'); "
+        "import config; print(config.active_scenario_name())"
+    )
+    full_env = os.environ.copy()
+    for k in list(full_env):
+        if k.startswith("NYCOPT_"):
+            full_env.pop(k, None)
+    full_env.update(env)
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(PROJECT_DIR), env=full_env,
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert [ln for ln in result.stdout.splitlines() if ln.strip()][-1] == "smoke_ensemble"
 
 
 @pytest.mark.slow
 def test_derive_slug_indices_override():
-    """NYCOPT_ENSEMBLE_INDICES subsets the active search preset."""
+    """NYCOPT_ENSEMBLE_INDICES subsets the active scenario design's ensemble."""
     env = {
-        "NYCOPT_ENSEMBLE_PRESET": "wcu_kirsch_n5",
+        "NYCOPT_SCENARIO_DESIGN": "smoke_ensemble",
         "NYCOPT_ENSEMBLE_INDICES": "0,2",
     }
     code = (

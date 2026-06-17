@@ -1,7 +1,7 @@
 """
 random_sample_salinity_test.py - Smoke-test the salinity LSTM objective by
 sampling N random FFMP decision vectors uniformly within bounds, simulating
-each, and reporting the distribution of `salt_front_max_rm`.
+each, and reporting the distribution of `salt_front_intrusion_max_rm`.
 
 This is a development-time tool, not a research artifact: it confirms that
 the salinity LSTM is responsive to NYC operational decisions (i.e., not
@@ -10,7 +10,7 @@ worst-case upstream salt-front intrusion the policy class can produce.
 
 Required env (set by `slurm/envs/ffmp_obj7_sal.env` or equivalent):
     NYCOPT_SALINITY_ON=1
-    NYCOPT_OBJECTIVES=...,salt_front_max_rm
+    NYCOPT_OBJECTIVES=...,salt_front_intrusion_max_rm
 
 Optional env:
     PYWRDRB_SIM_START_DATE=2018-01-01    # shorter sim window for speed
@@ -98,8 +98,8 @@ def main():
     if not INCLUDE_SALINITY_MODEL:
         sys.exit("ERROR: NYCOPT_SALINITY_ON must be 1. "
                  "Source slurm/envs/ffmp_obj7_sal.env first.")
-    if "salt_front_max_rm" not in ACTIVE_OBJECTIVES:
-        sys.exit("ERROR: NYCOPT_OBJECTIVES must include 'salt_front_max_rm'. "
+    if "salt_front_intrusion_max_rm" not in ACTIVE_OBJECTIVES:
+        sys.exit("ERROR: NYCOPT_OBJECTIVES must include 'salt_front_intrusion_max_rm'. "
                  "Source slurm/envs/ffmp_obj7_sal.env first.")
 
     objective_set = get_objective_set()
@@ -119,7 +119,7 @@ def main():
     base_row = _run_one(baseline_dv, args.formulation, objective_set)
     base_row["sample_id"] = -1
     rows.append(base_row)
-    print(f"  sf_max={base_row.get('salt_front_max_rm'):.2f} RM"
+    print(f"  sf_max={base_row.get('salt_front_intrusion_max_rm'):.2f} RM"
           f"  ({base_row.get('elapsed_s', 0):.1f}s)")
 
     samples = _sample_random_dvs(args.formulation, rng, args.n)
@@ -131,7 +131,7 @@ def main():
         if "error" in r:
             print(f"  FAIL: {r['error']}")
         else:
-            print(f"  sf_max={r.get('salt_front_max_rm'):.2f} RM"
+            print(f"  sf_max={r.get('salt_front_intrusion_max_rm'):.2f} RM"
                   f"  sf_min={r.get('sf_min_RM', float('nan')):.2f}"
                   f"  sf_median={r.get('sf_median_RM', float('nan')):.2f}"
                   f"  ({r.get('elapsed_s', 0):.1f}s)")
@@ -145,10 +145,10 @@ def main():
 
     print("\n=== Summary (random samples only, baseline excluded) ===")
     rs = df.drop(index=-1, errors="ignore")
-    if "salt_front_max_rm" in rs.columns:
-        sfm = rs["salt_front_max_rm"].dropna()
+    if "salt_front_intrusion_max_rm" in rs.columns:
+        sfm = rs["salt_front_intrusion_max_rm"].dropna()
         if len(sfm):
-            print(f"salt_front_max_rm (RM, lower = better — closer to bay):")
+            print(f"salt_front_intrusion_max_rm (RM, lower = better — closer to bay):")
             print(f"  mean   = {sfm.mean():.2f}")
             print(f"  median = {sfm.median():.2f}")
             print(f"  min    = {sfm.min():.2f}   (best policy in sample)")

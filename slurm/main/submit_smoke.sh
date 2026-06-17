@@ -11,16 +11,16 @@
 # Each job runs 500 NFE/island × 2 islands on a 2-node debug-window allocation.
 #
 # Usage:
-#   bash slurm/submit_smoke.sh                    # default 4 targets
-#   bash slurm/submit_smoke.sh ffmp_10            # specific N-zone variant
-#   bash slurm/submit_smoke.sh --dry-run          # print sbatch cmds only
+#   bash slurm/main/submit_smoke.sh                    # default 4 targets
+#   bash slurm/main/submit_smoke.sh ffmp_10            # specific N-zone variant
+#   bash slurm/main/submit_smoke.sh --dry-run          # print sbatch cmds only
 #
 # After jobs finish, generate diagnostics:
 #   bash workflow/06_run_diagnostics.sh smoke_ffmp smoke_ffmp_8 smoke_ffmp_10 smoke_ffmp_12
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 DRY_RUN=false
 ARGS=()
@@ -55,7 +55,7 @@ for t in "${TARGETS[@]}"; do
     fi
     run sbatch --export=ALL,${export_args} \
         --job-name="smoke_${t}" \
-        slurm/smoke_test.sh
+        slurm/main/smoke_test.sh
 done
 
 echo "=== Smoke test submission complete ==="

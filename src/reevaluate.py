@@ -26,8 +26,9 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
-    OUTPUTS_DIR, OUTPUT_REEVALUATION_DIR, OUTPUT_REFERENCE_SETS_DIR,
+    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR,
     derive_slug, get_n_vars, get_obj_names,
+    active_scenario_name, run_output_dir,
 )
 from src.load.reference_set import load_reference_set
 from src.simulation import dvs_to_config, run_simulation_to_disk
@@ -71,21 +72,22 @@ def reevaluate(formulation: str,
     Returns:
         Path to the summary CSV.
     """
+    scenario = active_scenario_name()
     slug = derive_slug(formulation)
-    # Reference set still keyed by slug (where the optimization wrote it).
-    # Fall back to the formulation-keyed legacy path so re-evals on existing
-    # reference sets keep working.
+    # Reference set: prefer the merged Pareto set written by diagnostics under
+    # the run's own sets/ dir; fall back to a curated reference_sets/ entry and
+    # the legacy formulation-keyed path so re-evals on existing sets keep working.
     candidate_refs = [
+        run_output_dir(scenario, slug, "sets") / f"{slug}_merged.set",
         OUTPUT_REFERENCE_SETS_DIR / f"{slug}.ref",
-        OUTPUTS_DIR / "reference_sets" / f"{slug}.ref",
         OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref",
     ]
     ref_file = next((p for p in candidate_refs if p.exists()), candidate_refs[0])
 
-    reeval_dir = OUTPUT_REEVALUATION_DIR / slug / "deterministic"
+    reeval_dir = run_output_dir(scenario, slug, "reeval")
     if seed is not None:
         reeval_dir = reeval_dir / f"seed_{seed:02d}"
-    reeval_dir.mkdir(parents=True, exist_ok=True)
+        reeval_dir.mkdir(parents=True, exist_ok=True)
 
     n_vars = get_n_vars(formulation)
     dv_data, _ = load_reference_set(ref_file, n_vars)

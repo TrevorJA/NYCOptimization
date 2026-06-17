@@ -41,8 +41,9 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
-    OUTPUTS_DIR, OUTPUT_REEVALUATION_DIR, OUTPUT_REFERENCE_SETS_DIR,
+    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR,
     derive_slug, get_n_vars, get_obj_names,
+    active_scenario_name, run_output_dir,
 )
 from src.load.reference_set import load_reference_set
 from src.simulation import dvs_to_config, run_simulation_to_disk
@@ -84,11 +85,16 @@ def _evaluate_one(solution_id: int, dv_vector: np.ndarray, formulation: str,
         return solution_id, None, f"{type(e).__name__}: {e} ({tb})"
 
 
-def _resolve_ref_file(slug: str, formulation: str) -> Path:
-    """Locate the reference set file, preferring slug-keyed paths."""
+def _resolve_ref_file(slug: str, formulation: str, scenario: str) -> Path:
+    """Locate the reference set file.
+
+    Prefers the merged Pareto set written by diagnostics under the run's own
+    sets/ dir, then a curated reference_sets/ entry, then the legacy
+    formulation-keyed path.
+    """
     candidates = [
+        run_output_dir(scenario, slug, "sets") / f"{slug}_merged.set",
         OUTPUT_REFERENCE_SETS_DIR / f"{slug}.ref",
-        OUTPUTS_DIR / "reference_sets" / f"{slug}.ref",
         OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref",
     ]
     return next((p for p in candidates if p.exists()), candidates[0])
@@ -125,15 +131,16 @@ def reevaluate_mpi(
         print("[reevaluate_mpi] WARN: realization_ids ignored in Phase 1 "
               f"(received {len(realization_ids)} ids).")
 
+    scenario = active_scenario_name()
     slug = derive_slug(formulation)
 
     # ---- Rank 0: locate reference set, load DVs, set up output dir ----
     if is_root:
-        ref_file = _resolve_ref_file(slug, formulation)
+        ref_file = _resolve_ref_file(slug, formulation, scenario)
         if not ref_file.exists():
             raise FileNotFoundError(
                 f"Reference set not found for formulation '{formulation}' "
-                f"(slug='{slug}'). Looked at: {ref_file}"
+                f"(scenario='{scenario}', slug='{slug}'). Looked at: {ref_file}"
             )
         n_vars = get_n_vars(formulation)
         dv_data, _ = load_reference_set(ref_file, n_vars)
@@ -142,13 +149,13 @@ def reevaluate_mpi(
             n_solutions = min(n_solutions, max_solutions)
             dv_data = dv_data[:n_solutions]
 
-        reeval_dir = OUTPUT_REEVALUATION_DIR / slug / "deterministic"
+        reeval_dir = run_output_dir(scenario, slug, "reeval")
         if seed is not None:
             reeval_dir = reeval_dir / f"seed_{seed:02d}"
-        reeval_dir.mkdir(parents=True, exist_ok=True)
+            reeval_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"[reevaluate_mpi] formulation={formulation} slug={slug} "
-              f"n_solutions={n_solutions} ranks={size}")
+        print(f"[reevaluate_mpi] scenario={scenario} formulation={formulation} "
+              f"slug={slug} n_solutions={n_solutions} ranks={size}")
         print(f"[reevaluate_mpi] reference: {ref_file}")
         print(f"[reevaluate_mpi] outputs:   {reeval_dir}")
         payload = (dv_data, n_solutions, str(reeval_dir))

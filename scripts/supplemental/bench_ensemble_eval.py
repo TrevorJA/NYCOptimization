@@ -8,7 +8,7 @@ per-eval wall time, and writes a CSV row per eval to
 ``outputs/diagnostics/ensemble_bench/{preset}_{slug}_{timestamp}.csv`` for
 later regression tracking.
 
-Use this from a SLURM batch job (see ``slurm/bench_ensemble.sh``); do not run
+Use this from a SLURM batch job (see ``slurm/supplemental/bench_ensemble.sh``); do not run
 on a login node — a single full-window N=5 eval is in the 10–20 minute range.
 
 Usage:
@@ -93,8 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     if not spec.is_ensemble:
         logging.error(
             f"SEARCH_ENSEMBLE_SPEC.preset_name={spec.preset_name!r} is not an "
-            f"ensemble. Set NYCOPT_ENSEMBLE_PRESET to an ensemble preset (e.g., "
-            f"wcu_kirsch_n5) before running this benchmark."
+            f"ensemble. Set NYCOPT_SCENARIO_DESIGN to an ensemble-based design "
+            f"before running this benchmark."
         )
         return 2
 

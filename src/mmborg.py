@@ -22,7 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import BORG_SETTINGS, OUTPUTS_DIR, BORG_DIR, get_epsilons
+from config import BORG_DIR, get_epsilons, run_output_dir
+from src.moea_config import MOEAConfig
 from src.formulations import (
     get_n_vars,
     get_n_objs,
@@ -36,31 +37,63 @@ from src.formulations import (
 def run_mmborg(
     formulation_name: str,
     seed: int,
-    n_islands: int,
-    max_evaluations: int = None,
-    max_time: int = None,
-    runtime_frequency: int = None,
+    scenario: str,
+    moea_config: MOEAConfig,
+    slug: str,
     checkpoint_base: str = None,
     restore_checkpoint: str = None,
-    slug: str = None,
 ):
     """Execute Multi-Master Borg optimization.
 
     Called by all MPI ranks. Only the controller (rank 0) receives results.
 
+    All algorithm settings (islands, NFE, runtime frequency, wall time) come
+    from ``moea_config`` — there are no value-carrying overrides. Outputs land
+    under ``outputs/{scenario}/{slug}/``.
+
     Args:
         formulation_name: Problem formulation name (drives DV bounds & objectives).
         seed: Random seed number (1-indexed).
-        n_islands: Number of MM Borg islands.
-        max_evaluations: Max NFE per island (default from config).
-        max_time: Max wall time in seconds (overrides NFE if set).
-        runtime_frequency: NFE interval for runtime snapshots.
+        scenario: Scenario-design name (top-level output partition).
+        moea_config: Algorithm-settings bundle (see src/moea_config.py).
+        slug: The moea slug (inner output partition + filename prefix), from
+            ``config.derive_slug(formulation)``.
         checkpoint_base: Path base for new checkpoint files.
         restore_checkpoint: Path to existing checkpoint file to restore from.
-        slug: Output directory tag. Defaults to formulation_name. Use a distinct
-            slug (e.g. "smoke_ffmp", "ffmp_alt_ensemble") when varying
-            ensemble preset / OBJECTIVES so outputs don't collide.
+
+    Raises:
+        ValueError: If ``moea_config`` leaves a required algorithm setting unset
+            (e.g. the ``production`` config before its numbers are decided).
     """
+    n_islands = moea_config.n_islands
+    max_evaluations = moea_config.max_evaluations
+    runtime_frequency = moea_config.runtime_frequency
+    max_time = moea_config.max_time_seconds
+
+    missing = [
+        n for n, v in (
+            ("n_islands", n_islands),
+            ("max_evaluations", max_evaluations),
+            ("runtime_frequency", runtime_frequency),
+        ) if v is None
+    ]
+    if missing:
+        raise ValueError(
+            f"MOEA config '{moea_config.name}' is missing required settings "
+            f"{missing}. Select a fully-specified config (e.g. 'smoke') or fill "
+            f"in the TBD values in src/moea_config.py."
+        )
+
+    # Scenario design must have a wired search ensemble to optimize.
+    from config import SEARCH_ENSEMBLE_SPEC
+    if SEARCH_ENSEMBLE_SPEC is None:
+        raise ValueError(
+            f"Scenario design '{scenario}' has no search ensemble wired yet, so "
+            f"optimization cannot run under it. Use 'historic' (or the dev "
+            f"'smoke_ensemble' design), or wire its construction in "
+            f"src/scenario_designs.py."
+        )
+
     # borg.py loads ./libborg.so and ./libborgmm.so relative to CWD, so
     # cd into lib/borg/ for the import + MPI initialization, then restore.
     _saved_cwd = os.getcwd()
@@ -70,20 +103,12 @@ def run_mmborg(
     os.chdir(_saved_cwd)
     print(f"[MM-Borg] MPI started", flush=True)
 
-    if slug is None:
-        slug = formulation_name
-
     n_vars = get_n_vars(formulation_name)
     n_objs = get_n_objs()
 
-    print(f"[MM-Borg] Pre-MPI setup: slug={slug}, formulation={formulation_name}, "
-          f"{n_vars} vars, {n_objs} objs, {n_islands} islands, "
-          f"{max_evaluations} NFE/island", flush=True)
-
-    if max_evaluations is None:
-        max_evaluations = BORG_SETTINGS["max_evaluations"]
-    if runtime_frequency is None:
-        runtime_frequency = BORG_SETTINGS["runtime_frequency"]
+    print(f"[MM-Borg] Pre-MPI setup: scenario={scenario}, slug={slug}, "
+          f"formulation={formulation_name}, {n_vars} vars, {n_objs} objs, "
+          f"{n_islands} islands, {max_evaluations} NFE/island", flush=True)
 
     # --- Objective function (passNFE branch passes NFE as second arg) ---
     # Uses make_objective_function() for "ffmp" / "ffmp_N" formulations.
@@ -124,12 +149,9 @@ def run_mmborg(
         seed=seed,
     )
 
-    # --- Output paths ---
-    opt_dir = OUTPUTS_DIR / "optimization" / slug
-    runtime_dir = opt_dir / "runtime"
-    sets_dir = opt_dir / "sets"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    sets_dir.mkdir(parents=True, exist_ok=True)
+    # --- Output paths: outputs/{scenario}/{slug}/{runtime,sets}/ ---
+    runtime_dir = run_output_dir(scenario, slug, "runtime")
+    sets_dir = run_output_dir(scenario, slug, "sets")
 
     # %d is replaced by island index by MM Borg
     runtime_path = str(
