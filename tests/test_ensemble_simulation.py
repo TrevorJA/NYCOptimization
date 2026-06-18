@@ -227,6 +227,100 @@ def test_evaluate_raises_when_ensemble_objset_missing(monkeypatch, wcu5_spec):
 
 
 # ---------------------------------------------------------------------------
+# Shared memory-batched realization path (run_simulation_ensemble_batched)
+# ---------------------------------------------------------------------------
+
+def test_batched_orders_and_chunks(monkeypatch, wcu5_spec):
+    """The shared batched loop preserves realization order and chunks by size."""
+    seen = []
+
+    def fake_inmem(cfg, spec):
+        seen.append(tuple(spec.realization_indices))
+        return [{"i": i} for i in spec.realization_indices]
+
+    monkeypatch.setattr(sim, "run_simulation_ensemble_inmemory", fake_inmem)
+
+    idx = list(wcu5_spec.realization_indices)  # n=5 -> [0,1,2,3,4]
+    out = sim.run_simulation_ensemble_batched(
+        nyc_config=object(), ensemble_spec=wcu5_spec, batch_size=2,
+        per_realization_fn=lambda d: d["i"],
+    )
+    assert out == idx
+    # batch_size=2 over 5 realizations -> chunks of 2,2,1 in realization order
+    assert seen == [tuple(idx[0:2]), tuple(idx[2:4]), tuple(idx[4:5])]
+    # Distinct __b{offset} cache keys per chunk (no model-dict reuse).
+    # (offsets 0, 2, 4 -> three distinct presets; order already asserted above.)
+
+
+def test_batched_skips_failed_batch(monkeypatch, wcu5_spec):
+    """skip_failed_batches fills failed_value for a batch whose sim raises."""
+    calls = {"n": 0}
+
+    def fake_inmem(cfg, spec):
+        calls["n"] += 1
+        if calls["n"] == 2:          # second chunk (idx[2:4]) blows up
+            raise RuntimeError("boom batch")
+        return [{"i": i} for i in spec.realization_indices]
+
+    monkeypatch.setattr(sim, "run_simulation_ensemble_inmemory", fake_inmem)
+    idx = list(wcu5_spec.realization_indices)
+
+    out = sim.run_simulation_ensemble_batched(
+        nyc_config=object(), ensemble_spec=wcu5_spec, batch_size=2,
+        per_realization_fn=lambda d: d["i"],
+        skip_failed_batches=True, failed_value=-1,
+    )
+    assert out == [idx[0], idx[1], -1, -1, idx[4]]
+
+    # Default (skip_failed_batches=False) propagates the exception.
+    calls["n"] = 0
+    with pytest.raises(RuntimeError, match="boom batch"):
+        sim.run_simulation_ensemble_batched(
+            nyc_config=object(), ensemble_spec=wcu5_spec, batch_size=2,
+            per_realization_fn=lambda d: d["i"],
+        )
+
+
+def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
+    """Batched evaluate() must give identical objectives to the legacy path."""
+    from src.objectives import ObjectiveSet
+    from src.objectives_ensemble import EnsembleObjective, SatisficingAgg
+
+    class FakeBase:
+        name = "fake"
+
+        def compute(self, data):
+            return data["v"]
+
+    eo = EnsembleObjective(
+        base=FakeBase(), aggregator=SatisficingAgg(threshold=2.5, kind="ge"),
+        name="fake__sat", epsilon=0.02,
+    )
+    objset = ObjectiveSet([eo])
+
+    # Per-realization base value v = realization index -> [0,1,2,3,4].
+    monkeypatch.setattr(
+        sim, "run_simulation_ensemble_inmemory",
+        lambda cfg, spec: [{"v": float(i)} for i in spec.realization_indices],
+    )
+    monkeypatch.setattr(
+        sim, "dvs_to_config", lambda dv, formulation_name="ffmp": object(),
+    )
+
+    legacy = sim.evaluate(
+        np.zeros(1), objective_set=objset, ensemble_spec=wcu5_spec,
+        realization_batch=0,
+    )
+    batched = sim.evaluate(
+        np.zeros(1), objective_set=objset, ensemble_spec=wcu5_spec,
+        realization_batch=2,
+    )
+    assert legacy == batched
+    # ge 2.5 over [0,1,2,3,4] satisfied by {3,4} -> 2/5 = 0.4, negated for Borg.
+    assert batched == pytest.approx([-0.4])
+
+
+# ---------------------------------------------------------------------------
 # Slow integration tests — these actually build and run pywrdrb
 # ---------------------------------------------------------------------------
 

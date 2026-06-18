@@ -12,9 +12,9 @@
 #   sbatch slurm/supplemental/ensemble_objective_sensitivity_prep.sh
 #
 #SBATCH --job-name=ens_prep
-#SBATCH --nodes=1
-#SBATCH --ntasks=16
-#SBATCH --time=01:00:00
+#SBATCH --nodes=5
+#SBATCH --ntasks=200
+#SBATCH --time=03:00:00
 #SBATCH --output=logs/ensemble_prep_%j.out
 #SBATCH --error=logs/ensemble_prep_%j.err
 

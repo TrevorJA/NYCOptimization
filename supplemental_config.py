@@ -79,7 +79,7 @@ def _apply_env(*, salinity: str, temperature: str,
 #: prove the code path and output structure. Set SMOKE=False for the HPC
 #: campaign — that single edit restores the full sample count and the full
 #: historical simulation period.
-SMOKE: bool = True
+SMOKE: bool = False
 
 
 def configure_historic_env() -> None:
@@ -186,7 +186,7 @@ def figure_path(name: str, ext: str) -> Path:
 #: ENS_SMOKE=True is a tiny laptop dry-run: N=5 x 20-yr ensemble, 3 DVs. The
 #: full-scale HPC numbers (below, in the False branch) are ready to run
 #: unchanged — flip this one flag.
-ENS_SMOKE: bool = True
+ENS_SMOKE: bool = False
 
 
 def configure_ensemble_env() -> None:
@@ -227,7 +227,7 @@ ENS_SEED: int = 42
 #: Formulation whose DV bounds define the sampling space.
 ENS_FORMULATION: str = "ffmp"
 #: Number of random DV vectors (FFMP baseline added as an extra row, id -1).
-ENS_N_DV: int = 3 if ENS_SMOKE else 200
+ENS_N_DV: int = 3 if ENS_SMOKE else 199
 #: Realizations evaluated per simulation batch, to bound peak memory. Only the
 #: scalar per-realization metrics are retained; each batch's timeseries are
 #: freed before the next. <= ENS_N_REALIZATIONS.

@@ -18,9 +18,9 @@
 #   sbatch slurm/supplemental/objective_sensitivity.sh
 #
 #SBATCH --job-name=obj_sens
-#SBATCH --nodes=1
-#SBATCH --ntasks=11
-#SBATCH --time=00:30:00
+#SBATCH --nodes=4
+#SBATCH --ntasks=160
+#SBATCH --time=01:00:00
 #SBATCH --output=logs/objective_sensitivity_%j.out
 #SBATCH --error=logs/objective_sensitivity_%j.err
 
@@ -30,8 +30,7 @@ cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 mkdir -p logs
 
 source /etc/profile.d/lmod.sh 2>/dev/null || true
-module load python/3.11.5 || true
-source venv/bin/activate
+module load python/3.11.5 && source venv/bin/activate
 
 # Thread pinning so each rank's BLAS doesn't oversubscribe the node.
 export OMP_NUM_THREADS=1
