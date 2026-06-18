@@ -111,6 +111,21 @@ class EnsembleObjective:
         raw = self.compute(data_per_real)
         return -raw if self.direction == "maximize" else raw
 
+    def compute_for_borg_from_values(self, base_values) -> float:
+        """Borg-format objective from precomputed per-realization base metrics.
+
+        Equivalent to :meth:`compute_for_borg` but consumes the base objective's
+        per-realization values directly (``[self.base.compute(d) for d in
+        data_per_real]``) instead of the data dicts. This lets the caller
+        simulate the ensemble in memory-bounded batches — reducing each
+        realization to its base metric and freeing the timeseries — then
+        aggregate here, without ever holding all N data dicts at once. Used by
+        the memory-batched ensemble path in ``src.simulation`` so search and the
+        objective-sensitivity diagnostic share one realization-handling path.
+        """
+        raw = self.aggregator(base_values)
+        return -raw if self.direction == "maximize" else raw
+
 
 ###############################################################################
 # Threshold defaults & env override

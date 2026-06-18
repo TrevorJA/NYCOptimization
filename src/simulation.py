@@ -28,8 +28,9 @@ import time
 import tempfile
 import numpy as np
 import pandas as pd
+from dataclasses import replace
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -1153,6 +1154,84 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
     return data_per_real
 
 
+def run_simulation_ensemble_batched(
+    nyc_config,
+    ensemble_spec,
+    batch_size: int,
+    per_realization_fn: Callable,
+    *,
+    skip_failed_batches: bool = False,
+    failed_value=None,
+) -> list:
+    """Simulate an inflow ensemble in sequential realization batches.
+
+    The shared realization-handling path for both Borg's ``evaluate()`` ensemble
+    branch and the ensemble objective-sensitivity diagnostic, so the two compute
+    identical per-realization results. The ensemble is split into contiguous
+    chunks of ``batch_size`` realizations; each chunk is simulated with one
+    :func:`run_simulation_ensemble_inmemory` call (one Pywr model, ``batch_size``
+    scenarios), each realization is reduced to a scalar/array via
+    ``per_realization_fn``, and the chunk's timeseries are freed before the next
+    chunk. Only the reduced per-realization values are retained, so peak memory
+    is bounded by ``batch_size`` rather than the full ensemble.
+
+    Realizations are independent (no cross-scenario coupling in Pywr), so a
+    realization's reduced value is identical regardless of which batch it lands
+    in; only peak memory changes with ``batch_size``. Each batch gets a distinct
+    ``preset_name`` (``__b{offset}``) so the model-dict cache does not reuse a
+    different batch's model.
+
+    Args:
+        nyc_config: NYCOperationsConfig (DV-applied).
+        ensemble_spec: ``EnsembleSpec`` with ``is_ensemble=True``.
+        batch_size: Realizations per simulation batch. ``<= 0`` (or ``None``)
+            collapses to one batch of all realizations (legacy single-model
+            behavior, just with a ``__b0`` cache key).
+        per_realization_fn: Callable ``data_dict -> value`` applied to each
+            realization's result dict. Exceptions raised inside it are NOT
+            caught here; the caller decides per-realization error tolerance.
+        skip_failed_batches: If True, a batch whose *simulation* raises leaves
+            its realizations set to ``failed_value`` and the sweep continues;
+            if False (default) the exception propagates.
+        failed_value: Value stored for each realization of a skipped batch.
+
+    Returns:
+        list of length ``ensemble_spec.n_realizations`` in realization order,
+        holding ``per_realization_fn`` outputs (or ``failed_value``).
+    """
+    if not ensemble_spec.is_ensemble:
+        raise ValueError(
+            "run_simulation_ensemble_batched requires is_ensemble=True "
+            f"(preset '{ensemble_spec.preset_name}'). Use run_simulation_inmemory "
+            "for the single-trace path."
+        )
+
+    indices = list(ensemble_spec.realization_indices)
+    n_real = len(indices)
+    bs = batch_size if (batch_size and batch_size > 0) else n_real
+    results: list = [failed_value] * n_real
+
+    for b0 in range(0, n_real, bs):
+        batch = indices[b0:b0 + bs]
+        batch_spec = replace(
+            ensemble_spec,
+            preset_name=f"{ensemble_spec.preset_name}__b{b0}",
+            realization_indices=tuple(batch),
+        )
+        try:
+            data_per_real = run_simulation_ensemble_inmemory(nyc_config, batch_spec)
+        except Exception:
+            if not skip_failed_batches:
+                raise
+            # Leave this batch's rows as failed_value; other batches proceed.
+            continue
+        for j, data in enumerate(data_per_real):
+            results[b0 + j] = per_realization_fn(data)
+        del data_per_real
+
+    return results
+
+
 ###############################################################################
 # Disk-Based Simulation (for baseline runs and re-evaluation)
 ###############################################################################
@@ -1242,8 +1321,48 @@ def _load_results_from_hdf5(output_file: Path) -> dict:
 # Borg Evaluation Function
 ###############################################################################
 
+def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
+                               batch_size: int) -> list:
+    """Borg-format ensemble objectives via the memory-batched simulation path.
+
+    Builds the per-realization base-metric matrix ``(n_real, n_obj)`` by
+    simulating the ensemble in sequential batches (freeing each batch's
+    timeseries), then collapses each objective's column with its satisficing
+    aggregator. Identical result to the legacy
+    ``ObjectiveSet.compute_for_borg_ensemble`` (same per-realization base
+    metrics, same aggregation), but never holds all N data dicts at once.
+
+    Requires an ObjectiveSet of ``EnsembleObjective`` instances (exposing
+    ``.base`` and ``.compute_for_borg_from_values``), as returned by
+    ``formulations.get_objective_set()`` when the search ensemble is active.
+    """
+    ens_objs = list(objective_set)
+    if not ens_objs or not all(
+        hasattr(o, "base") and hasattr(o, "compute_for_borg_from_values")
+        for o in ens_objs
+    ):
+        raise NotImplementedError(
+            "batched ensemble evaluation requires EnsembleObjective instances "
+            "(with .base and .compute_for_borg_from_values). Build the set via "
+            "src.objectives_ensemble.build_ensemble_objective_set or pass the "
+            "active set returned by formulations.get_objective_set()."
+        )
+
+    def per_real(data):
+        # Per-realization base-metric vector (one column per objective). Strict
+        # (no per-metric try/except) so behavior matches the legacy path.
+        return [o.base.compute(data) for o in ens_objs]
+
+    base_rows = run_simulation_ensemble_batched(
+        nyc_config, ensemble_spec, batch_size, per_real,
+    )
+    base_matrix = np.asarray(base_rows, dtype=float)  # (n_real, n_obj)
+    return [o.compute_for_borg_from_values(base_matrix[:, k])
+            for k, o in enumerate(ens_objs)]
+
+
 def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
-             ensemble_spec=None):
+             ensemble_spec=None, realization_batch=None):
     """Full evaluation pipeline: DVs -> simulation -> objectives.
 
     Called by Borg MOEA for each candidate solution. Uses in-memory
@@ -1261,6 +1380,13 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
         ensemble_spec: Optional EnsembleSpec override. If None, uses
             ``config.SEARCH_ENSEMBLE_SPEC``. The default ``historic_single``
             preset routes through the legacy single-trace path.
+        realization_batch: Realizations per simulation batch for the ensemble
+            path. If None, uses ``config.SEARCH_REALIZATION_BATCH``. ``<= 0``
+            keeps the legacy single-model behavior (all realizations as one
+            scenario block); a positive value bounds peak memory by simulating
+            the ensemble in sequential batches via
+            :func:`run_simulation_ensemble_batched` — the same shared path the
+            objective-sensitivity diagnostic uses.
 
     Returns:
         List of objective values (Borg-compatible, all minimized).
@@ -1281,11 +1407,26 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
         from config import SEARCH_ENSEMBLE_SPEC
         ensemble_spec = SEARCH_ENSEMBLE_SPEC
 
+    if realization_batch is None:
+        from config import SEARCH_REALIZATION_BATCH
+        realization_batch = SEARCH_REALIZATION_BATCH
+
     nyc_config = dvs_to_config(dv_vector, formulation_name)
     if not ensemble_spec.is_ensemble:
         data = run_simulation_inmemory(nyc_config)
         objs = objective_set.compute_for_borg(data)
+    elif realization_batch and realization_batch > 0:
+        # Memory-batched ensemble path: simulate in sequential batches and
+        # collapse the per-realization base-metric matrix to satisficing
+        # objectives, never holding all N data dicts at once. Shares
+        # run_simulation_ensemble_batched with the objective-sensitivity
+        # diagnostic, so search and diagnostic handle realizations identically.
+        objs = _evaluate_ensemble_batched(
+            nyc_config, ensemble_spec, objective_set, realization_batch,
+        )
     else:
+        # Legacy single-model ensemble path (byte-identical to prior behavior):
+        # one Pywr model with all realizations as scenarios, then aggregate.
         data_per_real = run_simulation_ensemble_inmemory(
             nyc_config, ensemble_spec,
         )

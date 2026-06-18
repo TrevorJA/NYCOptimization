@@ -36,7 +36,6 @@ from __future__ import annotations
 import sys
 import time
 import traceback
-from dataclasses import replace
 from pathlib import Path
 
 import h5py
@@ -64,16 +63,19 @@ from src.sensitivity_common import (  # noqa: E402
     resolve_objective_names,
     sample_lhs_dvs,
 )
-from src.simulation import dvs_to_config, run_simulation_ensemble_inmemory  # noqa: E402
+from src.simulation import dvs_to_config, run_simulation_ensemble_batched  # noqa: E402
 
 
 def _eval_dv(dv: np.ndarray, formulation: str, spec, base_objs: list,
              batch_size: int) -> np.ndarray:
     """Per-realization base-metric matrix for one DV over the full ensemble.
 
-    The ensemble is simulated in realization batches; each batch gets a distinct
-    ``preset_name`` so the simulation layer's model-dict cache (keyed by preset
-    name, not realization indices) does not reuse a different batch's model.
+    Delegates the realization-batching loop to the shared
+    :func:`src.simulation.run_simulation_ensemble_batched` — the same path
+    Borg's ``evaluate()`` uses when ``SEARCH_REALIZATION_BATCH`` is set — so the
+    diagnostic and the MOEA search handle realizations identically. Each batch
+    gets a distinct ``preset_name`` (handled inside the shared function) so the
+    simulation layer's model-dict cache does not reuse a different batch's model.
 
     Args:
         dv: Decision-variable vector.
@@ -86,32 +88,25 @@ def _eval_dv(dv: np.ndarray, formulation: str, spec, base_objs: list,
         Array of shape ``(n_realizations, n_objectives)``; failed realizations or
         objectives are ``nan``.
     """
-    indices = list(spec.realization_indices)
-    n_real = len(indices)
     n_obj = len(base_objs)
-    out = np.full((n_real, n_obj), np.nan, dtype=float)
-
     cfg = dvs_to_config(dv, formulation)
-    for b0 in range(0, n_real, batch_size):
-        batch = indices[b0:b0 + batch_size]
-        batch_spec = replace(
-            spec,
-            preset_name=f"{spec.preset_name}__b{b0}",
-            realization_indices=tuple(batch),
-        )
-        try:
-            data_per_real = run_simulation_ensemble_inmemory(cfg, batch_spec)
-        except Exception:
-            # Leave this batch's rows as NaN; other batches still proceed.
-            continue
-        for j, data in enumerate(data_per_real):
-            for k, (_, obj) in enumerate(base_objs):
-                try:
-                    out[b0 + j, k] = float(obj.compute(data))
-                except Exception:
-                    out[b0 + j, k] = np.nan
-        del data_per_real
-    return out
+
+    def per_real(data) -> np.ndarray:
+        # Per-realization base-metric vector; a failed metric -> NaN cell.
+        row = np.full(n_obj, np.nan, dtype=float)
+        for k, (_, obj) in enumerate(base_objs):
+            try:
+                row[k] = float(obj.compute(data))
+            except Exception:
+                row[k] = np.nan
+        return row
+
+    rows = run_simulation_ensemble_batched(
+        cfg, spec, batch_size, per_real,
+        skip_failed_batches=True,                       # failed batch -> NaN rows
+        failed_value=np.full(n_obj, np.nan, dtype=float),
+    )
+    return np.asarray(rows, dtype=float)  # (n_real, n_obj)
 
 
 def _combine_and_write(partial_dir: Path, out_path: Path, *, obj_names: list,

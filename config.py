@@ -673,6 +673,17 @@ except NotImplementedError as _e:
     )
 REEVAL_ENSEMBLE_SPEC = get_ensemble_spec(NYCOPT_REEVAL_ENSEMBLE_PRESET)
 
+# Realizations simulated per Pywr model build inside Borg's evaluate() ensemble
+# path (src/simulation.py::run_simulation_ensemble_batched). 0 (default) keeps
+# the legacy single-model behavior — all N realizations as one scenario block,
+# byte-identical to prior runs. A positive value bounds peak memory per
+# evaluation by simulating the ensemble in sequential batches of this size and
+# reducing each realization to its per-objective base metric before the next
+# batch (the same memory-batching the ensemble objective-sensitivity diagnostic
+# uses, so search and diagnostic handle realizations identically). Recommended
+# for large search ensembles (e.g. N>=128) to avoid OOM on a Borg worker.
+SEARCH_REALIZATION_BATCH = _parse_int_env("NYCOPT_SEARCH_REALIZATION_BATCH", 0)
+
 # Optional realization-index override on the search ensemble. Useful for smoke
 # testing a subset of a large ensemble without authoring a new preset.
 _ensemble_indices_override = _parse_int_list_env("NYCOPT_ENSEMBLE_INDICES", [])
