@@ -15,7 +15,7 @@ through the original ``run_simulation_inmemory`` path.
 
 v1 ships:
     - ``historic_single``       — single-trace passthrough (default, legacy)
-    - ``wcu_kirsch_n5``         — N=5 Kirsch–Nowak smoke ensemble (M2 stages)
+    - ``wcu_kirsch_n5``         — N=5 Kirsch–Nowak ensemble test fixture (M2 stages)
     - ``reeval_wcu_kirsch_n300``— independent N=300 re-eval ensemble (M2 stages)
 
 DU factors are intentionally absent from v1 presets — see
@@ -83,6 +83,15 @@ class EnsembleSpec:
     source_kind: str = "synhydro_kn"
     slug_fragment: str = ""
     realization_years: int | None = None
+    resample_per_eval: bool = False
+    # When True, this spec describes a *master pool*: ``realization_indices`` is
+    # the full pool, and the simulation layer redraws ``resample_size`` indices
+    # from it at every function evaluation (the resampled-probabilistic design,
+    # Trindade et al. 2017). False for all fixed designs (the default), so every
+    # existing preset is unchanged.
+    resample_size: int | None = None
+    # Number of realizations to draw per evaluation when ``resample_per_eval``;
+    # ``None`` for fixed designs.
     # Length (in years) of each generated synthetic realization. ``None`` means
     # span the full training window (currently 1945-10-01 → 2022-09-30 ≈ 78
     # years). Smaller values produce shorter realizations, which is faster to
@@ -129,6 +138,9 @@ PRESETS: dict[str, EnsembleSpec] = {
         source_kind="historic",
         slug_fragment="",  # legacy slug-preserving
     ),
+    # Small N=5 ensemble used only as a fixture by tests/test_ensemble_simulation.py
+    # to exercise the ensemble-aware simulation machinery (cache keys, batching,
+    # end-to-end). Not referenced by any scenario design.
     "wcu_kirsch_n5": EnsembleSpec(
         preset_name="wcu_kirsch_n5",
         # M2 KirschNowakGenerator stages this directory:
@@ -219,9 +231,67 @@ def with_indices_override(spec: EnsembleSpec, indices: list[int]) -> EnsembleSpe
     """Return a copy of ``spec`` with ``realization_indices`` replaced.
 
     Used by the ``NYCOPT_ENSEMBLE_INDICES`` env hook to subset an ensemble
-    for smoke testing without authoring a separate preset.
+    for smoke testing without authoring a separate preset, and by the
+    resampled-probabilistic per-evaluation draw to install the freshly drawn
+    subset of master-pool indices.
     """
     return replace(spec, realization_indices=tuple(indices))
+
+
+def as_resampling_pool(spec: EnsembleSpec, resample_size: int) -> EnsembleSpec:
+    """Mark ``spec`` as a resample-per-eval master pool.
+
+    The returned spec keeps ``realization_indices`` as the full master pool and
+    sets ``resample_per_eval=True`` with ``resample_size`` realizations drawn
+    per evaluation (see ``src/simulation.py::evaluate``). Used by the
+    resampled-probabilistic scenario design.
+    """
+    if resample_size > spec.n_realizations:
+        raise ValueError(
+            f"resample_size ({resample_size}) cannot exceed the master pool size "
+            f"({spec.n_realizations}) of preset '{spec.preset_name}'."
+        )
+    return replace(spec, resample_per_eval=True, resample_size=resample_size)
+
+
+def hazard_filling_subset_filename(n: int, seed: int) -> str:
+    """Canonical filename of a hazard-filling subset manifest (shared with scengen)."""
+    return f"hazard_filling_n{n}_seed{seed}.json"
+
+
+def load_hazard_filling_spec(
+    master_slug: str, n: int, seed: int
+) -> "EnsembleSpec | None":
+    """Resolve a hazard-filling search ensemble from its staged subset manifest.
+
+    Reads the subset manifest written by the scengen hazard-filling subsample
+    step (``hazard_filling_n{n}_seed{seed}.json`` under the staged master-pool
+    directory) and returns the master-pool spec with ``realization_indices``
+    overridden to the selected (space-filling) realizations.
+
+    Args:
+        master_slug: The ``kn_{Y}yr_n{N}`` slug of the staged master pool.
+        n: Subsample size (selects the manifest filename).
+        seed: Selector seed (selects the manifest filename).
+
+    Returns:
+        The hazard-filling ``EnsembleSpec``, or ``None`` if the manifest has not
+        been computed/staged yet.
+    """
+    import json
+
+    path = staged_ensemble_dir(master_slug) / hazard_filling_subset_filename(n, seed)
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text())
+    indices = tuple(int(i) for i in data["realization_global_indices"])
+    pool = get_ensemble_spec(master_slug)
+    return replace(
+        pool,
+        preset_name=f"{master_slug}_hazfill_n{n}_seed{seed}",
+        realization_indices=indices,
+        slug_fragment=f"hazfill{n}",
+    )
 
 
 ###############################################################################
