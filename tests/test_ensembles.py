@@ -196,9 +196,10 @@ def test_derive_slug_moea_config_suffix():
 @pytest.mark.slow
 def test_ensemble_not_in_slug_is_scenario_dir():
     """The search ensemble is the parent {scenario} dir, NOT part of the slug."""
-    env = {"NYCOPT_SCENARIO_DESIGN": "smoke_ensemble", "NYCOPT_MOEA_CONFIG": "production"}
+    env = {"NYCOPT_SCENARIO_DESIGN": "fixed_probabilistic_short",
+           "NYCOPT_MOEA_CONFIG": "production"}
     slug = _slug_with_env(env)
-    assert "wcu" not in slug and "smoke_ensemble" not in slug
+    assert "kn_" not in slug and "fixed_probabilistic_short" not in slug
     # The scenario name is the partition instead.
     code = (
         "import sys; sys.path.insert(0, '.'); "
@@ -215,14 +216,14 @@ def test_ensemble_not_in_slug_is_scenario_dir():
         capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stderr
-    assert [ln for ln in result.stdout.splitlines() if ln.strip()][-1] == "smoke_ensemble"
+    assert [ln for ln in result.stdout.splitlines() if ln.strip()][-1] == "fixed_probabilistic_short"
 
 
 @pytest.mark.slow
 def test_derive_slug_indices_override():
     """NYCOPT_ENSEMBLE_INDICES subsets the active scenario design's ensemble."""
     env = {
-        "NYCOPT_SCENARIO_DESIGN": "smoke_ensemble",
+        "NYCOPT_SCENARIO_DESIGN": "fixed_probabilistic_short",
         "NYCOPT_ENSEMBLE_INDICES": "0,2",
     }
     code = (
