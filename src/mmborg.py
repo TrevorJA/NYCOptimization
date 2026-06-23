@@ -89,8 +89,9 @@ def run_mmborg(
     if SEARCH_ENSEMBLE_SPEC is None:
         raise ValueError(
             f"Scenario design '{scenario}' has no search ensemble wired yet, so "
-            f"optimization cannot run under it. Use 'historic' (or the dev "
-            f"'smoke_ensemble' design), or wire its construction in "
+            f"optimization cannot run under it. Use a wired design ('historic', "
+            f"'fixed_probabilistic_short', 'fixed_probabilistic_long', "
+            f"'resampled_probabilistic'), or wire its construction in "
             f"src/scenario_designs.py."
         )
 

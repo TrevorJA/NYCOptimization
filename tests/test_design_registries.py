@@ -33,10 +33,24 @@ from src.moea_config import (
 # ---------------------------------------------------------------------------
 
 EXPECTED_DESIGNS = {
-    "historic", "fixed_probabilistic", "fixed_probabilistic_long",
+    "historic", "fixed_probabilistic_short", "fixed_probabilistic_long",
     "resampled_probabilistic", "input_stratified", "hazard_filling",
-    "smoke_ensemble",
+    "hazard_filling_absolute",
 }
+
+# Designs whose search ensemble is wired and resolves to an EnsembleSpec
+# directly (no offline staging step needed to resolve — the kn slug parses
+# from its name, or it is a static preset).
+WIRED_DESIGNS = {
+    "historic",
+    "fixed_probabilistic_short", "fixed_probabilistic_long",
+    "resampled_probabilistic",
+}
+
+# Wired, but resolution requires the scengen subsample step to have staged the
+# final reduced ensemble first (it reads the staged _meta.json). Raises a clear
+# NotImplementedError until then.
+STAGING_REQUIRED_DESIGNS = {"hazard_filling", "hazard_filling_absolute"}
 
 
 def test_all_designs_present_and_resolvable():
@@ -62,17 +76,123 @@ def test_historic_resolves_to_single_trace():
     assert spec.is_ensemble is False
 
 
-def test_smoke_ensemble_resolves_to_ensemble():
-    spec = get_scenario_design("smoke_ensemble").resolve_search_spec()
+@pytest.mark.parametrize(
+    "name,n_real,n_years",
+    [("fixed_probabilistic_short", 10, 5), ("fixed_probabilistic_long", 2, 25)],
+)
+def test_fixed_probabilistic_designs_resolve_to_kn_ensemble(name, n_real, n_years):
+    """The fixed probabilistic designs resolve to a directly generated KN ensemble."""
+    d = get_scenario_design(name)
+    spec = d.resolve_search_spec()
     assert spec.is_ensemble is True
-    assert spec.n_realizations == 5
+    assert spec.n_realizations == n_real
+    assert spec.realization_years == n_years
+    assert spec.inflow_type == f"kn_{n_years}yr_n{n_real}"
+    # Generation and resolution name the same staged slug.
+    assert d.kn_ensemble_slug() == spec.inflow_type
 
 
-@pytest.mark.parametrize("name", sorted(EXPECTED_DESIGNS - {"historic", "smoke_ensemble"}))
-def test_method_designs_not_wired_yet(name):
-    """The five manuscript designs raise until their construction is decided."""
+def test_fixed_probabilistic_short_and_long_equal_scenario_years():
+    short = get_scenario_design("fixed_probabilistic_short")
+    long = get_scenario_design("fixed_probabilistic_long")
+    assert short.n_realizations * short.realization_years == \
+        long.n_realizations * long.realization_years
+
+
+def test_fixed_probabilistic_multidraw_not_wired():
+    with pytest.raises(NotImplementedError):
+        get_scenario_design("fixed_probabilistic_short").resolve_search_spec(draw=1)
+
+
+def test_resampled_probabilistic_resolves_to_master_pool():
+    """Resampled design resolves to the master-pool spec marked for per-eval resampling."""
+    d = get_scenario_design("resampled_probabilistic")
+    spec = d.resolve_search_spec()
+    # Staged ensemble is the master POOL (master_pool_size), not the draw size.
+    assert d.kn_ensemble_slug() == "kn_5yr_n50"
+    assert spec.inflow_type == "kn_5yr_n50"
+    assert spec.n_realizations == 50            # full pool
+    assert spec.resample_per_eval is True
+    assert spec.resample_size == 10             # drawn per evaluation
+
+
+def test_resampled_per_eval_draw_is_a_distinct_subset():
+    """The per-eval hook draws resample_size indices from the pool, varying per eval."""
+    from src.simulation import _resampled_eval_spec
+    pool_spec = get_scenario_design("resampled_probabilistic").resolve_search_spec()
+    s1 = _resampled_eval_spec(pool_spec, eval_count=1)
+    s2 = _resampled_eval_spec(pool_spec, eval_count=2)
+    # Correct size, valid subset of the pool, no resampling flag carried into use.
+    assert s1.n_realizations == 10
+    assert set(s1.realization_indices) <= set(pool_spec.realization_indices)
+    assert len(set(s1.realization_indices)) == 10  # without replacement
+    # Different evaluations draw different subsets; same eval is reproducible.
+    assert s1.realization_indices != s2.realization_indices
+    s1_again = _resampled_eval_spec(pool_spec, eval_count=1)
+    assert s1.realization_indices == s1_again.realization_indices
+
+
+@pytest.mark.parametrize(
+    "name", sorted(EXPECTED_DESIGNS - WIRED_DESIGNS - STAGING_REQUIRED_DESIGNS)
+)
+def test_unwired_designs_raise(name):
+    """Designs with no construction machinery raise (e.g. input_stratified)."""
     with pytest.raises(NotImplementedError):
         get_scenario_design(name).resolve_search_spec()
+
+
+def test_hazard_filling_raises_when_not_staged(tmp_path, monkeypatch):
+    """hazard_filling raises a clear error until the final ensemble is staged."""
+    import config
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)  # empty staging
+    with pytest.raises(NotImplementedError):
+        get_scenario_design("hazard_filling").resolve_search_spec()
+
+
+@pytest.mark.parametrize(
+    "name,dims",
+    [
+        ("fixed_probabilistic_short", (5, 10)),    # stages the search ensemble
+        ("fixed_probabilistic_long", (25, 2)),
+        ("resampled_probabilistic", (5, 50)),      # stages the master pool
+        ("hazard_filling", (5, 1000)),             # stages the master pool
+        ("hazard_filling_absolute", (5, 1000)),    # same pool as hazard_filling
+    ],
+)
+def test_kn_staged_dims(name, dims):
+    assert get_scenario_design(name).kn_staged_dims() == dims
+
+
+def test_hazard_filling_resolves_from_staged_ensemble(tmp_path, monkeypatch):
+    """When the final reduced ensemble is staged, hazard_filling resolves to it by slug.
+
+    The scengen subsample step stages a standalone ensemble (HDF5s + _meta.json)
+    under ``hazfill_{L}yr_n{N}_s{seed}``; resolution reads only the _meta.json,
+    with no manifest and no realization-index override.
+    """
+    import json
+    import config
+    from src import ensembles
+
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    d = get_scenario_design("hazard_filling")
+    final_slug = d.hazard_filling_slug()
+    out_dir = ensembles.staged_ensemble_dir(final_slug)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "_meta.json").write_text(
+        json.dumps({
+            "slug": final_slug,
+            "n_realizations": d.n_realizations,
+            "realization_years": d.realization_years,
+        })
+    )
+
+    spec = d.resolve_search_spec()
+    assert spec.is_ensemble is True
+    assert spec.inflow_type == final_slug            # loads the staged reduced HDF5
+    assert spec.realization_indices == tuple(range(d.n_realizations))
+    assert spec.n_realizations == d.n_realizations
+    assert spec.realization_years == d.realization_years
 
 
 def test_resample_flag_only_on_resampled():

@@ -21,6 +21,7 @@ from __future__ import annotations
 import sys
 
 from config import (
+    ACTIVE_SCENARIO_DESIGN,
     STAGED_ENSEMBLE_DIR,
     ENSEMBLE_KN_YEARS,
     ENSEMBLE_KN_REALIZATIONS,
@@ -32,7 +33,30 @@ from src.ensemble_generation import generate_kirsch_nowak_ensemble
 
 
 def main() -> None:
-    slug = kirsch_nowak_slug(ENSEMBLE_KN_YEARS, ENSEMBLE_KN_REALIZATIONS)
+    # Prefer the active scenario design's (length, size) when it resolves to a
+    # directly generated Kirsch-Nowak ensemble (the fixed probabilistic designs),
+    # so `NYCOPT_SCENARIO_DESIGN=fixed_probabilistic_short` + this script stage
+    # exactly the slug the design's search spec resolves to. Otherwise fall back
+    # to the NYCOPT_ENSEMBLE_KN_* env vars (e.g. for a large standalone master).
+    _staged_dims = ACTIVE_SCENARIO_DESIGN.kn_staged_dims()
+    if _staged_dims is not None:
+        # (n_years, n_reals) of the ensemble this design needs staged. For the
+        # resampled design this is the master POOL (n_reals = master_pool_size),
+        # not the per-evaluation draw size.
+        n_years, n_reals = _staged_dims
+        print(
+            f"[gen] Sizing from scenario design "
+            f"'{ACTIVE_SCENARIO_DESIGN.name}' (years={n_years}, reals={n_reals})."
+        )
+    else:
+        n_years = ENSEMBLE_KN_YEARS
+        n_reals = ENSEMBLE_KN_REALIZATIONS
+        print(
+            f"[gen] Sizing from NYCOPT_ENSEMBLE_KN_* env "
+            f"(years={n_years}, reals={n_reals})."
+        )
+
+    slug = kirsch_nowak_slug(n_years, n_reals)
     out = STAGED_ENSEMBLE_DIR / slug
     if out.exists() and any(out.iterdir()) and not ENSEMBLE_KN_FORCE:
         print(
@@ -43,12 +67,11 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     print(
         f"[gen] Building {slug} "
-        f"(years={ENSEMBLE_KN_YEARS}, reals={ENSEMBLE_KN_REALIZATIONS}, "
-        f"seed={ENSEMBLE_KN_SEED})"
+        f"(years={n_years}, reals={n_reals}, seed={ENSEMBLE_KN_SEED})"
     )
     generate_kirsch_nowak_ensemble(
-        n_years=ENSEMBLE_KN_YEARS,
-        n_realizations=ENSEMBLE_KN_REALIZATIONS,
+        n_years=n_years,
+        n_realizations=n_reals,
         seed=ENSEMBLE_KN_SEED,
         output_dir=out,
     )

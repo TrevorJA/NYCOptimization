@@ -7,7 +7,7 @@
 #
 # The active search ensemble comes from the scenario design
 # (NYCOPT_SCENARIO_DESIGN), sourced from an env file under slurm/envs/. Use an
-# ensemble-based design (e.g. smoke_ensemble) — historic is single-trace.
+# ensemble-based design (e.g. fixed_probabilistic_short) — historic is single-trace.
 #
 # Usage:
 #   sbatch slurm/supplemental/bench_ensemble.sh

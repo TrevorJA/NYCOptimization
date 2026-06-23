@@ -17,20 +17,31 @@ This module supersedes the former stub ``config.ENSEMBLE_PRESETS``. It bridges t
 the lower-level ``src/ensembles.py`` ``EnsembleSpec`` machinery: a design knows
 how to resolve its search ensemble into one or more ``EnsembleSpec`` instances.
 
-Status: only ``historic`` is fully wired (it maps to the legacy
-``historic_single`` preset). The other five designs are registered with their
-taxonomy metadata, but their ensemble-construction parameters (sizes, lengths,
-draws, selection method) are intentionally left ``None`` until the
-ensemble-design discussion finalizes them (open decisions #2, #4, #5 in
-``experimental_design.md``). ``resolve_search_spec`` raises a clear
-``NotImplementedError`` for those until they are wired.
+Status: ``historic`` (single-trace preset), the two fixed probabilistic designs
+``fixed_probabilistic_short`` / ``fixed_probabilistic_long``, and
+``resampled_probabilistic`` are wired. The fixed designs resolve to a directly
+generated Kirsch-Nowak ensemble via the ``kn_{Y}yr_n{N}`` slug grammar (Step-1
+generation stages exactly the ensemble the design names; no subsampling-from-a-
+master step is required for the stand-up). Their sizes/lengths here are
+*provisional small test values* for standing up the generation->optimization
+workflow; the final sizes (and the eventual subsample-from-master construction)
+remain open decisions (#2, #5 in ``experimental_design.md``). The remaining
+three designs (``resampled_probabilistic``, ``input_stratified``,
+``hazard_filling``) still raise a clear ``NotImplementedError`` from
+``resolve_search_spec`` until their machinery (per-eval re-index hook; CMIP6
+forcing space; hazard metrics + subsample selectors) lands.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.ensembles import EnsembleSpec, get_ensemble_spec
+from src.ensembles import (
+    EnsembleSpec,
+    as_resampling_pool,
+    get_ensemble_spec,
+    kirsch_nowak_slug,
+)
 
 
 ###############################################################################
@@ -71,6 +82,28 @@ class ScenarioDesign:
     n_ensemble_draws
         Replication structure: number of independent ensemble constructions
         (each optimized across several seeds). ``None`` until decided.
+    master_pool_size
+        For pool-based designs (``resample_per_eval`` and ``hazard_fill``): size
+        of the master pool that Step-1 stages and from which ``n_realizations``
+        are drawn (per-eval for resampled; once, offline, for hazard-filling).
+        ``None`` for the fixed designs that stage their search ensemble directly.
+    subset_seed
+        For ``hazard_fill`` only: the selector (LHS) seed; part of the final
+        ensemble slug so different selector seeds stage to distinct directories.
+    selector
+        For ``hazard_fill`` only: the subsample selector name (provenance/record;
+        the wired selector is LHS + nearest-neighbor, ``"lhs_nn"``).
+    selector_space
+        For ``hazard_fill`` only: the space the LHS+NN selector fills.
+        ``"cdf"`` = empirical-CDF/rank space (faithful, marginally representative;
+        the primary design); ``"abs"`` = absolute magnitude space (distorted,
+        deliberately over-represents hazard extremes in the search ensemble; the
+        supplementary uniform-hazard-magnitude design). The uniform-coverage
+        rationale is borrowed from the bottom-up/scenario-neutral tradition, but
+        applying it to the in-loop search ensemble (distorting the search
+        measure) is the deliberate departure -- NOT decision scaling, which
+        samples for post-hoc evaluation and re-imposes likelihoods. Part of the
+        final ensemble slug so the two do not collide.
     notes
         Free-form notes (open questions, literature pointers).
     """
@@ -84,30 +117,131 @@ class ScenarioDesign:
     n_realizations: int | None = None
     realization_years: int | None = None
     n_ensemble_draws: int | None = None
+    master_pool_size: int | None = None
+    subset_seed: int | None = None
+    selector: str = "lhs_nn"
+    selector_space: str = "cdf"
     notes: str = ""
+
+    def kn_staged_dims(self) -> tuple[int, int] | None:
+        """Return ``(n_years, n_realizations)`` of the KN ensemble Step-1 must stage.
+
+        This is the single source of truth shared by :meth:`resolve_search_spec`
+        and the Step-1 generation script, so the generated ensemble and the
+        resolved search spec always name the same staged ``kn_{Y}yr_n{N}``
+        directory. Returns ``None`` for designs that do not stage a direct KN
+        ensemble (historic, preset-backed, or not-yet-wired designs).
+
+        - Fixed probabilistic (direct-KN): stage exactly the search ensemble
+          ``(realization_years, n_realizations)``.
+        - Resampled probabilistic / hazard-filling: stage the *master pool*
+          ``(realization_years, master_pool_size)``; the search ensemble is a
+          subset of that pool (per-evaluation random for resampled; a fixed
+          space-filling subset for hazard-filling).
+        """
+        if self.ensemble_preset is not None:
+            return None
+        if self.selection not in ("random", "hazard_fill"):
+            return None
+        if self.realization_years is None or self.n_realizations is None:
+            return None
+        uses_master_pool = self.resample_per_eval or self.selection == "hazard_fill"
+        if uses_master_pool:
+            if self.master_pool_size is None:
+                return None
+            return (self.realization_years, self.master_pool_size)
+        return (self.realization_years, self.n_realizations)
+
+    def kn_ensemble_slug(self) -> str | None:
+        """Return the ``kn_{Y}yr_n{N}`` slug this design stages, or ``None``.
+
+        For ``hazard_fill`` this is the *master pool* that Step 1 stages and the
+        subsample step reads from — not the design's search ensemble (that is the
+        reduced ensemble named by :meth:`hazard_filling_slug`).
+        """
+        dims = self.kn_staged_dims()
+        return None if dims is None else kirsch_nowak_slug(dims[0], dims[1])
+
+    def hazard_filling_slug(self) -> str | None:
+        """Return the final reduced-ensemble slug for a ``hazard_fill`` design.
+
+        This is the standalone ensemble the scengen subsample step stages and the
+        optimizer consumes (``hazfill_{L}yr_n{N}_s{seed}``). It is the single
+        source of truth shared by the subsample script (output dir) and
+        :meth:`resolve_search_spec` (resolution). Returns ``None`` for non-
+        hazard-filling designs or before sizes are decided.
+        """
+        if self.selection != "hazard_fill":
+            return None
+        if self.realization_years is None or self.n_realizations is None:
+            return None
+        seed = self.subset_seed or 0
+        space_tag = "" if self.selector_space == "cdf" else f"_{self.selector_space}"
+        return (
+            f"hazfill{space_tag}_{self.realization_years}yr_"
+            f"n{self.n_realizations}_s{seed}"
+        )
 
     def resolve_search_spec(self, draw: int = 0) -> EnsembleSpec:
         """Resolve this design's search ensemble to an ``EnsembleSpec``.
 
         Args:
-            draw: Index of the independent ensemble draw (replication). Only
-                meaningful once ``n_ensemble_draws`` is wired; ignored by the
-                static ``ensemble_preset`` path.
+            draw: Index of the independent ensemble draw (replication). Only the
+                static-preset and direct-KN paths are wired today, and only for
+                ``draw == 0``; multi-draw replication awaits the
+                subsample-from-master construction.
 
         Returns:
-            The ``EnsembleSpec`` describing the search ensemble.
+            The ``EnsembleSpec`` describing the search ensemble. For the
+            resampled design this is the master-pool spec marked
+            ``resample_per_eval=True``; the simulation layer redraws a subset of
+            ``n_realizations`` indices from the pool at each evaluation.
 
         Raises:
-            NotImplementedError: For designs whose construction parameters are
-                not yet decided (everything except ``historic``).
+            NotImplementedError: For designs whose construction is not yet wired
+                (``input_stratified``, ``hazard_filling``), or for ``draw != 0``
+                on a direct-KN design.
         """
         if self.ensemble_preset is not None:
             return get_ensemble_spec(self.ensemble_preset)
+        if self.selection == "hazard_fill":
+            # The search ensemble is the FINAL reduced ensemble that the scengen
+            # subsample step stages (its own HDF5 + _meta.json), not the master
+            # pool. The optimizer loads it directly by slug — no manifest, no
+            # realization-index override.
+            final_slug = self.hazard_filling_slug()
+            try:
+                return get_ensemble_spec(final_slug)
+            except KeyError:
+                raise NotImplementedError(
+                    f"hazard_filling ensemble '{final_slug}' is not staged yet. "
+                    f"Generate the master pool ('{self.kn_ensemble_slug()}', "
+                    f"workflow 01 with NYCOPT_SCENARIO_DESIGN=hazard_filling), then "
+                    f"run scripts/main/subsample_hazard_filling.py to stage the "
+                    f"reduced ensemble."
+                ) from None
+        slug = self.kn_ensemble_slug()
+        if slug is not None:
+            if draw != 0:
+                raise NotImplementedError(
+                    f"Scenario design '{self.name}': multi-draw replication "
+                    f"(draw={draw}) is not wired yet. The stand-up path stages a "
+                    f"single ensemble; independent draws await the "
+                    f"subsample-from-master construction (experimental_design.md "
+                    f"#5)."
+                )
+            spec = get_ensemble_spec(slug)
+            if self.resample_per_eval:
+                # Master pool: the simulation layer draws `n_realizations`
+                # indices from it at every evaluation (Trindade et al. 2017).
+                return as_resampling_pool(spec, self.n_realizations)
+            return spec
         raise NotImplementedError(
             f"Scenario design '{self.name}' ({self.family}) has no ensemble "
             f"construction wired yet. Its sizes/lengths/draws/selection are "
-            f"open decisions (see experimental_design.md). Only 'historic' is "
-            f"runnable today."
+            f"open decisions (see experimental_design.md). Runnable today: "
+            f"'historic', 'fixed_probabilistic_short', "
+            f"'fixed_probabilistic_long', 'resampled_probabilistic'."
         )
 
 
@@ -130,15 +264,19 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         n_realizations=1,
         notes="Reference for prevailing practice; cannot be size-matched.",
     ),
-    "fixed_probabilistic": ScenarioDesign(
-        name="fixed_probabilistic",
+    "fixed_probabilistic_short": ScenarioDesign(
+        name="fixed_probabilistic_short",
         family="fixed_probabilistic_ensemble",
-        description="Scenarios drawn once at random from the master ensemble "
-                    "of many short sequences.",
+        description="Many short synthetic sequences, drawn once at random from "
+                    "the master ensemble (here generated directly).",
         resample_per_eval=False,
         selection="random",
+        n_realizations=10,
+        realization_years=5,
         notes="Baseline structured design (sample average approximation). "
-              "Sizes/lengths/draws TBD.",
+              "PROVISIONAL small test sizes (10 x 5yr = 50 scenario-years) for "
+              "the workflow stand-up; matched in scenario-years to "
+              "fixed_probabilistic_long. Final sizes + subsample-from-master TBD.",
     ),
     "fixed_probabilistic_long": ScenarioDesign(
         name="fixed_probabilistic_long",
@@ -147,8 +285,11 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
                     "simulated years.",
         resample_per_eval=False,
         selection="random",
+        n_realizations=2,
+        realization_years=25,
         notes="Tests many-short vs few-long at equal simulated years. "
-              "Sizes/lengths TBD.",
+              "PROVISIONAL small test sizes (2 x 25yr = 50 scenario-years), "
+              "matched to fixed_probabilistic_short. Final sizes TBD.",
     ),
     "resampled_probabilistic": ScenarioDesign(
         name="resampled_probabilistic",
@@ -157,8 +298,14 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
                     "every function evaluation (per Trindade et al. 2017).",
         resample_per_eval=True,
         selection="random",
+        n_realizations=10,
+        realization_years=5,
+        master_pool_size=50,
         notes="No fixed ensemble to replicate; seeds only. Comparisons rely "
-              "entirely on the held-out re-evaluation. Size TBD.",
+              "entirely on the held-out re-evaluation. PROVISIONAL small test "
+              "sizes: draw 10 of a 50-realization master pool, 5yr each "
+              "(per-eval draw matches fixed_probabilistic_short). The simulation "
+              "layer redraws indices each evaluation. Final sizes TBD.",
     ),
     "input_stratified": ScenarioDesign(
         name="input_stratified",
@@ -177,23 +324,51 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
                     "hazard-metric space (proposed method).",
         resample_per_eval=False,
         selection="hazard_fill",
-        notes="The proposed contribution. Hazard-metric axes (open decision "
-              "#4), sizes, and draws TBD.",
+        n_realizations=64,
+        realization_years=5,
+        master_pool_size=1000,
+        subset_seed=0,
+        selector="lhs_nn",
+        notes="The proposed contribution. Subsample N=64 of a 200-realization "
+              "stationary Kirsch-Nowak pool of 5yr records (same generator as "
+              "fixed_probabilistic_short) using the scengen LHS+nearest-neighbor "
+              "selector (methods 4.6). Hazard axes are SCREENED per pool from an "
+              "8-candidate wet+dry event-descriptor pool (SSI-6 controlling-event "
+              "drought magnitude/duration/intensity/onset/recovery + POT flood "
+              "peak/duration/rise), Olden & Poff redundancy screen with a "
+              "tail-balanced final set (2 dry + 2 wet, target m=4 -> N>=~64 to "
+              "fill). Both the master pool and candidate axes may change. The "
+              "subsample step stages a standalone reduced ensemble "
+              "(hazfill_5yr_n64_s0 + _meta.json) the optimizer loads by slug.",
     ),
-    # Dev-only: a tiny runnable ensemble design (bridges to the existing
-    # wcu_kirsch_n5 preset) so the ensemble-aware path is testable end-to-end
-    # before the method designs are wired. Mirrors the 'smoke' MOEA config.
-    # NOT a manuscript design.
-    "smoke_ensemble": ScenarioDesign(
-        name="smoke_ensemble",
-        family="dev_smoke",
-        description="Dev/smoke ensemble (N=5 Kirsch-Nowak) for plumbing tests.",
+    "hazard_filling_absolute": ScenarioDesign(
+        name="hazard_filling_absolute",
+        family="hazard_filling_ensemble",
+        description="SUPPLEMENTARY distorted counterpart to hazard_filling: "
+                    "space-filling subsample uniform in absolute hazard-magnitude "
+                    "space (over-represents hazard extremes in the search "
+                    "ensemble).",
         resample_per_eval=False,
-        selection="random",
-        ensemble_preset="wcu_kirsch_n5",
-        n_realizations=5,
-        realization_years=20,
-        notes="Plumbing exercise only — not a method choice.",
+        selection="hazard_fill",
+        n_realizations=64,
+        realization_years=5,
+        master_pool_size=1000,
+        subset_seed=0,
+        selector="lhs_nn",
+        selector_space="abs",
+        notes="Supplementary arm (run with fewer seeds/draws than the main "
+              "designs). Same master pool, axes, and N as hazard_filling; differs "
+              "ONLY in the selection space: LHS+nearest-neighbor in absolute "
+              "magnitude space rather than empirical-CDF/rank space. This "
+              "deliberately distorts the search measure toward uniform coverage "
+              "of hazard MAGNITUDE (rare-but-severe scenarios over-represented "
+              "relative to frequency), in contrast to hazard_filling, which is "
+              "marginally representative. The uniform-coverage rationale borrows "
+              "from the bottom-up/scenario-neutral tradition but is NOT decision "
+              "scaling (that samples for post-hoc evaluation and re-imposes "
+              "likelihoods; it never distorts the search). Objectives are held "
+              "fixed across both arms; the held-out re-evaluation is the common "
+              "comparison basis. Stages hazfill_abs_5yr_n64_s0.",
     ),
 }
 
