@@ -198,23 +198,61 @@ def _spec_from_kn_slug(slug: str) -> EnsembleSpec | None:
     )
 
 
+def _spec_from_staged_dir(slug: str) -> EnsembleSpec | None:
+    """Build an ``EnsembleSpec`` from a staged ensemble's ``_meta.json``, or None.
+
+    Any directory ``STAGED_ENSEMBLE_DIR/{slug}/`` that carries a ``_meta.json``
+    written by a generator (the Step-1 Kirsch-Nowak generator or the scengen
+    hazard-filling driver) resolves to an ensemble of ``n_realizations``
+    realizations numbered ``0..N-1``. This is the generic handoff: scengen emits
+    a final ensemble HDF5 + ``_meta.json``, NYCOptimization resolves it by slug
+    with no manifest-as-contract and no realization-index override.
+    """
+    import json
+
+    meta_path = staged_ensemble_dir(slug) / "_meta.json"
+    if not meta_path.exists():
+        return None
+    meta = json.loads(meta_path.read_text())
+    n = int(meta["n_realizations"])
+    years = meta.get("realization_years", meta.get("n_years"))
+    return EnsembleSpec(
+        preset_name=slug,
+        inflow_type=slug,
+        realization_indices=tuple(range(n)),
+        seed=meta.get("subset_seed", meta.get("seed")),
+        is_ensemble=True,
+        source_kind=meta.get("source_kind", "synhydro_kn"),
+        slug_fragment=slug,
+        realization_years=int(years) if years is not None else None,
+    )
+
+
 def get_ensemble_spec(preset_name: str) -> EnsembleSpec:
     """Resolve a preset name to its ``EnsembleSpec``.
 
-    First checks the static ``PRESETS`` registry; if no match, falls back to
-    parsing the ``kn_{Y}yr_n{N}`` slug grammar for ensembles staged by
-    ``scripts/main/generate_stochastic_ensemble.py``. Raises ``KeyError`` if
-    neither resolves.
+    Resolution order:
+        1. the static ``PRESETS`` registry;
+        2. the ``kn_{Y}yr_n{N}`` slug grammar (parsed from the name, no I/O), for
+           ensembles staged by ``scripts/main/generate_stochastic_ensemble.py``;
+        3. any other staged ensemble directory carrying a ``_meta.json`` (e.g.
+           a scengen hazard-filling final ensemble ``hazfill_{L}yr_n{N}_s{seed}``).
+
+    Raises ``KeyError`` if none resolves.
     """
     if preset_name in PRESETS:
         return PRESETS[preset_name]
     spec = _spec_from_kn_slug(preset_name)
     if spec is not None:
         return spec
+    spec = _spec_from_staged_dir(preset_name)
+    if spec is not None:
+        return spec
     raise KeyError(
         f"Unknown ensemble preset '{preset_name}'. "
         f"Available presets: {list_presets()} "
-        f"(or any 'kn_{{Y}}yr_n{{N}}' slug for a Step-1-staged ensemble)."
+        f"(or any 'kn_{{Y}}yr_n{{N}}' slug, or a staged ensemble dir with a "
+        f"_meta.json under config.STAGED_ENSEMBLE_DIR)."
     )
 
 
@@ -252,46 +290,6 @@ def as_resampling_pool(spec: EnsembleSpec, resample_size: int) -> EnsembleSpec:
             f"({spec.n_realizations}) of preset '{spec.preset_name}'."
         )
     return replace(spec, resample_per_eval=True, resample_size=resample_size)
-
-
-def hazard_filling_subset_filename(n: int, seed: int) -> str:
-    """Canonical filename of a hazard-filling subset manifest (shared with scengen)."""
-    return f"hazard_filling_n{n}_seed{seed}.json"
-
-
-def load_hazard_filling_spec(
-    master_slug: str, n: int, seed: int
-) -> "EnsembleSpec | None":
-    """Resolve a hazard-filling search ensemble from its staged subset manifest.
-
-    Reads the subset manifest written by the scengen hazard-filling subsample
-    step (``hazard_filling_n{n}_seed{seed}.json`` under the staged master-pool
-    directory) and returns the master-pool spec with ``realization_indices``
-    overridden to the selected (space-filling) realizations.
-
-    Args:
-        master_slug: The ``kn_{Y}yr_n{N}`` slug of the staged master pool.
-        n: Subsample size (selects the manifest filename).
-        seed: Selector seed (selects the manifest filename).
-
-    Returns:
-        The hazard-filling ``EnsembleSpec``, or ``None`` if the manifest has not
-        been computed/staged yet.
-    """
-    import json
-
-    path = staged_ensemble_dir(master_slug) / hazard_filling_subset_filename(n, seed)
-    if not path.exists():
-        return None
-    data = json.loads(path.read_text())
-    indices = tuple(int(i) for i in data["realization_global_indices"])
-    pool = get_ensemble_spec(master_slug)
-    return replace(
-        pool,
-        preset_name=f"{master_slug}_hazfill_n{n}_seed{seed}",
-        realization_indices=indices,
-        slug_fragment=f"hazfill{n}",
-    )
 
 
 ###############################################################################
