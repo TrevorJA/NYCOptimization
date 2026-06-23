@@ -1220,16 +1220,68 @@ def run_simulation_ensemble_batched(
         )
         try:
             data_per_real = run_simulation_ensemble_inmemory(nyc_config, batch_spec)
-        except Exception:
+        except Exception as e:
             if not skip_failed_batches:
                 raise
             # Leave this batch's rows as failed_value; other batches proceed.
+            # Surface why (was silent before) so failures are diagnosable.
+            msg = str(e).strip().splitlines()[-1] if str(e).strip() else ""
+            print(f"  [ensemble_batched] batch b{b0} (n={len(batch)}) failed; "
+                  f"rows -> failed_value: {type(e).__name__}: {msg}"[:200],
+                  file=sys.stderr, flush=True)
             continue
         for j, data in enumerate(data_per_real):
             results[b0 + j] = per_realization_fn(data)
         del data_per_real
 
     return results
+
+
+def check_dv_feasibility(nyc_config, ensemble_spec, *, probe_index=None):
+    """Cheap structural-feasibility probe for a decision-variable policy.
+
+    Simulates a SINGLE probe realization (full window, one scenario) and reports
+    whether the model solves. Catches policies that produce an infeasible LP for
+    every realization (structural / DV-level infeasibility) before the expensive
+    full-ensemble run, so a known-bad DV can be skipped (recorded NaN) instead of
+    crashing batch after batch downstream.
+
+    Limitation: realization-specific infeasibility (a policy that solves for most
+    inflow traces but fails on a few) is NOT caught — that would require running
+    those realizations. Those remain handled by ``skip_failed_batches`` in
+    :func:`run_simulation_ensemble_batched`.
+
+    Reusable by the MOEA: ``evaluate()`` can call this and return penalized
+    objectives for structurally-infeasible candidates rather than raising.
+
+    Args:
+        nyc_config: NYCOperationsConfig (DV-applied).
+        ensemble_spec: ``EnsembleSpec`` with ``is_ensemble=True``.
+        probe_index: Realization index to probe. Defaults to the spec's first
+            realization index.
+
+    Returns:
+        ``(feasible: bool, error: str | None)`` — ``error`` is a short
+        ``"ExcType: message"`` string when infeasible, else ``None``.
+    """
+    if not ensemble_spec.is_ensemble:
+        raise ValueError(
+            "check_dv_feasibility requires is_ensemble=True "
+            f"(preset '{ensemble_spec.preset_name}')."
+        )
+    probe = (probe_index if probe_index is not None
+             else ensemble_spec.realization_indices[0])
+    probe_spec = replace(
+        ensemble_spec,
+        preset_name=f"{ensemble_spec.preset_name}__probe",
+        realization_indices=(int(probe),),
+    )
+    try:
+        run_simulation_ensemble_inmemory(nyc_config, probe_spec)
+        return True, None
+    except Exception as e:  # noqa: BLE001 - any solver/build failure = infeasible
+        msg = str(e).strip().splitlines()[-1] if str(e).strip() else ""
+        return False, f"{type(e).__name__}: {msg}"[:200]
 
 
 ###############################################################################
