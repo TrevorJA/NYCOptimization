@@ -22,8 +22,8 @@
 #
 #SBATCH --job-name=ens_objsens
 #SBATCH --nodes=5
-#SBATCH --ntasks=200
-#SBATCH --time=04:00:00
+#SBATCH --ntasks-per-node=33
+#SBATCH --time=05:00:00
 #SBATCH --output=logs/ensemble_objective_sensitivity_%j.out
 #SBATCH --error=logs/ensemble_objective_sensitivity_%j.err
 

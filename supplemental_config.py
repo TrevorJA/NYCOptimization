@@ -208,7 +208,7 @@ def configure_ensemble_env() -> None:
 #: Realizations and per-realization length. The inflow_type slug is the dynamic
 #: ``kn_{Y}yr_n{N}`` grammar resolved by ``src.ensembles.get_ensemble_spec``,
 #: so it matches exactly what the Step-1 generator stages.
-ENS_N_REALIZATIONS: int = 5 if ENS_SMOKE else 256
+ENS_N_REALIZATIONS: int = 5 if ENS_SMOKE else 1024
 ENS_REALIZATION_YEARS: int = 20
 #: Generation seed for the Kirsch-Nowak ensemble (distinct from the DV seed).
 ENS_KN_SEED: int = 1234
@@ -249,7 +249,7 @@ ENS_PREDICTION_MODES: tuple = ("regression_disagg", "perfect_foresight")
 # ---------------------------------------------------------------------------
 #: Ensemble sub-sample sizes K for the ranking-convergence diagnostic. The full
 #: ensemble (ENS_N_REALIZATIONS) is the proxy-truth ranking.
-ENS_K_GRID: list = [2, 3, 5] if ENS_SMOKE else [10, 25, 50, 100, 200, 256]
+ENS_K_GRID: list = [2, 3, 5] if ENS_SMOKE else [10, 25, 50, 100, 200, 256, 512, 1024]
 #: Random sub-sample repeats per K (the tau_b(K) band).
 ENS_K_SUBSAMPLE_REPEATS: int = 3 if ENS_SMOKE else 20
 #: RNG seed for the K sub-sampling (reproducible bands).

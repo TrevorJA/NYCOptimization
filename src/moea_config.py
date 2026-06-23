@@ -111,6 +111,40 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         max_time_hours=None,
         notes="Dev/smoke config. Plumbing exercise only — not a method choice.",
     ),
+    # Multi-Master Borg on Hopper, historic single-trace baseline. Sized to the
+    # 5-node x 33-task = 165-rank budget: 4 islands x 40 workers + 4 island-
+    # masters + 1 controller = 1 + 4*(40+1) = 165 ranks (160 parallel
+    # evaluators). NFE is per-island, so total NFE = n_islands * max_evaluations.
+    #
+    #   mm_pilot:  4 * 1250  =   5,000 total NFE  (launch-verification pilot)
+    #   mm_full:   4 * 12500 =  50,000 total NFE  (production run)
+    #
+    # NFE-bounded (max_time_hours=None); the SLURM --time wall cap is sized from
+    # the pilot's measured per-eval cost. Single seed (n_seeds=1); the array
+    # index supplies the Borg RNG seed.
+    "mm_pilot": MOEAConfig(
+        name="mm_pilot",
+        n_islands=4,
+        n_workers_per_island=40,
+        max_evaluations=1250,     # per island -> 5,000 total NFE
+        runtime_frequency=250,
+        n_seeds=1,
+        max_time_hours=None,
+        notes="Hopper MM-Borg launch pilot: 5k NFE, 165 ranks (4x40+5). "
+              "Verifies balance, per-eval cost, and output writing before the "
+              "full 50k run.",
+    ),
+    "mm_full": MOEAConfig(
+        name="mm_full",
+        n_islands=4,
+        n_workers_per_island=40,
+        max_evaluations=12500,    # per island -> 50,000 total NFE
+        runtime_frequency=1000,
+        n_seeds=1,
+        max_time_hours=None,
+        notes="Hopper MM-Borg production run: 50k NFE, 165 ranks (4x40+5), "
+              "historic single-trace 7-objective baseline.",
+    ),
     # Production: schema only. Every campaign number is an open decision tied to
     # the total-simulated-scenario-years budget (experimental_design.md #5).
     "production": MOEAConfig(

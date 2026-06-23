@@ -321,6 +321,42 @@ def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
 
 
 # ---------------------------------------------------------------------------
+# Feasibility pre-check (check_dv_feasibility)
+# ---------------------------------------------------------------------------
+
+def test_feasibility_probe_feasible(monkeypatch, wcu5_spec):
+    """A probe sim that returns normally => (True, None), single realization."""
+    seen = {}
+
+    def fake_inmem(cfg, spec):
+        seen["idx"] = tuple(spec.realization_indices)
+        return [{}]
+
+    monkeypatch.setattr(sim, "run_simulation_ensemble_inmemory", fake_inmem)
+    ok, err = sim.check_dv_feasibility(object(), wcu5_spec)
+    assert ok is True and err is None
+    # Probes exactly one realization (the spec's first index).
+    assert seen["idx"] == (wcu5_spec.realization_indices[0],)
+
+
+def test_feasibility_probe_infeasible(monkeypatch, wcu5_spec):
+    """A probe sim that raises => (False, 'ExcType: msg')."""
+    def boom(cfg, spec):
+        raise RuntimeError("GLPK: problem has no feasible solution")
+
+    monkeypatch.setattr(sim, "run_simulation_ensemble_inmemory", boom)
+    ok, err = sim.check_dv_feasibility(object(), wcu5_spec)
+    assert ok is False
+    assert "RuntimeError" in err and "feasible" in err
+
+
+def test_feasibility_rejects_single_trace(historic_spec):
+    """is_ensemble=False must error fast (mirrors the ensemble-sim guard)."""
+    with pytest.raises(ValueError, match="is_ensemble=True"):
+        sim.check_dv_feasibility(object(), historic_spec)
+
+
+# ---------------------------------------------------------------------------
 # Slow integration tests — these actually build and run pywrdrb
 # ---------------------------------------------------------------------------
 

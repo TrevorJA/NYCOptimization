@@ -197,6 +197,73 @@ def fig_tau_vs_k(df: pd.DataFrame, out_stub: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# (a') split-half reliability  (N-independent companion to tau_vs_k)
+# ---------------------------------------------------------------------------
+
+def tau_split_half(metrics: np.ndarray, obj_names: list, tk: dict) -> pd.DataFrame:
+    """Split-half reliability: Kendall tau_b between two *independent* K-subsample
+    rankings, per objective.
+
+    Unlike :func:`tau_vs_k` (which ranks a K-subsample against the full-ensemble
+    "truth", so tau -> 1 trivially as K -> n_real and the apparent convergence
+    point is anchored to whichever ``n_real`` was simulated), this draws two
+    DISJOINT random sub-samples of size K and correlates the DV rankings they
+    produce. It measures whether a K-realization ranking is *reproducible* — an
+    absolute property that depends only on K and the signal/noise, not on the
+    truth-ensemble size (requires ``2K <= n_real``). The K at which this plateaus
+    is the honest, N-independent convergence point. Mirrors the split-sample
+    reliability idea of Bonham et al. (2024).
+    """
+    n_real = metrics.shape[1]
+    max_k = n_real // 2
+    ks = sorted({int(k) for k in scfg.ENS_K_GRID if int(k) <= max_k} | {max_k})
+    # Distinct RNG stream from tau_vs_k so the two diagnostics are independent.
+    rng = np.random.default_rng(scfg.ENS_K_SUBSAMPLE_SEED + 101)
+    rows = []
+    for o, name in enumerate(obj_names):
+        threshold, kind = tk[name]
+        vals = metrics[:, :, o]                       # (n_dv, n_real)
+        for k in ks:
+            taus = []
+            for _ in range(scfg.ENS_K_SUBSAMPLE_REPEATS):
+                perm = rng.permutation(n_real)
+                a = _satisficing_scores(vals[:, perm[:k]], threshold, kind)
+                b = _satisficing_scores(vals[:, perm[k:2 * k]], threshold, kind)
+                taus.append(kendall_tau_b(a, b))
+            taus = np.array(taus, dtype=float)
+            if not np.isfinite(taus).any():
+                tau_mean = tau_min = tau_max = float("nan")
+            else:
+                tau_mean = float(np.nanmean(taus))
+                tau_min = float(np.nanmin(taus))
+                tau_max = float(np.nanmax(taus))
+            rows.append({"objective": name, "K": k, "tau_mean": tau_mean,
+                         "tau_min": tau_min, "tau_max": tau_max})
+    return pd.DataFrame(rows)
+
+
+def fig_tau_split_half(df: pd.DataFrame, out_stub: Path) -> None:
+    """F(a'): split-half tau_b(K) between two independent K-subsamples."""
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    cmap = plt.get_cmap("tab10")
+    for i, (name, g) in enumerate(df.groupby("objective", sort=False)):
+        g = g.sort_values("K")
+        color = cmap(i % 10)
+        ax.plot(g["K"], g["tau_mean"], marker="o", color=color, label=_label(name))
+        ax.fill_between(g["K"], g["tau_min"], g["tau_max"], color=color, alpha=0.15)
+    ax.axhline(0.9, color="grey", ls=":", lw=0.8)
+    ax.set_xlabel("Sub-sample size K (two disjoint K-samples; needs 2K ≤ n_real)")
+    ax.set_ylabel(r"Kendall $\tau_b$ between independent K-subsamples")
+    ax.set_title("Split-half ranking reliability (N-independent)\n"
+                 "absolute reproducibility of a K-realization ranking", fontsize=10)
+    ax.set_ylim(min(0.0, float(np.nanmin(df["tau_min"].values))) - 0.02, 1.02)
+    ax.legend(loc="lower right", fontsize=7, frameon=True, ncol=2)
+    fig.tight_layout()
+    save_figure(fig, out_stub)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
 # (b) operator agreement
 # ---------------------------------------------------------------------------
 
@@ -325,10 +392,16 @@ def main() -> None:
     scfg.ENS_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     apply_style()
 
-    # (a) K-convergence
+    # (a) K-convergence (truth-anchored: tau vs full-ensemble ranking)
     k_df = tau_vs_k(metrics, obj_names, tk)
     k_df.to_csv(scfg.ensemble_table_path("tau_vs_k"), index=False)
     fig_tau_vs_k(k_df, scfg.ensemble_figure_path("tau_vs_k", "pdf").with_suffix(""))
+
+    # (a') split-half reliability (N-independent: tau between two K-subsamples)
+    sh_df = tau_split_half(metrics, obj_names, tk)
+    sh_df.to_csv(scfg.ensemble_table_path("tau_split_half"), index=False)
+    fig_tau_split_half(
+        sh_df, scfg.ensemble_figure_path("tau_split_half", "pdf").with_suffix(""))
 
     # (b) operator agreement
     taus_by_obj, op_long = operator_agreement(metrics, obj_names, tk)
@@ -355,9 +428,20 @@ def main() -> None:
     print(f"=== Ensemble objective-sensitivity figures ({matrix_path.name}) ===")
     print(f"  DVs x realizations x objectives: {metrics.shape}")
     worst_k = k_df[k_df["K"] == min(scfg.ENS_K_GRID)]
-    print(f"  tau_b at K={int(min(scfg.ENS_K_GRID))}: "
+    print(f"  [truth-anchored] tau_b at K={int(min(scfg.ENS_K_GRID))}: "
           + ", ".join(f"{_label(r.objective)}={r.tau_mean:.2f}"
                       for r in worst_k.itertuples()))
+    # Split-half: smallest K reaching tau_mean>=0.9 (N-independent reliability),
+    # and the value at the largest tested K (= n_real//2).
+    sh_maxk = int(sh_df["K"].max())
+    print(f"  [split-half] K@tau>=0.9 (max tested K={sh_maxk}):")
+    for name, g in sh_df.groupby("objective", sort=False):
+        g = g.sort_values("K")
+        reached = g[g["tau_mean"] >= 0.9]
+        k90 = int(reached["K"].iloc[0]) if len(reached) else None
+        at_max = float(g["tau_mean"].iloc[-1])
+        k90_str = f"K90={k90}" if k90 is not None else f"K90>{sh_maxk}"
+        print(f"    {_label(name):28s} {k90_str:9s}  tau@{sh_maxk}={at_max:.2f}")
     if len(flagged):
         print(f"  redundancy flags |rho|>{scfg.ENS_RHO_FLAG_THRESHOLD}: "
               f"{len(flagged)} pair(s)")

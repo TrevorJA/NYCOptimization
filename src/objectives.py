@@ -501,6 +501,12 @@ def _lordville_temp_exceedance_days(data: dict) -> float:
 OBJECTIVES: dict[str, Objective] = {}
 
 
+# Epsilons calibrated to the signal scale (Reed et al. 2013): epsilon ~ IQR/10
+# of each objective's spread across N=500 random DV policies on the historic
+# reference trace (objective-sensitivity diagnostic, seed 42, 2026-06-17),
+# rounded to clean steps. salt_front (no gradient), downstream_flood_days_major
+# (binary on this trace), and lordville_temp (LSTM off -> all NaN) had no usable
+# IQR and keep prior placeholders; revisit under the ensemble experiment.
 def _register(name, direction, epsilon, description, func):
     OBJECTIVES[name] = Objective(
         name=name, direction=direction, epsilon=epsilon,
@@ -509,62 +515,62 @@ def _register(name, direction, epsilon, description, func):
 
 
 # --- NYC water supply (Decree right = 800 MGD) ---
-_register("nyc_delivery_reliability_weekly", "maximize", 0.01,
+_register("nyc_delivery_reliability_weekly", "maximize", 0.07,
           f"Frac of weeks NYC delivery >= 99% of capped demand "
           f"({NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree cap)",
           _nyc_delivery_reliability_weekly)
-_register("nyc_delivery_deficit_cvar90_pct", "minimize", 0.5,
+_register("nyc_delivery_deficit_cvar90_pct", "minimize", 1.5,
           f"CVaR90 of weekly NYC delivery deficit, % of "
           f"{NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree cap [0-100]",
           _nyc_delivery_deficit_cvar90_pct)
-_register("nyc_delivery_deficit_max_pct", "minimize", 1.0,
+_register("nyc_delivery_deficit_max_pct", "minimize", 3.0,
           "DIAGNOSTIC: worst-week NYC delivery deficit, % of Decree cap [0-100]",
           _nyc_delivery_deficit_max_pct)
 
 # --- New Jersey water supply (D&R Canal diversion; optional 8th objective) ---
-_register("nj_delivery_reliability_weekly", "maximize", 0.01,
+_register("nj_delivery_reliability_weekly", "maximize", 0.007,
           f"Frac of weeks NJ diversion >= 99% of capped demand "
           f"({NJ_DELIVERY_CAP_MGD:.0f} MGD baseline)",
           _nj_delivery_reliability_weekly)
 
 # --- Montague flow Decree (NYC obligation; target = 1750 cfs = 1131.05 MGD) ---
-_register("montague_flow_reliability_weekly", "maximize", 0.01,
+_register("montague_flow_reliability_weekly", "maximize", 0.02,
           f"Frac of weeks Montague weekly-mean flow >= "
           f"{MONTAGUE_DECREE_TARGET_MGD:.0f} MGD Decree target",
           _montague_flow_reliability_weekly)
-_register("montague_flow_deficit_cvar90_pct", "minimize", 0.5,
+_register("montague_flow_deficit_cvar90_pct", "minimize", 1.5,
           f"CVaR90 of weekly Montague flow deficit, % of "
           f"{MONTAGUE_DECREE_TARGET_MGD:.0f} MGD Decree target [0-100]",
           _montague_flow_deficit_cvar90_pct)
-_register("montague_flow_deficit_max_pct", "minimize", 1.0,
+_register("montague_flow_deficit_max_pct", "minimize", 3.0,
           "DIAGNOSTIC: worst-week Montague flow deficit, % of Decree target [0-100]",
           _montague_flow_deficit_max_pct)
 
 # --- Trenton flow Decree (lower-basin / NJ obligation; target = 1938.95 MGD) ---
-_register("trenton_flow_reliability_weekly", "maximize", 0.01,
+_register("trenton_flow_reliability_weekly", "maximize", 0.0003,
           f"Frac of weeks Trenton weekly-mean flow >= "
           f"{TRENTON_DECREE_TARGET_MGD:.0f} MGD Decree target",
           _trenton_flow_reliability_weekly)
-_register("trenton_flow_deficit_cvar90_pct", "minimize", 0.5,
+_register("trenton_flow_deficit_cvar90_pct", "minimize", 0.03,
           "DIAGNOSTIC: CVaR90 of weekly Trenton flow deficit, % of Decree target [0-100]",
           _trenton_flow_deficit_cvar90_pct)
 
 # --- Downstream flood exposure (any of Hale Eddy / Fishs Eddy / Bridgeville) ---
-_register("downstream_flood_days_minor", "minimize", 3.0,
+_register("downstream_flood_days_minor", "minimize", 1.0,
           "Days any tail gauge >= NWS minor flood stage (flood onset)",
           _downstream_flood_days_minor)
 _register("downstream_flood_days_major", "minimize", 2.0,
           "DIAGNOSTIC: days any tail gauge >= NWS major flood stage (severe)",
           _downstream_flood_days_major)
-_register("downstream_flood_days_action", "minimize", 3.0,
+_register("downstream_flood_days_action", "minimize", 2.0,
           "DIAGNOSTIC: days any tail gauge >= FFMP L1 action stage",
           _downstream_flood_days_action)
 
 # --- NYC storage resilience ---
-_register("nyc_storage_p5_pct", "maximize", 0.5,
+_register("nyc_storage_p5_pct", "maximize", 1.5,
           "5th-percentile combined NYC storage, % of total capacity [0-100]",
           _nyc_storage_p5_pct)
-_register("nyc_storage_min_pct", "maximize", 0.5,
+_register("nyc_storage_min_pct", "maximize", 1.0,
           "DIAGNOSTIC: minimum combined NYC storage, % of total capacity [0-100]",
           _nyc_storage_min_pct)
 
