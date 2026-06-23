@@ -63,7 +63,11 @@ from src.sensitivity_common import (  # noqa: E402
     resolve_objective_names,
     sample_lhs_dvs,
 )
-from src.simulation import dvs_to_config, run_simulation_ensemble_batched  # noqa: E402
+from src.simulation import (  # noqa: E402
+    check_dv_feasibility,
+    dvs_to_config,
+    run_simulation_ensemble_batched,
+)
 
 
 def _eval_dv(dv: np.ndarray, formulation: str, spec, base_objs: list,
@@ -207,11 +211,22 @@ def main() -> None:
     local_metrics = np.full((len(rank_slots), n_real, n_obj), np.nan, dtype=float)
 
     t0 = time.time()
+    n_infeasible = 0
     for i, slot in enumerate(rank_slots):
         sid = int(sample_ids[slot])
         ts = time.perf_counter()
+        dv = all_dvs[slot]
+        # Cheap structural-feasibility probe (one realization) before the full
+        # ensemble: skip a policy that is infeasible for every realization rather
+        # than crashing batch after batch. Row stays all-NaN.
+        feasible, err = check_dv_feasibility(dvs_to_config(dv, formulation), spec)
+        if not feasible:
+            n_infeasible += 1
+            print(f"  [rank {rank:>2} INFEASIBLE] sid={sid:4d}  skipped "
+                  f"({time.perf_counter() - ts:.1f}s): {err}", flush=True)
+            continue
         try:
-            local_metrics[i] = _eval_dv(all_dvs[slot], formulation, spec,
+            local_metrics[i] = _eval_dv(dv, formulation, spec,
                                         base_objs, scfg.ENS_REALIZATION_BATCH)
             n_nan = int(np.isnan(local_metrics[i]).all(axis=1).sum())
             print(f"  [rank {rank:>2} ok] sid={sid:4d}  "
@@ -221,7 +236,7 @@ def main() -> None:
             tb = traceback.format_exc(limit=3).strip().splitlines()[-1]
             print(f"  [rank {rank:>2} FAIL] sid={sid:4d}  {tb}", flush=True)
     print(f"  [rank {rank:>2}] done {len(rank_slots)} DVs in "
-          f"{time.time() - t0:.1f}s", flush=True)
+          f"{time.time() - t0:.1f}s ({n_infeasible} infeasible skipped)", flush=True)
 
     np.savez(partial_dir / f"rank_{rank:03d}.npz",
              sample_ids=local_ids, dvs=local_dvs, metrics=local_metrics)

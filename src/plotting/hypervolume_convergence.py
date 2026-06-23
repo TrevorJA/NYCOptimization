@@ -30,6 +30,31 @@ def _load_metrics_file(path: Path):
         return None
 
 
+def _read_runtime_nfe(metrics_file: Path, n_rows: int):
+    """Return per-snapshot NFE for a .metrics file from its sibling .runtime.
+
+    MOEAFramework .metrics files carry one row per runtime snapshot but no NFE
+    column, so the snapshot index alone is a poor x-axis. The matching Borg
+    .runtime file (same stem, under ``../runtime/``) lists one ``//NFE=<n>``
+    marker per snapshot — these are the true (per-island) evaluation counts,
+    and the final marker lands on ``max_evaluations`` rather than a clean
+    multiple of the runtime frequency. Returns the list of ints when the marker
+    count matches ``n_rows``; otherwise None (caller falls back to the index).
+    """
+    runtime_file = metrics_file.parent.parent / "runtime" / f"{metrics_file.stem}.runtime"
+    if not runtime_file.exists():
+        return None
+    nfe = []
+    with open(runtime_file) as fh:
+        for line in fh:
+            if line.startswith("//NFE="):
+                try:
+                    nfe.append(int(line.strip().split("=")[1]))
+                except (IndexError, ValueError):
+                    pass
+    return nfe if len(nfe) == n_rows else None
+
+
 def plot_hypervolume_convergence(
     metrics_dir: Path,
     formulation: str,
@@ -55,24 +80,34 @@ def plot_hypervolume_convergence(
 
     fig, ax = plt.subplots(figsize=figsize)
 
+    used_nfe_axis = False
     for mf in metrics_files:
-        seed_label = mf.stem.split("_")[1]
         df = _load_metrics_file(mf)
         if df is None or df.empty:
             print(f"Warning: empty metrics file {mf.name}")
             continue
+        if "Hypervolume" not in df.columns:
+            continue
 
-        # MOEAFramework metrics files have no NFE column. Treat snapshot
-        # index as an NFE proxy (runtime_frequency * (1+index)).
-        x = df.index.values
-        if "Hypervolume" in df.columns:
-            ax.plot(
-                x, df["Hypervolume"],
-                alpha=0.6, linewidth=1.0,
-                label=f"{mf.stem}",
-            )
+        # MOEAFramework .metrics files have no NFE column. Prefer the true
+        # per-island NFE read from the sibling .runtime file; fall back to the
+        # bare snapshot index only when those markers are unavailable.
+        nfe = _read_runtime_nfe(mf, len(df))
+        if nfe is not None:
+            x = nfe
+            used_nfe_axis = True
+        else:
+            x = df.index.values
+        ax.plot(
+            x, df["Hypervolume"],
+            alpha=0.6, linewidth=1.0,
+            label=f"{mf.stem}",
+        )
 
-    ax.set_xlabel("Number of Function Evaluations (NFE)")
+    ax.set_xlabel(
+        "Number of Function Evaluations (per island)"
+        if used_nfe_axis else "Runtime snapshot index"
+    )
     ax.set_ylabel("Hypervolume")
     ax.set_title(f"Hypervolume Convergence ({formulation})")
     ax.legend(fontsize=7, ncol=2, loc="lower right")
