@@ -1413,6 +1413,43 @@ def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
             for k, o in enumerate(ens_objs)]
 
 
+_RESAMPLE_BASE_SEED = 1_000_003  # salt for the resampled-probabilistic per-eval RNG
+
+
+def _resampled_eval_spec(pool_spec, eval_count):
+    """Draw a fresh per-evaluation subset from a resample-per-eval master pool.
+
+    Returns a copy of ``pool_spec`` whose ``realization_indices`` is a random
+    size-``resample_size`` subset (without replacement) of the master pool. The
+    draw is keyed by (base salt, MPI rank, eval_count) so it differs every
+    evaluation and is reproducible given the same rank/eval ordering. This is
+    the Trindade et al. (2017) per-evaluation reshuffling: each candidate sees a
+    fresh random scenario set, so in-search fitness is a noisy estimate and
+    cross-design comparison rests on the held-out re-evaluation.
+
+    Args:
+        pool_spec: An ``EnsembleSpec`` with ``resample_per_eval=True`` whose
+            ``realization_indices`` is the full master pool and ``resample_size``
+            is the per-evaluation draw size.
+        eval_count: The current evaluation counter (``_EVAL_COUNT``).
+
+    Returns:
+        An ``EnsembleSpec`` copy with the freshly drawn ``realization_indices``.
+    """
+    from src.ensembles import with_indices_override
+    try:
+        from mpi4py import MPI
+        rank = MPI.COMM_WORLD.Get_rank()
+    except Exception:
+        rank = 0
+    pool = pool_spec.realization_indices
+    size = pool_spec.resample_size
+    rng = np.random.default_rng([_RESAMPLE_BASE_SEED, rank, int(eval_count)])
+    chosen = rng.choice(len(pool), size=size, replace=False)
+    drawn = sorted(int(pool[i]) for i in chosen)
+    return with_indices_override(pool_spec, drawn)
+
+
 def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
              ensemble_spec=None, realization_batch=None):
     """Full evaluation pipeline: DVs -> simulation -> objectives.
@@ -1458,6 +1495,12 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
     if ensemble_spec is None:
         from config import SEARCH_ENSEMBLE_SPEC
         ensemble_spec = SEARCH_ENSEMBLE_SPEC
+
+    # Resampled-probabilistic design: redraw the search ensemble from the master
+    # pool for this evaluation (Trindade et al. 2017). The master-pool spec is
+    # marked resample_per_eval=True by ScenarioDesign.resolve_search_spec.
+    if ensemble_spec is not None and ensemble_spec.resample_per_eval:
+        ensemble_spec = _resampled_eval_spec(ensemble_spec, _EVAL_COUNT)
 
     if realization_batch is None:
         from config import SEARCH_REALIZATION_BATCH

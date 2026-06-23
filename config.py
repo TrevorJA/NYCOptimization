@@ -658,7 +658,7 @@ NYCOPT_REEVAL_ENSEMBLE_PRESET = _parse_str_env(
 )
 
 # Resolve the search ensemble. Designs whose construction is not yet wired
-# (everything except historic / smoke_ensemble) leave SEARCH_ENSEMBLE_SPEC None
+# (input_stratified / hazard_filling) leave SEARCH_ENSEMBLE_SPEC None
 # so config stays importable — diagnostics/reeval/plotting on such a design's
 # outputs only need active_scenario_name(). Optimization fails fast with a clear
 # message (see src/mmborg.py) when the spec is None.
