@@ -26,19 +26,18 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
-    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR,
-    derive_slug, get_n_vars, get_obj_names,
+    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR, REEVAL_ENSEMBLE_SPEC,
+    derive_slug, get_n_vars,
     active_scenario_name, run_output_dir,
 )
 from src.load.reference_set import load_reference_set
-from src.simulation import dvs_to_config, run_simulation_to_disk
-from src.formulations import get_objective_set
-
-_ACTIVE_OBJS = get_objective_set()
+from src.reeval_core import (
+    evaluate_solution, reeval_obj_names, reeval_output_dir, reeval_tag,
+)
 
 
 def _evaluate_one(task: tuple) -> tuple[int, list[float] | None, str | None]:
-    """Worker: simulate one solution and compute objectives.
+    """Worker: re-evaluate one solution on the common re-eval ensemble.
 
     Args:
         task: (solution_id, dv_vector, formulation, out_path).
@@ -47,13 +46,7 @@ def _evaluate_one(task: tuple) -> tuple[int, list[float] | None, str | None]:
         (solution_id, objectives or None, error message or None).
     """
     solution_id, dv_vector, formulation, out_path = task
-    try:
-        cfg = dvs_to_config(dv_vector, formulation)
-        data = run_simulation_to_disk(cfg, out_path)
-        objs = list(_ACTIVE_OBJS.compute(data))
-        return solution_id, objs, None
-    except Exception as e:
-        return solution_id, None, f"{type(e).__name__}: {e}"
+    return evaluate_solution(solution_id, dv_vector, formulation, out_path)
 
 
 def reevaluate(formulation: str,
@@ -74,20 +67,23 @@ def reevaluate(formulation: str,
     """
     scenario = active_scenario_name()
     slug = derive_slug(formulation)
-    # Reference set: prefer the merged Pareto set written by diagnostics under
-    # the run's own sets/ dir; fall back to a curated reference_sets/ entry and
-    # the legacy formulation-keyed path so re-evals on existing sets keep working.
+    # Reference set: prefer the merged Pareto set written by diagnostics, then
+    # the Borg per-seed solution set written directly by the optimizer, then a
+    # curated reference_sets/ entry and the legacy formulation-keyed path, so
+    # re-evals work whether or not run_diagnostics has merged a reference set.
+    sets_dir = run_output_dir(scenario, slug, "sets")
+    set_seed = seed if seed is not None else 1
     candidate_refs = [
-        run_output_dir(scenario, slug, "sets") / f"{slug}_merged.set",
+        sets_dir / f"{slug}_merged.set",
+        sets_dir / f"seed_{set_seed:02d}_{slug}.set",
         OUTPUT_REFERENCE_SETS_DIR / f"{slug}.ref",
         OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref",
     ]
     ref_file = next((p for p in candidate_refs if p.exists()), candidate_refs[0])
 
-    reeval_dir = run_output_dir(scenario, slug, "reeval")
-    if seed is not None:
-        reeval_dir = reeval_dir / f"seed_{seed:02d}"
-        reeval_dir.mkdir(parents=True, exist_ok=True)
+    # Per-ensemble re-eval output dir, so re-evals on alternative common
+    # ensembles never clobber each other.
+    reeval_dir = reeval_output_dir(scenario, slug, REEVAL_ENSEMBLE_SPEC, seed)
 
     n_vars = get_n_vars(formulation)
     dv_data, _ = load_reference_set(ref_file, n_vars)
@@ -100,7 +96,10 @@ def reevaluate(formulation: str,
         for i in range(n_solutions)
     ]
     print(f"Re-evaluating {n_solutions} solutions for '{formulation}' "
-          f"using {njobs} worker(s)...")
+          f"(scenario='{scenario}') on common ensemble "
+          f"'{reeval_tag(REEVAL_ENSEMBLE_SPEC)}' using {njobs} worker(s)...")
+    print(f"  reference set: {ref_file}")
+    print(f"  outputs:       {reeval_dir}")
 
     results: list[tuple[int, list[float] | None, str | None]] = []
     if njobs <= 1:
@@ -117,7 +116,7 @@ def reevaluate(formulation: str,
                 results.append(r)
 
     results.sort(key=lambda r: r[0])
-    obj_names = get_obj_names()
+    obj_names = reeval_obj_names()
     rows = []
     for sid, objs, err in results:
         if objs is None:

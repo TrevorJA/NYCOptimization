@@ -26,6 +26,7 @@ Usage (SLURM / MPI):
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -34,6 +35,7 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 import config  # noqa: E402
 from src.ensemble_prep import stage_pywrdrb_ensemble_inputs  # noqa: E402
+from src.ensembles import get_ensemble_spec  # noqa: E402
 
 
 def _get_mpi_context():
@@ -48,10 +50,24 @@ def _get_mpi_context():
 
 
 def main() -> None:
+    # --preset stages an ARBITRARY ensemble (e.g. a held-out common re-eval
+    # ensemble) instead of the active scenario design's search ensemble. Use
+    # parse_known_args so MPI launchers can pass through extra args harmlessly.
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--preset", default=None,
+        help="Ensemble preset / kn_{Y}yr_n{N} slug / staged dir to prep "
+             "(default: the active scenario design's search ensemble).",
+    )
+    args, _ = parser.parse_known_args()
+
     comm, rank, size = _get_mpi_context()
     use_mpi = size > 1
 
-    spec = config.SEARCH_ENSEMBLE_SPEC
+    if args.preset:
+        spec = get_ensemble_spec(args.preset)
+    else:
+        spec = config.SEARCH_ENSEMBLE_SPEC
     scenario = config.active_scenario_name()
 
     if spec is None:
