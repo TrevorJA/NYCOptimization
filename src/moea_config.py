@@ -134,6 +134,26 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
               "Verifies balance, per-eval cost, and output writing before the "
               "full 50k run.",
     ),
+    # Scenario-design go/no-go pilot. Identical rank layout to mm_pilot (165
+    # ranks, 5,000 total NFE). NFE is the SOLE binding constraint so all arms
+    # execute the identical 5,000 NFE — the validity condition for the cross-
+    # design Pareto comparison. Calibrated empirically: the slowest arm (N=64
+    # hazard ensemble) measured ~153 s/warm-eval, so 5,000 NFE ≈ 1.7 h of eval
+    # time on 160 workers — comfortably under the 3 h SLURM wall. No Borg
+    # maxTime cap (it would risk truncating NFE unequally near the budget);
+    # the SLURM --time=03:00:00 wall + 250-NFE runtime snapshots are the safety
+    # net (a killed run is recoverable from the last snapshot).
+    "pilot": MOEAConfig(
+        name="pilot",
+        n_islands=4,
+        n_workers_per_island=40,
+        max_evaluations=1250,     # per island -> 5,000 total NFE
+        runtime_frequency=250,
+        n_seeds=1,
+        max_time_hours=None,      # NFE-bounded; SLURM --time is the wall safety
+        notes="Go/no-go scenario-design pilot: 5k NFE, 165 ranks (4x40+5). "
+              "NFE-binding (calibrated: N=64 arm ~153s/eval -> ~1.7h < 3h wall).",
+    ),
     "mm_full": MOEAConfig(
         name="mm_full",
         n_islands=4,

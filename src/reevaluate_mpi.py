@@ -41,13 +41,14 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
-    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR,
-    derive_slug, get_n_vars, get_obj_names,
+    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR, REEVAL_ENSEMBLE_SPEC,
+    derive_slug, get_n_vars,
     active_scenario_name, run_output_dir,
 )
 from src.load.reference_set import load_reference_set
-from src.simulation import dvs_to_config, run_simulation_to_disk
-from src.formulations import get_objective_set
+from src.reeval_core import (
+    evaluate_solution, reeval_obj_names, reeval_output_dir, reeval_tag,
+)
 
 
 ###############################################################################
@@ -69,31 +70,27 @@ def _get_mpi_context():
 ###############################################################################
 
 def _evaluate_one(solution_id: int, dv_vector: np.ndarray, formulation: str,
-                  out_path: Path, objective_set):
-    """Run one solution to HDF5 and compute objectives.
+                  out_path: Path):
+    """Re-evaluate one solution on the common re-eval ensemble.
 
     Returns:
         (solution_id, objectives or None, error message or None).
     """
-    try:
-        cfg = dvs_to_config(dv_vector, formulation)
-        data = run_simulation_to_disk(cfg, out_path)
-        objs = list(objective_set.compute(data))
-        return solution_id, objs, None
-    except Exception as e:
-        tb = traceback.format_exc(limit=3).strip().splitlines()[-1]
-        return solution_id, None, f"{type(e).__name__}: {e} ({tb})"
+    return evaluate_solution(solution_id, dv_vector, formulation, out_path)
 
 
-def _resolve_ref_file(slug: str, formulation: str, scenario: str) -> Path:
+def _resolve_ref_file(slug: str, formulation: str, scenario: str,
+                      seed: int = 1) -> Path:
     """Locate the reference set file.
 
-    Prefers the merged Pareto set written by diagnostics under the run's own
-    sets/ dir, then a curated reference_sets/ entry, then the legacy
-    formulation-keyed path.
+    Prefers the merged Pareto set written by diagnostics, then the Borg
+    per-seed solution set written directly by the optimizer, then a curated
+    reference_sets/ entry, then the legacy formulation-keyed path.
     """
+    sets_dir = run_output_dir(scenario, slug, "sets")
     candidates = [
-        run_output_dir(scenario, slug, "sets") / f"{slug}_merged.set",
+        sets_dir / f"{slug}_merged.set",
+        sets_dir / f"seed_{seed:02d}_{slug}.set",
         OUTPUT_REFERENCE_SETS_DIR / f"{slug}.ref",
         OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref",
     ]
@@ -136,7 +133,8 @@ def reevaluate_mpi(
 
     # ---- Rank 0: locate reference set, load DVs, set up output dir ----
     if is_root:
-        ref_file = _resolve_ref_file(slug, formulation, scenario)
+        ref_file = _resolve_ref_file(slug, formulation, scenario,
+                                     seed=seed if seed is not None else 1)
         if not ref_file.exists():
             raise FileNotFoundError(
                 f"Reference set not found for formulation '{formulation}' "
@@ -149,13 +147,14 @@ def reevaluate_mpi(
             n_solutions = min(n_solutions, max_solutions)
             dv_data = dv_data[:n_solutions]
 
-        reeval_dir = run_output_dir(scenario, slug, "reeval")
-        if seed is not None:
-            reeval_dir = reeval_dir / f"seed_{seed:02d}"
-            reeval_dir.mkdir(parents=True, exist_ok=True)
+        # Per-ensemble re-eval output dir (re-evals on alternative common
+        # ensembles never clobber each other).
+        reeval_dir = reeval_output_dir(scenario, slug, REEVAL_ENSEMBLE_SPEC, seed)
 
         print(f"[reevaluate_mpi] scenario={scenario} formulation={formulation} "
               f"slug={slug} n_solutions={n_solutions} ranks={size}")
+        print(f"[reevaluate_mpi] common ensemble: "
+              f"{reeval_tag(REEVAL_ENSEMBLE_SPEC)}")
         print(f"[reevaluate_mpi] reference: {ref_file}")
         print(f"[reevaluate_mpi] outputs:   {reeval_dir}")
         payload = (dv_data, n_solutions, str(reeval_dir))
@@ -178,13 +177,11 @@ def reevaluate_mpi(
     rank_ids = list(np.array_split(all_ids, size)[rank])
 
     # ---- Per-rank evaluation ----
-    objective_set = get_objective_set()
     rank_results: list = []
     t0 = time.time()
     for sid in rank_ids:
         out_path = reeval_dir / f"solution_{sid:04d}.hdf5"
-        result = _evaluate_one(int(sid), dv_data[sid], formulation,
-                               out_path, objective_set)
+        result = _evaluate_one(int(sid), dv_data[sid], formulation, out_path)
         rank_results.append(result)
         _, _, err = result
         tag = "FAIL" if err else "ok"
@@ -208,7 +205,7 @@ def reevaluate_mpi(
         flat.extend(chunk)
     flat.sort(key=lambda r: r[0])
 
-    obj_names = get_obj_names()
+    obj_names = reeval_obj_names()
     rows = []
     fail_count = 0
     for sid, objs, err in flat:
