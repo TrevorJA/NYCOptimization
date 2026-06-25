@@ -21,6 +21,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=33
 #SBATCH --cpus-per-task=1
+#SBATCH --exclusive
 #SBATCH --time=02:00:00
 #SBATCH --output=logs/reeval_ens_%x_%j.out
 #SBATCH --error=logs/reeval_ens_%x_%j.err
