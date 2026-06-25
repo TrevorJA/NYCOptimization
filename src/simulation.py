@@ -776,6 +776,69 @@ def _get_temp_dir() -> str:
 # In-Memory Recorder (avoids HDF5 disk I/O and its threading side-effects)
 ###############################################################################
 
+# Minimal-recorder selection. pywrdrb's OutputRecorder records EVERY node and
+# parameter by default — most of the in-memory (and on-disk) footprint. The
+# objectives only consume the result groups pulled by
+# _extract_results_from_recorder: NYC-system reservoir storages, major-flow
+# links (Montague/Trenton/...), NYC/NJ demand+delivery, mrf_target_*, flood
+# stage_*, and (when active) the salinity/temperature LSTM parameters. Recording
+# only those objects gives identical objectives at a fraction of the memory,
+# which in turn allows much larger ensemble batches (fewer model loads -> far
+# less shared-filesystem I/O -> faster re-eval). Toggle off with
+# NYCOPT_MINIMAL_RECORDER=0 to capture everything (e.g. for full-timeseries
+# diagnostics).
+# NYC/NJ demand+delivery are recorded by exact name; depending on the model
+# build these can be either nodes or parameters, so match them in BOTH lists.
+_OBJECTIVE_EXACT_NAMES = frozenset({
+    "demand_nyc", "demand_nj", "delivery_nyc", "delivery_nj",
+})
+_OBJECTIVE_PARAM_NAMES = frozenset({
+    # salinity / temperature LSTM outputs (present only when those models are on)
+    "salt_front_location_mu", "salt_front_location_sd",
+    "temperature_after_thermal_release_mu", "temperature_after_thermal_release_sd",
+    "thermal_release_requirement",
+    "forecasted_temperature_before_thermal_release_mu",
+})
+_OBJECTIVE_PARAM_PREFIXES = ("mrf_target_", "stage_")
+
+
+def _use_minimal_recorder() -> bool:
+    return os.environ.get("NYCOPT_MINIMAL_RECORDER", "1").lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _minimal_recorder_selection(model):
+    """Return (nodes, parameters) object lists covering exactly the keys the
+    objective extractors read (see _extract_results_from_recorder)."""
+    from pywrdrb.utils.lists import reservoir_list, majorflow_list
+    res = set(reservoir_list)
+    mf = set(majorflow_list)
+
+    def want_node(nm: str) -> bool:
+        if nm in _OBJECTIVE_EXACT_NAMES:
+            return True
+        parts = nm.split("_", 1)
+        if len(parts) < 2:
+            return False
+        head, tail = parts[0], parts[1]
+        # res_storage: reservoir_{X in reservoir_list}; major_flow: link_{Y in majorflow_list}
+        if head == "reservoir" and nm.split("_")[1] in res:
+            return True
+        if head == "link" and tail in mf:
+            return True
+        return False
+
+    def want_param(nm: str) -> bool:
+        return (nm in _OBJECTIVE_EXACT_NAMES
+                or nm in _OBJECTIVE_PARAM_NAMES
+                or nm.startswith(_OBJECTIVE_PARAM_PREFIXES))
+
+    nodes = [n for n in model.nodes.values() if n.name and want_node(n.name)]
+    params = [p for p in model.parameters if p.name and want_param(p.name)]
+    return nodes, params
+
+
 class InMemoryRecorder:
     """Wrapper around pywrdrb.OutputRecorder that skips HDF5 output.
 
@@ -794,12 +857,25 @@ class InMemoryRecorder:
     corrupt the Python GIL state inside Borg's ctypes C→Python callback).
     """
 
-    def __init__(self, model):
+    def __init__(self, model, minimal=None):
         from pywrdrb.recorder import OutputRecorder
 
+        if minimal is None:
+            minimal = _use_minimal_recorder()
+
         # Create OutputRecorder (this also registers the individual
-        # NumpyArray*Recorders with the pywr model).
-        self._inner = OutputRecorder(model, output_filename="/dev/null")
+        # NumpyArray*Recorders with the pywr model). By default record only the
+        # objective-relevant nodes/parameters (see _minimal_recorder_selection)
+        # to cut memory/output; pass minimal=False (or NYCOPT_MINIMAL_RECORDER=0)
+        # to capture everything.
+        if minimal:
+            nodes, parameters = _minimal_recorder_selection(model)
+            self._inner = OutputRecorder(
+                model, output_filename="/dev/null",
+                nodes=nodes, parameters=parameters,
+            )
+        else:
+            self._inner = OutputRecorder(model, output_filename="/dev/null")
 
         # Make ALL wrapper lifecycle methods no-ops.
         # pywr's C engine calls setup/reset/after/finish on each individual
