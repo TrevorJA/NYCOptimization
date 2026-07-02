@@ -1464,6 +1464,31 @@ def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
     ``.base`` and ``.compute_for_borg_from_values``), as returned by
     ``formulations.get_objective_set()`` when the search ensemble is active.
     """
+    base_matrix, _ = _ensemble_base_matrix(
+        nyc_config, ensemble_spec, objective_set, batch_size,
+    )
+    ens_objs = list(objective_set)
+    return [o.compute_for_borg_from_values(base_matrix[:, k])
+            for k, o in enumerate(ens_objs)]
+
+
+def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
+                          batch_size: int):
+    """Per-realization base-metric matrix ``(n_real, n_obj)`` in NATURAL units.
+
+    The shared matrix-building half of the batched ensemble path: used by both
+    :func:`_evaluate_ensemble_batched` (search) and :func:`evaluate_raw`
+    (re-eval), so the two compute base metrics from one code path. Column ``k``
+    holds ``objective_set[k].base.compute(data)`` for each realization (NOT
+    Borg-negated, NOT aggregated). Requires an ObjectiveSet of
+    ``EnsembleObjective`` instances (exposing ``.base`` and
+    ``.compute_for_borg_from_values``).
+
+    Returns:
+        ``(base_matrix, base_names)`` — ``base_matrix`` float array
+        ``(n_real, n_obj)``; ``base_names[k]`` is the base objective name of
+        column ``k``.
+    """
     ens_objs = list(objective_set)
     if not ens_objs or not all(
         hasattr(o, "base") and hasattr(o, "compute_for_borg_from_values")
@@ -1485,8 +1510,87 @@ def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
         nyc_config, ensemble_spec, batch_size, per_real,
     )
     base_matrix = np.asarray(base_rows, dtype=float)  # (n_real, n_obj)
-    return [o.compute_for_borg_from_values(base_matrix[:, k])
-            for k, o in enumerate(ens_objs)]
+    base_names = [o.base.name for o in ens_objs]
+    return base_matrix, base_names
+
+
+def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
+                 ensemble_spec=None, realization_batch=None):
+    """Per-realization base-objective matrix in NATURAL units (not Borg-negated).
+
+    Re-eval-facing companion to :func:`evaluate`: runs the SAME simulation and
+    per-realization base-metric computation, but returns the raw
+    ``(n_realizations, n_base_objs)`` matrix instead of the aggregated/negated
+    objectives. This lets robustness metrics (satisficing, regret, ...) be scored
+    offline from the persisted matrix without re-simulating. Mirrors
+    ``evaluate()``'s dispatch (resample / single-trace / batched / legacy
+    unbatched) so re-eval base metrics match the search path.
+
+    Args:
+        dv_vector: Decision-variable vector.
+        formulation_name: Formulation name string.
+        objective_set: ObjectiveSet (ensemble objectives for the ensemble path;
+            a single-trace set for ``is_ensemble=False``). Defaults to the active
+            set from ``formulations.get_objective_set()``.
+        ensemble_spec: EnsembleSpec; defaults to ``config.SEARCH_ENSEMBLE_SPEC``.
+            Re-eval callers pass ``config.REEVAL_ENSEMBLE_SPEC``.
+        realization_batch: Realizations per simulation batch; defaults to
+            ``config.SEARCH_REALIZATION_BATCH``.
+
+    Returns:
+        ``(base_matrix, base_names)`` — ``base_matrix`` float array
+        ``(n_realizations, n_base_objs)`` in natural units; ``base_names[k]`` is
+        column ``k``'s base objective name. Single-trace (``is_ensemble=False``)
+        returns shape ``(1, n_obj)`` where the base metrics ARE the natural
+        objective values (no satisficing wrapper); robustness metrics defined
+        over realizations are degenerate at ``n_realizations == 1`` and the
+        offline scorer treats them as N/A.
+    """
+    if objective_set is None:
+        from src.formulations import get_objective_set
+        objective_set = get_objective_set()
+
+    if ensemble_spec is None:
+        from config import SEARCH_ENSEMBLE_SPEC
+        ensemble_spec = SEARCH_ENSEMBLE_SPEC
+
+    # Parity with evaluate(): redraw a resample-per-eval master pool. Re-eval
+    # specs are not resample pools, so this is a no-op there; kept for safety.
+    if ensemble_spec is not None and ensemble_spec.resample_per_eval:
+        ensemble_spec = _resampled_eval_spec(ensemble_spec, _EVAL_COUNT)
+
+    if realization_batch is None:
+        from config import SEARCH_REALIZATION_BATCH
+        realization_batch = SEARCH_REALIZATION_BATCH
+
+    nyc_config = dvs_to_config(dv_vector, formulation_name)
+
+    if not ensemble_spec.is_ensemble:
+        data = run_simulation_inmemory(nyc_config)
+        base_names = list(objective_set.names)
+        base_matrix = np.asarray([objective_set.compute(data)], dtype=float)
+        return base_matrix, base_names
+
+    if realization_batch and realization_batch > 0:
+        return _ensemble_base_matrix(
+            nyc_config, ensemble_spec, objective_set, realization_batch,
+        )
+
+    # Legacy single-model ensemble path (all realizations as one scenario block).
+    ens_objs = list(objective_set)
+    if not ens_objs or not all(hasattr(o, "base") for o in ens_objs):
+        raise NotImplementedError(
+            "ensemble evaluate_raw requires EnsembleObjective instances "
+            "(with .base). Build the set via "
+            "src.objectives_ensemble.build_ensemble_objective_set."
+        )
+    data_per_real = run_simulation_ensemble_inmemory(nyc_config, ensemble_spec)
+    base_matrix = np.asarray(
+        [[o.base.compute(d) for o in ens_objs] for d in data_per_real],
+        dtype=float,
+    )
+    base_names = [o.base.name for o in ens_objs]
+    return base_matrix, base_names
 
 
 _RESAMPLE_BASE_SEED = 1_000_003  # salt for the resampled-probabilistic per-eval RNG

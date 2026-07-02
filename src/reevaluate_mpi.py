@@ -36,7 +36,6 @@ from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
-import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -47,7 +46,7 @@ from config import (
 )
 from src.load.reference_set import load_reference_set
 from src.reeval_core import (
-    evaluate_solution, reeval_obj_names, reeval_output_dir, reeval_tag,
+    evaluate_solution_raw, persist_reeval_raw, reeval_output_dir, reeval_tag,
 )
 
 
@@ -69,14 +68,13 @@ def _get_mpi_context():
 # Per-rank evaluation
 ###############################################################################
 
-def _evaluate_one(solution_id: int, dv_vector: np.ndarray, formulation: str,
-                  out_path: Path):
-    """Re-evaluate one solution on the common re-eval ensemble.
+def _evaluate_one(solution_id: int, dv_vector: np.ndarray, formulation: str):
+    """Re-evaluate one solution and return its raw per-realization matrix.
 
     Returns:
-        (solution_id, objectives or None, error message or None).
+        (solution_id, base_matrix | None, base_names | None, error | None).
     """
-    return evaluate_solution(solution_id, dv_vector, formulation, out_path)
+    return evaluate_solution_raw(solution_id, dv_vector, formulation)
 
 
 def _resolve_ref_file(slug: str, formulation: str, scenario: str,
@@ -180,10 +178,9 @@ def reevaluate_mpi(
     rank_results: list = []
     t0 = time.time()
     for sid in rank_ids:
-        out_path = reeval_dir / f"solution_{sid:04d}.hdf5"
-        result = _evaluate_one(int(sid), dv_data[sid], formulation, out_path)
+        result = _evaluate_one(int(sid), dv_data[sid], formulation)
         rank_results.append(result)
-        _, _, err = result
+        err = result[3]
         tag = "FAIL" if err else "ok"
         print(f"  [rank {rank:>3} {tag}] solution {sid:04d}"
               + (f"  ({err})" if err else ""), flush=True)
@@ -199,30 +196,23 @@ def reevaluate_mpi(
     if not is_root:
         return None
 
-    # Flatten and sort.
+    # Flatten and sort. Each result is (sid, base_matrix|None, base_names|None,
+    # err); rows carry their own solution_id so no positional stitching needed.
     flat: list = []
     for chunk in gathered:
         flat.extend(chunk)
     flat.sort(key=lambda r: r[0])
 
-    obj_names = reeval_obj_names()
-    rows = []
-    fail_count = 0
-    for sid, objs, err in flat:
-        if objs is None:
-            rows.append([np.nan] * len(obj_names))
-            fail_count += 1
-        else:
-            rows.append(objs)
-
-    summary_df = pd.DataFrame(rows, columns=obj_names)
-    summary_df.index.name = "solution_id"
-    summary_csv = reeval_dir / "objectives_summary.csv"
-    summary_df.to_csv(summary_csv)
+    fail_count = sum(1 for r in flat if r[1] is None)
+    summary_csv, raw_path, meta_path = persist_reeval_raw(
+        reeval_dir, flat, formulation, n_solutions, seed,
+    )
 
     print(f"[reevaluate_mpi] {n_solutions - fail_count}/{n_solutions} "
           f"solutions ok; {fail_count} failed.")
-    print(f"[reevaluate_mpi] summary -> {summary_csv}")
+    print(f"[reevaluate_mpi] raw matrix -> {raw_path}")
+    print(f"[reevaluate_mpi] meta       -> {meta_path}")
+    print(f"[reevaluate_mpi] summary    -> {summary_csv}")
     return summary_csv
 
 

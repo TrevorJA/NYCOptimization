@@ -70,12 +70,12 @@ All non-historical designs draw from the **same** master ensemble $\mathcal{M}$,
 
 Stages 3.1–3.2 are `workflow/01`; stage 3.3 is the front half of `workflow/02`.
 
-### 3.1 Forcing space: hybrid CMIP6 envelope + LHS fill
+### 3.1 Forcing space: CMIP6-based interpretable harmonic-parameter hypercube
 
-The deeply-uncertain forcing space is the set of plausible monthly climate perturbations applied to the Kirsch generator's log-space statistics.
+The deeply-uncertain forcing space is the set of plausible monthly climate perturbations applied to the Kirsch generator's log-space statistics. The full parameterization, CMIP6 fits, sampler, and relationship to Quinn et al. (2018) are in `docs/notes/methods/forcing_parameterization.md`; the essentials:
 
-1. **Outer envelope from CMIP6.** Take the CMIP6 multimodel cloud spanning 7 GCMs × 3 SSPs × {near, far} periods (72 PRMS/VIC5 hydrologic runs), each a 12-month change-factor profile $\{\Delta_j^{(k)}\}$ for the NYC inflow gages. Per calendar month $j$, define the envelope $[\underline{\Delta}_j, \overline{\Delta}_j]$ (min–max, or a flagged percentile band). The 72 profiles are retained as anchor points so the search space contains GCM-consistent corners.
-2. **Interior + modest exterior fill by LHS.** Draw $N_\Theta$ profiles by Latin hypercube sampling within $[\underline{\Delta}_j-\delta,\ \overline{\Delta}_j+\delta]$, where $\delta$ is a small extrapolation margin pushing modestly beyond the cloud toward paleo/historical extremes (Brown et al. 2012; Prudhomme et al. 2010). To preserve the physically correlated *shape* of monthly profiles, the 12-D LHS is taken in the principal-component basis of the 72 anchor profiles and rotated back (independent-month LHS is the flagged alternative).
+1. **CMIP6 anchors.** Take the CMIP6 multimodel cloud (GCM × SSP × period hydrologic runs), each a 12-month multiplicative change-factor profile $a_j$ for the NYC inflow gages.
+2. **Interpretable fixed-phase harmonic parameterization + DMDU hypercube.** Decompose each anchor's *log* change-factor profile into a low-order harmonic (Fourier) series and, following Quinn et al. (2018), **hold the harmonic phases fixed at the canonical CMIP6 shape** (the phases of the fit to the ensemble-mean profile) while sampling only the **amplitudes** — annual-mean level $m$, annual amplitude $r_1$, semiannual amplitude $r_2$ (all magnitudes; volume / seasonal amplitude / shoulder shape). The forcing space is the deeply-uncertain hypercube of those amplitudes across the CMIP6 anchors — bounded by the **empirical 90% range** (per-axis 5th–95th percentile, robust to outlier runs) — sampled independently by LHS (`scengen.forcing_space.sample_harmonic_forcing`, `fix_phase=True`). Fixing the phases anchors every profile to the characteristic CMIP6 seasonal shape (correct winter peak + asymmetry), which independent phase sampling otherwise scrambles, while still admitting deeply-uncertain magnitude combinations the GCMs did not jointly produce. *(The earlier PC-rotated-LHS variant has been retired in favor of this interpretable parameterization.)*
 
 The CMIP6 profiles are read from the multiplicative twin product
 `CMIP6_multimodel_streamflow/stats/diff_relative_to_dataset_baseline/nyc_inflow_monthly_mean_frac_by_dataset_ssp_and_period.csv`
@@ -249,7 +249,7 @@ A clean, by-design layout split across repositories (the optimization-independen
 
 ```
 NYCOptimization_scenario_generation/   # optimization-independent
-  forcing_space.py      # §3.1  CMIP6 _frac_ load (calendar->WY), PC-rotated LHS -> theta; eqs 10-11
+  forcing_space.py      # §3.1  CMIP6 _frac_ load (calendar->WY), harmonic-param hypercube -> theta; eqs 10-11
   master_ensemble.py    # §3.2  fit baseline + full Kirsch; global-index generation; streaming H; manifest
   hazard_metrics.py     # §3.3  import MOEA-FIND metrics + screening; VIF/PCA; persist H
   subsample.py          # §4.6  net-new SA stratified-maximin + energy-distance selectors
@@ -284,11 +284,11 @@ NYCOptimization/                        # optimization-coupled
 | Parameter | Symbol | Recommended default | Rationale / citation |
 |---|---|---|---|
 | Master-ensemble cardinality | $N_{\mathcal{M}}$ | $\sim 10^{6}$ | Dense parent (Minasny & McBratney 2006; Mak & Joseph 2018). |
-| Forcing-profile count | $N_\Theta$ | 500–2000 | Populate the 12-D envelope under PC-rotated LHS. |
-| CMIP6 envelope band | $[\underline\Delta,\overline\Delta]$ | min–max of 72 runs | Conservative; percentile band flagged. |
-| Exterior margin | $\delta$ | +5–10% of width | Modest extrapolation (Brown 2012; Prudhomme 2010). |
-| Monthly-profile correlation | — | PC-rotated 12-D LHS | Preserve seasonal co-variation; independent-month flagged. |
-| Climate-adjustment SD | $c_j$ | 1 (absolute SD) | Matches `generate.py`; CV not preserved (flagged). |
+| Forcing-profile count | $N_\Theta$ | 500–2000 | Populate the CMIP6-based harmonic-parameter hypercube by LHS. |
+| CMIP6 envelope band | $[\underline\Delta,\overline\Delta]$ | min–max of anchors | Conservative; percentile band flagged. |
+| Box width (param range) | bound_pct | (5, 95) — empirical 90% range | Robust to outlier GCM runs; fixed phases prevent over-dispersion. Optional `margin` widens/tightens. |
+| Forcing parameterization | $\{m,r_1,r_2\}$ + fixed canonical phases | fixed-phase harmonic hypercube (DMDU) | Quinn-style: sample amplitudes, fix phases at the canonical CMIP6 shape (best shape fidelity, fewer params). See `forcing_parameterization.md`. |
+| Climate-adjustment SD | $c_j$ | $a_j$ (CV-preserving) + indep. variance axis $v_j$ | CV-preserving baseline; $c_j=a_j v_j$ for the variance axis (`derive_variance_envelope`). |
 | Scenario length (search) | $L$ | 5–10 yr | Exceed longest within-window drought; vs 1960s DRB record. |
 | Window construction | — | disjoint | Scenario independence (conditional on $\theta$). |
 | Initial storage | — | 0.80 + 365-day warmup | Terminating-simulation BC (Law 2015); sampling flagged. |

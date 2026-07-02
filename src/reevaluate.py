@@ -20,9 +20,6 @@ import multiprocessing as mp
 import sys
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
@@ -32,21 +29,21 @@ from config import (
 )
 from src.load.reference_set import load_reference_set
 from src.reeval_core import (
-    evaluate_solution, reeval_obj_names, reeval_output_dir, reeval_tag,
+    evaluate_solution_raw, persist_reeval_raw, reeval_output_dir, reeval_tag,
 )
 
 
-def _evaluate_one(task: tuple) -> tuple[int, list[float] | None, str | None]:
-    """Worker: re-evaluate one solution on the common re-eval ensemble.
+def _evaluate_one(task: tuple):
+    """Worker: re-evaluate one solution and return its raw per-realization matrix.
 
     Args:
-        task: (solution_id, dv_vector, formulation, out_path).
+        task: (solution_id, dv_vector, formulation).
 
     Returns:
-        (solution_id, objectives or None, error message or None).
+        (solution_id, base_matrix | None, base_names | None, error | None).
     """
-    solution_id, dv_vector, formulation, out_path = task
-    return evaluate_solution(solution_id, dv_vector, formulation, out_path)
+    solution_id, dv_vector, formulation = task
+    return evaluate_solution_raw(solution_id, dv_vector, formulation)
 
 
 def reevaluate(formulation: str,
@@ -91,24 +88,21 @@ def reevaluate(formulation: str,
     if max_solutions > 0:
         n_solutions = min(n_solutions, max_solutions)
 
-    tasks = [
-        (i, dv_data[i, :], formulation, reeval_dir / f"solution_{i:04d}.hdf5")
-        for i in range(n_solutions)
-    ]
+    tasks = [(i, dv_data[i, :], formulation) for i in range(n_solutions)]
     print(f"Re-evaluating {n_solutions} solutions for '{formulation}' "
           f"(scenario='{scenario}') on common ensemble "
           f"'{reeval_tag(REEVAL_ENSEMBLE_SPEC)}' using {njobs} worker(s)...")
     print(f"  reference set: {ref_file}")
     print(f"  outputs:       {reeval_dir}")
 
-    results: list[tuple[int, list[float] | None, str | None]] = []
+    results: list = []
     if njobs <= 1:
         results = [_evaluate_one(t) for t in tasks]
     else:
         ctx = mp.get_context("spawn")
         with ctx.Pool(njobs) as pool:
             for r in pool.imap_unordered(_evaluate_one, tasks):
-                sid, objs, err = r
+                sid, mat, _names, err = r
                 if err:
                     print(f"  [FAIL] solution {sid}: {err}")
                 else:
@@ -116,18 +110,12 @@ def reevaluate(formulation: str,
                 results.append(r)
 
     results.sort(key=lambda r: r[0])
-    obj_names = reeval_obj_names()
-    rows = []
-    for sid, objs, err in results:
-        if objs is None:
-            rows.append([np.nan] * len(obj_names))
-        else:
-            rows.append(objs)
-    summary_df = pd.DataFrame(rows, columns=obj_names)
-    summary_df.index.name = "solution_id"
-    summary_csv = reeval_dir / "objectives_summary.csv"
-    summary_df.to_csv(summary_csv)
-    print(f"Summary -> {summary_csv}")
+    summary_csv, raw_path, meta_path = persist_reeval_raw(
+        reeval_dir, results, formulation, n_solutions, seed,
+    )
+    print(f"Raw matrix -> {raw_path}")
+    print(f"Meta       -> {meta_path}")
+    print(f"Summary    -> {summary_csv}")
     return summary_csv
 
 

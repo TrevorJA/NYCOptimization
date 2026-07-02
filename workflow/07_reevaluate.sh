@@ -77,4 +77,18 @@ case "${MODE}" in
         ;;
 esac
 
+# ---- Optional offline robustness scoring (opt-in) ----
+# Scores the persisted raw matrix (reeval_raw.parquet) into a multi-metric
+# robustness scorecard. Cheap, no re-simulation. Regret-from-baseline also
+# needs a baseline raw pass: run `python3 scripts/main/run_baseline.py
+# --formulation ${FORMULATION} --reeval` first and pass --baseline-dir.
+if [[ "${NYCOPT_REEVAL_SCORE:-0}" == "1" ]]; then
+    echo "=== Robustness scoring ==="
+    SCORE_ARGS="--formulation ${FORMULATION}"
+    [[ -n "${SEED}" ]] && SCORE_ARGS="${SCORE_ARGS} --seed ${SEED}"
+    [[ -n "${NYCOPT_REEVAL_BASELINE_DIR:-}" ]] && \
+        SCORE_ARGS="${SCORE_ARGS} --baseline-dir ${NYCOPT_REEVAL_BASELINE_DIR}"
+    python3 -m src.robustness ${SCORE_ARGS}
+fi
+
 echo "=== Completed: $(date) ==="

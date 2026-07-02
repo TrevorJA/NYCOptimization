@@ -607,7 +607,15 @@ REEVALUATION_SETTINGS = {
     "realization_length_years": 70,
     "generator": "kirsch_nowak",
     "climate_scenarios": ["stationary"],
-    "robustness_metrics": ["satisficing", "regret"],
+    # Explicit metric identifiers scored offline by src.robustness from the
+    # persisted raw per-realization matrix (not aspirational labels). Default
+    # set for the manuscript; src.robustness --metrics overrides.
+    "robustness_metrics": [
+        "satisficing_univariate",
+        "satisficing_multivariate",
+        "regret_from_best",
+        "regret_from_baseline",
+    ],
 }
 
 

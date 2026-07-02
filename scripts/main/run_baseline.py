@@ -84,6 +84,47 @@ def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
     return data, obj_values
 
 
+def run_baseline_reeval(formulation: str = "ffmp", seed=None):
+    """Run the default policy through the re-eval ensemble; persist its raw matrix.
+
+    Provides the baseline performance matrix for regret-from-baseline scoring
+    (``src.robustness --baseline-dir``). Uses the SAME common re-eval ensemble
+    and per-realization base-metric computation as the policy re-eval, so the two
+    are on equal footing. Writes ``reeval_raw.parquet`` + ``reeval_raw_meta.json``
+    under ``.../reeval/{tag}[/seed_NN]/baseline``.
+
+    Args:
+        formulation: Problem formulation name.
+        seed: Optional seed (for the per-seed re-eval subdir).
+
+    Returns:
+        Path to the baseline ``reeval_raw`` file.
+    """
+    from config import REEVAL_ENSEMBLE_SPEC, active_scenario_name, derive_slug
+    from src.reeval_core import (
+        evaluate_solution_raw, persist_reeval_raw, reeval_output_dir, reeval_tag,
+    )
+
+    scenario = active_scenario_name()
+    slug = derive_slug(formulation)
+    base_dir = (reeval_output_dir(scenario, slug, REEVAL_ENSEMBLE_SPEC, seed)
+                / "baseline")
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n--- Baseline re-eval ({formulation}) on common ensemble "
+          f"'{reeval_tag(REEVAL_ENSEMBLE_SPEC)}' ---")
+    dv_values = get_baseline_values(formulation)
+    _sid, mat, names, err = evaluate_solution_raw(0, dv_values, formulation)
+    if err:
+        raise RuntimeError(f"baseline re-eval failed: {err}")
+    _summary, raw_path, meta_path = persist_reeval_raw(
+        base_dir, [(0, mat, names, None)], formulation, 1, seed,
+    )
+    print(f"  baseline raw  -> {raw_path}")
+    print(f"  baseline meta -> {meta_path}")
+    return raw_path
+
+
 def run_inmemory_test(formulation: str = "ffmp", use_trimmed: bool = False):
     """Test the in-memory simulation path against the disk-based result.
 
@@ -133,7 +174,19 @@ if __name__ == "__main__":
         "--test-inmemory", action="store_true",
         help="Also test the in-memory path and compare with disk-based results."
     )
+    parser.add_argument(
+        "--reeval", action="store_true",
+        help="Run the baseline through the common re-eval ensemble and persist "
+             "its raw matrix (for regret-from-baseline scoring)."
+    )
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Seed subdir for --reeval baseline output.")
     args = parser.parse_args()
+
+    if args.reeval:
+        run_baseline_reeval(args.formulation, seed=args.seed)
+        print("\n--- Baseline re-eval complete ---")
+        sys.exit(0)
 
     print("=" * 50)
     print("  Baseline Evaluation")
