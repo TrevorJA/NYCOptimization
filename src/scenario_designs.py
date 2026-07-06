@@ -34,6 +34,7 @@ forcing space; hazard metrics + subsample selectors) lands.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from src.ensembles import (
@@ -41,7 +42,17 @@ from src.ensembles import (
     as_resampling_pool,
     get_ensemble_spec,
     kirsch_nowak_slug,
+    staged_ensemble_dir,
 )
+
+# Forcing-master sizing shared by the two designs that subsample a CMIP6-forced master
+# (hazard_filling, input_stratified). Provisional small test values for the workflow stand-up;
+# override via env for a tiny smoke run so the master slug, the Step-1 driver, and the subset
+# size stay mutually consistent (methods §3.2). No CLI value flags.
+_MASTER_N_FORCING = int(os.environ.get("NYCOPT_MASTER_N_FORCING", "200"))
+_MASTER_REALS_PER_PROFILE = int(os.environ.get("NYCOPT_MASTER_REALS_PER_PROFILE", "1"))
+_MASTER_YEARS = int(os.environ.get("NYCOPT_MASTER_YEARS", "5"))
+_MASTER_SUBSET_N = int(os.environ.get("NYCOPT_MASTER_SUBSET_N", "64"))
 
 
 ###############################################################################
@@ -104,6 +115,19 @@ class ScenarioDesign:
         measure) is the deliberate departure -- NOT decision scaling, which
         samples for post-hoc evaluation and re-imposes likelihoods. Part of the
         final ensemble slug so the two do not collide.
+    master_kind
+        How the master (pool) this design draws from is built: ``"stationary"``
+        (direct Kirsch-Nowak, ``kn_{Y}yr_n{N}``) or ``"forcing"`` (the shared
+        CMIP6-forced master ``master_{L}yr_n{N_M}``; methods §3.2). Forcing
+        designs (``hazard_filling``, ``input_stratified``) share one master.
+    n_forcing_profiles
+        For ``master_kind == "forcing"``: number of CMIP6 forcing profiles
+        (N_Theta). Master cardinality = ``n_forcing_profiles *
+        realizations_per_profile``.
+    realizations_per_profile
+        For ``master_kind == "forcing"``: realizations per forcing profile
+        (default 1, so each realization carries a distinct theta — the §4.5
+        input-stratified view).
     notes
         Free-form notes (open questions, literature pointers).
     """
@@ -121,6 +145,9 @@ class ScenarioDesign:
     subset_seed: int | None = None
     selector: str = "lhs_nn"
     selector_space: str = "cdf"
+    master_kind: str = "stationary"
+    n_forcing_profiles: int | None = None
+    realizations_per_profile: int = 1
     notes: str = ""
 
     def kn_staged_dims(self) -> tuple[int, int] | None:
@@ -139,6 +166,8 @@ class ScenarioDesign:
           subset of that pool (per-evaluation random for resampled; a fixed
           space-filling subset for hazard-filling).
         """
+        if self.master_kind == "forcing":
+            return None  # forcing designs stage a CMIP6 master, not a stationary kn ensemble
         if self.ensemble_preset is not None:
             return None
         if self.selection not in ("random", "hazard_fill"):
@@ -152,13 +181,34 @@ class ScenarioDesign:
             return (self.realization_years, self.master_pool_size)
         return (self.realization_years, self.n_realizations)
 
-    def kn_ensemble_slug(self) -> str | None:
-        """Return the ``kn_{Y}yr_n{N}`` slug this design stages, or ``None``.
+    def master_n_realizations(self) -> int | None:
+        """Cardinality N_M of the forcing master, or ``None`` for non-forcing designs."""
+        if self.master_kind != "forcing" or self.n_forcing_profiles is None:
+            return None
+        return self.n_forcing_profiles * self.realizations_per_profile
 
-        For ``hazard_fill`` this is the *master pool* that Step 1 stages and the
-        subsample step reads from — not the design's search ensemble (that is the
-        reduced ensemble named by :meth:`hazard_filling_slug`).
+    def master_slug(self) -> str | None:
+        """Return the shared forcing-master slug ``master_{L}yr_n{N_M}``, or ``None``.
+
+        Both forcing designs (``hazard_filling``, ``input_stratified``) resolve to the *same* slug
+        when their ``(realization_years, n_forcing_profiles, realizations_per_profile)`` match, so
+        Step 1 stages one design-independent master (methods §3.2).
         """
+        n_m = self.master_n_realizations()
+        if n_m is None or self.realization_years is None:
+            return None
+        return f"master_{self.realization_years}yr_n{n_m}"
+
+    def kn_ensemble_slug(self) -> str | None:
+        """Return the pool slug Step 1 stages for this design, or ``None``.
+
+        For a ``forcing`` design this is the shared CMIP6 master (:meth:`master_slug`); for
+        ``hazard_fill`` on a stationary master it is the ``kn_{Y}yr_n{N}`` master pool that the
+        subsample step reads — not the design's search ensemble (that is the reduced ensemble named
+        by :meth:`hazard_filling_slug`).
+        """
+        if self.master_kind == "forcing":
+            return self.master_slug()
         dims = self.kn_staged_dims()
         return None if dims is None else kirsch_nowak_slug(dims[0], dims[1])
 
@@ -198,12 +248,13 @@ class ScenarioDesign:
             ``n_realizations`` indices from the pool at each evaluation.
 
         Raises:
-            NotImplementedError: For designs whose construction is not yet wired
-                (``input_stratified``, ``hazard_filling``), or for ``draw != 0``
-                on a direct-KN design.
+            NotImplementedError: For ``draw != 0`` on a direct-KN design, or when a design's
+                master/reduced ensemble is not staged yet (with instructions to build it).
         """
         if self.ensemble_preset is not None:
             return get_ensemble_spec(self.ensemble_preset)
+        if self.selection == "lhs_input":
+            return self._resolve_input_stratified(draw)
         if self.selection == "hazard_fill":
             # The search ensemble is the FINAL reduced ensemble that the scengen
             # subsample step stages (its own HDF5 + _meta.json), not the master
@@ -241,8 +292,57 @@ class ScenarioDesign:
             f"construction wired yet. Its sizes/lengths/draws/selection are "
             f"open decisions (see experimental_design.md). Runnable today: "
             f"'historic', 'fixed_probabilistic_short', "
-            f"'fixed_probabilistic_long', 'resampled_probabilistic'."
+            f"'fixed_probabilistic_long', 'resampled_probabilistic', "
+            f"'input_stratified', 'hazard_filling'."
         )
+
+    def _resolve_input_stratified(self, draw: int) -> EnsembleSpec:
+        """Resolve the input-stratified search ensemble (methods §4.5).
+
+        Space-fills the generator parameter space theta by running the same LHS+nearest-neighbor
+        selector as ``hazard_filling`` but over the staged master's per-realization forcing
+        coordinates (``forcing_profiles.npz``) instead of its hazard image, then materializes the
+        selected realizations from the master's daily chunks into a small reduced ensemble (resolved
+        by slug). Contrasting this with ``hazard_filling`` isolates the claim that uniform coverage in
+        *input* space need not produce uniform coverage in *hazard* space. Idempotent: reuses the
+        staged reduced ensemble on later resolves.
+        """
+        import numpy as np
+        from scengen.subsample import input_stratified_subsample
+        from src.ensembles import materialize_subset_from_master
+
+        master = self.master_slug()
+        if master is None or self.n_realizations is None:
+            raise NotImplementedError(
+                f"Scenario design '{self.name}' is missing forcing-master sizing "
+                f"(master_kind/n_forcing_profiles/realization_years/n_realizations)."
+            )
+        seed = (self.subset_seed or 0) + draw
+        out_slug = f"inputstrat_{self.realization_years}yr_n{self.n_realizations}_s{seed}"
+        try:
+            return get_ensemble_spec(out_slug)  # already materialized
+        except KeyError:
+            pass
+
+        npz_path = staged_ensemble_dir(master) / "forcing_profiles.npz"
+        if not npz_path.exists():
+            raise NotImplementedError(
+                f"input_stratified master '{master}' is not staged (no forcing_profiles.npz). "
+                f"Generate it with workflow 01 (NYCOPT_SCENARIO_DESIGN={self.name})."
+            )
+        with np.load(npz_path) as data:
+            theta = data["mean_factor_a"]
+            if "cv_factor_v" in data.files:
+                theta = np.hstack([theta, data["cv_factor_v"]])
+        idx = [int(i) for i in input_stratified_subsample(theta, self.n_realizations, seed=seed)]
+        try:
+            materialize_subset_from_master(master, idx, out_slug, extra_meta={
+                "design": self.name, "selection": "lhs_input", "subset_seed": seed})
+        except KeyError as exc:  # master daily chunks absent
+            raise NotImplementedError(
+                f"input_stratified could not materialize from master '{master}': {exc}"
+            ) from None
+        return get_ensemble_spec(out_slug)
 
 
 ###############################################################################
@@ -314,8 +414,18 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
                     "realization per parameter set.",
         resample_per_eval=False,
         selection="lhs_input",
+        master_kind="forcing",
+        n_forcing_profiles=_MASTER_N_FORCING,
+        realizations_per_profile=_MASTER_REALS_PER_PROFILE,
+        realization_years=_MASTER_YEARS,
+        n_realizations=_MASTER_SUBSET_N,
+        subset_seed=0,
         notes="Most common recent DMDU approach; contrast with hazard_filling "
-              "isolates the central claim. Sizes/draws TBD.",
+              "isolates the central claim (uniform coverage in INPUT space need not "
+              "give uniform coverage in HAZARD space). Space-fills the shared forcing "
+              "master's theta (forcing_profiles.npz) with the same LHS+NN selector as "
+              "hazard_filling, then overrides the master's realization indices. "
+              "PROVISIONAL sizes (env-overridable); draws TBD.",
     ),
     "hazard_filling": ScenarioDesign(
         name="hazard_filling",
@@ -324,14 +434,16 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
                     "hazard-metric space (proposed method).",
         resample_per_eval=False,
         selection="hazard_fill",
-        n_realizations=64,
-        realization_years=5,
-        master_pool_size=1000,
+        master_kind="forcing",
+        n_forcing_profiles=_MASTER_N_FORCING,
+        realizations_per_profile=_MASTER_REALS_PER_PROFILE,
+        n_realizations=_MASTER_SUBSET_N,
+        realization_years=_MASTER_YEARS,
         subset_seed=0,
         selector="lhs_nn",
-        notes="The proposed contribution. Subsample N=64 of a 200-realization "
-              "stationary Kirsch-Nowak pool of 5yr records (same generator as "
-              "fixed_probabilistic_short) using the scengen LHS+nearest-neighbor "
+        notes="The proposed contribution. Subsample N of the shared CMIP6-forced "
+              "master (master_{L}yr_n{N_M}, also used by input_stratified) using the "
+              "scengen LHS+nearest-neighbor "
               "selector (methods 4.6). Hazard axes are SCREENED per pool from an "
               "8-candidate wet+dry event-descriptor pool (SSI-6 controlling-event "
               "drought magnitude/duration/intensity/onset/recovery + POT flood "
@@ -350,9 +462,11 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
                     "ensemble).",
         resample_per_eval=False,
         selection="hazard_fill",
-        n_realizations=64,
-        realization_years=5,
-        master_pool_size=1000,
+        master_kind="forcing",
+        n_forcing_profiles=_MASTER_N_FORCING,
+        realizations_per_profile=_MASTER_REALS_PER_PROFILE,
+        n_realizations=_MASTER_SUBSET_N,
+        realization_years=_MASTER_YEARS,
         subset_seed=0,
         selector="lhs_nn",
         selector_space="abs",

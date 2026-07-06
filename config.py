@@ -288,6 +288,47 @@ ENSEMBLE_KN_FORCE        = _parse_bool_env("NYCOPT_ENSEMBLE_KN_FORCE", False)
 
 
 ###############################################################################
+# Forcing-based master ensemble (Step 1, forcing designs: methods §3.1-3.2)
+###############################################################################
+# Settings for the CMIP6-forced master ensemble that backs the hazard_filling
+# and input_stratified designs (scengen.forcing_space + master_ensemble). The
+# forcing designs read their sizes (N_forcing x realizations_per_profile, L)
+# from src/scenario_designs.py; these knobs supply the shared forcing-space
+# configuration and the streaming-storage mode. No CLI value flags — override
+# via slurm/envs/*.env. The CMIP6 tables live in the sibling repo.
+
+_CMIP6_STATS_DIR = PROJECT_DIR.parent / "CMIP6_multimodel_streamflow" / "stats"
+ENSEMBLE_FORCING_MEAN_FRAC_CSV = _parse_path_env(
+    "NYCOPT_ENSEMBLE_FORCING_MEAN_FRAC_CSV",
+    _CMIP6_STATS_DIR / "diff_relative_to_dataset_baseline"
+    / "nyc_inflow_monthly_mean_frac_by_dataset_ssp_and_period.csv",
+)
+ENSEMBLE_FORCING_MEAN_ABS_CSV = _parse_path_env(
+    "NYCOPT_ENSEMBLE_FORCING_MEAN_ABS_CSV",
+    _CMIP6_STATS_DIR / "datasets_nyc_inflow_monthly_means.csv",
+)
+ENSEMBLE_FORCING_STD_CSV = _parse_path_env(
+    "NYCOPT_ENSEMBLE_FORCING_STD_CSV",
+    _CMIP6_STATS_DIR / "datasets_nyc_inflow_monthly_stds.csv",
+)
+ENSEMBLE_FORCING_VARIANCE_AXIS = _parse_bool_env("NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS", False)
+ENSEMBLE_FORCING_BOUND_PCT = (
+    _parse_float_env("NYCOPT_ENSEMBLE_FORCING_BOUND_LO", 5.0),
+    _parse_float_env("NYCOPT_ENSEMBLE_FORCING_BOUND_HI", 95.0),
+)
+ENSEMBLE_FORCING_MARGIN = _parse_float_env("NYCOPT_ENSEMBLE_FORCING_MARGIN", 0.0)
+ENSEMBLE_MASTER_SEED = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_SEED", 0)
+# stream_only discards daily traces after hazard computation (the ~1e6 production
+# master); default False keeps the daily HDF5s so workflow/02 consumes M unchanged.
+ENSEMBLE_MASTER_STREAM_ONLY = _parse_bool_env("NYCOPT_ENSEMBLE_MASTER_STREAM_ONLY", False)
+ENSEMBLE_MASTER_HAZARD_BLOCK = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_HAZARD_BLOCK", 256)
+# Chunk the stored daily master into contiguous chunks of this many realizations (must be a
+# multiple of realizations_per_profile). 0 = single directory. Bounds generation write-memory and
+# avoids a monolithic multi-hundred-GB HDF5 for a large master (methods §3.2).
+ENSEMBLE_MASTER_CHUNK_SIZE = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_CHUNK_SIZE", 0)
+
+
+###############################################################################
 # NYC System Constants
 ###############################################################################
 

@@ -316,6 +316,108 @@ def staged_ensemble_dir(inflow_type: str):
     return Path(STAGED_ENSEMBLE_DIR).resolve() / inflow_type
 
 
+def load_chunk_index(master_slug: str) -> dict | None:
+    """Load a forcing master's ``chunk_index.json`` (chunks -> global realization ranges), or None."""
+    import json
+    p = staged_ensemble_dir(master_slug) / "chunk_index.json"
+    return json.loads(p.read_text()) if p.exists() else None
+
+
+def master_chunk_specs(master_slug: str) -> list[tuple["EnsembleSpec", list[int]]]:
+    """Return ``[(chunk_spec, global_realization_ids), ...]`` for a chunked (or single-dir) master.
+
+    Each chunk resolves as a standalone staged ensemble with local realizations ``0..S-1``; the
+    paired ``global_realization_ids`` re-key its rows to the master's global index space for
+    aggregation. A single-dir master (no ``chunk_index.json``, or one whose only chunk is the master
+    dir itself) returns one chunk = the master spec with identity global ids.
+    """
+    import json
+    idx = load_chunk_index(master_slug)
+    if idx is None or not idx.get("chunks"):
+        spec = get_ensemble_spec(master_slug)
+        return [(spec, list(range(spec.n_realizations)))]
+    out: list[tuple[EnsembleSpec, list[int]]] = []
+    for s in idx["chunks"]:
+        slug = s["slug"]
+        spec = get_ensemble_spec(slug)
+        meta_path = staged_ensemble_dir(slug) / "_meta.json"
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        gids = meta.get("global_realization_ids") or list(range(s["global_start"], s["global_end"]))
+        out.append((spec, [int(g) for g in gids]))
+    return out
+
+
+def materialize_subset_from_master(
+    master_slug: str, global_indices, out_slug: str, *,
+    files=("gage_flow_mgd.hdf5", "catchment_inflow_mgd.hdf5"), extra_meta: dict | None = None,
+) -> str:
+    """Stage a reduced ensemble of selected master realizations by reading only those from the chunks.
+
+    Groups the requested **global** indices by their containing chunk and reads only those columns
+    from each chunk's HDF5 (memory-cheap ``from_hdf5(realization_subset=...)``), renumbers to local
+    ``0..N-1``, and writes the reduced staged ensemble (+ ``_meta.json`` carrying
+    ``global_realization_ids``). Works for a chunked or single-dir master; peak memory scales with the
+    selection size, not the master. Requires the daily chunks to be stored (``store_daily``).
+
+    Args:
+        master_slug: The forcing-master slug (holds ``chunk_index.json`` / daily chunks).
+        global_indices: Master global realization ids to materialize, in the desired output order.
+        out_slug: Slug for the staged reduced ensemble.
+        files: HDF5 basenames to slice (default the pywrdrb gage + catchment pair).
+        extra_meta: Extra provenance merged into the reduced ensemble's ``_meta.json``.
+
+    Returns:
+        ``out_slug``.
+    """
+    import json
+    from synhydro.core.ensemble import Ensemble
+
+    chunks = master_chunk_specs(master_slug)
+    loc: dict[int, tuple[str, int]] = {}
+    years = None
+    for spec, gids in chunks:
+        years = spec.realization_years if years is None else years
+        for local, g in enumerate(gids):
+            loc[int(g)] = (spec.inflow_type, local)
+
+    requested = [int(g) for g in global_indices]
+    missing = [g for g in requested if g not in loc]
+    if missing:
+        raise KeyError(f"global indices not in master '{master_slug}': {missing[:10]}...")
+
+    out_dir = staged_ensemble_dir(out_slug)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for fname in files:
+        by_chunk: dict[str, list[tuple[int, int]]] = {}
+        for out_i, g in enumerate(requested):
+            sslug, local = loc[g]
+            by_chunk.setdefault(sslug, []).append((out_i, local))
+        reduced: dict[int, object] = {}
+        for sslug, pairs in by_chunk.items():
+            subset = [local for _out_i, local in pairs]
+            ens = Ensemble.from_hdf5(
+                str(staged_ensemble_dir(sslug) / fname), realization_subset=subset
+            )
+            d = ens.data_by_realization  # keyed 0..len(subset)-1 in `subset` order
+            for k, (out_i, _local) in enumerate(pairs):
+                reduced[out_i] = d[k]
+        Ensemble(reduced).to_hdf5(str(out_dir / fname))
+
+    meta = {
+        "slug": out_slug,
+        "n_realizations": len(requested),
+        "realization_years": years,
+        "n_years": years,
+        "global_realization_ids": requested,
+        "source_master": master_slug,
+        "source_kind": "synhydro_kn",
+    }
+    if extra_meta:
+        meta.update(extra_meta)
+    (out_dir / "_meta.json").write_text(json.dumps(meta, indent=2))
+    return out_slug
+
+
 def register_ensemble_path(inflow_type: str) -> None:
     """Register a staged ensemble directory with pywrdrb's path navigator.
 

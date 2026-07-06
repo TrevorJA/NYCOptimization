@@ -47,10 +47,14 @@ WIRED_DESIGNS = {
     "resampled_probabilistic",
 }
 
-# Wired, but resolution requires the scengen subsample step to have staged the
-# final reduced ensemble first (it reads the staged _meta.json). Raises a clear
-# NotImplementedError until then.
-STAGING_REQUIRED_DESIGNS = {"hazard_filling", "hazard_filling_absolute"}
+# Wired, but resolution requires an offline Step-1/Step-2 staging step first (the forcing master
+# and/or the reduced ensemble). Raises a clear NotImplementedError until then.
+#   - hazard_filling(_absolute): the scengen subsample step stages the reduced ensemble.
+#   - input_stratified: needs the shared forcing master (forcing_profiles.npz) staged.
+STAGING_REQUIRED_DESIGNS = {"hazard_filling", "hazard_filling_absolute", "input_stratified"}
+
+# The two designs that subsample the shared CMIP6-forced master (methods §3.2).
+FORCING_MASTER_DESIGNS = {"hazard_filling", "hazard_filling_absolute", "input_stratified"}
 
 
 def test_all_designs_present_and_resolvable():
@@ -132,21 +136,18 @@ def test_resampled_per_eval_draw_is_a_distinct_subset():
     assert s1.realization_indices == s1_again.realization_indices
 
 
-@pytest.mark.parametrize(
-    "name", sorted(EXPECTED_DESIGNS - WIRED_DESIGNS - STAGING_REQUIRED_DESIGNS)
-)
-def test_unwired_designs_raise(name):
-    """Designs with no construction machinery raise (e.g. input_stratified)."""
-    with pytest.raises(NotImplementedError):
-        get_scenario_design(name).resolve_search_spec()
+def test_every_design_is_wired():
+    """No design is left with an un-decided construction (all raise only pending staging)."""
+    assert EXPECTED_DESIGNS - WIRED_DESIGNS - STAGING_REQUIRED_DESIGNS == set()
 
 
-def test_hazard_filling_raises_when_not_staged(tmp_path, monkeypatch):
-    """hazard_filling raises a clear error until the final ensemble is staged."""
+@pytest.mark.parametrize("name", sorted(STAGING_REQUIRED_DESIGNS))
+def test_staging_required_designs_raise_when_not_staged(name, tmp_path, monkeypatch):
+    """Designs that need an offline staged master/ensemble raise a clear error until it exists."""
     import config
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)  # empty staging
     with pytest.raises(NotImplementedError):
-        get_scenario_design("hazard_filling").resolve_search_spec()
+        get_scenario_design(name).resolve_search_spec()
 
 
 @pytest.mark.parametrize(
@@ -155,12 +156,23 @@ def test_hazard_filling_raises_when_not_staged(tmp_path, monkeypatch):
         ("fixed_probabilistic_short", (5, 10)),    # stages the search ensemble
         ("fixed_probabilistic_long", (25, 2)),
         ("resampled_probabilistic", (5, 50)),      # stages the master pool
-        ("hazard_filling", (5, 1000)),             # stages the master pool
-        ("hazard_filling_absolute", (5, 1000)),    # same pool as hazard_filling
     ],
 )
 def test_kn_staged_dims(name, dims):
     assert get_scenario_design(name).kn_staged_dims() == dims
+
+
+@pytest.mark.parametrize("name", sorted(FORCING_MASTER_DESIGNS))
+def test_forcing_designs_share_one_master(name):
+    """Forcing designs stage no stationary kn pool; their pool slug IS the shared forcing master."""
+    d = get_scenario_design(name)
+    assert d.master_kind == "forcing"
+    assert d.kn_staged_dims() is None
+    assert d.master_slug() is not None
+    assert d.kn_ensemble_slug() == d.master_slug()
+    # All forcing designs resolve to the same design-independent master (methods §3.2).
+    masters = {get_scenario_design(n).master_slug() for n in FORCING_MASTER_DESIGNS}
+    assert len(masters) == 1
 
 
 def test_hazard_filling_resolves_from_staged_ensemble(tmp_path, monkeypatch):
