@@ -1,9 +1,19 @@
 # NYCOptimization dependencies
 #
-# Core simulation
-pywrdrb @ git+https://github.com/Pywr-DRB/Pywr-DRB.git@nyc_opt
-
-synhydro @ git+https://github.com/TrevorJA/SynHydro.git
+# Install from THIS repo's root so the relative editable paths resolve:
+#     cd NYCOptimization && pip install -r requirements.txt
+#
+# Supporting sibling repos are installed EDITABLE (-e): they evolve alongside
+# this project, so the venv should always track their working copies rather than
+# a pinned git ref. All three are neighboring folders under the shared parent:
+#     ../Pywr-DRB                        -> pywrdrb simulation model
+#     ../SynHydro                        -> Kirsch-Nowak synthetic generator
+#     ../NYCOptimization_scenario_generation  -> scengen (ensemble gen + hazard diagnostics)
+# NOTE: keep ../Pywr-DRB checked out on the `nyc_opt` branch (see .claude/CLAUDE.md).
+# scengen imports synhydro at runtime, so SynHydro must be installed too (it is, below).
+-e ../Pywr-DRB
+-e ../SynHydro
+-e ../NYCOptimization_scenario_generation
 
 # Parallel computing
 mpi4py
@@ -11,14 +21,13 @@ mpi4py
 # Data and numerics
 numpy
 pandas
+scipy
+h5py
+pyarrow            # parquet engine for the re-eval raw matrix; without it,
+                   # persistence falls back to the slower/larger csv.gz path
 
 # Visualization
 matplotlib
 
-# Scenario discovery
-xgboost
-shap
-scikit-learn
-
-# Utilities
-tqdm
+# Dev / tests
+pytest
