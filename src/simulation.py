@@ -1473,7 +1473,7 @@ def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
 
 
 def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
-                          batch_size: int):
+                          batch_size: int, *, skip_failed_batches: bool = False):
     """Per-realization base-metric matrix ``(n_real, n_obj)`` in NATURAL units.
 
     The shared matrix-building half of the batched ensemble path: used by both
@@ -1484,10 +1484,19 @@ def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
     ``EnsembleObjective`` instances (exposing ``.base`` and
     ``.compute_for_borg_from_values``).
 
+    Args:
+        skip_failed_batches: When True (re-eval path), a batch whose simulation
+            raises leaves its realizations as an all-NaN base-metric row and the
+            sweep continues, so one infeasible trace NaNs only its own batch
+            rather than failing the whole solution. The failed-row placeholder is
+            a length-``n_obj`` NaN vector (NOT a scalar) so the row stack stays
+            rectangular for ``np.asarray``. Search keeps the strict default
+            (False) so its behavior is unchanged.
+
     Returns:
         ``(base_matrix, base_names)`` — ``base_matrix`` float array
         ``(n_real, n_obj)``; ``base_names[k]`` is the base objective name of
-        column ``k``.
+        column ``k``. Rows for skipped batches are all-NaN.
     """
     ens_objs = list(objective_set)
     if not ens_objs or not all(
@@ -1508,6 +1517,9 @@ def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
 
     base_rows = run_simulation_ensemble_batched(
         nyc_config, ensemble_spec, batch_size, per_real,
+        skip_failed_batches=skip_failed_batches,
+        # Length-n_obj NaN row so a skipped batch keeps the stack rectangular.
+        failed_value=([np.nan] * len(ens_objs)) if skip_failed_batches else None,
     )
     base_matrix = np.asarray(base_rows, dtype=float)  # (n_real, n_obj)
     base_names = [o.base.name for o in ens_objs]
@@ -1572,8 +1584,13 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
         return base_matrix, base_names
 
     if realization_batch and realization_batch > 0:
+        # Re-eval tolerates a failed batch (all-NaN rows) instead of failing the
+        # whole solution; the offline scorer treats NaN as unsatisfied and uses
+        # NaN-safe reduces. Search (via _evaluate_ensemble_batched) keeps the
+        # strict default so its behavior is unchanged.
         return _ensemble_base_matrix(
             nyc_config, ensemble_spec, objective_set, realization_batch,
+            skip_failed_batches=True,
         )
 
     # Legacy single-model ensemble path (all realizations as one scenario block).

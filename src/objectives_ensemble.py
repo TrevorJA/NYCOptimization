@@ -217,6 +217,14 @@ def _build_registry() -> dict[str, EnsembleObjective]:
 
 ENSEMBLE_OBJECTIVES: dict[str, EnsembleObjective] = _build_registry()
 
+# Base-objective-name -> ensemble-objective-name (1:1 from _REGISTRY_SPEC). Lets
+# callers resolve an ensemble objective from the underlying base name, so
+# config.ACTIVE_OBJECTIVES (which lists BASE objective names) can drive the
+# ensemble search/re-eval path unchanged.
+_BASE_TO_ENSEMBLE: dict[str, str] = {
+    base_name: ens_name for base_name, ens_name, _kind, _eps in _REGISTRY_SPEC
+}
+
 
 ###############################################################################
 # Assembler
@@ -227,7 +235,10 @@ def build_ensemble_objective_set(items) -> ObjectiveSet:
 
     Mirrors `src.objectives.build_objective_set` but resolves names against
     `ENSEMBLE_OBJECTIVES`. Items may be:
-      - str:                ensemble objective name
+      - str: an ensemble objective name (`<base>__sat<thr>`) OR the underlying
+             base objective name, which is resolved to its registered ensemble
+             objective (1:1 via `_BASE_TO_ENSEMBLE`). Accepting base names lets
+             `config.ACTIVE_OBJECTIVES` drive the ensemble path directly.
       - EnsembleObjective:  use directly
 
     Returns:
@@ -239,12 +250,17 @@ def build_ensemble_objective_set(items) -> ObjectiveSet:
         if isinstance(item, EnsembleObjective):
             resolved.append(item)
         elif isinstance(item, str):
-            if item not in ENSEMBLE_OBJECTIVES:
-                raise KeyError(
-                    f"Unknown ensemble objective '{item}'. "
-                    f"Available: {sorted(ENSEMBLE_OBJECTIVES)}"
-                )
-            resolved.append(ENSEMBLE_OBJECTIVES[item])
+            name = item
+            if name not in ENSEMBLE_OBJECTIVES:
+                name = _BASE_TO_ENSEMBLE.get(item)
+                if name is None:
+                    raise KeyError(
+                        f"Unknown ensemble objective '{item}'. Pass an ensemble "
+                        f"objective name or a base objective name. Available "
+                        f"ensemble: {sorted(ENSEMBLE_OBJECTIVES)}; available base: "
+                        f"{sorted(_BASE_TO_ENSEMBLE)}."
+                    )
+            resolved.append(ENSEMBLE_OBJECTIVES[name])
         else:
             raise TypeError(
                 f"build_ensemble_objective_set items must be str or "

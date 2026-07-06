@@ -4,8 +4,13 @@
 # Mode selection (single-node multiprocessing vs MPI multi-node) is driven
 # by `NYCOPT_REEVAL_MODE` from the sourced env file — no CLI flag to remember.
 # Slug auto-derives from active config; outputs land at
-# `outputs/reevaluation/{slug}/deterministic/` or
-# `outputs/reevaluation/{slug}/ensemble_{id}/`.
+# `outputs/{scenario}/{slug}/reeval/{reeval_tag}[/seed_NN]/`.
+#
+# The SBATCH geometry below is sized for the MPI path (4 nodes x 16 ranks = 64,
+# matching the env's NYCOPT_REEVAL_NODES x NYCOPT_REEVAL_RANKS). Rescale a run
+# without editing this file via `sbatch --nodes=N --ntasks-per-node=M ...`;
+# `mpirun -np` follows the actual allocation (SLURM_NTASKS). `single` mode uses
+# one node's cores and is intended for interactive/local `bash` invocation.
 #
 # Usage (single-node fallback / interactive):
 #   bash workflow/07_reevaluate.sh [FORMULATION] [MAX_SOLUTIONS] [SEED]
@@ -20,9 +25,10 @@
 #   SEED          third positional arg (optional, for per-seed output subdir)
 #
 #SBATCH --job-name=reevaluate
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=1
+#SBATCH --exclusive
 #SBATCH --time=08:00:00
 #SBATCH --output=logs/reevaluate_%j.out
 #SBATCH --error=logs/reevaluate_%j.err
@@ -58,16 +64,22 @@ NJOBS="${SLURM_CPUS_ON_NODE:-1}"
 ARGS="--formulation ${FORMULATION} --max ${MAX_SOLUTIONS} --njobs ${NJOBS}"
 [[ -n "${SEED}" ]] && ARGS="${ARGS} --seed ${SEED}"
 
-echo "=== Re-evaluation: formulation=${FORMULATION} mode=${MODE} njobs=${NJOBS} seed=${SEED:-all} ==="
+echo "=== Re-evaluation: formulation=${FORMULATION} mode=${MODE} seed=${SEED:-all} ==="
 
 case "${MODE}" in
     single)
+        # Single-node multiprocessing.Pool across this node's cores. For
+        # interactive/local use, invoke with `bash` (no SLURM allocation needed).
+        echo "[reevaluate] single-node mode, ${NJOBS} worker(s)"
         python3 -m src.reevaluate ${ARGS}
         ;;
     mpi)
-        NTASKS_MPI="$(( ${NYCOPT_REEVAL_NODES:-4} * ${NYCOPT_REEVAL_RANKS:-16} ))"
-        echo "[reevaluate] MPI mode, ${NTASKS_MPI} ranks"
-        mpirun -np "${NTASKS_MPI}" \
+        # Multi-node MPI: one rank per solution slice (src.reevaluate_mpi). -np is
+        # the ACTUAL SLURM allocation, so the launch cannot over/under-subscribe
+        # the SBATCH geometry above. Requires a SLURM allocation.
+        : "${SLURM_NTASKS:?mpi mode needs a SLURM allocation — submit with sbatch, or set NYCOPT_REEVAL_MODE=single}"
+        echo "[reevaluate] MPI mode, ${SLURM_NTASKS} ranks"
+        mpirun -np "${SLURM_NTASKS}" \
             --mca pml ob1 --mca btl self,vader,tcp \
             python3 -m src.reevaluate_mpi ${ARGS}
         ;;

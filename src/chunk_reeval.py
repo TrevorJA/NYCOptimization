@@ -52,7 +52,7 @@ def _rank_long_rows(
     """Simulate this rank's ``(solution, chunk)`` units, returning long-format global-keyed rows."""
     from src.simulation import evaluate_raw
 
-    sids, rids, objs, vals = [], [], [], []
+    frames = []
     for sol_idx, chunk_idx in work_slots:
         chunk_spec, global_ids = chunks[chunk_idx]
         sid = solution_ids[sol_idx]
@@ -66,17 +66,25 @@ def _rank_long_rows(
             print(f"[chunk-reeval] solution {sid} x chunk {chunk_idx} failed: "
                   f"{type(exc).__name__}: {exc}")
             continue
+        # Vectorized long rows (row-major over local realization, objective),
+        # re-keyed from the chunk's local ids to the master's global ids.
         arr = np.asarray(base_matrix, dtype=float)
-        for local in range(arr.shape[0]):
-            gid = global_ids[local]
-            for k, name in enumerate(base_names):
-                sids.append(int(sid))
-                rids.append(int(gid))
-                objs.append(name)
-                vals.append(float(arr[local, k]))
-    return pd.DataFrame(
-        {"solution_id": sids, "realization_id": rids, "objective": objs, "value": vals}
-    )
+        r_i, m_i = arr.shape
+        gid_row = np.asarray(global_ids[:r_i], dtype=int)
+        frames.append(pd.DataFrame({
+            "solution_id": np.full(r_i * m_i, int(sid), dtype=int),
+            "realization_id": np.repeat(gid_row, m_i),
+            "objective": np.tile(np.asarray(base_names, dtype=object), r_i),
+            "value": arr.reshape(-1),
+        }))
+    if frames:
+        return pd.concat(frames, ignore_index=True)
+    return pd.DataFrame({
+        "solution_id": np.array([], dtype=int),
+        "realization_id": np.array([], dtype=int),
+        "objective": np.array([], dtype=object),
+        "value": np.array([], dtype=float),
+    })
 
 
 def _write_partial(df: pd.DataFrame, stem: Path) -> None:

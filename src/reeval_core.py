@@ -88,54 +88,19 @@ def reeval_obj_names() -> list:
     return list(obj_set.names)
 
 
-def evaluate_solution(solution_id: int, dv_vector, formulation: str,
-                      out_path=None):
-    """Re-evaluate one policy on the common re-eval ensemble.
-
-    Ensemble re-eval reuses the search-path ``evaluate()`` (in-memory ensemble
-    simulation + the identical objective aggregation), so re-eval and search
-    compute objectives byte-for-byte the same way — only the ensemble differs.
-    Returns objectives in **natural units** (not Borg-minimized): satisficing
-    fractions in [0, 1] for the ensemble path, raw metric values otherwise.
-
-    Single-trace re-eval keeps the legacy per-solution HDF5 path. Ensemble
-    re-eval is in-memory (no giant per-solution HDF5s) and ignores ``out_path``.
-
-    Returns:
-        (solution_id, natural_objectives | None, error_message | None)
-    """
-    try:
-        obj_set, spec, is_ensemble = resolve_reeval()
-        if is_ensemble:
-            from src.simulation import evaluate
-            borg = evaluate(dv_vector, formulation_name=formulation,
-                            objective_set=obj_set, ensemble_spec=spec)
-            # Borg minimizes; undo the sign flip to recover natural values.
-            dirs = obj_set.directions
-            natural = [(-v if d == 1 else v) for v, d in zip(borg, dirs)]
-        else:
-            from src.simulation import dvs_to_config, run_simulation_to_disk
-            cfg = dvs_to_config(dv_vector, formulation)
-            data = run_simulation_to_disk(cfg, out_path)
-            natural = list(obj_set.compute(data))
-        return solution_id, [float(x) for x in natural], None
-    except Exception as e:
-        return solution_id, None, f"{type(e).__name__}: {e}"
-
-
 def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str,
                           out_path=None):
     """Re-evaluate one policy and return its raw per-realization base matrix.
 
-    Companion to :func:`evaluate_solution` for the decoupled robustness path:
-    instead of collapsing the ensemble to satisficing fractions, return the full
+    The re-eval work unit for the decoupled robustness path: instead of
+    collapsing the ensemble to satisficing fractions, return the full
     ``(n_realizations, n_base_objs)`` matrix of base-objective values in NATURAL
     units so robustness metrics are scored offline (see ``src.robustness``).
     Reuses the search-path :func:`src.simulation.evaluate_raw`, so re-eval base
     metrics match search byte-for-byte; only the ensemble differs.
 
-    ``out_path`` is accepted for signature parity with ``evaluate_solution`` and
-    is unused (raw re-eval is in-memory).
+    ``out_path`` is accepted for driver-signature parity and is unused (raw
+    re-eval is in-memory).
 
     Returns:
         ``(solution_id, base_matrix | None, base_names | None, error | None)``.
@@ -155,7 +120,7 @@ def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str,
 
 
 def satisficing_from_raw(base_matrix, base_names=None) -> list:
-    """Reproduce :func:`evaluate_solution`'s natural satisficing fractions.
+    """Reproduce the re-eval summary's natural satisficing fractions.
 
     Aggregates each column of the raw base matrix with its ensemble objective's
     aggregator (natural, un-negated), so the legacy ``objectives_summary.csv``
@@ -262,28 +227,48 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
 
     raw_results = list(raw_results)
     meta = reeval_raw_meta(formulation, n_solutions, seed)
+    # Record every attempted solution id (including fully-failed ones that
+    # contribute no rows) so the offline scorer reconstructs the full solution
+    # axis instead of inferring it from the rows present — otherwise an
+    # all-realizations-failed solution silently vanishes from the scorecard while
+    # still appearing (NaN) in objectives_summary.csv (schema drift across
+    # designs/seeds at join time).
+    meta["solution_ids"] = sorted(int(sid) for sid, *_ in raw_results)
     realization_indices = meta["realization_indices"]
     base_names = meta["base_names"]
 
     # Long-format raw matrix; failed solutions contribute no rows. Rows carry the
     # actual realization index (not batch position) so they join to the ensemble's
-    # hazard coordinates.
-    sids, rids, objs, vals = [], [], [], []
+    # hazard coordinates. Built vectorized per solution (np.repeat/np.tile) rather
+    # than cell-by-cell so persistence stays cheap as the ensemble grows toward
+    # 1e3-1e4 realizations (row order is identical to the old triple loop:
+    # row-major over (realization, objective)).
+    ri = np.asarray(realization_indices, dtype=int)
+    frames = []
     for sid, mat, names, _err in raw_results:
         if mat is None:
             continue
         arr = np.asarray(mat, dtype=float)
+        r_i, m_i = arr.shape
         cols = list(names) if names is not None else base_names
-        for j in range(arr.shape[0]):
-            rid = realization_indices[j] if j < len(realization_indices) else j
-            for k, name in enumerate(cols):
-                sids.append(int(sid))
-                rids.append(int(rid))
-                objs.append(name)
-                vals.append(float(arr[j, k]))
-    long_df = pd.DataFrame(
-        {"solution_id": sids, "realization_id": rids,
-         "objective": objs, "value": vals}
+        if r_i <= ri.shape[0]:
+            rid_row = ri[:r_i]
+        else:  # more matrix rows than known indices -> fall back to position
+            rid_row = np.concatenate([ri, np.arange(ri.shape[0], r_i, dtype=int)])
+        frames.append(pd.DataFrame({
+            "solution_id": np.full(r_i * m_i, int(sid), dtype=int),
+            "realization_id": np.repeat(rid_row, m_i),
+            "objective": np.tile(np.asarray(cols, dtype=object), r_i),
+            "value": arr.reshape(-1),
+        }))
+    long_df = (
+        pd.concat(frames, ignore_index=True) if frames
+        else pd.DataFrame({
+            "solution_id": np.array([], dtype=int),
+            "realization_id": np.array([], dtype=int),
+            "objective": np.array([], dtype=object),
+            "value": np.array([], dtype=float),
+        })
     )
 
     raw_path = reeval_dir / "reeval_raw.parquet"

@@ -644,13 +644,12 @@ REEVAL_NODES = _parse_int_env("NYCOPT_REEVAL_NODES", 4)
 REEVAL_RANKS_PER_NODE = _parse_int_env("NYCOPT_REEVAL_RANKS", 16)
 
 REEVALUATION_SETTINGS = {
-    "n_realizations": REEVAL_REALIZATIONS,
-    "realization_length_years": 70,
-    "generator": "kirsch_nowak",
-    "climate_scenarios": ["stationary"],
-    # Explicit metric identifiers scored offline by src.robustness from the
-    # persisted raw per-realization matrix (not aspirational labels). Default
-    # set for the manuscript; src.robustness --metrics overrides.
+    # Metric identifiers scored offline by src.robustness from the persisted raw
+    # per-realization matrix. This is the only key consumed in code (the default
+    # metric set for the manuscript; src.robustness --metrics overrides). The
+    # realization count is REEVAL_REALIZATIONS above; the ensemble length /
+    # generator / climate scenarios come from the resolved REEVAL_ENSEMBLE_SPEC,
+    # not from static labels here.
     "robustness_metrics": [
         "satisficing_univariate",
         "satisficing_multivariate",

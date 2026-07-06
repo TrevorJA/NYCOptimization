@@ -119,7 +119,15 @@ def load_raw(reeval_dir) -> RawCube:
 
     df = _read_long(reeval_dir)
     base_names = list(meta["base_names"])
-    solution_ids = sorted(int(x) for x in df["solution_id"].unique())
+    # Prefer the full attempted solution-id list from meta so fully-failed
+    # solutions (no rows) survive as all-NaN cube slices rather than vanishing.
+    # Fall back to the ids present in the rows for metas written before this key
+    # existed (and for the test fixtures).
+    meta_sids = meta.get("solution_ids")
+    if meta_sids is not None:
+        solution_ids = sorted(int(x) for x in meta_sids)
+    else:
+        solution_ids = sorted(int(x) for x in df["solution_id"].unique())
     realization_ids = sorted(int(x) for x in df["realization_id"].unique())
 
     s_ix = {s: i for i, s in enumerate(solution_ids)}
@@ -520,6 +528,15 @@ def score_robustness(raw: RawCube, baseline: Optional[RawCube] = None,
 
     scorecard = pd.concat(pieces, axis=1) if pieces else pd.DataFrame(
         index=pd.Index(raw.solution_ids, name="solution_id"))
+
+    # A solution with no successful realizations at all (its whole cube slice is
+    # non-finite, e.g. every re-eval batch failed) is scored NaN across every
+    # metric, matching its NaN row in objectives_summary.csv. Otherwise
+    # satisficing would read 0.0 (worst) and make a *failed* run indistinguishable
+    # from a *ran-but-bad* run, distorting cross-solution comparison.
+    all_missing = np.all(~np.isfinite(raw.cube), axis=(1, 2))  # (S,)
+    if all_missing.any() and len(scorecard.columns):
+        scorecard.iloc[all_missing, :] = np.nan
     return scorecard, higher_better
 
 
@@ -604,7 +621,18 @@ def main():
     else:
         parser.error("provide --reeval-dir or --formulation")
 
-    run(reeval_dir, args.baseline_dir, metrics, args.insample_csv)
+    # Auto-detect the baseline re-eval matrix (written by
+    # `run_baseline.py --reeval` under `<reeval_dir>/baseline`) so
+    # regret-from-baseline works without setting NYCOPT_REEVAL_BASELINE_DIR.
+    baseline_dir = args.baseline_dir
+    if baseline_dir is None:
+        auto = reeval_dir / "baseline"
+        if any((auto / f).exists() for f in
+               ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+            baseline_dir = str(auto)
+            print(f"[robustness] auto-detected baseline dir -> {baseline_dir}")
+
+    run(reeval_dir, baseline_dir, metrics, args.insample_csv)
 
 
 if __name__ == "__main__":
