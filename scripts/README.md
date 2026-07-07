@@ -11,5 +11,5 @@ Three buckets, by purpose:
   while iterating but not run on every campaign.
 
 - **`temporary/`** — Ad-hoc / non-manuscript material. Sandbox for
-  exploratory work. Nothing here should be referenced by `workflow/`,
-  `slurm/`, or `src/`.
+  exploratory work. Nothing here should be referenced by `workflow/`
+  or `src/`.

@@ -363,7 +363,7 @@ def test_feasibility_rejects_single_trace(historic_spec):
 @pytest.mark.skipif(
     not STAGED_ENSEMBLE.exists(),
     reason="Staged Kirsch–Nowak ensemble HDF5 not present; "
-           "run the workflow/01-03 ensemble pipeline first.",
+           "run the workflow/02-04 ensemble pipeline first.",
 )
 @slow
 def test_ensemble_returns_list_of_n_distinct_data_dicts(wcu5_spec):

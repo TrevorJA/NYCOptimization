@@ -28,7 +28,7 @@ avoids the flaky ``comm.gather`` on this OpenMPI build), then deletes the shards
 Usage (interactive, single rank — local smoke):
     python scripts/supplemental/ensemble_objective_sensitivity_run.py
 Usage (SLURM):
-    sbatch slurm/supplemental/ensemble_objective_sensitivity.sh
+    sbatch workflow/supplemental/ensemble_objective_sensitivity.sh
 """
 
 from __future__ import annotations

@@ -10,7 +10,7 @@ Policies (env ``NYCOPT_CHUNK_POLICIES``):
     ``baseline`` (default) - the default FFMP policy only (1 solution).
     a ``.ref`` path          - a reference set of Pareto policies (var1..varN [obj...] per line).
 
-Launch (env-driven; mirrors workflow/07):
+Launch (env-driven; via workflow/09_simulate_master_chunks.sh):
 
     NYCOPT_REEVAL_ENSEMBLE_PRESET=master_5yr_n128000 \\
     mpirun -np 64 python3 -m scripts.main.simulate_master_chunks --formulation ffmp

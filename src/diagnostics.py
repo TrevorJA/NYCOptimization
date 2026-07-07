@@ -53,7 +53,7 @@ from config import (
 # All use the current 7-objective set.
 #   drb_ffmp     -> 24 DVs
 #   drb_ffmp_{N} -> per-N DV count (varies with number of zones).
-#                   Built automatically by slurm/main/build_jars.sh.
+#                   Built automatically by workflow/00_setup_borg_jars.sh.
 # Slugs can be any string; we infer the formulation family by finding the
 # longest contiguous token-substring that matches a known formulation. This
 # handles both prefix-tag slugs (``smoke_ffmp``) and suffix-tag variant slugs

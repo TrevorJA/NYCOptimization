@@ -17,19 +17,20 @@ This module supersedes the former stub ``config.ENSEMBLE_PRESETS``. It bridges t
 the lower-level ``src/ensembles.py`` ``EnsembleSpec`` machinery: a design knows
 how to resolve its search ensemble into one or more ``EnsembleSpec`` instances.
 
-Status: ``historic`` (single-trace preset), the two fixed probabilistic designs
-``fixed_probabilistic_short`` / ``fixed_probabilistic_long``, and
-``resampled_probabilistic`` are wired. The fixed designs resolve to a directly
-generated Kirsch-Nowak ensemble via the ``kn_{Y}yr_n{N}`` slug grammar (Step-1
-generation stages exactly the ensemble the design names; no subsampling-from-a-
-master step is required for the stand-up). Their sizes/lengths here are
-*provisional small test values* for standing up the generation->optimization
-workflow; the final sizes (and the eventual subsample-from-master construction)
-remain open decisions (#2, #5 in ``experimental_design.md``). The remaining
-three designs (``resampled_probabilistic``, ``input_stratified``,
-``hazard_filling``) still raise a clear ``NotImplementedError`` from
-``resolve_search_spec`` until their machinery (per-eval re-index hook; CMIP6
-forcing space; hazard metrics + subsample selectors) lands.
+Status: all registered designs are code-wired. ``historic`` (single-trace
+preset), the two fixed probabilistic designs ``fixed_probabilistic_short`` /
+``fixed_probabilistic_long``, and ``resampled_probabilistic`` resolve to a
+directly generated Kirsch-Nowak ensemble via the ``kn_{Y}yr_n{N}`` slug grammar
+(step-02 generation stages exactly the ensemble the design names; no
+subsampling-from-a-master step is required for the stand-up). Their
+sizes/lengths here are *provisional small test values* for standing up the
+generation->optimization workflow; the final sizes (and the eventual
+subsample-from-master construction) remain open decisions (#2, #5 in
+``experimental_design.md``). The forcing-master designs (``input_stratified``,
+``hazard_filling``, ``hazard_filling_absolute``) raise ``NotImplementedError``
+from ``resolve_search_spec`` only when their staged data (forcing master /
+reduced subsample, workflow steps 02-03) is missing — the gate is staged-data
+availability, not unimplemented code.
 """
 
 from __future__ import annotations
@@ -267,8 +268,8 @@ class ScenarioDesign:
                 raise NotImplementedError(
                     f"hazard_filling ensemble '{final_slug}' is not staged yet. "
                     f"Generate the master pool ('{self.kn_ensemble_slug()}', "
-                    f"workflow 01 with NYCOPT_SCENARIO_DESIGN=hazard_filling), then "
-                    f"run scripts/main/subsample_hazard_filling.py to stage the "
+                    f"workflow step 02 with NYCOPT_SCENARIO_DESIGN=hazard_filling), then "
+                    f"run workflow step 03 (scripts/main/subsample_hazard_filling.py) to stage the "
                     f"reduced ensemble."
                 ) from None
         slug = self.kn_ensemble_slug()
@@ -328,7 +329,7 @@ class ScenarioDesign:
         if not npz_path.exists():
             raise NotImplementedError(
                 f"input_stratified master '{master}' is not staged (no forcing_profiles.npz). "
-                f"Generate it with workflow 01 (NYCOPT_SCENARIO_DESIGN={self.name})."
+                f"Generate it with workflow step 02 (NYCOPT_SCENARIO_DESIGN={self.name})."
             )
         with np.load(npz_path) as data:
             theta = data["mean_factor_a"]

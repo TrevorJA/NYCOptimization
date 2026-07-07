@@ -8,7 +8,7 @@ the salinity LSTM is responsive to NYC operational decisions (i.e., not
 returning a constant for every DV vector) and gives a quick read on the
 worst-case upstream salt-front intrusion the policy class can produce.
 
-Required env (set by `slurm/envs/ffmp_obj7_sal.env` or equivalent):
+Required env (set by `workflow/envs/ffmp_obj7_sal.env` or equivalent):
     NYCOPT_SALINITY_ON=1
     NYCOPT_OBJECTIVES=...,salt_front_intrusion_max_rm
 
@@ -97,10 +97,10 @@ def main():
 
     if not INCLUDE_SALINITY_MODEL:
         sys.exit("ERROR: NYCOPT_SALINITY_ON must be 1. "
-                 "Source slurm/envs/ffmp_obj7_sal.env first.")
+                 "Source workflow/envs/ffmp_obj7_sal.env first.")
     if "salt_front_intrusion_max_rm" not in ACTIVE_OBJECTIVES:
         sys.exit("ERROR: NYCOPT_OBJECTIVES must include 'salt_front_intrusion_max_rm'. "
-                 "Source slurm/envs/ffmp_obj7_sal.env first.")
+                 "Source workflow/envs/ffmp_obj7_sal.env first.")
 
     objective_set = get_objective_set()
     rng = np.random.default_rng(args.seed)

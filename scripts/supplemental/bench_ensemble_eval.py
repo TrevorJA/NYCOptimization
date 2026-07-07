@@ -8,7 +8,7 @@ per-eval wall time, and writes a CSV row per eval to
 ``outputs/diagnostics/ensemble_bench/{preset}_{slug}_{timestamp}.csv`` for
 later regression tracking.
 
-Use this from a SLURM batch job (see ``slurm/supplemental/bench_ensemble.sh``); do not run
+Use this from a SLURM batch job (see ``workflow/supplemental/bench_ensemble.sh``); do not run
 on a login node — a single full-window N=5 eval is in the 10–20 minute range.
 
 Usage:

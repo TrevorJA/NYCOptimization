@@ -634,7 +634,7 @@ def generate_master_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (sceng
     catchment inflows; the candidate hazard image is accumulated per block and the daily traces are
     discarded when ``config.store_daily`` is False (the ~1e6 production mode). Persists (always)
     ``forcing_profiles.npz``, ``hazard_image.npz``, ``_meta.json`` and ``manifest.json``, and (when
-    ``store_daily``) the two daily HDF5s that workflow/02 consumes unchanged.
+    ``store_daily``) the two daily HDF5s that workflow/03 consumes unchanged.
 
     Args:
         config: A ``scengen.master_ensemble.MasterEnsembleConfig`` (with forcing fields set).
@@ -758,7 +758,7 @@ def generate_master_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (sceng
         H=H, hazard_axes=hazard_axes, realization_ids=realization_ids, selected_rows=realization_ids,
     )
 
-    # Redundancy screen on H (informational; per-design selection screen runs in workflow/02).
+    # Redundancy screen on H (informational; per-design selection screen runs in workflow/03).
     spread = dg.per_metric_spread(H, hazard_axes)
     clusters = dg.spearman_clusters(H, hazard_axes)
     screen_result = {
@@ -776,7 +776,7 @@ def generate_master_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (sceng
          "n_chunks": n_chunks, "chunks": chunk_index}, indent=2,
     ))
 
-    # Informational staged-spec meta (consumed by src.ensembles._spec_from_staged_dir + workflow/02).
+    # Informational staged-spec meta (consumed by src.ensembles._spec_from_staged_dir + workflow/03).
     meta = {
         "slug": out_dir.name,
         "kind": "forcing_master",

@@ -68,7 +68,7 @@ All non-historical designs draw from the **same** master ensemble $\mathcal{M}$,
 
 ## 3. Shared upstream pipeline
 
-Stages 3.1–3.2 are `workflow/01`; stage 3.3 is the front half of `workflow/02`.
+Stages 3.1–3.2 are `workflow/02`; stage 3.3 is the front half of `workflow/03`.
 
 ### 3.1 Forcing space: CMIP6-based interpretable harmonic-parameter hypercube
 
@@ -275,7 +275,7 @@ NYCOptimization/                        # optimization-coupled
 - **Regeneration:** `regenerate_realization(master_seed, k)` calls `KirschGenerator.generate(realization_indices=[k], seed=master_seed)` then `disaggregate(seed=master_seed)` on the key-$k$ ensemble, then the per-$k$ KDE fill.
 - **Regression-test gate** — extend the SynHydro-style test through the NYCOptimization KDE fill: generate the same global realization under two partitions and assert array-equality post float32/HDF5 round-trip (gage flows, catchment inflows, regressed downstream gages) before relying on regeneration.
 
-**Integration.** `outputs/{scenario}/{moea_slug}/{artifact}/` with `{scenario} = ScenarioDesign.name`; master ensemble + $\mathcal{H}$ under `STAGED_ENSEMBLE_DIR` (`outputs/synthetic_ensembles/`). `resolve_search_spec(draw)` dispatches into the design registry when `ensemble_preset is None`. Maps to `workflow/01` (forcing + master + $\mathcal{H}$), `workflow/02` (per-design subsample + stage; replaces the `NotImplementedError` stub), `workflow/03` (`stage_pywrdrb_ensemble_inputs`).
+**Integration.** `outputs/{scenario}/{moea_slug}/{artifact}/` with `{scenario} = ScenarioDesign.name`; master ensemble + $\mathcal{H}$ under `STAGED_ENSEMBLE_DIR` (`outputs/synthetic_ensembles/`). `resolve_search_spec(draw)` dispatches into the design registry when `ensemble_preset is None`. Maps to `workflow/02` (forcing + master + $\mathcal{H}$), `workflow/03` (per-design subsample + stage), `workflow/04` (`stage_pywrdrb_ensemble_inputs`).
 
 ---
 

@@ -116,7 +116,7 @@ def _require_presim_file() -> Path:
         raise FileNotFoundError(
             f"Presimulated releases file not found: {PRESIM_FILE}\n"
             "Run the setup step first:\n"
-            "  bash workflow/00_generate_presim.sh\n"
+            "  bash workflow/01_generate_presim.sh\n"
             "  (or: python scripts/main/generate_presim.py)"
         )
     return f

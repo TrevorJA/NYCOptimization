@@ -53,7 +53,7 @@ def main() -> None:
     if not haz_path.exists():
         print(
             f"[hazfill] Master hazard image not staged: {haz_path}. Run Step 1 "
-            f"(workflow/01) with NYCOPT_SCENARIO_DESIGN=hazard_filling first."
+            f"(workflow step 02) with NYCOPT_SCENARIO_DESIGN=hazard_filling first."
         )
         sys.exit(1)
     haz = load_hazard_image(haz_path)

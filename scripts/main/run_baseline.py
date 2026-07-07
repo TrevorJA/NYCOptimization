@@ -11,7 +11,7 @@ Model mode:
     the full model is more accurate (all STARFIT reservoirs simulate freely).
 
     The trimmed model path (use_trimmed=True) is available for quick tests
-    after running workflow/00_generate_presim.sh, but is not recommended
+    after running workflow/01_generate_presim.sh, but is not recommended
     for the final baseline result.
 
 Usage:

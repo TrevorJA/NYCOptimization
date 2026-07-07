@@ -12,8 +12,8 @@ from pywrdrb's ``pub_nhmv10_BC_withObsScaled`` dataset via SynHydro. Two master 
 All configuration comes from ``config.py`` / the scenario-design registry — no CLI value flags.
 Typical invocation:
 
-    sbatch --export=ALL,NYCOPT_ENV_FILE=slurm/envs/ensemble_kn_long.env \\
-           workflow/01_generate_stochastic_ensemble.sh
+    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_kn_long.env \\
+           workflow/02_generate_ensemble.sh
 
 Output under ``outputs/synthetic_ensembles/{slug}/``: ``gage_flow_mgd.hdf5``,
 ``catchment_inflow_mgd.hdf5``, ``_meta.json`` (both kinds), plus ``forcing_profiles.npz``,

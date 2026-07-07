@@ -15,7 +15,7 @@ All settings come from ``supplemental_config.py`` — no CLI value flags.
 Usage (serial / laptop smoke):
     python scripts/supplemental/ensemble_objective_sensitivity_prep.py
 Usage (SLURM / MPI):
-    sbatch slurm/supplemental/ensemble_objective_sensitivity_prep.sh
+    sbatch workflow/supplemental/ensemble_objective_sensitivity_prep.sh
 """
 
 from __future__ import annotations

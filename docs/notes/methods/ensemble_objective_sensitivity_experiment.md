@@ -104,7 +104,7 @@ re-simulating.
 | DV sweep | `scripts/supplemental/ensemble_objective_sensitivity_run.py` | MPI across DVs; writes the matrix HDF5. |
 | Diagnostics | `scripts/supplemental/ensemble_objective_sensitivity_figures.py` | Post-hoc reductions → figures + tables. |
 
-SLURM: `slurm/supplemental/ensemble_objective_sensitivity_prep.sh` then
+SLURM: `workflow/supplemental/ensemble_objective_sensitivity_prep.sh` then
 `…/ensemble_objective_sensitivity.sh`. All settings live in
 `supplemental_config.py` (ensemble section) — no CLI value flags.
 
