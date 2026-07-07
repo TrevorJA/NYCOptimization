@@ -11,6 +11,7 @@
 # for CMIP6-forced scenario designs).
 #
 #SBATCH --job-name=gen_ensemble
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8

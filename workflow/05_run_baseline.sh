@@ -8,6 +8,7 @@
 #   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env bash workflow/05_run_baseline.sh
 #
 #SBATCH --job-name=baseline
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=00:30:00

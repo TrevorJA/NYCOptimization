@@ -18,6 +18,7 @@
 #          workflow/04_prep_pywrdrb_inputs.sh
 #
 #SBATCH --job-name=prep_pywrdrb_inputs
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=33
 #SBATCH --time=01:00:00

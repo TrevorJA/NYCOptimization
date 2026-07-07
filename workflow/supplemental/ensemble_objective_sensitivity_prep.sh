@@ -12,6 +12,7 @@
 #   sbatch workflow/supplemental/ensemble_objective_sensitivity_prep.sh
 #
 #SBATCH --job-name=ens_prep
+#SBATCH --partition=wholenode
 #SBATCH --nodes=5
 #SBATCH --ntasks=200
 #SBATCH --time=03:00:00

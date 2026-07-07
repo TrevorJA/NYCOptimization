@@ -31,6 +31,7 @@
 # `mpirun -np` follows the actual allocation (SLURM_NTASKS).
 #
 #SBATCH --job-name=reevaluate
+#SBATCH --partition=wholenode
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=1

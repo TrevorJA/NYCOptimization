@@ -14,6 +14,7 @@
 #          workflow/03_subsample_ensemble.sh
 #
 #SBATCH --job-name=subsample_ens
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8

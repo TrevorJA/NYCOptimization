@@ -24,6 +24,7 @@
 #          workflow/09_simulate_master_chunks.sh
 #
 #SBATCH --job-name=sim_master_chunks
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32

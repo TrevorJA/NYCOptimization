@@ -21,6 +21,7 @@
 #   sbatch workflow/supplemental/ensemble_objective_sensitivity.sh
 #
 #SBATCH --job-name=ens_objsens
+#SBATCH --partition=wholenode
 #SBATCH --nodes=5
 #SBATCH --ntasks-per-node=33
 #SBATCH --time=05:00:00

@@ -7,6 +7,7 @@
 #   bash   workflow/01_generate_presim.sh
 #
 #SBATCH --job-name=presim
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=00:30:00

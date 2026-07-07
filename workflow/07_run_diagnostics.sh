@@ -15,6 +15,7 @@
 #   sbatch workflow/07_run_diagnostics.sh
 #
 #SBATCH --job-name=diagnostics
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8

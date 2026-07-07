@@ -25,10 +25,23 @@
 NYCOPT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 # Centralized cluster constants (previously copy-pasted across scripts).
-NYCOPT_PYTHON_MODULE="python/3.11.5"
-# OpenMPI transport selection used by the re-evaluation / chunked-simulation
-# steps (NOT by the MM-Borg launcher, matching prior behavior).
-NYCOPT_MPI_MCA_FLAGS="--mca pml ob1 --mca btl self,vader,tcp"
+# The python module exists on Hopper; on Anvil there is no such module and the
+# conda env's PATH (propagated by sbatch --export=ALL) supplies python3, so the
+# module load below is a no-op there. Override via NYCOPT_PYTHON_MODULE.
+NYCOPT_PYTHON_MODULE="${NYCOPT_PYTHON_MODULE:-python/3.11.5}"
+# OpenMPI transport flags for the re-evaluation / chunked-simulation steps
+# (NOT the MM-Borg launcher). Cluster-dependent: Hopper's default fabric
+# providers hang on the preprocessors' MPI gathers, so TCP is forced there;
+# Anvil should use its default (InfiniBand/UCX) transport — forcing TCP would
+# route MPI over IPoIB. Resolved in _nycopt_set_mpi_flags() once
+# NYCOPT_CLUSTER is known (i.e. after the env file is sourced).
+NYCOPT_MPI_MCA_FLAGS="${NYCOPT_MPI_MCA_FLAGS:-}"
+
+_nycopt_set_mpi_flags() {
+    if [[ -z "${NYCOPT_MPI_MCA_FLAGS}" && "${NYCOPT_CLUSTER:-hopper}" == "hopper" ]]; then
+        NYCOPT_MPI_MCA_FLAGS="--mca pml ob1 --mca btl self,vader,tcp"
+    fi
+}
 
 # cd to repo root, load the Python module, activate ./venv, set PYTHONPATH.
 nycopt_setup_env() {
@@ -66,6 +79,7 @@ nycopt_source_env_file() {
             exit 2
         fi
         echo "[_common] no env file set (config.py defaults apply)"
+        _nycopt_set_mpi_flags
         return 0
     fi
     if [[ ! -f "${NYCOPT_ENV_FILE}" ]]; then
@@ -81,6 +95,7 @@ nycopt_source_env_file() {
     source "${NYCOPT_ENV_FILE}"
     set +a
     export NYCOPT_ENV_FILE
+    _nycopt_set_mpi_flags
     echo "[_common] sourced env file: ${NYCOPT_ENV_FILE}"
 }
 

@@ -27,18 +27,23 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 
 ## Pipeline steps
 
-| Step | Script | Allocation | Env file | What it does |
+| Step | Script | Allocation (Anvil) | Env file | What it does |
 |------|--------|-----------|----------|--------------|
 | 00 | `00_setup_borg_jars.sh` | login node (`bash`) | optional | Build one MOEAFramework problem JAR per formulation; rerun after changing the objective set |
-| 01 | `01_generate_presim.sh` | 1×1, 30 min | optional | Full Pywr-DRB run once; save non-NYC (STARFIT) releases for the trimmed model |
-| 02 | `02_generate_ensemble.sh` | 1 node, 8 cpu, 4 h | optional (`ensemble_kn_*.env`) | Generate the stochastic streamflow ensemble / forcing master |
-| 03 | `03_subsample_ensemble.sh` | 1 node, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) | Hazard-filling designs: subsample the master pool into the reduced search ensemble; no-op for other designs |
-| 04 | `04_prep_pywrdrb_inputs.sh` | 1×33, 1 h | optional | Format the search ensemble into pywrdrb HDF5 inputs (MPI across realizations); `--preset NAME` stages an arbitrary ensemble (e.g. the held-out re-eval ensemble) |
-| 05 | `05_run_baseline.sh` | 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy + persist its re-eval matrix for regret-from-baseline |
-| 06 | `06_run_mmborg.sh` | 5×33, 5 days | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array=1-10` = seed replicates; config-derived pre-flight |
-| 07 | `07_run_diagnostics.sh` | 1 node, 8 cpu, 1 h (or `bash`) | — | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); positional slug identifiers select targets |
-| 08 | `08_reevaluate.sh` | 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the full model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
-| 09 | `09_simulate_master_chunks.sh` | 1 node, 32 cpu, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked forcing master, metrics-only (MPI chunk-and-aggregate) |
+| 01 | `01_generate_presim.sh` | `shared`, 1×1, 30 min | optional | Full Pywr-DRB run once; save non-NYC (STARFIT) releases for the trimmed model |
+| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h | optional (`ensemble_kn_*.env`) | Generate the stochastic streamflow ensemble / forcing master |
+| 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) | Hazard-filling designs: subsample the master pool into the reduced search ensemble; no-op for other designs |
+| 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h | optional | Format the search ensemble into pywrdrb HDF5 inputs (MPI across realizations); `--preset NAME` stages an arbitrary ensemble (e.g. the held-out re-eval ensemble) |
+| 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy + persist its re-eval matrix for regret-from-baseline |
+| 06 | `06_run_mmborg.sh` | `wholenode`, 5×33, 96 h | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array=1-10` = seed replicates; config-derived pre-flight |
+| 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | — | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); positional slug identifiers select targets |
+| 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the full model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
+| 09 | `09_simulate_master_chunks.sh` | `shared`, 32 cpu, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked forcing master, metrics-only (MPI chunk-and-aggregate) |
+
+Anvil notes: an allocation account is mandatory — `export SBATCH_ACCOUNT=<allocation>`
+once per shell and every submission picks it up. 96 h is Anvil's `wholenode`
+per-job maximum (searches needing longer restart from runtime snapshots).
+`shared` bills per core; `wholenode` bills whole 128-core nodes.
 
 Step order: `01` before `05`/`06`; `02`→`04` before `06` for ensemble scenario
 designs (`historic` skips `02`–`04`); `06` before `07`/`08`. Chain with
@@ -66,8 +71,8 @@ The MM-Borg geometry (5 nodes × 33 tasks = 165 ranks) matches
 ## Development utilities (not replication)
 
 - `submit_smoke.sh` — one tiny-NFE end-to-end check per formulation
-  (`bash workflow/submit_smoke.sh [--dry-run]`; 2×40 nodes, ~1–2 h, `smoke`
-  MOEA config + short 2018–2022 window via `envs/smoke.env`).
+  (`bash workflow/submit_smoke.sh [--dry-run]`; Anvil `debug` queue, 2×40,
+  2 h, `smoke` MOEA config + short 2018–2022 window via `envs/smoke.env`).
 - `supplemental/` — off-pipeline diagnostics: `bench_ensemble.sh` (per-eval
   wall-clock benchmark), `objective_sensitivity.sh` and
   `ensemble_objective_sensitivity{,_prep}.sh` (random-DV objective-sensitivity

@@ -7,10 +7,11 @@
 # multi-day production run.
 #
 # Each target submits the unified launcher (workflow/06_run_mmborg.sh) with
-# smoke-sized sbatch overrides: 2 nodes x 40 tasks, 2 h, the `smoke` MOEA
-# config (via workflow/envs/smoke.env), the short 2018-2022 debug window, and
-# 79 MPI ranks (1 controller + 2 islands x (38 workers + 1 master), sized to
-# this allocation via the NTASKS_MPI caller override).
+# smoke-sized sbatch overrides: Anvil `debug` queue (2 nodes x 40 tasks, 2 h —
+# the debug queue's exact limits), the `smoke` MOEA config (via
+# workflow/envs/smoke.env), the short 2018-2022 debug window, and 79 MPI ranks
+# (1 controller + 2 islands x (38 workers + 1 master), sized to this
+# allocation via the NTASKS_MPI caller override).
 #
 # Default targets: ffmp + variable-resolution FFMP at each N in FFMP_VR_N_SWEEP.
 # ffmp_6 is structurally identical to ffmp and is omitted from the default set.
@@ -53,7 +54,7 @@ run() {
 
 for t in "${TARGETS[@]}"; do
     run sbatch \
-        --nodes=2 --ntasks-per-node=40 --time=02:00:00 \
+        --partition=debug --nodes=2 --ntasks-per-node=40 --time=02:00:00 \
         --job-name="smoke_${t}" \
         --export=ALL,NYCOPT_ENV_FILE=workflow/envs/smoke.env,FORMULATION="${t}",RUN_SLUG="smoke_${t}",NTASKS_MPI=79,DEBUG_SIM=true \
         workflow/06_run_mmborg.sh

@@ -26,15 +26,21 @@
 # mm_pilot/mm_full. 33/node (not 40) avoids the measured memory-bandwidth
 # packing penalty. _common.sh sizes `mpirun -np` from the config, so a MOEA
 # config with different island/worker counts only needs matching
-# --nodes/--ntasks-per-node at submission. Wall time assumes full
-# experimental scale (days per configuration); pilots may pass a shorter
-# `sbatch --time=...`.
+# --nodes/--ntasks-per-node at submission.
+#
+# Anvil: multi-node jobs must use the node-exclusive `wholenode` partition
+# (the default `shared` partition is capped at 1 node), and 96 h is Anvil's
+# hard per-job wall-time maximum — a run that needs more must restart from
+# the periodic runtime snapshots. An allocation account is mandatory; set it
+# once via `export SBATCH_ACCOUNT=<allocation>` (see README). Pilots may pass
+# a shorter `sbatch --time=...`.
 #
 #SBATCH --job-name=mmborg
+#SBATCH --partition=wholenode
 #SBATCH --nodes=5
 #SBATCH --ntasks-per-node=33
 #SBATCH --exclusive
-#SBATCH --time=120:00:00
+#SBATCH --time=96:00:00
 #SBATCH --output=logs/mmborg_%x_seed%a_%A.out
 #SBATCH --error=logs/mmborg_%x_seed%a_%A.err
 #SBATCH --array=1
