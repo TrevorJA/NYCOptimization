@@ -160,9 +160,10 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         n_workers_per_island=40,
         max_evaluations=12500,    # per island -> 50,000 total NFE
         runtime_frequency=1000,
-        n_seeds=1,
+        n_seeds=10,               # recorded replicate count; submitted as
+                                  # `sbatch --array=1-10 workflow/06_run_mmborg.sh`
         max_time_hours=None,
-        notes="Hopper MM-Borg production run: 50k NFE, 165 ranks (4x40+5), "
+        notes="MM-Borg production run: 50k NFE, 165 ranks (4x40+5), "
               "historic single-trace 7-objective baseline.",
     ),
     # Production: schema only. Every campaign number is an open decision tied to

@@ -1,18 +1,18 @@
 #!/bin/bash
-# Step 6: Run MOEAFramework runtime diagnostics — computes hypervolume,
+# Step 7: Run MOEAFramework runtime diagnostics — computes hypervolume,
 # generational distance, and builds the global reference set.
 #
 # By default, runs ffmp + variable-resolution FFMP at each N in
 # FFMP_VR_N_SWEEP in parallel as background jobs. The MOEAFramework CLI
 # is I/O bound so there's no contention issue. Pass specific slug names
-# to run a subset.
+# (identifiers, not values) to run a subset.
 #
-# Usage:
-#   bash workflow/06_run_diagnostics.sh                         # all default slugs (parallel)
-#   bash workflow/06_run_diagnostics.sh ffmp ffmp_8             # subset
-#   bash workflow/06_run_diagnostics.sh smoke_ffmp              # custom slugs
-#   bash workflow/06_run_diagnostics.sh --serial ffmp           # single, serial
-#   sbatch workflow/06_run_diagnostics.sh
+# Usage (from repo root):
+#   bash workflow/07_run_diagnostics.sh                         # all default slugs (parallel)
+#   bash workflow/07_run_diagnostics.sh ffmp ffmp_8             # subset
+#   bash workflow/07_run_diagnostics.sh smoke_ffmp              # custom slugs
+#   bash workflow/07_run_diagnostics.sh --serial ffmp           # single, serial
+#   sbatch workflow/07_run_diagnostics.sh
 #
 #SBATCH --job-name=diagnostics
 #SBATCH --nodes=1
@@ -23,10 +23,8 @@
 #SBATCH --error=logs/diagnostics_%j.err
 set -euo pipefail
 
-cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-mkdir -p logs
-module load python/3.11.5
-source venv/bin/activate
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
+nycopt_setup_env
 
 SERIAL=false
 ARGS=()

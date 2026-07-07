@@ -6,13 +6,14 @@
 # forbidden: >3 min runs on the home node violate cluster etiquette).
 #
 # The active search ensemble comes from the scenario design
-# (NYCOPT_SCENARIO_DESIGN), sourced from an env file under slurm/envs/. Use an
-# ensemble-based design (e.g. fixed_probabilistic_short) — historic is single-trace.
+# (NYCOPT_SCENARIO_DESIGN), sourced from an env file under workflow/envs/.
+# Use an ensemble-based design (e.g. fixed_probabilistic_short) — historic is
+# single-trace.
 #
-# Usage:
-#   sbatch slurm/supplemental/bench_ensemble.sh
-#   NYCOPT_ENV_FILE=slurm/envs/<preset>.env sbatch slurm/supplemental/bench_ensemble.sh
-#   sbatch --export=ALL,N_EVALS=3 slurm/supplemental/bench_ensemble.sh
+# Usage (from repo root):
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<preset>.env \
+#          workflow/supplemental/bench_ensemble.sh
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=...,N_EVALS=3 workflow/supplemental/bench_ensemble.sh
 #
 #SBATCH --job-name=bench_ensemble
 #SBATCH --nodes=1
@@ -24,33 +25,10 @@
 
 set -euo pipefail
 
-cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-mkdir -p logs
-
-source /etc/profile.d/lmod.sh 2>/dev/null || true
-module load python/3.11.5 || true
-source venv/bin/activate
-
-# Source the per-experiment env file (override via NYCOPT_ENV_FILE before sbatch).
-NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7_sal.env}"
-if [[ -f "${NYCOPT_ENV_FILE}" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "${NYCOPT_ENV_FILE}"
-    set +a
-    echo "[bench_ensemble] sourced env file: ${NYCOPT_ENV_FILE}"
-else
-    echo "[bench_ensemble] env file not found: ${NYCOPT_ENV_FILE}"
-    exit 2
-fi
-
-# Thread pinning so BLAS doesn't oversubscribe the node.
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export BLIS_NUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
-export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/workflow/_common.sh"
+nycopt_setup_env
+nycopt_source_env_file required
+nycopt_pin_threads
 
 N_EVALS="${N_EVALS:-2}"
 FORMULATION="${FORMULATION:-ffmp}"

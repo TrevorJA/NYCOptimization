@@ -14,8 +14,8 @@
 # size --ntasks to (cores you can afford); e.g. 4 nodes × 32 ranks ≈ 128 ranks
 # clears 500 sims in ~4 waves (~20 min). Raise --time accordingly.
 #
-# Usage:
-#   sbatch slurm/supplemental/objective_sensitivity.sh
+# Usage (from repo root):
+#   sbatch workflow/supplemental/objective_sensitivity.sh
 #
 #SBATCH --job-name=obj_sens
 #SBATCH --nodes=4
@@ -26,19 +26,9 @@
 
 set -euo pipefail
 
-cd "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-mkdir -p logs
-
-source /etc/profile.d/lmod.sh 2>/dev/null || true
-module load python/3.11.5 && source venv/bin/activate
-
-# Thread pinning so each rank's BLAS doesn't oversubscribe the node.
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export BLIS_NUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
-export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/workflow/_common.sh"
+nycopt_setup_env
+nycopt_pin_threads
 
 NTASKS_MPI="${SLURM_NTASKS:-11}"
 

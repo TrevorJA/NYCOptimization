@@ -1,45 +1,64 @@
 #!/bin/bash
-# Step 5: Launch multi-master Borg MOEA optimization via MPI.
+# Step 6: MM-Borg MOEA search. One launcher for every formulation (ffmp and
+# variable-resolution ffmp_N) and every scenario design (single-trace or
+# ensemble). The run is fully specified by the env file: scenario design,
+# MOEA config, objectives, physics toggles. The pre-flight echoes the
+# resolved identity and fails fast on unstaged designs — it derives its
+# expectations from config, never hardcodes an experiment.
 #
-# Single-formulation entry point. For larger campaigns spanning all FFMP
-# layer configs + ensembles, prefer slurm/main/submit_all.sh with the appropriate
-# slurm/envs/*.env file.
+# Each submission is one independent job; there is no campaign wrapper.
+# Submit one line per (env file x formulation), from the repo root:
 #
-# Single-formulation entry point. Pick the experiment by editing the env file
-# below (which sets NYCOPT_SCENARIO_DESIGN, NYCOPT_MOEA_CONFIG, objectives,
-# physics). Algorithm settings come from the MOEA config — there are no
-# value flags here. Then submit:
-#   sbatch workflow/05_run_mmborg.sh
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env \
+#          --array=1-10 workflow/06_run_mmborg.sh
 #
-# For multiple seeds, submit as an array (preferred):
-#   sbatch --array=1-10 slurm/main/mmborg_ffmp.sh
-
-#SBATCH --job-name=mmborg_ffmp
+# Variable-resolution FFMP (same launcher, formulation from the identifier):
+#
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_12 \
+#          --array=1-10 workflow/06_run_mmborg.sh
+#
+# --array index = Borg seed; array tasks are independent seed replicates.
+# NYCOPT_ENV_FILE is REQUIRED (no default) — the job aborts immediately with
+# a listing of workflow/envs/*.env otherwise.
+#
+# Geometry: 5 nodes x 33 tasks = 165 ranks = 1 controller + 4 islands x
+# (40 workers + 1 master) — matches MOEAConfig.total_ntasks_mpi for
+# mm_pilot/mm_full. 33/node (not 40) avoids the measured memory-bandwidth
+# packing penalty. _common.sh sizes `mpirun -np` from the config, so a MOEA
+# config with different island/worker counts only needs matching
+# --nodes/--ntasks-per-node at submission. Wall time assumes full
+# experimental scale (days per configuration); pilots may pass a shorter
+# `sbatch --time=...`.
+#
+#SBATCH --job-name=mmborg
 #SBATCH --nodes=5
-#SBATCH --ntasks-per-node=40
-#SBATCH --output=logs/mmborg.out
-#SBATCH --error=logs/mmborg.err
-#SBATCH --time=48:00:00
+#SBATCH --ntasks-per-node=33
+#SBATCH --exclusive
+#SBATCH --time=120:00:00
+#SBATCH --output=logs/mmborg_%x_seed%a_%A.out
+#SBATCH --error=logs/mmborg_%x_seed%a_%A.err
+#SBATCH --array=1
 
 set -euo pipefail
 
-# ---- Run identifiers (edit these) ----
-SEED="${SLURM_ARRAY_TASK_ID:-1}"
-FORMULATION="ffmp"
-CHECKPOINT=false           # disabled: both islands write same checkpoint file → race condition/segfault
-DEBUG_SIM=false            # "true" -> short 2018-2022 window (~13s/eval)
+# Identifiers only — algorithm settings come from the env file + registries.
+export FORMULATION="${FORMULATION:-ffmp}"   # ffmp | ffmp_N (registry-validated in pre-flight)
+SEED="${SEED:-${SLURM_ARRAY_TASK_ID:-1}}"
+DEBUG_SIM="${DEBUG_SIM:-false}"
+CHECKPOINT="${CHECKPOINT:-false}"           # disabled by default: islands share a checkpoint file (race-prone)
+export DEBUG_SIM
 
-# Select the experiment via an env file (scenario design + MOEA config + objs).
-NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-slurm/envs/ffmp_obj7_sal.env}"
-
-# _common.sh sources the env file, pins threads, derives SCENARIO / RUN_SLUG /
-# NTASKS_MPI from the active config, and writes the run manifest.
-source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/slurm/main/_common.sh"
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
+nycopt_setup_env
+nycopt_source_env_file required
+nycopt_pin_threads
+nycopt_read_run_identity
+nycopt_write_manifest
+nycopt_preflight_mmborg
 
 ARGS="--seed ${SEED} --formulation ${FORMULATION}"
 [[ "${CHECKPOINT}" == "true" ]] && ARGS="${ARGS} --checkpoint"
 
-echo "=== MM-Borg Optimization (${SCENARIO}/${RUN_SLUG}, seed=${SEED}) ==="
-echo "Date: $(date) | MPI ntasks: ${NTASKS_MPI} | Args: ${ARGS}"
+echo "=== Launching MM-Borg: ${SCENARIO}/${RUN_SLUG} seed=${SEED} (${MOEA_CONFIG_NAME}, ${NTASKS_MPI} ranks) ==="
 mpirun -np "${NTASKS_MPI}" python3 -u src/mmborg_cli.py ${ARGS}
 echo "=== Completed: $(date) ==="

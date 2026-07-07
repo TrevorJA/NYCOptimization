@@ -1,6 +1,6 @@
 #!/bin/bash
-# build_jars.sh — Build MOEAFramework problem JARs for the active formulation
-# set and active objective count.
+# Step 0 (setup, login node): Build MOEAFramework problem JARs for the active
+# formulation set and active objective count.
 #
 # Builds one JAR per formulation in `PRODUCTION_FORMULATIONS` (or a
 # user-supplied list), reading the per-formulation DV count from
@@ -8,30 +8,22 @@
 # `src.formulations.get_n_objs()`. Keeps the JARs in lock-step with the
 # active config (e.g., salinity-on adds an obj; salt-front DVs add DVs).
 #
-# Usage:
-#   bash slurm/main/build_jars.sh                      # use PRODUCTION_FORMULATIONS
-#   bash slurm/main/build_jars.sh ffmp ffmp_8          # explicit list
-#   NYCOPT_ENV_FILE=slurm/envs/ffmp_obj7_sal.env bash slurm/main/build_jars.sh
+# Usage (from repo root):
+#   bash workflow/00_setup_borg_jars.sh                # use PRODUCTION_FORMULATIONS
+#   bash workflow/00_setup_borg_jars.sh ffmp ffmp_8    # explicit list
+#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_sal.env bash workflow/00_setup_borg_jars.sh
 #
 # Idempotent — safe to re-run after changing config knobs.
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+nycopt_setup_env
+nycopt_source_env_file optional
 
 MOEA_DIR="MOEAFramework-5.0"
 NATIVE_DIR="${MOEA_DIR}/native"
 LIB_DIR="${MOEA_DIR}/lib"
-
-# Source per-experiment env file if provided so config knobs are in scope.
-NYCOPT_ENV_FILE="${NYCOPT_ENV_FILE:-}"
-if [[ -n "${NYCOPT_ENV_FILE}" && -f "${NYCOPT_ENV_FILE}" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "${NYCOPT_ENV_FILE}"
-    set +a
-    echo "[build_jars] sourced env file: ${NYCOPT_ENV_FILE}"
-fi
 
 # Verify Python imports work before looping.
 python3 -c "from src.formulations import get_n_vars, get_n_objs" >/dev/null 2>&1 || {
@@ -49,8 +41,8 @@ else
 fi
 
 NOBJS=$(python3 -c "from src.formulations import get_n_objs; print(get_n_objs())")
-echo "[build_jars] formulations: ${FORMULATIONS[*]}"
-echo "[build_jars] objectives:   ${NOBJS}"
+echo "[00_setup_borg_jars] formulations: ${FORMULATIONS[*]}"
+echo "[00_setup_borg_jars] objectives:   ${NOBJS}"
 
 for FORMULATION in "${FORMULATIONS[@]}"; do
     NAME="drb_${FORMULATION}"
