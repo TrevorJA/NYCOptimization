@@ -1,0 +1,5 @@
+# Shell scripts and env files must keep LF endings — they are sourced/executed
+# by bash on the HPC, and CRLF breaks them if a Windows working copy is copied
+# to the cluster.
+*.sh text eol=lf
+*.env text eol=lf
