@@ -38,7 +38,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 06 | `06_run_mmborg.sh` | `wholenode`, 5×33, 96 h | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array=1-10` = seed replicates; config-derived pre-flight |
 | 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | — | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); positional slug identifiers select targets |
 | 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the full model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
-| 09 | `09_simulate_master_chunks.sh` | `shared`, 32 cpu, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked forcing master, metrics-only (MPI chunk-and-aggregate) |
+| 09 | `09_simulate_master_chunks.sh` | `wholenode`, 4×16, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked forcing master, metrics-only (MPI chunk-and-aggregate) |
 
 Anvil notes: an allocation account is mandatory — `export SBATCH_ACCOUNT=<allocation>`
 once per shell and every submission picks it up. 96 h is Anvil's `wholenode`
@@ -62,10 +62,34 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATI
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_12 --array=1-10 workflow/06_run_mmborg.sh
 ```
 
-The MM-Borg geometry (5 nodes × 33 tasks = 165 ranks) matches
-`MOEAConfig.total_ntasks_mpi` for `mm_pilot`/`mm_full`; `_common.sh` sizes
-`mpirun -np` from the config, so a different MOEA config only needs matching
-`--nodes/--ntasks-per-node` at submission. Shorter pilots can pass
+## Geometry contract and scaling on Anvil
+
+The MPI rank count has a single source per step; the `#SBATCH` lines are only
+the container for it:
+
+- **MM-Borg (06)**: ranks = `MOEAConfig.total_ntasks_mpi`
+  (`1 + islands × (workers + 1)`, from `src/moea_config.py`). `_common.sh`
+  reads it back for `mpirun -np`, and `nycopt_check_allocation` aborts before
+  the search starts if the allocation is smaller — printing the exact
+  `--nodes/--ntasks-per-node` to resubmit with — and warns when a whole
+  node or more would sit idle.
+- **All other MPI steps (04, 08, 09, supplemental)**: ranks =
+  `SLURM_NTASKS`, the actual allocation — a mismatch is impossible by
+  construction; rescale with `sbatch --nodes=N --ntasks-per-node=M` and the
+  launch follows.
+
+**To scale the search up**: register a larger MOEA config (more
+islands/workers) in `src/moea_config.py`, point the env file's
+`NYCOPT_MOEA_CONFIG` at it, and submit with
+`--nodes=ceil(total_ntasks_mpi / 33) --ntasks-per-node=33` (33/node is the
+memory-bandwidth-safe packing, centralized as `NYCOPT_RANKS_PER_NODE` in
+`_common.sh`). Anvil ceilings: `wholenode` allows up to 16 nodes (2,048
+cores) and 96 h — at 33 ranks/node that is ~528 ranks (≈ 13 islands × 40
+workers); denser packing (override `NYCOPT_RANKS_PER_NODE` after
+benchmarking with `supplemental/bench_ensemble.sh`) raises the ceiling
+toward 2,048 ranks. The `wide` queue reaches 56 nodes but only 12 h. Seeds
+(`--array`) and experiments (env files) scale horizontally as fully
+independent jobs with no cross-job coordination. Shorter pilots can pass
 `sbatch --time=...`.
 
 ## Development utilities (not replication)

@@ -21,12 +21,15 @@
 # NYCOPT_ENV_FILE is REQUIRED (no default) — the job aborts immediately with
 # a listing of workflow/envs/*.env otherwise.
 #
-# Geometry: 5 nodes x 33 tasks = 165 ranks = 1 controller + 4 islands x
-# (40 workers + 1 master) — matches MOEAConfig.total_ntasks_mpi for
-# mm_pilot/mm_full. 33/node (not 40) avoids the measured memory-bandwidth
-# packing penalty. _common.sh sizes `mpirun -np` from the config, so a MOEA
-# config with different island/worker counts only needs matching
-# --nodes/--ntasks-per-node at submission.
+# Geometry: the MPI rank count ALWAYS comes from the MOEA config
+# (MOEAConfig.total_ntasks_mpi -> mpirun -np); the #SBATCH lines below are
+# only the container for it, sized for mm_pilot/mm_full: 5 nodes x 33 tasks =
+# 165 ranks = 1 controller + 4 islands x (40 workers + 1 master). 33/node
+# (NYCOPT_RANKS_PER_NODE in _common.sh) avoids the measured memory-bandwidth
+# packing penalty. A MOEA config with different island/worker counts only
+# needs matching --nodes/--ntasks-per-node at submission —
+# nycopt_check_allocation aborts before the search starts if the allocation
+# is too small and prints the geometry to use.
 #
 # Anvil: multi-node jobs must use the node-exclusive `wholenode` partition
 # (the default `shared` partition is capped at 1 node), and 96 h is Anvil's
@@ -59,6 +62,7 @@ nycopt_setup_env
 nycopt_source_env_file required
 nycopt_pin_threads
 nycopt_read_run_identity
+nycopt_check_allocation
 nycopt_write_manifest
 nycopt_preflight_mmborg
 

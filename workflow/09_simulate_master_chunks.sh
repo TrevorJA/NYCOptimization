@@ -15,7 +15,12 @@
 #   NYCOPT_SEARCH_REALIZATION_BATCH  realizations per within-chunk sim batch
 #                                    (bounds RAM)
 #   NYCOPT_CHUNK_SIM_MODE            single | mpi (default mpi)
-#   NYCOPT_CHUNK_SIM_NODES / _RANKS  MPI layout (default 4 x 16 = 64)
+#   NYCOPT_CHUNK_SIM_NODES / _RANKS  MPI layout for local (non-SLURM) mpi
+#                                    fallback only (default 4 x 16 = 64);
+#                                    under SLURM, `mpirun -np` follows the
+#                                    actual allocation (SLURM_NTASKS), so the
+#                                    #SBATCH geometry below is the single
+#                                    source of the rank count
 #   FORMULATION                      identifier, default ffmp
 #   SEED                             optional
 #
@@ -24,10 +29,11 @@
 #          workflow/09_simulate_master_chunks.sh
 #
 #SBATCH --job-name=sim_master_chunks
-#SBATCH --partition=shared
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
+#SBATCH --partition=wholenode
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=1
+#SBATCH --exclusive
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/sim_master_chunks_%j.out
 #SBATCH --error=logs/sim_master_chunks_%j.err
@@ -54,7 +60,9 @@ case "${MODE}" in
         python3 -m scripts.main.simulate_master_chunks ${ARGS}
         ;;
     mpi)
-        NTASKS_MPI="$(( ${NYCOPT_CHUNK_SIM_NODES:-4} * ${NYCOPT_CHUNK_SIM_RANKS:-16} ))"
+        # Under SLURM the rank count IS the allocation (cannot mismatch the
+        # #SBATCH geometry); the NODES x RANKS product is a local fallback.
+        NTASKS_MPI="${SLURM_NTASKS:-$(( ${NYCOPT_CHUNK_SIM_NODES:-4} * ${NYCOPT_CHUNK_SIM_RANKS:-16} ))}"
         echo "[sim-chunks] MPI mode, ${NTASKS_MPI} ranks"
         mpirun -np "${NTASKS_MPI}" ${NYCOPT_MPI_MCA_FLAGS} \
             python3 -m scripts.main.simulate_master_chunks ${ARGS}

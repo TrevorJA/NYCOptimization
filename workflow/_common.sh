@@ -9,6 +9,7 @@
 #   nycopt_pin_threads                    MPI / simulation steps (NOT steps
 #                                         02/03, which want full BLAS threads)
 #   nycopt_read_run_identity              MM-Borg only; needs FORMULATION, SEED
+#   nycopt_check_allocation               MM-Borg only; SLURM_NTASKS vs config
 #   nycopt_write_manifest                 MM-Borg only
 #   nycopt_preflight_mmborg               MM-Borg only
 #
@@ -36,6 +37,12 @@ NYCOPT_PYTHON_MODULE="${NYCOPT_PYTHON_MODULE:-python/3.11.5}"
 # route MPI over IPoIB. Resolved in _nycopt_set_mpi_flags() once
 # NYCOPT_CLUSTER is known (i.e. after the env file is sourced).
 NYCOPT_MPI_MCA_FLAGS="${NYCOPT_MPI_MCA_FLAGS:-}"
+# MPI ranks packed per node for MM-Borg jobs. 33/node is the measured
+# memory-bandwidth-safe packing for pywrdrb simulations; it is the single
+# source for the suggested --nodes/--ntasks-per-node geometry printed by
+# nycopt_check_allocation when an allocation doesn't fit the MOEA config.
+# Override via env to test denser packings (e.g. on Anvil's 128-core nodes).
+NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-33}"
 
 _nycopt_set_mpi_flags() {
     if [[ -z "${NYCOPT_MPI_MCA_FLAGS}" && "${NYCOPT_CLUSTER:-hopper}" == "hopper" ]]; then
@@ -152,6 +159,34 @@ print(mc.runtime_frequency if mc.runtime_frequency is not None else '')
     else
         NTASKS_MPI="$(( ${SLURM_NTASKS:-200} - 1 ))"
     fi
+}
+
+# Verify the SLURM allocation fits the MPI launch the MOEA config demands.
+# The rank count itself always comes from config (nycopt_read_run_identity);
+# the static #SBATCH geometry is only a container for it. This guard makes a
+# too-small allocation fail fast (before Borg starts) with the exact sbatch
+# geometry to use, and flags allocations wasting a node's worth of cores.
+# Requires: nycopt_read_run_identity ran first (NTASKS_MPI set).
+nycopt_check_allocation() {
+    [[ -z "${SLURM_NTASKS:-}" ]] && return 0   # not under SLURM (local run)
+    local need="${NTASKS_MPI}"
+    local have="${SLURM_NTASKS}"
+    if (( have < need )); then
+        local nodes=$(( (need + NYCOPT_RANKS_PER_NODE - 1) / NYCOPT_RANKS_PER_NODE ))
+        {
+            echo "ERROR: allocation too small for the active MOEA config."
+            echo "  MOEA config '${MOEA_CONFIG_NAME}' needs ${need} MPI ranks;"
+            echo "  this job allocated only ${have} tasks (SLURM_NTASKS)."
+            echo "  Resubmit with a matching geometry, e.g.:"
+            echo "    sbatch --nodes=${nodes} --ntasks-per-node=${NYCOPT_RANKS_PER_NODE} ..."
+        } >&2
+        exit 3
+    fi
+    if (( have - need >= NYCOPT_RANKS_PER_NODE )); then
+        echo "[_common] WARNING: allocation has $(( have - need )) idle tasks" \
+             "(need ${need}, allocated ${have}) — a whole node or more is unused."
+    fi
+    echo "[_common] allocation OK: ${need} MPI ranks in ${have} allocated tasks"
 }
 
 # Write a full reproducibility manifest (run identity, allocation, git state,
