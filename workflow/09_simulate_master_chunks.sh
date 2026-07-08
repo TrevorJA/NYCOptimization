@@ -25,7 +25,7 @@
 #   SEED                             optional
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_sal.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=master_5yr_n128000 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=master_5yr_n128000 \
 #          workflow/09_simulate_master_chunks.sh
 #
 #SBATCH --job-name=sim_master_chunks

@@ -31,7 +31,7 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env \
        --array=1-10 workflow/06_run_mmborg.sh
 
 # Variable-resolution FFMP — same launcher, formulation as an identifier:
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_12 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_12 \
        --array=1-10 workflow/06_run_mmborg.sh
 
 # Re-evaluate on the common held-out ensemble:
@@ -43,18 +43,21 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_
 
 MM-Borg run identities (consumed by steps 05, 06, 08, 09):
 
-- `ffmp_obj7_historic.env` — historic single trace, `mm_full` (50k NFE,
-  10 seeds), salinity OFF, 7th objective = Trenton flow reliability.
+- `ffmp_obj7_historic.env` — base FFMP, historic single trace, `mm_full`
+  (50k NFE, 10 seeds), default 7 objectives (no LSTM).
 - `ffmp_obj7_historic_pilot.env` — same, but the 5k-NFE `mm_pilot`
   launch-verification config.
-- `ffmp_obj7_sal.env` — historic single trace, `mm_full`, **salinity LSTM
-  in-loop** (sync mode), 7th objective = salt-front intrusion.
-- `ffmp_vr_obj7_sal.env` — variable-resolution FFMP sweep (N ∈ {8, 10, 12}),
-  salinity on; submit once per `FORMULATION=ffmp_N`.
+- `ffmp_vr_obj7.env` — variable-resolution FFMP sweep (N ∈ {8, 10, 12}), same
+  7-objective set as the base run; submit once per `FORMULATION=ffmp_N`.
 - `ffmp_obj7_hazfill_pilot.env` — hazard-filling scenario design, `pilot`
   config; requires steps 02–04 staged first (pre-flight fails fast otherwise).
 - `smoke.env` — dev-only tiny-NFE smoke identity, used by
   `workflow/submit_smoke.sh`. Not for replication.
+
+The salinity LSTM is not used (it does not perform well under extreme
+droughts); the machinery is dormant. To re-enable it for an experiment, set
+`NYCOPT_SALINITY_ON=1` and swap the 5th objective to `salt_front_intrusion_max_rm`
+in a new env file (the slug then gains a `_sal` suffix automatically).
 
 Ensemble-generation settings (consumed by step 02 only):
 
@@ -74,7 +77,7 @@ The scenario design is NOT in the slug — it is the parent directory:
 `outputs/{scenario}/{moea_slug}/`. The MOEA config name is appended unless it
 is the `production` default. Examples:
 
-- `ffmp_obj7_sal.env` (mm_full) → `outputs/historic/ffmp_obj7_sal_mm_full/`
+- `ffmp_obj7_historic.env` (mm_full) → `outputs/historic/ffmp_obj7_mm_full/`
 - `ffmp_obj7_hazfill_pilot.env` (pilot) → `outputs/hazard_filling/ffmp_obj7_pilot/`
 
 For ad-hoc tags, set `RUN_SLUG_TAG=mytag`; the slug becomes

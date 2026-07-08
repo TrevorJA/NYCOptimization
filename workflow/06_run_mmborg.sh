@@ -14,7 +14,7 @@
 #
 # Variable-resolution FFMP (same launcher, formulation from the identifier):
 #
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_12 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_12 \
 #          --array=1-10 workflow/06_run_mmborg.sh
 #
 # --array index = Borg seed; array tasks are independent seed replicates.

@@ -11,7 +11,7 @@
 # Usage (from repo root):
 #   bash workflow/00_setup_borg_jars.sh                # use PRODUCTION_FORMULATIONS
 #   bash workflow/00_setup_borg_jars.sh ffmp ffmp_8    # explicit list
-#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_sal.env bash workflow/00_setup_borg_jars.sh
+#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env bash workflow/00_setup_borg_jars.sh
 #
 # Idempotent — safe to re-run after changing config knobs.
 

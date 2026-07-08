@@ -419,13 +419,18 @@ PRODUCTION_FORMULATIONS = _parse_list_env(
 # Temperature & Salinity LSTM Coupling
 ###############################################################################
 # When enabled, the LSTMs (from PywrDRB-ML) run as pywrdrb Parameters during
-# simulation. Both default off; salinity is the manuscript-active path
-# (temperature is deferred — see decisions/2026-04-29_temperature_lstm_deferred.md).
+# simulation. Both default off, and NEITHER is used in the manuscript: the
+# salinity LSTM was evaluated and dropped (it does not perform well under
+# extreme droughts, the regime the salt-front objective most needs to
+# resolve), and temperature is deferred
+# (decisions/2026-04-29_temperature_lstm_deferred.md). The coupling machinery
+# below is retained, dormant, so either LSTM can be re-enabled via
+# `NYCOPT_SALINITY_ON` / `NYCOPT_TEMPERATURE_ON` without code changes.
 #
-# `NYCOPT_TS_ON` is a legacy convenience that turns on whichever LSTM is
-# considered active for the manuscript (currently: salinity only). New
-# scripts should prefer `NYCOPT_SALINITY_ON` / `NYCOPT_TEMPERATURE_ON` for
-# clarity.
+# `NYCOPT_TS_ON` is a legacy convenience flag (historically toggled the
+# then-active salinity LSTM). It stays for backward compatibility but should
+# not be used in new scripts — set `NYCOPT_SALINITY_ON` /
+# `NYCOPT_TEMPERATURE_ON` explicitly.
 #
 # See:
 #   local_notes/methodology/temperature_salinity.md
@@ -771,10 +776,11 @@ if (
 #
 # Examples (moea slug only):
 #   ffmp_obj7                    — FFMP, 7 objectives, production algo config
-#   ffmp_obj7_sal                — salinity LSTM on
-#   ffmp_8_obj7_sal              — variable-resolution N=8 with salinity
-#   ffmp_obj7_sal_smoke          — dev smoke algorithm config
-#   ffmp_obj7_sal_pilot42        — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
+#   ffmp_8_obj7                  — variable-resolution N=8, 7 objectives
+#   ffmp_obj7_smoke              — dev smoke algorithm config
+#   ffmp_obj7_pilot42            — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
+#   ffmp_obj7_sal                — salinity LSTM on (dormant; only if
+#                                  NYCOPT_SALINITY_ON=1 — not used in manuscript)
 #
 # `RUN_SLUG_TAG` env appends a free-form suffix; useful for one-off variants
 # without polluting the canonical slug grammar.

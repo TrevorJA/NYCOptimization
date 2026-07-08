@@ -145,11 +145,12 @@ as independent array tasks. These are multi-day jobs requesting Anvil's
 they do not depend on each other:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env                   --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_sal.env                        --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_8  --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_10 --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_12 --array=1-10 workflow/06_run_mmborg.sh
+# Base FFMP (24 DVs)
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env               --array=1-10 workflow/06_run_mmborg.sh
+# Variable-resolution FFMP sweep (same objective set), one job per N
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_8  --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_10 --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_12 --array=1-10 workflow/06_run_mmborg.sh
 ```
 
 (This experiment list grows as new env files / scenario designs are added.)

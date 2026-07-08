@@ -55,11 +55,10 @@ Each optimization is one self-contained multi-day sbatch job — one submission
 per (env file × formulation), no campaign wrapper:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env                   --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_sal.env                        --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_8  --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_10 --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7_sal.env,FORMULATION=ffmp_12 --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env               --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_8   --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_10  --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_12  --array=1-10 workflow/06_run_mmborg.sh
 ```
 
 ## Geometry contract and scaling on Anvil

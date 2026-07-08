@@ -31,9 +31,9 @@ Every key must be a documented `NYCOPT_*` knob — the override table lives at t
 
 Filename should match the moea slug `derive_slug()` will produce, so `workflow/envs/<slug>.env` and `outputs/{scenario}/<slug>/` line up (the scenario design is the parent directory, not part of the slug; the MOEA config name is appended unless it is the `production` default):
 
-- `ffmp_obj7_sal.env` (mm_full) → outputs at `outputs/historic/ffmp_obj7_sal_mm_full/`
+- `ffmp_obj7_historic.env` (mm_full) → outputs at `outputs/historic/ffmp_obj7_mm_full/`
 - `ffmp_obj7_hazfill_pilot.env` (pilot) → outputs at `outputs/hazard_filling/ffmp_obj7_pilot/`
-- `ffmp_vr_obj7_sal.env` → expands to multiple slugs (one per `FORMULATION=ffmp_N` submission)
+- `ffmp_vr_obj7.env` → expands to multiple slugs (one per `FORMULATION=ffmp_N` submission)
 
 For ad-hoc tags, set `RUN_SLUG_TAG=mytag` in the env file; the slug becomes `<auto-derived>_mytag`.
 
@@ -53,9 +53,9 @@ For ad-hoc tags, set `RUN_SLUG_TAG=mytag` in the env file; the slug becomes `<au
 4. Validate locally:
    ```bash
    set -a; source workflow/envs/<file>.env; set +a
-   python3 -c "from config import derive_slug, ACTIVE_OBJECTIVES, INCLUDE_SALINITY_MODEL; \
+   python3 -c "from config import derive_slug, ACTIVE_OBJECTIVES; \
        print('slug=', derive_slug('ffmp')); print('n_obj=', len(ACTIVE_OBJECTIVES)); \
-       print('sal_on=', INCLUDE_SALINITY_MODEL)"
+       print('objectives=', ACTIVE_OBJECTIVES)"
    ```
 5. Submit; the MM-Borg pre-flight echoes the resolved identity to the job log and fails fast on inconsistencies before the search starts.
 
