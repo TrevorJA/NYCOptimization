@@ -29,7 +29,7 @@
 #          workflow/09_simulate_master_chunks.sh
 #
 #SBATCH --job-name=sim_master_chunks
-#SBATCH --account=x-tamestoy
+#SBATCH --account=ees260021
 #SBATCH --partition=wholenode
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=16

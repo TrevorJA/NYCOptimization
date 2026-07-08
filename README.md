@@ -76,12 +76,34 @@ first if it is missing):
 mpicc -shared -fPIC -O3 -o lib/borg/libborgmm.so lib/borg/borgmm.c lib/borg/mt19937ar.c -lm
 ```
 
-Also, the experiment requires the MOEAFramework 5.0 CLI located at
-`NYCOptimization/MOEAFramework-5.0/cli`. MOEAFramework releases are available
-at [github.com/MOEAFramework/MOEAFramework](https://github.com/MOEAFramework/MOEAFramework/releases).
+Also, the experiment requires MOEAFramework 5.0, which provides both the `cli`
+tool (used by the diagnostics step) and the framework JARs on the compile
+classpath. MOEAFramework 5.0 is built for **Java 17+**, which Anvil's `openjdk`
+modules do not provide (they cap at Java 11). Install a JDK 17 into the `venv`
+conda env so `java`/`javac`/`jar` are on `PATH` whenever the env is active:
+
+```bash
+conda install -n venv -c conda-forge openjdk=17
+```
+
+Download the MOEAFramework 5.0 release tarball from
+[github.com/MOEAFramework/MOEAFramework](https://github.com/MOEAFramework/MOEAFramework/releases),
+place it at `NYCOptimization/MOEAFramework-5.0/MOEAFramework-5.0.tar.gz`, then
+unpack it in place (the tarball nests everything under a `MOEAFramework-5.0/`
+prefix, so `--strip-components=1` lands `lib/`, `cli`, etc. directly in the
+existing directory) and make the CLI executable:
+
+```bash
+cd MOEAFramework-5.0
+tar -xzf MOEAFramework-5.0.tar.gz --strip-components=1
+chmod +x cli
+cd ..
+./MOEAFramework-5.0/cli --version   # should print 5.0
+```
 
 Finally, build one MOEAFramework problem JAR per formulation (rerun this after
-changing the objective set or formulation list):
+changing the objective set or formulation list). Requires the Java 17 JDK above
+and the `venv` env active:
 
 ```bash
 bash workflow/00_setup_borg_jars.sh

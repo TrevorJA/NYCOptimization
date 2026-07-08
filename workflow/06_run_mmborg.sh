@@ -38,7 +38,7 @@
 # #SBATCH header below. Pilots may pass a shorter `sbatch --time=...`.
 #
 #SBATCH --job-name=mmborg
-#SBATCH --account=x-tamestoy
+#SBATCH --account=ees260021
 #SBATCH --partition=wholenode
 #SBATCH --nodes=5
 #SBATCH --ntasks-per-node=33

@@ -31,7 +31,7 @@
 # `mpirun -np` follows the actual allocation (SLURM_NTASKS).
 #
 #SBATCH --job-name=reevaluate
-#SBATCH --account=x-tamestoy
+#SBATCH --account=ees260021
 #SBATCH --partition=wholenode
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=16
