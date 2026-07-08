@@ -43,6 +43,13 @@ _PYWRDRB_NODES = list(immediate_downstream_nodes_dict.keys())
 NODES_TO_GENERATE = [n for n in _PYWRDRB_NODES if n[0] != "0" and n != "delTrenton"]
 NODES_TO_REGRESS = [n for n in _PYWRDRB_NODES if n[0] == "0"]
 
+# SynHydro's timescale-generalized NowakDisaggregator defaults
+# boundary_blend_timesteps to 0 (published Nowak et al. 2010, no boundary
+# correction). This project's ensembles were generated with the pre-upgrade
+# default of 2-day smoothing at month boundaries; pin it so regenerated
+# ensembles stay bit-identical to prior runs.
+NOWAK_BOUNDARY_BLEND_TIMESTEPS = 2
+
 
 def generate_kirsch_nowak_ensemble(
     *,
@@ -94,7 +101,9 @@ def generate_kirsch_nowak_ensemble(
     kirsch.fit()
 
     print(f"[gen] Fitting NowakDisaggregator...")
-    nowak = NowakDisaggregator(debug=False)
+    nowak = NowakDisaggregator(
+        boundary_blend_timesteps=NOWAK_BOUNDARY_BLEND_TIMESTEPS, debug=False
+    )
     nowak.preprocessing(Q_full)
     nowak.fit()
 
@@ -195,7 +204,9 @@ def generate_input_spanning_master(
     kirsch = KirschGenerator(generate_using_log_flow=True, debug=False)
     kirsch.preprocessing(Q_full)
     kirsch.fit()
-    nowak = NowakDisaggregator(debug=False)
+    nowak = NowakDisaggregator(
+        boundary_blend_timesteps=NOWAK_BOUNDARY_BLEND_TIMESTEPS, debug=False
+    )
     nowak.preprocessing(Q_full)
     nowak.fit()
 
@@ -310,7 +321,9 @@ def _fit_kirsch(Q: pd.DataFrame) -> KirschGenerator:
 
 def _fit_nowak(Q: pd.DataFrame) -> NowakDisaggregator:
     """Fit a ``NowakDisaggregator`` on the (zero-masked) gage record ``Q``."""
-    nowak = NowakDisaggregator(debug=False)
+    nowak = NowakDisaggregator(
+        boundary_blend_timesteps=NOWAK_BOUNDARY_BLEND_TIMESTEPS, debug=False
+    )
     nowak.preprocessing(Q)
     nowak.fit()
     return nowak
