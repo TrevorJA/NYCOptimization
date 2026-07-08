@@ -126,8 +126,11 @@ nycopt_pin_threads() {
 nycopt_read_run_identity() {
     if [[ "${DEBUG_SIM:-false}" == "true" ]]; then
         # Short window, ~13s/eval — must be exported before config is imported.
+        # End pinned to config.END_DATE (2022-09-30): the trimmed model's
+        # presimulated releases are generated to that water-year end, so a
+        # later debug end date would run past the presim data coverage.
         export PYWRDRB_SIM_START_DATE="2018-01-01"
-        export PYWRDRB_SIM_END_DATE="2022-12-31"
+        export PYWRDRB_SIM_END_DATE="2022-09-30"
     fi
 
     local _cfg

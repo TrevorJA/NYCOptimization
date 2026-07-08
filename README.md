@@ -16,11 +16,9 @@ Method + design notes: `docs/notes/methods/experimental_design.md`; conventions:
 **Anvil specifics** (already encoded in the scripts' `#SBATCH` headers, listed
 here so you know what to expect):
 
-- **Allocation account is mandatory.** Set it once per login shell (or in
-  `~/.bashrc`) and every `sbatch` in these instructions picks it up:
-  ```bash
-  export SBATCH_ACCOUNT=<your-allocation>     # e.g. ees230012
-  ```
+- **Allocation account is mandatory.** It is hardcoded in every sbatch
+  script's header (`#SBATCH --account=x-tamestoy`) — no per-shell export
+  needed. Override for a different allocation with `sbatch -A <alloc> ...`.
 - **Partitions**: small serial steps use `shared` (per-core billing, max 1
   node); multi-node MPI jobs (`06`, `08`, supplemental sweeps) use
   `wholenode` (node-exclusive billing); the smoke test uses `debug` (2 nodes,

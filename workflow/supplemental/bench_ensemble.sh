@@ -16,6 +16,7 @@
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=...,N_EVALS=3 workflow/supplemental/bench_ensemble.sh
 #
 #SBATCH --job-name=bench_ensemble
+#SBATCH --account=x-tamestoy
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

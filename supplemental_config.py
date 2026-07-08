@@ -297,3 +297,137 @@ def ensemble_table_path(name: str) -> Path:
 def ensemble_figure_path(name: str, ext: str) -> Path:
     """Path for a named ensemble figure artifact (e.g. name='tau_vs_k')."""
     return ENS_FIGURES_DIR / f"{name}_{_ens_stem()}.{ext}"
+
+
+###############################################################################
+# Anvil parallel-scaling experiment
+# (workflow/supplemental/anvil_scaling_*.sh; manuscript supplement)
+#
+# Two measured stages plus a post-hoc analysis, following the Reed-group
+# scaling-experiment conventions (strong scaling, speedup vs ideal, parallel
+# efficiency = speedup/p, replicate bands):
+#
+#   Stage A (packing): on ONE exclusive 128-core Anvil node, sweep the number
+#     of concurrent MPI ranks K, each rank timing cold+warm trimmed-model
+#     ensemble evaluations (the exact `evaluate()` path Borg workers run).
+#     Yields per-eval slowdown vs K, node throughput, SU cost per eval, and
+#     per-rank peak RSS vs the 256 GB node memory — the ranks-per-node choice.
+#   Stage B (Borg strong scaling): fixed total NFE, sweep island x worker
+#     geometry (registered as `scale_*` MOEA configs in src/moea_config.py),
+#     >=2 seeds per geometry, on the historic design with the DEBUG_SIM short
+#     window (~13 s/eval; Borg coordination overhead is measured, not search
+#     quality — the inflated overhead:eval ratio makes this a conservative
+#     efficiency bound).
+#
+# IMPORTANT: Stage A must never combine with DEBUG_SIM / PYWRDRB_SIM_* date
+# overrides — the ensemble window self-derives from the realization length
+# (src/simulation.py::_ensemble_window) and a date override would shift it off
+# the staged HDF5 axis. Stage B (historic single-trace) is where the short
+# window is valid.
+###############################################################################
+
+
+def configure_anvil_scaling_env() -> None:
+    """Apply env knobs for the Anvil scaling experiment (both stages).
+
+    Salinity and temperature LSTMs off (the active 7-objective set uses
+    neither). No simulation-window override: Stage A's window self-derives
+    from the ensemble realization length, and Stage B's short window is set
+    by ``DEBUG_SIM=true`` in the SLURM script (via ``nycopt_read_run_identity``),
+    not here.
+    """
+    _apply_env(salinity="0", temperature="0")
+
+
+# ---------------------------------------------------------------------------
+# Stage A — packing sweep
+# ---------------------------------------------------------------------------
+#: Steps per packing mode: (K concurrent ranks, warm evals per rank M,
+#: realization batch B). B=0 is the production default (all realizations as
+#: one pywr scenario block); B>0 exercises the memory-batched eval path.
+#: "smoke" proves the code path in ~10 min; "ladder" is the full density
+#: sweep; "spot" re-measures the candidate densities with more warm evals for
+#: tighter statistics, plus one batched step for the memory-vs-time trade.
+#: The spot K values are EDITED here after reviewing the ladder results — a
+#: committed one-line change, the artifact of record (no shell flags).
+#: M is larger at low K because those points normalize everything downstream:
+#: the K=1 warm median is the slowdown/throughput baseline, so it gets 6 warm
+#: samples (the extra evals are cheap on an otherwise-idle node).
+PACKING_MODES: "dict[str, list[tuple[int, int, int]]]" = {
+    "smoke":  [(1, 1, 0), (4, 1, 0)],
+    "ladder": [(1, 6, 0), (8, 4, 0), (16, 2, 0), (32, 2, 0),
+               (48, 2, 0), (64, 2, 0), (96, 2, 0), (128, 2, 0)],
+    "spot":   [(32, 4, 0), (48, 4, 0), (48, 4, 16)],
+}
+
+#: Cap on the per-rank start stagger (rank r sleeps min(r, cap) seconds before
+#: its first eval) that decorrelates the ranks' memory-access phases.
+PACKING_STAGGER_MAX_S: int = 30
+
+#: Formulation whose baseline DVs are evaluated (per-eval cost is set by model
+#: size x timesteps, not DV values).
+PACKING_FORMULATION: str = "ffmp"
+
+# ---------------------------------------------------------------------------
+# Stage B — MM Borg strong scaling
+# ---------------------------------------------------------------------------
+#: Geometry table: MOEA config name -> (MPI ranks, sbatch --time). Ranks MUST
+#: equal MOEAConfig.total_ntasks_mpi = 1 + islands*(workers+1); the submit
+#: helper asserts this against src/moea_config.py before every sbatch. All
+#: geometries fit one Anvil node (<=128 ranks) -> shared partition, per-core
+#: SU charging. Times are sized from ~13 s/eval x 1280 total NFE with slack.
+BORG_SCALE_GEOMETRIES: "dict[str, tuple[int, str]]" = {
+    "scale_smoke": (6, "00:30:00"),
+    "scale_1x8":  (10, "01:30:00"),
+    "scale_1x16": (18, "01:00:00"),
+    "scale_1x32": (34, "00:45:00"),
+    "scale_1x64": (66, "00:30:00"),
+    "scale_2x32": (67, "00:30:00"),
+    "scale_4x16": (69, "00:30:00"),
+}
+
+#: Independent Borg RNG seed replicates per geometry (submitted as
+#: ``sbatch --array=1-N``); seed variability bands in the scaling figures.
+BORG_SCALE_SEEDS: int = 2
+
+# ---------------------------------------------------------------------------
+# Stage C — analysis / projection knobs
+# ---------------------------------------------------------------------------
+#: Anvil standard CPU node: 2x AMD EPYC 7763, 128 cores, 256 GB. wholenode
+#: SU charging is per node-hour x 128 cores regardless of ranks used — the
+#: quantity the packing sweep optimizes against.
+SCALING_NODE_CORES: int = 128
+SCALING_NODE_MEM_GB: int = 256
+
+#: Production-campaign projection grid (figure F5): candidate node counts and
+#: island counts at the chosen packing density K*, and the campaign NFE the
+#: projection is expressed for (mm_full's 50k total NFE).
+SCALING_PROJECTION_NODES: "tuple[int, ...]" = (2, 4, 8, 16)
+SCALING_PROJECTION_ISLANDS: "tuple[int, ...]" = (2, 4, 8)
+SCALING_PROJECTION_TOTAL_NFE: int = 50_000
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable; self-contained for the supplement)
+# ---------------------------------------------------------------------------
+SCALING_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "anvil_scaling_experiment"
+SCALING_PACKING_DIR: Path = SCALING_OUTPUT_ROOT / "packing"
+SCALING_BORG_DIR: Path = SCALING_OUTPUT_ROOT / "borg"
+SCALING_FIGURES_DIR: Path = SCALING_OUTPUT_ROOT / "figures"
+SCALING_TABLES_DIR: Path = SCALING_OUTPUT_ROOT / "tables"
+SCALING_MANIFESTS_DIR: Path = SCALING_OUTPUT_ROOT / "manifests"
+
+
+def packing_shard_path(k: int, batch: int, rank: int, job_id: str) -> Path:
+    """Per-rank CSV shard path for one packing step (K, batch) of one job."""
+    return (SCALING_PACKING_DIR
+            / f"k{k:03d}_b{batch}_rank{rank:03d}_{job_id}.csv")
+
+
+def packing_step_manifest_path(k: int, batch: int, job_id: str) -> Path:
+    """JSON manifest path (exit code, epochs) for one packing step."""
+    return SCALING_PACKING_DIR / f"step_k{k:03d}_b{batch}_{job_id}.json"
+
+
+def borg_timing_csv_path(config_name: str, seed: int, job_id: str) -> Path:
+    """One-row wall-time CSV path for one Stage B (geometry, seed) job."""
+    return SCALING_BORG_DIR / f"timing_{config_name}_seed{seed:02d}_{job_id}.csv"

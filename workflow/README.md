@@ -40,8 +40,8 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the full model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
 | 09 | `09_simulate_master_chunks.sh` | `wholenode`, 4×16, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked forcing master, metrics-only (MPI chunk-and-aggregate) |
 
-Anvil notes: an allocation account is mandatory — `export SBATCH_ACCOUNT=<allocation>`
-once per shell and every submission picks it up. 96 h is Anvil's `wholenode`
+Anvil notes: the allocation account is hardcoded in every script's header
+(`#SBATCH --account=x-tamestoy`); override with `sbatch -A <alloc>` if needed. 96 h is Anvil's `wholenode`
 per-job maximum (searches needing longer restart from runtime snapshots).
 `shared` bills per core; `wholenode` bills whole 128-core nodes.
 

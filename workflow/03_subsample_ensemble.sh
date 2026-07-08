@@ -14,6 +14,7 @@
 #          workflow/03_subsample_ensemble.sh
 #
 #SBATCH --job-name=subsample_ens
+#SBATCH --account=x-tamestoy
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

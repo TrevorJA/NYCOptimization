@@ -166,6 +166,90 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         notes="MM-Borg production run: 50k NFE, 165 ranks (4x40+5), "
               "historic single-trace 7-objective baseline.",
     ),
+    # Anvil scaling supplement (Stage B strong scaling; see
+    # workflow/supplemental/anvil_scaling_borg.sh and supplemental_config.py).
+    # Fixed TOTAL NFE = 1280 across all scale_* geometries so wall time is
+    # directly comparable (max_evaluations is per island -> 1280/islands).
+    # runtime_frequency scales with per-island NFE so every geometry logs the
+    # same ~8 snapshots per island. Run ONLY with the historic design +
+    # DEBUG_SIM=true (~13 s/eval short window) — these measure Borg
+    # coordination overhead, not search quality, and are NOT for production.
+    # scale_1x64 / scale_2x32 / scale_4x16 share 64 evaluation slots, giving
+    # the island-decomposition comparison at fixed parallelism.
+    "scale_smoke": MOEAConfig(
+        name="scale_smoke",
+        n_islands=1,
+        n_workers_per_island=4,
+        max_evaluations=80,       # per island -> 80 total NFE
+        runtime_frequency=20,
+        n_seeds=1,
+        max_time_hours=None,
+        notes="Anvil scaling supplement smoke: proves the Stage B path "
+              "(shared partition, timing CSV, runtime files) in ~15 min.",
+    ),
+    "scale_1x8": MOEAConfig(
+        name="scale_1x8",
+        n_islands=1,
+        n_workers_per_island=8,
+        max_evaluations=1280,     # per island -> 1,280 total NFE
+        runtime_frequency=160,
+        n_seeds=2,
+        max_time_hours=None,
+        notes="Anvil scaling supplement: strong-scaling baseline, 10 ranks.",
+    ),
+    "scale_1x16": MOEAConfig(
+        name="scale_1x16",
+        n_islands=1,
+        n_workers_per_island=16,
+        max_evaluations=1280,
+        runtime_frequency=160,
+        n_seeds=2,
+        max_time_hours=None,
+        notes="Anvil scaling supplement: 18 ranks.",
+    ),
+    "scale_1x32": MOEAConfig(
+        name="scale_1x32",
+        n_islands=1,
+        n_workers_per_island=32,
+        max_evaluations=1280,
+        runtime_frequency=160,
+        n_seeds=2,
+        max_time_hours=None,
+        notes="Anvil scaling supplement: 34 ranks.",
+    ),
+    "scale_1x64": MOEAConfig(
+        name="scale_1x64",
+        n_islands=1,
+        n_workers_per_island=64,
+        max_evaluations=1280,
+        runtime_frequency=160,
+        n_seeds=2,
+        max_time_hours=None,
+        notes="Anvil scaling supplement: 66 ranks; 64-slot single-island arm "
+              "of the island-decomposition comparison.",
+    ),
+    "scale_2x32": MOEAConfig(
+        name="scale_2x32",
+        n_islands=2,
+        n_workers_per_island=32,
+        max_evaluations=640,      # per island -> 1,280 total NFE
+        runtime_frequency=80,
+        n_seeds=2,
+        max_time_hours=None,
+        notes="Anvil scaling supplement: 67 ranks; 64-slot two-island arm.",
+    ),
+    "scale_4x16": MOEAConfig(
+        name="scale_4x16",
+        n_islands=4,
+        n_workers_per_island=16,
+        max_evaluations=320,      # per island -> 1,280 total NFE
+        runtime_frequency=40,
+        n_seeds=2,
+        max_time_hours=None,
+        notes="Anvil scaling supplement: 69 ranks; 64-slot four-island arm "
+              "(320 NFE/island is a short Borg trajectory — overhead "
+              "measurement only).",
+    ),
     # Production: schema only. Every campaign number is an open decision tied to
     # the total-simulated-scenario-years budget (experimental_design.md #5).
     "production": MOEAConfig(

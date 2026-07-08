@@ -18,6 +18,7 @@
 #          workflow/04_prep_pywrdrb_inputs.sh
 #
 #SBATCH --job-name=prep_pywrdrb_inputs
+#SBATCH --account=x-tamestoy
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=33

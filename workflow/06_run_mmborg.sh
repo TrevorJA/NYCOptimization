@@ -34,11 +34,11 @@
 # Anvil: multi-node jobs must use the node-exclusive `wholenode` partition
 # (the default `shared` partition is capped at 1 node), and 96 h is Anvil's
 # hard per-job wall-time maximum — a run that needs more must restart from
-# the periodic runtime snapshots. An allocation account is mandatory; set it
-# once via `export SBATCH_ACCOUNT=<allocation>` (see README). Pilots may pass
-# a shorter `sbatch --time=...`.
+# the periodic runtime snapshots. The allocation account is set in the
+# #SBATCH header below. Pilots may pass a shorter `sbatch --time=...`.
 #
 #SBATCH --job-name=mmborg
+#SBATCH --account=x-tamestoy
 #SBATCH --partition=wholenode
 #SBATCH --nodes=5
 #SBATCH --ntasks-per-node=33
