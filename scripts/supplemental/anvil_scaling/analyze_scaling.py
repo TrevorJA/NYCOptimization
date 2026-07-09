@@ -172,6 +172,49 @@ def choose_kstar(summary: pd.DataFrame) -> "int | None":
     return int(pick.loc[pick["su_per_1000_evals"].idxmin(), "k"])
 
 
+def summarize_batch(rows: pd.DataFrame) -> "pd.DataFrame | None":
+    """Per-(K, B) summary of the batched-evaluation sweep (mode "batch" only).
+
+    Self-contained: uses batch-mode shards exclusively, so it is valid even
+    when the ladder ran on a different node/partition. ``B=0`` (all
+    realizations in one pywr scenario block) is reported as
+    ``b_effective = n_realizations`` so the sweep plots on one numeric axis.
+    ``time_vs_all`` normalizes each warm median to the same-K B=0 point —
+    the per-run-overhead amortization curve.
+    """
+    b = rows[rows["mode"] == "batch"]
+    if not len(b):
+        return None
+    n_real = int(b["n_realizations"].mode().iloc[0])
+    out = []
+    for (k, batch), grp in b.groupby(["k_concurrent", "realization_batch"]):
+        warm = grp.loc[grp["kind"] == "warm", "wall_seconds"].astype(float)
+        med = warm.median() if len(warm) else np.nan
+        out.append({
+            "k": int(k),
+            "realization_batch": int(batch),
+            "b_effective": int(batch) if batch > 0 else n_real,
+            "n_model_runs_per_eval": int(np.ceil(n_real / (batch or n_real))),
+            "n_ranks_reported": grp["rank"].nunique(),
+            "n_warm": len(warm),
+            "warm_median_s": med,
+            "warm_q25_s": warm.quantile(0.25) if len(warm) else np.nan,
+            "warm_q75_s": warm.quantile(0.75) if len(warm) else np.nan,
+            "rss_max_mb": grp.groupby("rank")["ru_maxrss_mb"].max().max(),
+            "su_per_1000_evals": (1000.0 * scfg.SCALING_NODE_CORES * med
+                                  / (3600.0 * k) if np.isfinite(med) else np.nan),
+            "objs_ok_frac": grp["objs_ok"].astype(str).eq("True").mean(),
+            "n_distinct_obj_vectors": (
+                grp[["obj0", "obj1", "obj2"]].astype(float).round(9)
+                .drop_duplicates().shape[0]),
+        })
+    df = pd.DataFrame(out).sort_values(["k", "b_effective"]).reset_index(drop=True)
+    ref = df[df["realization_batch"] == 0].set_index("k")["warm_median_s"]
+    df["time_vs_all"] = df.apply(
+        lambda r: r["warm_median_s"] / ref.get(r["k"], np.nan), axis=1)
+    return df
+
+
 # ---------------------------------------------------------------------------
 # Stage B — Borg strong scaling
 # ---------------------------------------------------------------------------
@@ -381,6 +424,45 @@ def fig_packing_memory(pack: pd.DataFrame) -> None:
     plt.close(fig)
 
 
+def fig_batched_eval(bsum: pd.DataFrame) -> None:
+    """F6: batched-evaluation trade — time, memory, and SU cost vs B, per K.
+
+    x is realizations per pywr ``model.run()`` (B; the B=0 all-in-one point
+    plots at B=N). One line per measured density K, so the (K, B) interaction
+    is visible: whether small-B memory savings survive contention at K*.
+    """
+    n_real = int(bsum["b_effective"].max())
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=FIGSIZE_WIDE)
+    for i, (k, d) in enumerate(bsum.groupby("k")):
+        d = d.sort_values("b_effective")
+        color = C_PRIMARY if i == 0 else C_SECONDARY
+        label = f"K={k}"
+        ax1.fill_between(d["b_effective"], d["warm_q25_s"], d["warm_q75_s"],
+                         color=color, alpha=0.15)
+        ax1.plot(d["b_effective"], d["warm_median_s"], "o-", color=color,
+                 label=label)
+        ax2.plot(d["b_effective"], d["rss_max_mb"] / 1024.0, "o-",
+                 color=color, label=label)
+        ax3.plot(d["b_effective"], d["su_per_1000_evals"], "o-",
+                 color=color, label=label)
+    ax1.set_ylabel("Warm per-eval wall time (s)")
+    ax1.set_title("Evaluation time")
+    ax2.set_ylabel("Per-rank peak RSS (GB)")
+    ax2.set_title("Memory")
+    ax3.set_ylabel("SU per 1,000 evaluations")
+    ax3.set_title("Cost")
+    for ax in (ax1, ax2, ax3):
+        ax.set_xlabel("Realizations per model.run() (B)")
+        ax.grid(alpha=0.25)
+        ax.axvline(n_real, color=C_IDEAL, ls=":", lw=1)
+        ax.legend(frameon=False, fontsize=8)
+        # Mark the production default (all realizations in one run).
+        ax.annotate("all", (n_real, ax.get_ylim()[0]), fontsize=7,
+                    color="0.4", ha="center", va="bottom")
+    save_figure(fig, scfg.SCALING_FIGURES_DIR / "F6_batched_eval")
+    plt.close(fig)
+
+
 def fig_borg_strong_scaling(jobs: pd.DataFrame, borg: pd.DataFrame) -> None:
     """F4: wall time, speedup vs ideal, and parallel efficiency vs eval slots."""
     ok = jobs[(jobs["rc"] == 0) & jobs["config"].isin(borg["config"])]
@@ -499,6 +581,15 @@ def main() -> int:
         fig_packing_eval_time(pack)
         fig_packing_throughput_cost(pack, kstar)
         fig_packing_memory(pack)
+        bsum = summarize_batch(rows)
+        if bsum is not None:
+            bsum.to_csv(scfg.SCALING_TABLES_DIR / "batch_summary.csv",
+                        index=False)
+            print(f"[analyze] batch sweep: {len(bsum)} (K, B) points "
+                  f"at K = {sorted(bsum['k'].unique())}")
+            fig_batched_eval(bsum)
+        else:
+            print("[analyze] no batch-mode shards -- skipping F6")
     else:
         print("[analyze] no packing shards found -- skipping Stage A outputs")
 

@@ -22,6 +22,11 @@
 #   sbatch --partition=debug --time=02:00:00 \
 #          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_PACK_MODE=spot,NYCOPT_PACK_BUDGET_S=6000 \
 #          workflow/supplemental/anvil_scaling_packing.sh
+#   # batched-evaluation (K, B) sweep at K=1 and K*=NYCOPT_PACK_BATCH_KSTAR
+#   # (set K* from the ladder's packing_summary before submitting):
+#   sbatch --partition=debug --time=02:00:00 \
+#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_PACK_MODE=batch,NYCOPT_PACK_BATCH_KSTAR=32,NYCOPT_PACK_BUDGET_S=6600 \
+#          workflow/supplemental/anvil_scaling_packing.sh
 #
 # Notes:
 #   * NYCOPT_PACK_MODE (smoke | ladder | spot) selects the step list — the

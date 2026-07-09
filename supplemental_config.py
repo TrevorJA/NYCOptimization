@@ -360,6 +360,22 @@ PACKING_MODES: "dict[str, list[tuple[int, int, int]]]" = {
     "spot":   [(32, 4, 0), (48, 4, 0), (48, 4, 16)],
 }
 
+#: Batched-evaluation sweep (mode "batch"): B realizations per pywr
+#: model.run() (``NYCOPT_SEARCH_REALIZATION_BATCH``), measured at K=1 (clean
+#: per-run-overhead amortization curve, no contention) and at the chosen
+#: packing density K* (the joint (K, B) operating point the campaign actually
+#: runs at). B=0 is the production default: ALL realizations as one pywr
+#: scenario block. Larger B amortizes model build/setup across scenarios but
+#: holds more scenario state in memory — this sweep maps that trade so the
+#: campaign picks (K, B) jointly rather than one axis at a time.
+#: K* is env-overridable so the sweep can be (re)run once the ladder fixes
+#: the real density: submit with NYCOPT_PACK_BATCH_KSTAR=<k>.
+PACKING_BATCH_KSTAR: int = int(os.environ.get("NYCOPT_PACK_BATCH_KSTAR", "32"))
+PACKING_BATCH_SIZES: "tuple[int, ...]" = (1, 2, 5, 10, 0)
+PACKING_MODES["batch"] = [
+    (k, 3, b) for k in (1, PACKING_BATCH_KSTAR) for b in PACKING_BATCH_SIZES
+]
+
 #: Cap on the per-rank start stagger (rank r sleeps min(r, cap) seconds before
 #: its first eval) that decorrelates the ranks' memory-access phases.
 PACKING_STAGGER_MAX_S: int = 30
