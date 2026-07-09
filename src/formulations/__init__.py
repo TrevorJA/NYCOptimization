@@ -203,6 +203,10 @@ def make_objective_function(formulation_name: str = "ffmp"):
     """
     n_objs = get_n_objs()
     _penalty = [1e6] * n_objs
+    # Penalized-eval log budget: the first few failures carry the diagnosis
+    # (a systematic misconfiguration fails identically on every eval); after
+    # that stay quiet so a pathological DV region cannot flood the job log.
+    _log_state = {"remaining": 5, "count": 0}
 
     from src.simulation import evaluate
 
@@ -211,6 +215,17 @@ def make_objective_function(formulation_name: str = "ffmp"):
             return evaluate(np.asarray(dv_vector),
                             formulation_name=formulation_name)
         except Exception:
+            import sys
+            import traceback
+            _log_state["count"] += 1
+            if _log_state["remaining"] > 0:
+                _log_state["remaining"] -= 1
+                msg = traceback.format_exc(limit=3).strip().splitlines()[-1]
+                print(f"[objective_fn] WARNING: eval #{_log_state['count']} "
+                      f"failed, returning 1e6 penalty ({msg})"
+                      + ("" if _log_state["remaining"]
+                         else " -- further eval-failure warnings suppressed"),
+                      file=sys.stderr, flush=True)
             return _penalty
 
     return _ffmp_fn

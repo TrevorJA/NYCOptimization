@@ -30,6 +30,11 @@ NYCOPT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 # conda env's PATH (propagated by sbatch --export=ALL) supplies python3, so the
 # module load below is a no-op there. Override via NYCOPT_PYTHON_MODULE.
 NYCOPT_PYTHON_MODULE="${NYCOPT_PYTHON_MODULE:-python/3.11.5}"
+# Anvil fallback when the submitting shell did not have the env active: the
+# project env is the conda env named "venv" under the anaconda module.
+# Override via NYCOPT_CONDA_MODULE / NYCOPT_CONDA_ENV.
+NYCOPT_CONDA_MODULE="${NYCOPT_CONDA_MODULE:-anaconda/2024.02-py311}"
+NYCOPT_CONDA_ENV="${NYCOPT_CONDA_ENV:-venv}"
 # OpenMPI transport flags for the re-evaluation / chunked-simulation steps
 # (NOT the MM-Borg launcher). Cluster-dependent: Hopper's default fabric
 # providers hang on the preprocessors' MPI gathers, so TCP is forced there;
@@ -60,8 +65,22 @@ nycopt_setup_env() {
     if [[ -f venv/bin/activate ]]; then
         # shellcheck disable=SC1091
         source venv/bin/activate
+    elif ! python3 -c 'import numpy' >/dev/null 2>&1; then
+        # No ./venv and the PATH python3 can't run the project (e.g. the job
+        # was submitted from a shell without the conda env active): activate
+        # the Anvil conda env directly instead of relying on --export=ALL.
+        module load "${NYCOPT_CONDA_MODULE}" 2>/dev/null || true
+        if command -v conda >/dev/null 2>&1; then
+            eval "$(conda shell.bash hook 2>/dev/null)" || true
+            conda activate "${NYCOPT_CONDA_ENV}" 2>/dev/null || true
+        fi
+        if python3 -c 'import numpy' >/dev/null 2>&1; then
+            echo "[_common] activated conda env '${NYCOPT_CONDA_ENV}' — using $(command -v python3)"
+        else
+            echo "[_common] WARNING: no usable python3 (./venv missing, conda env '${NYCOPT_CONDA_ENV}' not activatable) — using $(command -v python3)"
+        fi
     else
-        echo "[_common] WARNING: ./venv not found — using $(command -v python3)"
+        echo "[_common] ./venv not found — using PATH python3: $(command -v python3)"
     fi
     # Make `from borg import ...` work from any CWD. borg.py still loads
     # libborg.so / libborgmm.so relative to CWD, so callers that start MPI

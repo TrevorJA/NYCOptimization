@@ -18,7 +18,7 @@
 #   sbatch workflow/supplemental/objective_sensitivity.sh
 #
 #SBATCH --job-name=obj_sens
-#SBATCH --account=x-tamestoy
+#SBATCH --account=ees260021
 #SBATCH --partition=wholenode
 #SBATCH --nodes=4
 #SBATCH --ntasks=160

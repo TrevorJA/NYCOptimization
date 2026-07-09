@@ -12,7 +12,7 @@
 #   sbatch workflow/supplemental/ensemble_objective_sensitivity_prep.sh
 #
 #SBATCH --job-name=ens_prep
-#SBATCH --account=x-tamestoy
+#SBATCH --account=ees260021
 #SBATCH --partition=wholenode
 #SBATCH --nodes=5
 #SBATCH --ntasks=200

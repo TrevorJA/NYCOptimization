@@ -39,7 +39,7 @@
 #     so RAM-backed tmpfs doesn't silently shrink usable node memory.
 #
 #SBATCH --job-name=anvscale_pack
-#SBATCH --account=x-tamestoy
+#SBATCH --account=ees260021
 #SBATCH --partition=wholenode
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=128

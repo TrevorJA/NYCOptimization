@@ -50,10 +50,21 @@ assert mc.total_ntasks_mpi == want, (
     f'{mc.total_ntasks_mpi} — realign the two registries.')
 print(f'geometry OK: {mc.name} = {mc.total_ntasks_mpi} ranks')
 "
+    # Memory: the smoke's largest process was ~1.92 GB (the master rank);
+    # plain evaluator ranks measure ~0.8 GB (Stage A shards). Above shared's
+    # MaxMemPerCPU=1896M, a 3G request is satisfied by charging 2 CPUs per
+    # rank — fine to 64 ranks, but >64 ranks would exceed the 128-core node
+    # and shared's QOS forbids multi-node. The big 64-slot arms therefore run
+    # on the default 1896M/CPU: their aggregate cgroup budget (ranks x 1.9 GB)
+    # comfortably covers one heavy master + light evaluator ranks.
+    MEM_ARGS=(--mem-per-cpu=3G)
+    (( RANKS > 64 )) && MEM_ARGS=()
     sbatch \
         --job-name="ansb_${CFG}" \
+        --nodes=1 \
         --ntasks="${RANKS}" \
         --time="${TIME}" \
+        "${MEM_ARGS[@]}" \
         --array="1-${SEEDS}" \
         --export=ALL,NYCOPT_ENV_FILE="${ENV_FILE}",NYCOPT_MOEA_CONFIG="${CFG}",DEBUG_SIM=true \
         workflow/supplemental/anvil_scaling_borg.sh

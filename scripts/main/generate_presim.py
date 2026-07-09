@@ -2,10 +2,12 @@
 generate_presim.py - Generate pre-simulated releases for the trimmed model.
 
 This is a one-time setup step that must be run before Borg optimization.
-It runs a single full-model simulation with default NYC operations and extracts
-releases from the independent STARFIT reservoirs. The trimmed model replaces
-these reservoirs with simple input nodes that read the pre-simulated values,
-reducing per-evaluation runtime during optimization.
+It computes the independent STARFIT reservoir releases directly from the
+catchment inflows using pywrdrb's offline STARFIT simulator
+(``STARFITOfflineSimulator``), which replicates STARFITReservoirRelease's
+release arithmetic without running a full Pywr model. The trimmed model
+replaces these reservoirs with simple input nodes that read the pre-simulated
+values, reducing per-evaluation runtime during optimization.
 
 What the trimmed model skips:
     The DRB contains ~11 independent STARFIT reservoirs (Beltzville, Fewalter,
@@ -14,8 +16,12 @@ What the trimmed model skips:
     pre-computed releases for these reservoirs, keeping only the NYC-coupled
     nodes active.
 
+    The offline simulator is the single-trace counterpart of the ensemble
+    ``STARFITReleaseEnsemblePreprocessor`` used by workflow step 04, so the
+    historic and ensemble trimmed-model paths share one release engine.
+
 Runtime:
-    Full model simulation over 1945-2022 takes ~3-10 minutes on a laptop.
+    Offline STARFIT over 1945-2022 runs in seconds (no full Pywr simulation).
     This only needs to be run once per inflow_type / date range combination.
 
 Usage:
@@ -24,11 +30,10 @@ Usage:
 Outputs:
     outputs/presim/presimulated_releases_mgd.csv
     outputs/presim/presimulated_releases_mgd_metadata.json
-    outputs/presim/full_model_baseline.json     (kept for reference)
-    outputs/presim/full_model_baseline.hdf5     (kept for reference)
 """
 
 import sys
+import json
 import time
 from pathlib import Path
 
@@ -46,9 +51,10 @@ from config import (
 
 
 def generate_presim():
-    """Run full model and extract presimulated releases."""
-    import pywrdrb
-    from pywrdrb.pre import generate_presimulated_releases
+    """Compute presimulated STARFIT releases offline (no full Pywr run)."""
+    import pandas as pd
+    from pywrdrb.path_manager import get_pn_object
+    from pywrdrb.pre.generate_presimulated_releases import STARFITOfflineSimulator
 
     print("=" * 60)
     print("  Generate Pre-Simulated Releases (trimmed model setup)")
@@ -62,68 +68,71 @@ def generate_presim():
 
     PRESIM_DIR.mkdir(parents=True, exist_ok=True)
 
-    model_json = PRESIM_DIR / "full_model_baseline.json"
-    output_hdf5 = PRESIM_DIR / "full_model_baseline.hdf5"
+    metadata_file = PRESIM_DIR / "presimulated_releases_mgd_metadata.json"
 
-    # --- Step 1: Build full model (no trimming, no presim needed) ---
-    print("\n--- Step 1: Building full model ---")
+    # --- Step 1: Load catchment inflows for this inflow_type ---
+    print("\n--- Step 1: Loading catchment inflows ---")
     t0 = time.perf_counter()
 
-    mb = pywrdrb.ModelBuilder(
-        inflow_type=INFLOW_TYPE,
-        start_date=START_DATE,
-        end_date=END_DATE,
-        options={
-            "nyc_nj_demand_source": "historical",
-            "use_trimmed_model": False,
-            "initial_volume_frac": INITIAL_VOLUME_FRAC,
-        },
-    )
-    mb.make_model()
-    mb.write_model(str(model_json))
+    pn = get_pn_object()
+    inflow_file = Path(pn.sc.get(f"flows/{INFLOW_TYPE}")) / "catchment_inflow_mgd.csv"
+    if not inflow_file.exists():
+        raise FileNotFoundError(
+            f"Catchment inflow file not found: {inflow_file}\n"
+            f"Expected pywrdrb flows data for inflow_type '{INFLOW_TYPE}'."
+        )
+    catchment_inflows = pd.read_csv(str(inflow_file), index_col=0, parse_dates=True)
+    catchment_inflows.index = pd.DatetimeIndex(catchment_inflows.index)
+    # Restrict to the configured simulation window (matches the historic period
+    # the trimmed model is scored over).
+    catchment_inflows = catchment_inflows.loc[START_DATE:END_DATE]
 
     elapsed = time.perf_counter() - t0
-    print(f"  Nodes:      {len(mb.model_dict['nodes'])}")
-    print(f"  Parameters: {len(mb.model_dict['parameters'])}")
-    print(f"  Built in {elapsed:.1f}s")
+    print(f"  Rows:  {len(catchment_inflows)} "
+          f"({catchment_inflows.index[0].date()} to {catchment_inflows.index[-1].date()})")
+    print(f"  Loaded in {elapsed:.1f}s")
 
-    # --- Step 2: Run simulation ---
-    print("\n--- Step 2: Running full model simulation ---")
-    print("  (this takes several minutes for the full 1945-2022 period)")
+    # --- Step 2: Offline STARFIT simulation of independent reservoirs ---
+    print("\n--- Step 2: Simulating STARFIT reservoir releases (offline) ---")
     t0 = time.perf_counter()
 
-    model = pywrdrb.Model.load(str(model_json))
-    recorder = pywrdrb.OutputRecorder(
-        model=model,
-        output_filename=str(output_hdf5),
-    )
-    model.run()
+    sim = STARFITOfflineSimulator(initial_volume_frac=INITIAL_VOLUME_FRAC)
+    sim.load_parameters()
+    releases_df = sim.simulate_all(catchment_inflows)
 
     elapsed = time.perf_counter() - t0
-    print(f"  Simulation complete in {elapsed:.1f}s ({elapsed/60:.1f} min)")
-    print(f"  Output: {output_hdf5}")
-
-    # --- Step 3: Extract presimulated releases ---
-    print("\n--- Step 3: Extracting presimulated releases ---")
-    t0 = time.perf_counter()
-
-    metadata = generate_presimulated_releases(
-        output_filename=str(output_hdf5),
-        inflow_type=INFLOW_TYPE,
-        output_dir=str(PRESIM_DIR),
-    )
-
-    elapsed = time.perf_counter() - t0
-    print(f"  Extraction complete in {elapsed:.1f}s")
-    print(f"\n  Reservoirs ({len(metadata['reservoirs'])}):")
-    for r in metadata["reservoirs"]:
+    reservoirs = list(releases_df.columns)
+    print(f"  Simulation complete in {elapsed:.1f}s")
+    print(f"\n  Reservoirs ({len(reservoirs)}):")
+    for r in reservoirs:
         print(f"    - {r}")
-    print(f"\n  CSV:      {metadata['output_file']}")
-    print(f"  Metadata: {metadata['metadata_file']}")
+
+    # --- Step 3: Write presimulated releases + metadata ---
+    print("\n--- Step 3: Writing presimulated releases ---")
+
+    releases_out = releases_df.copy()
+    releases_out.index.name = "datetime"
+    releases_out.index = pd.to_datetime(releases_out.index).strftime("%Y-%m-%d")
+    releases_out.to_csv(PRESIM_FILE, float_format="%.10f")
+
+    metadata = {
+        "inflow_type": INFLOW_TYPE,
+        "start_date": str(releases_out.index[0]),
+        "end_date": str(releases_out.index[-1]),
+        "reservoirs": reservoirs,
+        "initial_volume_frac": INITIAL_VOLUME_FRAC,
+        "source": "STARFITOfflineSimulator",
+        "output_file": str(PRESIM_FILE),
+        "metadata_file": str(metadata_file),
+    }
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"  CSV:      {PRESIM_FILE}")
+    print(f"  Metadata: {metadata_file}")
 
     print("\n" + "=" * 60)
-    print("  Setup complete. You can now run Borg optimization:")
-    print("    bash 02_run_mmborg.sh")
+    print("  Setup complete. You can now run Borg optimization.")
     print("=" * 60)
 
 

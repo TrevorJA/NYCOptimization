@@ -95,7 +95,20 @@ def summarize_packing(rows: pd.DataFrame,
 
     Missing ranks (fewer shards than K) and nonzero step exit codes are
     retained as evidence — they mark the memory ceiling, not bad data.
+
+    Smoke-mode shards are excluded whenever measurement-mode (ladder/spot)
+    shards exist: smoke runs may execute on non-exclusive shared nodes, and
+    mixing them into the same (K, batch) groups would bias the K=1 baseline
+    every slowdown and the K* choice normalize against. With only smoke data
+    (the Step-1 dry run) they are summarized as-is.
     """
+    measured = rows[rows["mode"] != "smoke"]
+    if len(measured):
+        n_dropped = len(rows) - len(measured)
+        if n_dropped:
+            print(f"[analyze] excluding {n_dropped} smoke-mode shard rows "
+                  f"from the packing summary (ladder/spot data present)")
+        rows = measured
     out = []
     for (k, batch), grp in rows.groupby(["k_concurrent", "realization_batch"]):
         warm = grp.loc[grp["kind"] == "warm", "wall_seconds"].astype(float)
@@ -130,6 +143,11 @@ def summarize_packing(rows: pd.DataFrame,
             # Explicit string map: astype(bool) would turn "False" into True
             # if a partial shard ever makes the column object-dtype.
             "objs_ok_frac": grp["objs_ok"].astype(str).eq("True").mean(),
+            # Identical DVs must give identical objectives on every rank/eval;
+            # >1 distinct vector flags a correctness problem, not noise.
+            "n_distinct_obj_vectors": (
+                grp[["obj0", "obj1", "obj2"]].astype(float).round(9)
+                .drop_duplicates().shape[0]),
             "step_rc": rc,
             "completed": rc == 0 and grp["rank"].nunique() == k,
         })

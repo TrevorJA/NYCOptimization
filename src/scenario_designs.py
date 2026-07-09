@@ -55,6 +55,12 @@ _MASTER_REALS_PER_PROFILE = int(os.environ.get("NYCOPT_MASTER_REALS_PER_PROFILE"
 _MASTER_YEARS = int(os.environ.get("NYCOPT_MASTER_YEARS", "5"))
 _MASTER_SUBSET_N = int(os.environ.get("NYCOPT_MASTER_SUBSET_N", "64"))
 
+# Stationary-KN sizing for the scaling experiment's stand-in search ensemble
+# (the ``scaling_stationary`` design). The scaling measurements only need a
+# staged ensemble of representative shape; scenario content does not matter.
+_SCALING_KN_YEARS = int(os.environ.get("NYCOPT_SCALING_KN_YEARS", "20"))
+_SCALING_KN_REALS = int(os.environ.get("NYCOPT_SCALING_KN_REALS", "20"))
+
 
 ###############################################################################
 # ScenarioDesign
@@ -407,6 +413,24 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "sizes: draw 10 of a 50-realization master pool, 5yr each "
               "(per-eval draw matches fixed_probabilistic_short). The simulation "
               "layer redraws indices each evaluation. Final sizes TBD.",
+    ),
+    "scaling_stationary": ScenarioDesign(
+        name="scaling_stationary",
+        family="fixed_probabilistic_ensemble",
+        description="Stationary Kirsch-Nowak ensemble sized for the Anvil "
+                    "parallel-scaling experiment (timing stand-in; scenario "
+                    "content does not affect per-eval cost).",
+        resample_per_eval=False,
+        selection="random",
+        n_realizations=_SCALING_KN_REALS,
+        realization_years=_SCALING_KN_YEARS,
+        notes="Supplemental-only design for workflow/supplemental/anvil_scaling_*. "
+              "The hazard-filling search ensemble is not yet generatable (scengen "
+              "master-ensemble generation is unimplemented), so the packing sweep "
+              "times the same trimmed-model ensemble-evaluation path on a directly "
+              "generated kn_{Y}yr_n{N} ensemble instead. Sizes are env-overridable "
+              "via NYCOPT_SCALING_KN_YEARS / NYCOPT_SCALING_KN_REALS (default "
+              "20 x 20yr). Not part of the manuscript design comparison.",
     ),
     "input_stratified": ScenarioDesign(
         name="input_stratified",

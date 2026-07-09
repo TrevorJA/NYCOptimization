@@ -31,7 +31,8 @@ ARCH_COLORS: dict[str, str] = {
 }
 # N-zone variants get a sequential viridis-family ramp so higher N reads
 # "deeper" complexity at a glance.
-_vr_cmap = cm.get_cmap("viridis")
+# plt.get_cmap: matplotlib.cm.get_cmap was removed in matplotlib 3.9.
+_vr_cmap = plt.get_cmap("viridis")
 for _i, _n in enumerate(FFMP_VR_N_SWEEP):
     # Sample away from the extremes so the colors print well.
     _t = 0.15 + 0.70 * (_i / max(1, len(FFMP_VR_N_SWEEP) - 1))

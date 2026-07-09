@@ -38,10 +38,11 @@ value-carrying CLI flags (see [workflow/envs/README.md](workflow/envs/README.md)
 #### 1.1 Clone supporting repos (all repos share one parent folder)
 
 ```bash
-git clone -b nyc_opt https://github.com/Pywr-DRB/Pywr-DRB.git
-git clone https://github.com/TrevorJA/SynHydro.git
-git clone https://github.com/TrevorJA/NYCOptimization_scenario_generation.git
-git clone https://github.com/TrevorJA/NYCOptimization.git
+git clone -b nyc_opt git@github.com:Pywr-DRB/Pywr-DRB.git
+git clone git@github.com:TrevorJA/SynHydro.git
+git clone git@github.com:TrevorJA/NYCOptimization_scenario_generation.git
+git clone git@github.com:TrevorJA/NYCOptimization.git
+git clone git@github.com:Pywr-DRB/CMIP6_multimodel_streamflow.git
 cd NYCOptimization
 ```
 

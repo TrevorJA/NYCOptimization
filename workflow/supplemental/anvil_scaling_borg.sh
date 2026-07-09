@@ -26,7 +26,7 @@
 # (Stage A) is the controlled-contention measurement.
 #
 #SBATCH --job-name=anvscale_borg
-#SBATCH --account=x-tamestoy
+#SBATCH --account=ees260021
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=10
