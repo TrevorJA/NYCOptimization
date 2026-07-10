@@ -1,6 +1,6 @@
 # Scenario Design in Optimization: Summary Tables
 
-*Last updated: 2026-06-10. Manuscript-candidate tables summarizing scenario design methods used during the search phase of optimization. Terminology follows `docs/notes/terminology.md`. Companion to `optimization_scenario_sampling_review.md`. All quantities verified against full texts, code releases, or dissertation chapters as documented in the verification notes at the end.*
+*Last updated: 2026-06-10. Manuscript-candidate tables summarizing scenario design methods used during the search phase of optimization. Terminology follows `docs/notes/terminology.md`. Companion to the hub note `scenario_design.md`. All quantities verified against full texts, code releases, or dissertation chapters as documented in the verification notes at the end.*
 
 ---
 

@@ -1,21 +1,22 @@
 """
-tests/test_objectives_ensemble.py - Unit tests for the ensemble objective
-framework in src.objectives_ensemble.
+tests/test_objectives_ensemble.py - Unit tests for the annual-unit ensemble
+objective framework in src.objectives_ensemble (objective_definitions.md §2).
 
 Covers:
-  1. SatisficingAgg ge / le / NaN handling.
-  2. EnsembleObjective wraps a base Objective and applies the aggregator
-     once per realization, including the (now diagnostic) salt-front objective
-     on a synthetic two-realization data_per_real list.
-  3. build_ensemble_objective_set resolves the active ensemble names to
-     maximise-direction EnsembleObjectives that ObjectiveSet accepts.
-  4. ObjectiveSet.compute_for_borg_ensemble returns negated maximised
-     satisficing rates, all in [-1, 0].
-  5. NYCOPT_SAT_THRESHOLDS env override patches the registry without code
-     changes.
+  1. Water-year unit splitting: warm-up drop, leap-year stray day, trailing
+     partial years, and the L-1 metric-bearing-unit rule.
+  2. Stage-(ii) unit operators on synthetic pools: failure frequency (with k),
+     pooled P99 / P01 percentiles, pooled mean — including the non-finite
+     policy (failure-year for frequency; worst-value sentinel otherwise).
+  3. Stage-(i) annual metrics on synthetic data dicts (delivery failing-week
+     counts incl. the 0.99 factor and demand cap, flood days, storage minimum).
+  4. NYCOPT_FAILURE_K and NYCOPT_SAT_THRESHOLDS env overrides (JSON, no CLI).
+  5. Registry / ObjectiveSet wiring: names, directions, base-name resolution,
+     Borg sign convention via compute_for_borg_ensemble, and the batched-path
+     equivalence via compute_for_borg_from_units.
 
 Run:
-    venv/bin/python -m pytest tests/test_objectives_ensemble.py -v
+    venv/Scripts/python.exe -m pytest tests/test_objectives_ensemble.py -v
 """
 
 import importlib
@@ -31,209 +32,287 @@ import pytest
 PROJECT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
+from config import (
+    NYC_RESERVOIRS,
+    NYC_TOTAL_CAPACITY,
+    WARMUP_DAYS,
+)
 from src.objectives import OBJECTIVES, ObjectiveSet
 import src.objectives_ensemble as obj_ens
 from src.objectives_ensemble import (
-    EnsembleObjective,
+    AnnualUnitObjective,
     ENSEMBLE_OBJECTIVES,
+    FailureFrequencyOp,
+    PooledMeanOp,
+    PooledPercentileOp,
     SatisficingAgg,
     build_ensemble_objective_set,
+    water_year_unit_slices,
 )
 
 
-# ---------------------------------------------------------------------------
-# SatisficingAgg
-# ---------------------------------------------------------------------------
-
-def test_satisficing_ge_basic():
-    agg = SatisficingAgg(threshold=0.95, kind="ge")
-    assert agg([0.99, 0.98, 0.92, 0.96]) == pytest.approx(0.75)
-
-
-def test_satisficing_le_basic():
-    agg = SatisficingAgg(threshold=10.0, kind="le")
-    # 5, 9 satisfy (<= 10); 12, 11 fail.
-    assert agg([5.0, 9.0, 12.0, 11.0]) == pytest.approx(0.5)
-
-
-def test_satisficing_nan_counts_as_unsatisfied():
-    agg = SatisficingAgg(threshold=0.95, kind="ge")
-    # NaN ⇒ unsatisfied, even with a "ge" check that has no upper bound.
-    assert agg([0.99, float("nan"), 0.97]) == pytest.approx(2.0 / 3.0)
-
-
-def test_satisficing_all_nan_returns_zero():
-    agg = SatisficingAgg(threshold=10.0, kind="le")
-    assert agg([float("nan"), float("nan")]) == 0.0
-
-
-def test_satisficing_empty_returns_zero():
-    agg = SatisficingAgg(threshold=10.0, kind="le")
-    assert agg([]) == 0.0
-
-
-def test_satisficing_rejects_bad_kind():
-    with pytest.raises(ValueError, match="kind"):
-        SatisficingAgg(threshold=0.0, kind="eq")
+def _wy_index(start_year: int, n_years: int) -> pd.DatetimeIndex:
+    """Daily index spanning n whole water years from Oct 1 of start_year."""
+    return pd.date_range(
+        f"{start_year}-10-01", f"{start_year + n_years}-09-30", freq="D",
+    )
 
 
 # ---------------------------------------------------------------------------
-# EnsembleObjective
+# 1. Water-year unit splitting
 # ---------------------------------------------------------------------------
 
-def _make_salinity_data(peak_rm: float, n_days: int = 400) -> dict:
-    """Build a minimal data dict with a 'salinity' frame whose post-warmup max
-    salt-front RM equals `peak_rm`. Other base objectives don't read this
-    dict, so they aren't relevant here."""
-    idx = pd.date_range("2020-01-01", periods=n_days, freq="D")
-    series = pd.Series(np.full(n_days, peak_rm - 5.0), index=idx)
-    # Place the peak well into the post-warmup window (default WARMUP_DAYS=365).
-    series.iloc[380] = peak_rm
+def test_unit_slices_yield_L_minus_1_whole_water_years():
+    """A 5-water-year realization yields 4 unit-years, each Oct 1 - Sep 30."""
+    idx = _wy_index(1945, 5)
+    slices = water_year_unit_slices(idx)
+    assert len(slices) == 4
+    for sl in slices:
+        unit = idx[sl]
+        assert (unit[0].month, unit[0].day) == (10, 1)
+        assert (unit[-1].month, unit[-1].day) == (9, 30)
+        assert len(unit) in (365, 366)
+    # WY1946 (Oct 1945 - Sep 1946) has 365 days, so the warm-up consumes it
+    # exactly and the first unit starts at position 365 (1946-10-01).
+    assert slices[0].start == WARMUP_DAYS
+    assert idx[slices[0].start] == pd.Timestamp("1946-10-01")
+    # Units are contiguous.
+    for a, b in zip(slices, slices[1:]):
+        assert a.stop == b.start
+
+
+def test_unit_slices_drop_leap_year_stray_day():
+    """When the warm-up water year has 366 days (leap), dropping exactly 365
+    days leaves one stray day of that year; it is not a whole water year and
+    must be discarded, so L=3 still yields 2 units."""
+    idx = _wy_index(1947, 3)  # WY1948 contains 1948-02-29 -> 366 days
+    slices = water_year_unit_slices(idx)
+    assert len(slices) == 2
+    # The stray day (1948-09-30) at position 365 is skipped.
+    assert slices[0].start == WARMUP_DAYS + 1
+    assert idx[slices[0].start] == pd.Timestamp("1948-10-01")
+
+
+def test_unit_slices_drop_trailing_partial_year():
+    idx = pd.date_range("1945-10-01", "1950-12-31", freq="D")
+    slices = water_year_unit_slices(idx)
+    assert len(slices) == 4  # WY1951 fragment (Oct-Dec 1950) discarded
+    assert idx[slices[-1].stop - 1] == pd.Timestamp("1950-09-30")
+
+
+def test_unit_slices_empty_for_warmup_only_trace():
+    idx = pd.date_range("1945-10-01", periods=WARMUP_DAYS, freq="D")
+    assert water_year_unit_slices(idx) == []
+
+
+# ---------------------------------------------------------------------------
+# 2. Unit operators
+# ---------------------------------------------------------------------------
+
+def test_failure_frequency_default_k1():
+    op = FailureFrequencyOp(k=1)
+    # Counts [0, 0, 1, 2]: non-failure years are those with < 1 failing week.
+    assert op([0.0, 0.0, 1.0, 2.0]) == pytest.approx(0.5)
+
+
+def test_failure_frequency_k3():
+    op = FailureFrequencyOp(k=3)
+    assert op([0.0, 1.0, 2.0, 3.0, 4.0]) == pytest.approx(3.0 / 5.0)
+
+
+def test_failure_frequency_nan_is_failure_year():
+    op = FailureFrequencyOp(k=1)
+    assert op([0.0, float("nan"), 0.0]) == pytest.approx(2.0 / 3.0)
+
+
+def test_failure_frequency_empty_returns_zero():
+    assert FailureFrequencyOp(k=1)([]) == 0.0
+
+
+def test_failure_frequency_rejects_bad_k():
+    with pytest.raises(ValueError, match="k must be >= 1"):
+        FailureFrequencyOp(k=0)
+
+
+def test_pooled_percentile_basic():
+    op = PooledPercentileOp(q=99.0, worst_value=100.0)
+    assert op([7.0, 7.0, 7.0]) == pytest.approx(7.0)
+
+
+def test_pooled_percentile_nan_uses_worst_sentinel():
+    op = PooledPercentileOp(q=99.0, worst_value=100.0)
+    # NaN -> 100 (worst for a minimize deficit %), dragging P99 up.
+    assert op([0.0, float("nan")]) == pytest.approx(99.0)  # P99 of [0, 100]
+    assert op([]) == pytest.approx(100.0)
+
+
+def test_pooled_percentile_p01_maximize_sentinel():
+    op = PooledPercentileOp(q=1.0, worst_value=0.0)
+    # NaN -> 0 (worst for a maximize storage %), dragging P01 down.
+    vals = [50.0, 60.0, float("nan")]
+    expected = float(np.percentile([50.0, 60.0, 0.0], 1.0))
+    assert op(vals) == pytest.approx(expected)
+    assert op([]) == pytest.approx(0.0)
+
+
+def test_pooled_percentile_rejects_bad_q():
+    with pytest.raises(ValueError, match="q must be"):
+        PooledPercentileOp(q=101.0, worst_value=0.0)
+
+
+def test_pooled_mean_basic_and_nan_sentinel():
+    op = PooledMeanOp(worst_value=366.0)
+    assert op([1.0, 2.0, 3.0]) == pytest.approx(2.0)
+    assert op([1.0, float("nan")]) == pytest.approx((1.0 + 366.0) / 2.0)
+    assert op([]) == pytest.approx(366.0)
+
+
+# ---------------------------------------------------------------------------
+# 3. Stage-(i) annual metrics on synthetic data
+# ---------------------------------------------------------------------------
+
+def _delivery_data(idx: pd.DatetimeIndex, demand: pd.Series,
+                   delivery: pd.Series) -> dict:
     return {
-        "salinity": pd.DataFrame(
-            {"salt_front_location_mu": series, "salt_front_location_sd": series},
-            index=idx,
-        ),
+        "ibt_demands": pd.DataFrame({"demand_nyc": demand}, index=idx),
+        "ibt_diversions": pd.DataFrame({"delivery_nyc": delivery}, index=idx),
     }
 
 
-def _salt_front_ensemble_objective() -> EnsembleObjective:
-    """A one-off ensemble wrapper around the diagnostic salt-front base metric.
+def test_delivery_failure_weeks_annual_counts_shortfall_block():
+    idx = _wy_index(1945, 3)  # warm-up WY1946 + units WY1947, WY1948
+    demand = pd.Series(500.0, index=idx)
+    delivery = pd.Series(500.0, index=idx)
+    # 14-day full shortfall inside the SECOND unit-year (WY1948).
+    delivery.loc["1948-01-05":"1948-01-18"] = 0.0
+    units = obj_ens._nyc_delivery_failure_weeks_annual(
+        _delivery_data(idx, demand, delivery))
+    assert units.shape == (2,)
+    assert units[0] == 0.0
+    # A 14-day zero-delivery block overlaps 2-3 weekly bins, all failing.
+    assert units[1] in (2.0, 3.0)
 
-    Salt-front is no longer in the active ENSEMBLE_OBJECTIVES registry, but the
-    base metric is still registered, so it remains a convenient fixture for the
-    wrapping/compute tests."""
-    return EnsembleObjective(
-        base=OBJECTIVES["salt_front_intrusion_max_rm"],
-        aggregator=SatisficingAgg(threshold=92.47, kind="le"),
-        name="salt_front_intrusion_max_rm__test",
-        epsilon=0.02,
+
+def test_delivery_failure_weeks_annual_tolerates_1pct_shortfall():
+    """delivery = 99.5% of demand is within the 0.99 factor -> no failures."""
+    idx = _wy_index(1945, 3)
+    demand = pd.Series(500.0, index=idx)
+    units = obj_ens._nyc_delivery_failure_weeks_annual(
+        _delivery_data(idx, demand, 0.995 * demand))
+    assert np.all(units == 0.0)
+
+
+def test_delivery_failure_weeks_annual_caps_demand_at_decree_right():
+    """Demand above the 800 MGD cap is clipped: delivering 99% of the CAP
+    satisfies the week even when raw demand is higher."""
+    idx = _wy_index(1945, 3)
+    demand = pd.Series(900.0, index=idx)       # above the Decree cap
+    delivery = pd.Series(795.0, index=idx)     # >= 0.99 * 800 = 792
+    units = obj_ens._nyc_delivery_failure_weeks_annual(
+        _delivery_data(idx, demand, delivery))
+    assert np.all(units == 0.0)
+
+
+def test_delivery_deficit_cvar90_annual_full_year_shortfall():
+    """A whole-unit-year total shortfall gives CVaR90 = 100 * 500/800 = 62.5%
+    in that unit-year (every weekly-mean deficit identical) and 0 elsewhere."""
+    idx = _wy_index(1945, 3)
+    demand = pd.Series(500.0, index=idx)
+    delivery = pd.Series(500.0, index=idx)
+    delivery.loc["1947-10-01":"1948-09-30"] = 0.0  # entire second unit-year
+    units = obj_ens._nyc_delivery_deficit_cvar90_annual(
+        _delivery_data(idx, demand, delivery))
+    assert units == pytest.approx([0.0, 62.5])
+
+
+def test_flow_failure_weeks_annual_counts_low_flow_weeks():
+    from config import MONTAGUE_DECREE_TARGET_MGD
+
+    idx = _wy_index(1945, 3)
+    flow = pd.Series(MONTAGUE_DECREE_TARGET_MGD + 500.0, index=idx)
+    # 14-day zero-flow block inside the FIRST unit-year (WY1947).
+    flow.loc["1947-01-05":"1947-01-18"] = 0.0
+    units = obj_ens._montague_failure_weeks_annual(
+        {"major_flow": pd.DataFrame({"delMontague": flow}, index=idx)})
+    assert units.shape == (2,)
+    # Weekly-MEAN basis: bins fully inside the block fail; boundary bins fail
+    # only if enough block days dilute the mean below the target.
+    assert units[0] in (2.0, 3.0)
+    assert units[1] == 0.0
+
+
+def test_flood_days_annual_counts_days_per_unit_year():
+    from pywrdrb.flood_thresholds import flood_stage_thresholds
+    from src.objectives import _DOWNSTREAM_GAUGES
+
+    idx = _wy_index(1945, 3)
+    below = {g: flood_stage_thresholds[g]["minor"] - 1.0
+             for g in _DOWNSTREAM_GAUGES}
+    stage = pd.DataFrame({g: np.full(len(idx), v) for g, v in below.items()},
+                         index=idx)
+    # One gauge floods on 3 days of the FIRST unit-year (WY1947).
+    g0 = _DOWNSTREAM_GAUGES[0]
+    stage.loc["1947-04-01":"1947-04-03", g0] = (
+        flood_stage_thresholds[g0]["minor"] + 0.5
     )
+    units = obj_ens._flood_days_minor_annual({"flood_stage": stage})
+    assert units.tolist() == [3.0, 0.0]
 
 
-def test_ensemble_objective_wraps_base_per_realization():
-    ens = _salt_front_ensemble_objective()
-    data_per_real = [
-        _make_salinity_data(peak_rm=90.0),   # satisfies (<=92.47)
-        _make_salinity_data(peak_rm=95.0),   # fails
-    ]
-    raw = ens.compute(data_per_real)
-    assert raw == pytest.approx(0.5)
-    assert ens.compute_for_borg(data_per_real) == pytest.approx(-0.5)
-    assert ens.direction == "maximize"
-    assert ens.sign == 1
-
-
-def test_ensemble_objective_calls_base_once_per_realization():
-    """Wrapping should invoke the base's compute exactly once per realization,
-    in order, and pass each per-realization data dict through unchanged."""
-    calls = []
-
-    class Spy:
-        name = "spy"
-        direction = "minimize"
-
-        def compute(self, d):
-            calls.append(d)
-            return 91.0  # always satisficing
-
-    ens = EnsembleObjective(
-        base=Spy(),
-        aggregator=SatisficingAgg(threshold=92.47, kind="le"),
-        name="x", epsilon=0.02,
+def test_storage_min_annual_per_unit_year():
+    idx = _wy_index(1945, 3)
+    per_res = 0.8 * NYC_TOTAL_CAPACITY / len(NYC_RESERVOIRS)
+    storage = pd.DataFrame(
+        {r: np.full(len(idx), per_res) for r in NYC_RESERVOIRS}, index=idx,
     )
-    data_per_real = [{"a": 1}, {"b": 2}, {"c": 3}]
-    raw = ens.compute(data_per_real)
-    assert raw == pytest.approx(1.0)
-    assert calls == data_per_real
+    # One-day dip to 40% total in the first unit-year.
+    storage.loc["1947-08-15", :] = 0.4 * NYC_TOTAL_CAPACITY / len(NYC_RESERVOIRS)
+    units = obj_ens._nyc_storage_min_annual({"res_storage": storage})
+    assert units == pytest.approx([40.0, 80.0])
 
 
 # ---------------------------------------------------------------------------
-# build_ensemble_objective_set + ObjectiveSet.compute_for_borg_ensemble
+# 4. Env overrides
 # ---------------------------------------------------------------------------
 
-ENSEMBLE_NAMES = [
-    "nyc_delivery_reliability_weekly__sat95",
-    "nyc_delivery_deficit_cvar90_pct__sat10",
-    "montague_flow_reliability_weekly__sat85",
-    "montague_flow_deficit_cvar90_pct__sat25",
-    "trenton_flow_reliability_weekly__sat85",
-    "nj_delivery_reliability_weekly__sat95",
-    "downstream_flood_days_minor__sat10",
-    "nyc_storage_p5_pct__sat25",
-]
+def test_env_failure_k_override(monkeypatch):
+    monkeypatch.setenv(
+        "NYCOPT_FAILURE_K",
+        json.dumps({"nyc_delivery_reliability_annual": 3}),
+    )
+    importlib.reload(obj_ens)
+    try:
+        obj = obj_ens.ENSEMBLE_OBJECTIVES["nyc_delivery_reliability_annual"]
+        assert isinstance(obj.unit_operator, obj_ens.FailureFrequencyOp)
+        assert obj.unit_operator.k == 3
+        # Other frequency objectives keep the default k = 1.
+        other = obj_ens.ENSEMBLE_OBJECTIVES["trenton_flow_reliability_annual"]
+        assert other.unit_operator.k == 1
+    finally:
+        monkeypatch.delenv("NYCOPT_FAILURE_K", raising=False)
+        importlib.reload(obj_ens)
 
 
-def test_registry_matches_expected_names():
-    assert set(ENSEMBLE_OBJECTIVES) == set(ENSEMBLE_NAMES)
+def test_env_failure_k_rejects_unknown(monkeypatch):
+    monkeypatch.setenv(
+        "NYCOPT_FAILURE_K", json.dumps({"not_a_real_objective": 2}),
+    )
+    with pytest.raises(KeyError, match="not_a_real_objective"):
+        importlib.reload(obj_ens)
+    monkeypatch.delenv("NYCOPT_FAILURE_K", raising=False)
+    importlib.reload(obj_ens)
 
-
-def test_build_ensemble_set_returns_all_maximize():
-    obj_set = build_ensemble_objective_set(ENSEMBLE_NAMES)
-    assert isinstance(obj_set, ObjectiveSet)
-    assert obj_set.n_objs == len(ENSEMBLE_NAMES)
-    assert obj_set.names == ENSEMBLE_NAMES
-    assert all(d == 1 for d in obj_set.directions)  # all maximize
-
-
-def test_build_ensemble_set_rejects_legacy_name():
-    with pytest.raises(KeyError, match="Unknown ensemble objective"):
-        build_ensemble_objective_set(["salt_front_max_rm"])  # legacy/base name
-
-
-def test_compute_for_borg_ensemble_single_objective():
-    """End-to-end: feed a one-objective ObjectiveSet a 2-realization
-    data_per_real and confirm the Borg vector is the negated 0.5."""
-    obj_set = ObjectiveSet([_salt_front_ensemble_objective()])
-    data_per_real = [
-        _make_salinity_data(peak_rm=90.0),
-        _make_salinity_data(peak_rm=95.0),
-    ]
-    borg = obj_set.compute_for_borg_ensemble(data_per_real)
-    assert borg == pytest.approx([-0.5])
-
-
-def test_borg_vector_is_in_negated_unit_interval(monkeypatch):
-    """Every element of compute_for_borg_ensemble must be in [-1, 0]."""
-    # Patch each base Objective.compute to return a finite, satisficing value so
-    # the metrics don't NaN-out on a synthetic data dict that doesn't carry
-    # their input keys (ibt_demands, major_flow, etc.).
-    monkey_results = {
-        "nyc_delivery_reliability_weekly":   0.99,   # ge 0.95 ⇒ satisfies
-        "nyc_delivery_deficit_cvar90_pct":   5.0,    # le 10  ⇒ satisfies
-        "montague_flow_reliability_weekly":  0.90,   # ge 0.85 ⇒ satisfies
-        "montague_flow_deficit_cvar90_pct":  15.0,   # le 25  ⇒ satisfies
-        "trenton_flow_reliability_weekly":   0.90,   # ge 0.85 ⇒ satisfies
-        "nj_delivery_reliability_weekly":    0.99,   # ge 0.95 ⇒ satisfies
-        "downstream_flood_days_minor":       10.0,   # le 10  ⇒ satisfies
-        "nyc_storage_p5_pct":                40.0,   # ge 25  ⇒ satisfies
-    }
-    for base_name, val in monkey_results.items():
-        monkeypatch.setattr(
-            OBJECTIVES[base_name], "compute",
-            lambda _d, v=val: v,
-        )
-
-    obj_set = build_ensemble_objective_set(ENSEMBLE_NAMES)
-    data_per_real = [{} for _ in range(3)]
-    borg = obj_set.compute_for_borg_ensemble(data_per_real)
-    assert len(borg) == len(ENSEMBLE_NAMES)
-    for v in borg:
-        assert -1.0 <= v <= 0.0
-
-
-# ---------------------------------------------------------------------------
-# Threshold env override
-# ---------------------------------------------------------------------------
 
 def test_env_threshold_override(monkeypatch):
+    """The re-eval satisficing layer keeps its NYCOPT_SAT_THRESHOLDS override."""
     monkeypatch.setenv(
         "NYCOPT_SAT_THRESHOLDS",
         json.dumps({"nyc_delivery_reliability_weekly__sat95": 0.80}),
     )
     importlib.reload(obj_ens)
     try:
-        agg = obj_ens.ENSEMBLE_OBJECTIVES["nyc_delivery_reliability_weekly__sat95"].aggregator
+        agg = obj_ens.ENSEMBLE_OBJECTIVES[
+            "nyc_delivery_reliability_annual"].aggregator
         assert isinstance(agg, obj_ens.SatisficingAgg)
         assert agg.threshold == pytest.approx(0.80)
     finally:
@@ -250,3 +329,125 @@ def test_env_threshold_override_rejects_unknown(monkeypatch):
         importlib.reload(obj_ens)
     monkeypatch.delenv("NYCOPT_SAT_THRESHOLDS", raising=False)
     importlib.reload(obj_ens)
+
+
+# ---------------------------------------------------------------------------
+# 5. Registry / ObjectiveSet wiring
+# ---------------------------------------------------------------------------
+
+ANNUAL_NAMES = [
+    "nyc_delivery_reliability_annual",
+    "nyc_delivery_deficit_p99_pct",
+    "montague_flow_reliability_annual",
+    "montague_flow_deficit_p99_pct",
+    "trenton_flow_reliability_annual",
+    "downstream_flood_days_annual",
+    "downstream_flood_days_annual_p99",
+    "nyc_storage_min_p01_pct",
+    "nj_delivery_reliability_annual",
+]
+
+# The §1 base names config.ACTIVE_OBJECTIVES uses (default 7-objective set).
+ACTIVE_BASE_NAMES = [
+    "nyc_delivery_reliability_weekly",
+    "nyc_delivery_deficit_cvar90_pct",
+    "montague_flow_reliability_weekly",
+    "montague_flow_deficit_cvar90_pct",
+    "trenton_flow_reliability_weekly",
+    "downstream_flood_days_minor",
+    "nyc_storage_p5_pct",
+]
+
+
+def test_registry_matches_expected_names():
+    assert set(ENSEMBLE_OBJECTIVES) == set(ANNUAL_NAMES)
+
+
+def test_base_names_resolve_to_active_annual_set():
+    """config.ACTIVE_OBJECTIVES lists §1 base names; they must resolve to the
+    annual objectives with the §2 directions."""
+    obj_set = build_ensemble_objective_set(ACTIVE_BASE_NAMES)
+    assert isinstance(obj_set, ObjectiveSet)
+    assert obj_set.names == [
+        "nyc_delivery_reliability_annual",
+        "nyc_delivery_deficit_p99_pct",
+        "montague_flow_reliability_annual",
+        "montague_flow_deficit_p99_pct",
+        "trenton_flow_reliability_annual",
+        "downstream_flood_days_annual",
+        "nyc_storage_min_p01_pct",
+    ]
+    assert obj_set.directions == [1, -1, 1, -1, 1, -1, 1]
+    # The diagnostic P99 flood variant is NOT reachable via base names.
+    assert "downstream_flood_days_annual_p99" not in obj_set.names
+    # Every objective carries the re-eval layer (base + aggregator). Compare
+    # against the live module attribute: earlier env-override tests reload
+    # obj_ens, so the top-level class import may be a stale identity.
+    for o in obj_set:
+        assert o.base.name in ACTIVE_BASE_NAMES
+        assert isinstance(o.aggregator, obj_ens.SatisficingAgg)
+
+
+def test_build_ensemble_set_rejects_unknown_name():
+    with pytest.raises(KeyError, match="Unknown ensemble objective"):
+        build_ensemble_objective_set(["salt_front_intrusion_max_rm"])
+
+
+def _fake_annual_objective(direction: str, unit_operator) -> AnnualUnitObjective:
+    """AnnualUnitObjective whose annual metric reads data['units'] directly."""
+    return AnnualUnitObjective(
+        name=f"fake_{direction}",
+        direction=direction,
+        epsilon=0.01,
+        description="synthetic",
+        annual_metric=lambda data: np.asarray(data["units"], dtype=float),
+        unit_operator=unit_operator,
+        base=OBJECTIVES["nyc_delivery_reliability_weekly"],
+        aggregator=SatisficingAgg(threshold=0.95, kind="ge"),
+    )
+
+
+def test_compute_pools_units_across_realizations():
+    obj = _fake_annual_objective("maximize", FailureFrequencyOp(k=1))
+    data_per_real = [{"units": [0.0, 1.0]}, {"units": [1.0, 1.0]}]
+    # Pooled counts [0, 1, 1, 1] -> 1 of 4 unit-years without failure.
+    assert obj.compute(data_per_real) == pytest.approx(0.25)
+    assert obj.compute_for_borg(data_per_real) == pytest.approx(-0.25)
+
+
+def test_compute_for_borg_sign_convention():
+    max_obj = _fake_annual_objective("maximize", FailureFrequencyOp(k=1))
+    min_obj = _fake_annual_objective("minimize", PooledMeanOp(worst_value=10.0))
+    data_per_real = [{"units": [1.0, 2.0]}, {"units": [3.0, 4.0]}]
+    obj_set = ObjectiveSet([max_obj, min_obj])
+    borg = obj_set.compute_for_borg_ensemble(data_per_real)
+    # maximize: frequency 0.0 negated -> -0.0; minimize: mean 2.5 kept raw.
+    assert borg[0] == pytest.approx(0.0)
+    assert borg[1] == pytest.approx(2.5)
+    assert min_obj.compute(data_per_real) == pytest.approx(2.5)
+
+
+def test_compute_for_borg_from_units_matches_compute_for_borg():
+    obj = _fake_annual_objective("maximize", FailureFrequencyOp(k=2))
+    data_per_real = [{"units": [0.0, 1.0]}, {"units": [2.0, 3.0]}]
+    pooled = np.concatenate([obj.annual_units(d) for d in data_per_real])
+    assert obj.compute_for_borg_from_units(pooled) == pytest.approx(
+        obj.compute_for_borg(data_per_real))
+
+
+def test_annual_unit_objective_rejects_bad_direction():
+    with pytest.raises(ValueError, match="direction"):
+        _fake_annual_objective("maximise", FailureFrequencyOp(k=1))
+
+
+def test_registry_frequency_objectives_are_fractions():
+    """Frequency objectives report 0-1 fractions (maximize)."""
+    for name in ("nyc_delivery_reliability_annual",
+                 "montague_flow_reliability_annual",
+                 "trenton_flow_reliability_annual",
+                 "nj_delivery_reliability_annual"):
+        obj = ENSEMBLE_OBJECTIVES[name]
+        assert obj.direction == "maximize"
+        assert isinstance(obj.unit_operator, FailureFrequencyOp)
+        val = obj.unit_operator([0.0, 5.0, float("nan")])
+        assert 0.0 <= val <= 1.0

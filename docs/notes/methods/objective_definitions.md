@@ -107,39 +107,74 @@ estimable (Reed et al. 2013); epsilons are in each metric's native units.
 
 ---
 
-## 2. Per-scenario-design aggregation (single family: satisficing-fraction)
+## 2. Per-scenario-design aggregation — two-layer annual-unit scheme
 
-Every objective in a multi-realization design reduces a (timesteps ×
-realizations) matrix in **two stages**: (i) apply the §1 temporal metric to each
-realization *r* → a per-realization scalar `m_r`; (ii) collapse `{m_r}` across
-realizations. The across-realization stage uses **one operator family for every
-design — the satisficing fraction**:
+Two principles govern the scheme: (i) **cross-design commensurability during search
+is not required** — the held-out re-evaluation (§3) is the only comparison point —
+and (ii) **every operator follows published search-time practice** (objective
+aggregation is not a novelty focus of this study).
 
-```
-obj_i = (1 / R) · Σ_r  1[ m_{r,i} meets θ_i ]
-```
+**Structure (Hamilton et al. 2022's two-layer vocabulary: within-record time
+aggregation + across-record noise filtering).** Each realization is simulated
+continuously; the first 365 days are warm-up and excluded; the post-warm-up series is
+split into **water-year units**. Stage (i): compute each objective's **annual metric**
+on every (realization × year) unit. Stage (ii): aggregate across the pooled **NL
+unit-years** with the objective's **unit operator**:
 
-with per-objective satisficing level `θ_i` (`ge` for maximize-base metrics, `le`
-for minimize-base), and non-finite `m_{r,i}` counting as **unsatisfied**. All
-resulting objectives are maximize (higher satisficing fraction is better). In
-McPhail terms the across-realization stage is T1 = threshold, T2 =
-domain-satisficing over all realizations, T3 = expected value (a frequency).
-Note `θ_i` (analyst-chosen acceptable levels, set in
-`objective_sensitivity_experiment.md`) are distinct from the Decree thresholds
-inside the temporal metrics.
+| # | Objective (registry) | Annual metric (per unit-year) | Unit operator (across pooled unit-years) | Dir | Anchor |
+|---|---|---|---|---|---|
+| 1 | `nyc_delivery_reliability_annual` | failure-year indicator: ≥1 week with `Σ_w delivery < 0.99·Σ_w min(demand,800)` | **frequency of non-failure years** | MAX | Zeff et al. 2014 Eq. 2; Trindade et al. 2017 Eq. 16; Gold et al. 2023 |
+| 2 | `nyc_delivery_deficit_p99_pct` | CVaR₉₀ of weekly deficit % within the year | **worst-1st-percentile unit-year** (P99) | MIN | Quinn et al. 2017 (WP1), 2018; Trindade/Gold worst-1%-cost |
+| 3 | `montague_flow_reliability_annual` | failure-year indicator: ≥1 week with `mean_w(flow) < 1131.05` | frequency of non-failure years | MAX | as #1 |
+| 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | as #2 |
+| 5 | `trenton_flow_reliability_annual` | failure-year indicator vs 1938.95 MGD | frequency of non-failure years | MAX | as #1 |
+| 6 | `downstream_flood_days_annual` | count of minor-flood days in the year | **mean across unit-years** (expected annual flood days); P99 variant registered pending the sensitivity experiment (expectation can mask floods — Quinn et al. 2017) | MIN | Trindade expected-cost form; Quinn 2017 caution |
+| 7 | `nyc_storage_min_p01_pct` | annual minimum of daily aggregate NYC storage % | **1st-percentile unit-year** | MAX | WP1 pattern (Quinn 2017/2018); Hamilton 2022 Q-of-max |
+| 8 | `nj_delivery_reliability_annual` *(optional)* | failure-year indicator vs NJ delivery criterion | frequency of non-failure years | MAX | as #1; pending redundancy screen |
 
-A single across-realization family (rather than tuning the operator per design)
-gives the cleanest commensurability story and isolates the scenario-design
-effect from any operator effect.
+**Why this scheme.**
+- *Reliability objectives keep the threshold form where the literature keeps it* —
+  fraction-of-units frequency is the citable satisficing-in-search operator (the only
+  one used in search in the WaterPaths lineage); magnitude/tail objectives use
+  mean/percentile forms, so no analyst-chosen satisficing level θ_i exists for them.
+  The only thresholds are the **Decree-anchored annual failure criteria** (§0
+  goalposts), screened for saturation per design composition
+  (`ensemble_objective_sensitivity_experiment.md`).
+- *The long-record design needs no special case:* its records are scored as
+  consecutive annual units with inherited state — exactly the treatment of Quinn et
+  al. (2018), who slice one continuous 1000-yr record into 1-yr units "so that the
+  distribution of initial conditions … is representative." Every design therefore has
+  the **identical unit denominator NL** (short: N × (L−1) metric-bearing unit-years;
+  long: N′ × (L′−1); warm-up years excluded).
+- *Granularity/ε:* frequency objectives have granularity 1/NL (≈10⁻³ at NL ≈ 1000+);
+  mean/percentile objectives are continuous with **ε in native metric units**.
+- *Precedent floor:* percentile operators are precedented only over ≳50–1000 units
+  (Quinn's WP1 used 1000); NL must comfortably exceed this — verified by the
+  sensitivity experiment at the campaign NL.
 
-| Design | Realization axis | Across-realization stage | Notes |
-|--------|------------------|--------------------------|-------|
-| 1. Historic record | none (R=1) | **none** — objective = the raw temporal `m_1` | Satisficing degenerates at R=1, so historic uses the continuous temporal metric directly. A prevailing-practice reference, not a budget-matched comparison; its objectives are in different units (continuous) than the ensemble designs' (fractions), which is fine because comparison happens only at re-evaluation (§3). |
-| 2. Fixed probabilistic (N short) | fixed draw of N | satisficing fraction over N | Intended sweet spot — satisficing converges with the fewest scenarios (Bonham et al. 2024). |
-| 3. Fixed probabilistic, long records | few long records | satisficing fraction over the few records | Coarse denominator (3 records → {0,⅓,⅔,1}); flagged explicitly. Within-record extremes are already carried by the long temporal window. |
-| 4. Resampled (redrawn every FE) | redrawn each evaluation | satisficing fraction within that evaluation's K-draw | No fixed ensemble → a Monte-Carlo estimator that varies between evaluations of the same policy (Trindade et al. 2017; Brodeur et al. 2020). K is sized so this noise is below each objective's epsilon. Comparisons involving this design rely entirely on re-evaluation. |
-| 5. Input-stratified (LHS params) | fixed structured sample | satisficing fraction (uniform average over the sample) | The sample's probability distortion relative to the master ensemble is immaterial to the search objective and is not corrected; cross-design comparison rests entirely on the common re-evaluation (§3). |
-| 6. Hazard-filling (space-filling) | fixed sample | satisficing fraction (uniform average over the sample) | Same as design 5: search aggregation is a plain uniform average over the designed sample; no probability correction. |
+**Caveats carried explicitly.** Unit-years within a realization are dependent
+(multi-year droughts appear as consecutive failure-years — this is how the
+WaterPaths-lineage frequency objectives express persistence); effective sample size
+is below NL and differs by design (disclosed with the ESS/clustered-SE machinery of
+`scenario_design_methods.md` §3.2). An annual window cannot hold a whole multi-year
+drought as a single unit; event-scale severity enters through the hazard axes and the
+re-evaluation metrics, not the search objectives.
+
+**Design mapping.** All ensemble designs (fixed short, long-record, resampled,
+input-stratified, hazard-filling, support points) use this same two-layer scheme —
+one scheme fits all naturally, even though commensurability is no longer *required*.
+For the resampled design the scheme applies within each per-evaluation redraw. The
+**historic design** keeps the §1 temporal metrics on its single continuous trace
+(R = 1; prevailing-practice reference, Giuliani & Castelletti 2016). In McPhail
+terms: stage (i) is T1-threshold (reliability) or T1-absolute (magnitude/tail);
+stage (ii) is T3 = frequency/expectation for #1/3/5/6 and T2 = tail percentile for
+#2/4/7.
+
+Implementation: the annual-metric computation and unit operators live in
+`src/objectives_ensemble.py` (annual-unit aggregation registry); the per-design
+sample's probability distortion relative to the master (input-stratified,
+hazard-filling) is deliberately not corrected — cross-design comparison rests
+entirely on the common re-evaluation (§3).
 
 ---
 
@@ -175,7 +210,11 @@ Robustness and regret are both reported, and ranking stability across these
 metrics is summarized by Kendall's τ_b (Herman et al. 2015; McPhail et al. 2018).
 The search-vs-re-evaluation overfitting gap (Brodeur et al. 2020) is *not* used
 as a comparison measure — it is uncommon in the MOEA literature, and the study
-relies on robustness and regret instead.
+relies on robustness and regret instead. The supplement reports a coverage →
+re-evaluated-robustness association (does a design's hazard-space coverage predict
+its policies' test-set satisficing?) as a mechanism analysis
+(`scenario_design_methods.md` §6b); the main text claims only what robustness and
+regret show.
 The codebase separates `SEARCH_ENSEMBLE_SPEC` (per design) from the common test
 ensemble, with a selection-bias guard (Bonham et al. 2024) warning if they
 coincide.
@@ -191,8 +230,13 @@ coincide.
 | Low percentile in place of single-day minimum | obj. 7 | Quinn et al. 2017 |
 | Count-over-threshold (flood days, minor stage) | obj. 6 | Quinn et al. 2017 |
 | Trenton flow replacing salinity (physical redundancy) | obj. 5 | Trindade et al. 2017; Hadjimichael et al. 2020 |
-| Multivariate satisficing per stakeholder | §2 | Herman et al. 2015; McPhail et al. 2018 |
-| Single across-realization family; satisficing converges fastest | §2 | Bonham et al. 2024 |
+| Failure-year frequency across pooled units (search reliability) | §2 #1/3/5/8 | Zeff et al. 2014; Trindade et al. 2017; Gold et al. 2023 |
+| Worst-1st-percentile unit-year (search tail objectives) | §2 #2/4/7 | Quinn et al. 2017 (WP1), 2018; Zeff/Trindade/Gold worst-1% cost |
+| Consecutive annual units with inherited state (long records) | §2 | Quinn et al. 2018 |
+| Two-layer time-aggregation / noise-filtering vocabulary | §2 | Hamilton et al. 2022 |
+| Expectation can mask floods (P99 variant registered) | §2 #6 | Quinn et al. 2017 |
+| Multivariate satisficing per stakeholder (re-evaluation) | §3 | Herman et al. 2015; McPhail et al. 2018 |
+| Satisficing converges fastest (re-evaluation ensemble sizing) | §3 | Bonham et al. 2024 |
 | T1/T2/T3 decomposition of every aggregation | §0–§2 | McPhail et al. 2018 |
 | Resampling reduces overfitting; per-eval noise | design 4 | Trindade et al. 2017; Brodeur et al. 2020 |
 | Composition moves values more than rankings; hold re-eval metric fixed | §3 | McPhail et al. 2020 |
@@ -205,7 +249,13 @@ coincide.
 
 1. Finalize the optional 8th objective (`nj_delivery_reliability_weekly`) after
    the redundancy screen (`objective_sensitivity_experiment.md`).
-2. Fix the per-objective satisficing levels `θ_i` and epsilons from the
-   sensitivity-experiment results.
+2. From the two-arm ensemble sensitivity experiment
+   (`ensemble_objective_sensitivity_experiment.md`): (a) confirm the Decree-anchored
+   annual failure criteria (#1/3/5/8) do not saturate under either a probabilistic
+   or a hazard-filled composition (adjust the failure definition — e.g., ≥k failing
+   weeks — if they do); (b) pick the flood-days unit operator (mean vs P99, #6);
+   (c) set native-unit epsilons for the mean/percentile objectives and confirm P99
+   stability at the campaign NL; (d) validate the annual-unit choice against
+   realization-level rankings.
 3. The salt-front (`salt_front_intrusion_max_rm`) and Lordville thermal metrics
    remain registered diagnostics; both are out of the active search set.

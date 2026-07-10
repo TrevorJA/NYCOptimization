@@ -221,9 +221,14 @@ def test_ensemble_not_in_slug_is_scenario_dir():
 
 @pytest.mark.slow
 def test_derive_slug_indices_override():
-    """NYCOPT_ENSEMBLE_INDICES subsets the active scenario design's ensemble."""
+    """NYCOPT_ENSEMBLE_INDICES subsets the active scenario design's ensemble.
+
+    Uses scaling_stationary — the one ensemble design whose spec resolves with
+    no staged data (kn slug grammar, no I/O); the manuscript designs all
+    require a staged forcing master.
+    """
     env = {
-        "NYCOPT_SCENARIO_DESIGN": "fixed_probabilistic_short",
+        "NYCOPT_SCENARIO_DESIGN": "scaling_stationary",
         "NYCOPT_ENSEMBLE_INDICES": "0,2",
     }
     code = (

@@ -88,11 +88,13 @@ def run_mmborg(
     from config import SEARCH_ENSEMBLE_SPEC
     if SEARCH_ENSEMBLE_SPEC is None:
         raise ValueError(
-            f"Scenario design '{scenario}' has no search ensemble wired yet, so "
-            f"optimization cannot run under it. Use a wired design ('historic', "
-            f"'fixed_probabilistic_short', 'fixed_probabilistic_long', "
-            f"'resampled_probabilistic'), or wire its construction in "
-            f"src/scenario_designs.py."
+            f"Scenario design '{scenario}' did not resolve a search ensemble, so "
+            f"optimization cannot run under it. Every ensemble design needs its "
+            f"staged data first: run workflow step 02 (forcing master; also the "
+            f"resolution step for the fixed/resampled probabilistic and "
+            f"input_stratified designs) and, for hazard_filling*, step 03 "
+            f"(reduced subsample). Only 'historic' and the supplemental "
+            f"'scaling_stationary' design resolve without staging."
         )
 
     # borg.py loads ./libborg.so and ./libborgmm.so relative to CWD, so

@@ -282,26 +282,41 @@ def test_batched_skips_failed_batch(monkeypatch, wcu5_spec):
 
 
 def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
-    """Batched evaluate() must give identical objectives to the legacy path."""
+    """Batched evaluate() must give identical objectives to the legacy path.
+
+    The batched path stores per-UNIT-YEAR annual metrics between batches (the
+    two-layer §2 scheme), so pooling across batch boundaries must reproduce
+    the single-model result exactly.
+    """
     from src.objectives import ObjectiveSet
-    from src.objectives_ensemble import EnsembleObjective, SatisficingAgg
+    from src.objectives_ensemble import (
+        AnnualUnitObjective,
+        FailureFrequencyOp,
+        SatisficingAgg,
+    )
 
     class FakeBase:
         name = "fake"
+        direction = "maximize"
 
-        def compute(self, data):
-            return data["v"]
+        def compute(self, data):  # unused by search; re-eval layer only
+            return 0.0
 
-    eo = EnsembleObjective(
-        base=FakeBase(), aggregator=SatisficingAgg(threshold=2.5, kind="ge"),
-        name="fake__sat", epsilon=0.02,
+    ao = AnnualUnitObjective(
+        name="fake_reliability_annual", direction="maximize", epsilon=0.01,
+        description="synthetic",
+        annual_metric=lambda data: np.asarray(data["units"], dtype=float),
+        unit_operator=FailureFrequencyOp(k=2),
+        base=FakeBase(),
+        aggregator=SatisficingAgg(threshold=0.5, kind="ge"),
     )
-    objset = ObjectiveSet([eo])
+    objset = ObjectiveSet([ao])
 
-    # Per-realization base value v = realization index -> [0,1,2,3,4].
+    # Realization i contributes TWO unit-years, each with failing-week count i.
     monkeypatch.setattr(
         sim, "run_simulation_ensemble_inmemory",
-        lambda cfg, spec: [{"v": float(i)} for i in spec.realization_indices],
+        lambda cfg, spec: [{"units": [float(i), float(i)]}
+                           for i in spec.realization_indices],
     )
     monkeypatch.setattr(
         sim, "dvs_to_config", lambda dv, formulation_name="ffmp": object(),
@@ -316,7 +331,8 @@ def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
         realization_batch=2,
     )
     assert legacy == batched
-    # ge 2.5 over [0,1,2,3,4] satisfied by {3,4} -> 2/5 = 0.4, negated for Borg.
+    # Pooled counts [0,0,1,1,2,2,3,3,4,4]; k=2 -> 4 of 10 unit-years without
+    # failure -> 0.4, negated for Borg.
     assert batched == pytest.approx([-0.4])
 
 

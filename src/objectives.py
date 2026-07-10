@@ -186,7 +186,7 @@ class ObjectiveSet:
 
         Each contained objective must accept ``data_per_real`` (a list of
         per-realization data dicts) — i.e. it must be an
-        ``EnsembleObjective`` from ``src.objectives_ensemble``. This is
+        ``AnnualUnitObjective`` from ``src.objectives_ensemble``. This is
         duck-typed: regular single-trace ``Objective`` instances will fail
         loudly when their metric function tries to subscript a list as a
         dict, which is the desired behavior (a single-trace ObjectiveSet
@@ -210,11 +210,24 @@ class ObjectiveSet:
 # These factor the common reductions so the registered metric functions stay
 # one-liners and so the CVaR vs. max (and p5 vs. min) variants are guaranteed to
 # operate on identical underlying series.
+#
+# The `_weekly_*` / `_flood_over_*` / `_nyc_storage_pct_daily` cores operate on
+# ALREADY-WINDOWED daily series (no warm-up handling inside): the §1 metrics
+# below apply `_post_warmup` before calling them, and the annual-unit ensemble
+# metrics in `src.objectives_ensemble` apply water-year unit slicing instead —
+# guaranteeing the two paths share one weekly-accounting formula.
 
 
-def _post_warmup(series: pd.Series) -> pd.Series:
-    """Drop the first WARMUP_DAYS daily steps (model spin-up)."""
-    return series.iloc[WARMUP_DAYS:]
+def _post_warmup(obj):
+    """Drop the first WARMUP_DAYS daily steps (model spin-up).
+
+    Args:
+        obj: Daily-indexed pandas Series or DataFrame.
+
+    Returns:
+        The same type, with the first WARMUP_DAYS rows removed.
+    """
+    return obj.iloc[WARMUP_DAYS:]
 
 
 def _cvar_worst_mean(values, frac: float = _CVAR_TAIL_FRAC) -> float:
@@ -236,68 +249,113 @@ def _cvar_worst_mean(values, frac: float = _CVAR_TAIL_FRAC) -> float:
     return float(worst.mean())
 
 
-def _nyc_weekly_delivery_deficit_pct(data: dict) -> pd.Series:
-    """Weekly NYC delivery deficit, as % of the 800 MGD Decree cap.
+def _weekly_delivery_deficit_pct(demand: pd.Series, delivery: pd.Series,
+                                 cap: float) -> pd.Series:
+    """Weekly delivery deficit as % of a static Decree cap (windowed series).
 
     Demand is capped at the Decree cap so voluntary winter low-takes are not
     penalized; only forced shortfalls below the Decree right count. Normalized
     to the *static* cap so a 50 MGD shortfall reads identically year-round.
+
+    Args:
+        demand: Already-windowed daily demand series (MGD).
+        delivery: Already-windowed daily delivery series (MGD).
+        cap: Static Decree cap (MGD).
+
+    Returns:
+        Weekly deficit series in % of ``cap`` [0-100].
     """
-    demand = _post_warmup(data["ibt_demands"]["demand_nyc"]).clip(upper=NYC_DECREE_DIVERSION_CAP_MGD)
-    delivery = _post_warmup(data["ibt_diversions"]["delivery_nyc"])
-    weekly_demand = demand.resample("W").mean()
+    weekly_demand = demand.clip(upper=cap).resample("W").mean()
     weekly_delivery = delivery.resample("W").mean()
     deficit = (weekly_demand - weekly_delivery).clip(lower=0)
-    return 100.0 * deficit / NYC_DECREE_DIVERSION_CAP_MGD
+    return 100.0 * deficit / cap
 
 
-def _flow_weekly_deficit_pct(flow: pd.Series, target: float) -> pd.Series:
-    """Weekly downstream-flow deficit, as % of a static Decree flow target."""
-    weekly_flow = _post_warmup(flow).resample("W").mean()
+def _nyc_weekly_delivery_deficit_pct(data: dict) -> pd.Series:
+    """Post-warmup weekly NYC delivery deficit, as % of the 800 MGD Decree cap."""
+    return _weekly_delivery_deficit_pct(
+        _post_warmup(data["ibt_demands"]["demand_nyc"]),
+        _post_warmup(data["ibt_diversions"]["delivery_nyc"]),
+        NYC_DECREE_DIVERSION_CAP_MGD,
+    )
+
+
+def _weekly_flow_deficit_pct(flow: pd.Series, target: float) -> pd.Series:
+    """Weekly flow deficit as % of a static Decree flow target (windowed series)."""
+    weekly_flow = flow.resample("W").mean()
     deficit = (target - weekly_flow).clip(lower=0)
     return 100.0 * deficit / target
 
 
+def _weekly_flow_ok(flow: pd.Series, target: float) -> pd.Series:
+    """Weekly success indicators: weekly-mean flow >= a static Decree target.
+
+    Operates on an already-windowed daily flow series. A week with a non-finite
+    weekly mean compares False (a degenerate week is a failure week).
+    """
+    return flow.resample("W").mean() >= target
+
+
 def _flow_reliability_weekly(flow: pd.Series, target: float) -> float:
-    """Fraction of weeks weekly-mean flow meets a static Decree flow target."""
-    weekly_flow = _post_warmup(flow).resample("W").mean()
-    total = len(weekly_flow)
+    """Fraction of post-warmup weeks weekly-mean flow meets a Decree target."""
+    ok = _weekly_flow_ok(_post_warmup(flow), target)
+    total = len(ok)
     if total == 0:
         return 0.0
-    return float((weekly_flow >= target).sum()) / total
+    return float(ok.sum()) / total
+
+
+def _weekly_delivery_ok(demand: pd.Series, delivery: pd.Series,
+                        cap: float) -> pd.Series:
+    """Weekly success indicators: weekly-total delivery >= 99% of capped demand.
+
+    Operates on already-windowed daily series; weekly totals (sum basis) are the
+    Decree accounting convention. A non-finite weekly comparison is False (a
+    degenerate week is a failure week).
+    """
+    weekly_demand = demand.clip(upper=cap).resample("W").sum()
+    weekly_delivery = delivery.resample("W").sum()
+    return weekly_delivery >= 0.99 * weekly_demand
 
 
 def _delivery_reliability_weekly(demand: pd.Series, delivery: pd.Series,
                                  cap: float) -> float:
-    """Fraction of weeks weekly-total delivery >= 99% of weekly-total capped demand."""
-    demand = _post_warmup(demand).clip(upper=cap)
-    delivery = _post_warmup(delivery)
-    weekly_demand = demand.resample("W").sum()
-    weekly_delivery = delivery.resample("W").sum()
-    total = len(weekly_demand)
+    """Fraction of post-warmup weeks weekly delivery >= 99% of capped demand."""
+    ok = _weekly_delivery_ok(_post_warmup(demand), _post_warmup(delivery), cap)
+    total = len(ok)
     if total == 0:
         return 0.0
-    return float((weekly_delivery >= 0.99 * weekly_demand).sum()) / total
+    return float(ok.sum()) / total
 
 
-def _flood_days_anygauge(data: dict, level: str) -> float:
-    """Count of post-warmup days any tail gauge is at/above the named NWS stage.
+def _flood_over_stage_daily(stage: pd.DataFrame, level: str) -> pd.Series:
+    """Daily indicators: is ANY tail gauge at/above the named NWS stage?
 
-    `level` is one of "action", "minor", "moderate", "major" in
-    `pywrdrb.flood_thresholds.flood_stage_thresholds`.
+    Operates on an already-windowed daily stage DataFrame whose columns are the
+    ``_DOWNSTREAM_GAUGES`` ids. ``level`` is one of "action", "minor",
+    "moderate", "major" in ``pywrdrb.flood_thresholds.flood_stage_thresholds``.
     """
-    stage = _post_warmup(data["flood_stage"][_DOWNSTREAM_GAUGES])
     thresh = pd.Series(
         {g: flood_stage_thresholds[g][level] for g in _DOWNSTREAM_GAUGES}
     )
-    over = stage.ge(thresh, axis=1)
-    return float(over.any(axis=1).sum())
+    return stage.ge(thresh, axis=1).any(axis=1)
+
+
+def _flood_days_anygauge(data: dict, level: str) -> float:
+    """Count of post-warmup days any tail gauge is at/above the named NWS stage."""
+    stage = _post_warmup(data["flood_stage"][_DOWNSTREAM_GAUGES])
+    return float(_flood_over_stage_daily(stage, level).sum())
+
+
+def _nyc_storage_pct_daily(data: dict) -> pd.Series:
+    """Daily combined NYC storage as % of total system capacity (full window)."""
+    storage = data["res_storage"][NYC_RESERVOIRS].sum(axis=1)
+    return 100.0 * storage / NYC_TOTAL_CAPACITY
 
 
 def _nyc_combined_storage_pct(data: dict) -> pd.Series:
-    """Daily combined NYC storage as % of total system capacity."""
-    storage = _post_warmup(data["res_storage"][NYC_RESERVOIRS].sum(axis=1))
-    return 100.0 * storage / NYC_TOTAL_CAPACITY
+    """Post-warmup daily combined NYC storage as % of total system capacity."""
+    return _post_warmup(_nyc_storage_pct_daily(data))
 
 
 ###############################################################################
@@ -367,13 +425,18 @@ def _montague_flow_deficit_cvar90_pct(data: dict) -> float:
     exogenous noise — CVaR90 is especially preferable to the maximum here.
     """
     return _cvar_worst_mean(
-        _flow_weekly_deficit_pct(data["major_flow"]["delMontague"], MONTAGUE_DECREE_TARGET_MGD).values
+        _weekly_flow_deficit_pct(
+            _post_warmup(data["major_flow"]["delMontague"]),
+            MONTAGUE_DECREE_TARGET_MGD,
+        ).values
     )
 
 
 def _montague_flow_deficit_max_pct(data: dict) -> float:
     """DIAGNOSTIC: worst single-week Montague flow deficit, % of Decree target. [0, 100]."""
-    s = _flow_weekly_deficit_pct(data["major_flow"]["delMontague"], MONTAGUE_DECREE_TARGET_MGD)
+    s = _weekly_flow_deficit_pct(
+        _post_warmup(data["major_flow"]["delMontague"]), MONTAGUE_DECREE_TARGET_MGD,
+    )
     return float(s.max()) if len(s) > 0 else 0.0
 
 
@@ -394,7 +457,10 @@ def _trenton_flow_reliability_weekly(data: dict) -> float:
 def _trenton_flow_deficit_cvar90_pct(data: dict) -> float:
     """DIAGNOSTIC: CVaR90 of weekly Trenton flow deficit, % of Decree target. [0, 100]."""
     return _cvar_worst_mean(
-        _flow_weekly_deficit_pct(data["major_flow"]["delTrenton"], TRENTON_DECREE_TARGET_MGD).values
+        _weekly_flow_deficit_pct(
+            _post_warmup(data["major_flow"]["delTrenton"]),
+            TRENTON_DECREE_TARGET_MGD,
+        ).values
     )
 
 

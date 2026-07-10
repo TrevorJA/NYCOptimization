@@ -1,6 +1,6 @@
 # Experimental Design: Comparison of Scenario Designs for Optimization
 
-*Last updated: 2026-06-11 (rev. 5). Working draft. Terminology per `docs/notes/terminology.md`. Citations per `docs/notes/literature/optimization_scenario_sampling_review.md`. Objective formulations, hazard-metric axes, ensemble sizes, scenario length, and the test-ensemble design are intentionally undecided and are listed as open questions at the end.*
+*Last updated: 2026-06-11 (rev. 5). Working draft. Terminology per `docs/notes/terminology.md`. Citations per the literature notes indexed by `docs/notes/literature/scenario_design.md`. Objective formulations, hazard-metric axes, ensemble sizes, scenario length, and the test-ensemble design are intentionally undecided and are listed as open questions at the end.*
 
 ---
 
@@ -57,13 +57,24 @@ Comparison measures include the quality of the re-evaluated Pareto-approximate s
 
 One point requires explicit statement in the manuscript. Several designs depart from the scenario probabilities of the master ensemble. The hazard-filling design does so deliberately, and the input-stratified design and historical record also do so by construction, so objective values computed during search estimate different quantities across designs. This departure is the design choice under study, not an artifact, and the held-out re-evaluation provides the common basis of comparison.
 
+## Decided since rev. 5
+
+- **Comparison metrics:** satisficing robustness + regret on the held-out test
+  ensemble; a coverage → re-evaluated-robustness association is reported in the
+  supplement as a mechanism analysis (`objective_definitions.md` §3).
+- **Search aggregation:** the two-layer annual-unit scheme — annual metrics per
+  (realization × water-year) unit, per-objective unit operators over the pooled
+  unit-years (`objective_definitions.md` §2). Importance reweighting during search
+  is not used.
+- **Scenario length:** L = 10 yr, disjoint windows, fixed 0.80 initial storage with
+  a 365-day warm-up (`scenario_design_methods.md` §3.2).
+- **Forcing space:** historical interannual persistence retained; claims scoped
+  accordingly (`scenario_design_methods.md` §8).
+
 ## Open questions (not assumed by this design)
 
-In priority order, since the first two gate the rest of the pipeline.
-
-1. Objective function formulations, including the across-scenario aggregation family (expectation-type versus tail- or threshold-type). This is the upcoming major discussion. It determines whether departures from scenario probability during search are benign or central, constrains appropriate ensemble sizes and the archive resolution of the search algorithm, and fixes the definition of the overfitting measure. Whether importance reweighting of designed ensembles during search (per Hilbers et al. 2019) is warranted belongs to this same decision.
-2. Scenario length and window construction, including initial reservoir storages and the handling of hydrologic events that span window boundaries. Short windows cannot contain drought events longer than the window, and any chosen length must be checked against the duration of the basin's design-basis droughts. This decision blocks master-ensemble generation regardless of objectives.
-3. The design of the held-out test ensemble, including which deeply uncertain factors it spans (generator parameterizations and other system uncertainties), its size, and how realizations are allocated across those factors. Test-ensemble size matters doubly because nondominated sets are recomputed from re-evaluated values.
-4. The hazard-metric axes, pending the index-redundancy screening discussed in the literature review.
-5. Ensemble sizes, replicate counts, and seed counts, to be fixed against a computational budget estimate expressed in total simulated scenario-years.
-6. Whether a distribution-representative subsample (support points, Mak & Joseph 2018) is added as a supplementary scenario design. It would isolate whether any benefit of the hazard-filling ensemble stems from uniform coverage specifically or from designed subsampling generally. Both independent reviews of this document recommended its inclusion on identifiability grounds. Held for discussion.
+1. The design of the held-out test ensemble, including which deeply uncertain factors it spans (generator parameterizations and other system uncertainties), its size, and how realizations are allocated across those factors. Test-ensemble size matters doubly because nondominated sets are recomputed from re-evaluated values.
+2. The hazard-metric axes, pending the index-redundancy screening on the production master.
+3. Ensemble sizes, replicate counts, and seed counts, to be fixed against a computational budget estimate expressed in total simulated scenario-years (informed by the Anvil scaling experiment).
+4. Whether a distribution-representative subsample (support points, Mak & Joseph 2018) is added as a supplementary scenario design. It would isolate whether any benefit of the hazard-filling ensemble stems from uniform coverage specifically or from designed subsampling generally. Both independent reviews of this document recommended its inclusion on identifiability grounds. Held for discussion.
+5. The flood-days unit operator (mean vs P99) and the frequency objectives' annual failure criteria, set by the ensemble objective-sensitivity experiment.
