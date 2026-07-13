@@ -357,7 +357,11 @@ PACKING_MODES: "dict[str, list[tuple[int, int, int]]]" = {
     "smoke":  [(1, 1, 0), (4, 1, 0)],
     "ladder": [(1, 6, 0), (8, 4, 0), (16, 2, 0), (32, 2, 0),
                (48, 2, 0), (64, 2, 0), (96, 2, 0), (128, 2, 0)],
-    "spot":   [(32, 4, 0), (48, 4, 0), (48, 4, 16)],
+    # Spot densities from the 2026-07-10 ladder (job 19013400): slowdown is
+    # only ~1.17x at K=128 with ~89 GB projected node memory, so SU/eval is
+    # minimized at full packing — re-measure the two densest points, plus one
+    # batched step at K* for the memory-vs-time trade.
+    "spot":   [(96, 4, 0), (128, 4, 0), (128, 4, 16)],
 }
 
 #: Batched-evaluation sweep (mode "batch"): B realizations per pywr
