@@ -23,15 +23,20 @@ relevant one **between** importing this module and importing ``config``::
     scfg.configure_ensemble_env()        # now set this experiment's env
     from config import ...               # config reads the env we just set
 
-To keep that guarantee this module imports only the stdlib and never imports
-``config`` (which would either fire too late or create a cycle). Output paths
-are derived from ``__file__`` for the same reason.
+To keep that guarantee this module never imports ``config`` (which would
+either fire too late or create a cycle). Output paths are derived from
+``__file__`` for the same reason. Importing ``src.scenario_designs`` is safe:
+it is env-neutral (sets nothing) and does not import ``config``; it supplies
+the project-wide scenario-length constant ``SCENARIO_YEARS`` so
+supplemental ensemble sizes stay in lockstep with the scenario designs.
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+
+from src.scenario_designs import SCENARIO_YEARS
 
 _PROJECT_DIR: Path = Path(__file__).resolve().parent
 
@@ -207,9 +212,13 @@ def configure_ensemble_env() -> None:
 # ---------------------------------------------------------------------------
 #: Realizations and per-realization length. The inflow_type slug is the dynamic
 #: ``kn_{Y}yr_n{N}`` grammar resolved by ``src.ensembles.get_ensemble_spec``,
-#: so it matches exactly what the Step-1 generator stages.
+#: so it matches exactly what the Step-1 generator stages. The full-scale
+#: realization length is pinned to the project-wide scenario length L
+#: (``SCENARIO_YEARS``) so thresholds/operators are calibrated at
+#: the campaign L; the smoke branch keeps the staged 20-yr dev fixture
+#: (``kn_20yr_n5``).
 ENS_N_REALIZATIONS: int = 5 if ENS_SMOKE else 1024
-ENS_REALIZATION_YEARS: int = 20
+ENS_REALIZATION_YEARS: int = 20 if ENS_SMOKE else SCENARIO_YEARS
 #: Generation seed for the Kirsch-Nowak ensemble (distinct from the DV seed).
 ENS_KN_SEED: int = 1234
 

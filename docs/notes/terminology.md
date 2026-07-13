@@ -1,6 +1,6 @@
 # Project Terminology
 
-*Last updated: 2026-06-10. Controlled vocabulary for NYCOptimization manuscripts, code, and notes. Full citations live in `docs/notes/literature/optimization_scenario_sampling_review.md`. When writing, use these terms exactly and avoid the flagged synonyms.*
+*Last updated: 2026-06-10. Controlled vocabulary for NYCOptimization manuscripts, code, and notes. Full citations live in the literature notes indexed by `docs/notes/literature/scenario_design.md`. When writing, use these terms exactly and avoid the flagged synonyms.*
 
 ---
 
@@ -24,7 +24,7 @@
 
 **Evaluation ensemble** (synonym, "search ensemble"). The small scenario set actually used inside `evaluation()` during MOEA search. The object RQ1 designs. Enumerated by `config.ENSEMBLE_PRESETS`.
 
-**Test ensemble** (synonym, "re-evaluation ensemble"). The much larger held-out ensemble used in workflow step 07 to stress-test Pareto-approximate policies out of sample (the MORDM re-evaluation step, Kasprzyk et al. 2013; Herman et al. 2015, *JWRPM*). Deliberately broad and treated as containing deep uncertainty, expected to span many deeply uncertain generator parameterizations and other uncertain system factors. Its design is a standing methodological decision, not a default.
+**Test ensemble** (synonym, "re-evaluation ensemble"). The much larger held-out ensemble used in workflow step 08 to stress-test Pareto-approximate policies out of sample (the MORDM re-evaluation step, Kasprzyk et al. 2013; Herman et al. 2015, *JWRPM*). Deliberately broad and treated as containing deep uncertainty, expected to span many deeply uncertain generator parameterizations and other uncertain system factors. Its design is a standing methodological decision, not a default.
 
 ## Sampling and subsampling
 

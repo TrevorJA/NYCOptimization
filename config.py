@@ -30,6 +30,8 @@ Environment overrides (selected):
     NYCOPT_TEMPERATURE_LSTM_DIR -> TEMPERATURE_LSTM_DIR (path)
     NYCOPT_SALINITY_LSTM_DIR    -> SALINITY_LSTM_DIR (path)
     NYCOPT_SCENARIO_DESIGN      -> ACTIVE_SCENARIO_DESIGN (src.scenario_designs) -> SEARCH_ENSEMBLE_SPEC
+    NYCOPT_SCENARIO_YEARS       -> SCENARIO_YEARS (short-window scenario length L)
+    NYCOPT_ENSEMBLE_DRAW        -> SCENARIO_ENSEMBLE_DRAW (independent ensemble-draw replication index)
     NYCOPT_MOEA_CONFIG          -> ACTIVE_MOEA_CONFIG (src.moea_config) -> BORG/MMBORG settings
     NYCOPT_REEVAL_ENSEMBLE_PRESET -> REEVAL_ENSEMBLE_SPEC (name from src.ensembles.PRESETS)
     NYCOPT_ENSEMBLE_INDICES     -> overrides realization_indices on SEARCH_ENSEMBLE_SPEC
@@ -701,10 +703,21 @@ from src.ensembles import (             # noqa: E402
     get_ensemble_spec,
     with_indices_override,
 )
-from src.scenario_designs import get_scenario_design   # noqa: E402
+from src.scenario_designs import (   # noqa: E402
+    SCENARIO_YEARS,  # single source of truth for the short-window scenario length L
+    get_scenario_design,
+)
 
 NYCOPT_SCENARIO_DESIGN = _parse_str_env("NYCOPT_SCENARIO_DESIGN", "historic")
 ACTIVE_SCENARIO_DESIGN = get_scenario_design(NYCOPT_SCENARIO_DESIGN)
+
+# Independent ensemble-draw replication index. Draw k
+# makes the master-subset designs select their k-th deterministic index subset
+# (effective selector seed = subset_seed + k). Designs with no fixed ensemble
+# to redraw (historic, resampled_probabilistic) accept only 0 and raise
+# otherwise (fail fast at import). Nonzero draws are appended to the moea slug
+# as "_d{k}" so replicate runs partition to distinct output directories.
+SCENARIO_ENSEMBLE_DRAW = _parse_int_env("NYCOPT_ENSEMBLE_DRAW", 0)
 
 NYCOPT_REEVAL_ENSEMBLE_PRESET = _parse_str_env(
     "NYCOPT_REEVAL_ENSEMBLE_PRESET", "historic_single",
@@ -716,7 +729,9 @@ NYCOPT_REEVAL_ENSEMBLE_PRESET = _parse_str_env(
 # outputs only need active_scenario_name(). Optimization fails fast with a clear
 # message (see src/mmborg.py) when the spec is None.
 try:
-    SEARCH_ENSEMBLE_SPEC = ACTIVE_SCENARIO_DESIGN.resolve_search_spec()
+    SEARCH_ENSEMBLE_SPEC = ACTIVE_SCENARIO_DESIGN.resolve_search_spec(
+        draw=SCENARIO_ENSEMBLE_DRAW
+    )
 except NotImplementedError as _e:
     SEARCH_ENSEMBLE_SPEC = None
     print(
@@ -770,7 +785,8 @@ if (
 # builds the moea slug — the problem-definition identity plus the non-default
 # algorithm-config name. The ensemble is NOT in the slug; it is the parent
 # {scenario} directory. Format:
-#   {formulation}_obj{N_OBJ}{ts_suffix}{sfdv_suffix}{moea_cfg_suffix}{custom_suffix}
+#   {formulation}_obj{N_OBJ}{ts_suffix}{sfdv_suffix}{draw_suffix}{moea_cfg_suffix}{custom_suffix}
+# where {draw_suffix} = "_d{k}" only for a nonzero NYCOPT_ENSEMBLE_DRAW replicate.
 #
 # Full output path: outputs/{scenario}/{moea_slug}/{artifact}/
 #
@@ -831,6 +847,10 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
     }.get(SALT_FRONT_PARAM_MODE, "")
     if _sfdv_suffix:
         parts.append(_sfdv_suffix)
+    if SCENARIO_ENSEMBLE_DRAW:
+        # Independent ensemble-draw replicate: partition its outputs away from
+        # draw 0 (the ensemble itself is staged per-draw, e.g. rand_*_s{k}).
+        parts.append(f"d{SCENARIO_ENSEMBLE_DRAW}")
     if ACTIVE_MOEA_CONFIG.name != _DEFAULT_MOEA_SLUG_CONFIG:
         parts.append(ACTIVE_MOEA_CONFIG.name)
 

@@ -3,7 +3,7 @@
 Trevor Amestoy, Reed Research Group, Cornell University
 February 2026
 
-> **Status note (2026-06-11).** General background, still valid. Sections 4.3 and 11 reflect the pre-pivot policy-architecture framing and are superseded. The project's current focus, scenario design for the optimization evaluation ensemble, is covered in `optimization_scenario_sampling_review.md`, `scenario_design_tables.md`, `../terminology.md`, and `../experimental_design.md`, which take precedence where they overlap with this document.
+> **Status note (2026-06-11).** General background, still valid. Sections 4.3 and 11 reflect the pre-pivot policy-architecture framing and are superseded. The project's current focus, scenario design for the optimization evaluation ensemble, is covered in `scenario_design.md`, `scenario_design_tables.md`, `../terminology.md`, and `../methods/experimental_design.md`, which take precedence where they overlap with this document.
 
 ---
 

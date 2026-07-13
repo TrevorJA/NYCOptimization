@@ -17,20 +17,21 @@ This module supersedes the former stub ``config.ENSEMBLE_PRESETS``. It bridges t
 the lower-level ``src/ensembles.py`` ``EnsembleSpec`` machinery: a design knows
 how to resolve its search ensemble into one or more ``EnsembleSpec`` instances.
 
-Status: all registered designs are code-wired. ``historic`` (single-trace
-preset), the two fixed probabilistic designs ``fixed_probabilistic_short`` /
-``fixed_probabilistic_long``, and ``resampled_probabilistic`` resolve to a
-directly generated Kirsch-Nowak ensemble via the ``kn_{Y}yr_n{N}`` slug grammar
-(step-02 generation stages exactly the ensemble the design names; no
-subsampling-from-a-master step is required for the stand-up). Their
-sizes/lengths here are *provisional small test values* for standing up the
-generation->optimization workflow; the final sizes (and the eventual
-subsample-from-master construction) remain open decisions (#2, #5 in
-``experimental_design.md``). The forcing-master designs (``input_stratified``,
-``hazard_filling``, ``hazard_filling_absolute``) raise ``NotImplementedError``
-from ``resolve_search_spec`` only when their staged data (forcing master /
-reduced subsample, workflow steps 02-03) is missing — the gate is staged-data
-availability, not unimplemented code.
+Status: all registered designs are code-wired. ``historic`` resolves from a
+static preset; ``scaling_stationary`` (supplemental) resolves from a directly
+generated Kirsch-Nowak ensemble via the ``kn_{Y}yr_n{N}`` slug grammar. Every
+manuscript *ensemble* design draws from a CMIP6-forced master staged by
+workflow step 02 (methods §2.1/§3.2): the
+short-window designs (``fixed_probabilistic_short``,
+``resampled_probabilistic``, ``input_stratified``, ``hazard_filling``,
+``hazard_filling_absolute``) share ONE design-independent master
+``master_{L}yr_n{N_M}``; ``fixed_probabilistic_long`` draws from its own long
+master ``master_{L'}yr_n{N'}`` built by the same forcing pipeline (same theta
+hypercube, longer realizations). Designs raise ``NotImplementedError`` from
+``resolve_search_spec`` only while their staged data (steps 02-03) is missing
+— the gate is staged-data availability, not unimplemented code. Sizes are
+provisional (open decisions #2/#5 in ``experimental_design.md``); the scenario
+length L is the single project-wide constant ``SCENARIO_YEARS``.
 """
 
 from __future__ import annotations
@@ -43,16 +44,34 @@ from src.ensembles import (
     as_resampling_pool,
     get_ensemble_spec,
     kirsch_nowak_slug,
+    materialize_subset_from_master,
     staged_ensemble_dir,
 )
 
-# Forcing-master sizing shared by the two designs that subsample a CMIP6-forced master
-# (hazard_filling, input_stratified). Provisional small test values for the workflow stand-up;
-# override via env for a tiny smoke run so the master slug, the Step-1 driver, and the subset
-# size stay mutually consistent (methods §3.2). No CLI value flags.
+# Scenario length L (years) of each short-window realization — the SINGLE
+# project-wide source of truth (L = 10,
+# editable). Re-exported as ``config.SCENARIO_YEARS`` and consumed by
+# ``supplemental_config.py``. Env override is for smoke/dev runs pinned to
+# previously staged data; changing L invalidates every staged L-conditional
+# artifact (master, subsamples), which must then be regenerated.
+SCENARIO_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
+
+# Record length L' (years) of the long-record design (fixed_probabilistic_long),
+# deliberately its OWN constant — the many-short-vs-few-long contrast needs L'
+# decoupled from L. Provisional default 50.
+LONG_RECORD_YEARS: int = int(os.environ.get("NYCOPT_LONG_RECORD_YEARS", "50"))
+
+# Forcing-master sizing shared by every design that subsamples the CMIP6-forced
+# master (methods §2.1: all non-historical designs draw from the same master so
+# differences are attributable to selection). Provisional small test values for
+# the workflow stand-up; override via env for a tiny smoke run so the master
+# slug, the Step-1 driver, and the subset size stay mutually consistent
+# (methods §3.2). No CLI value flags. The long design gets its own master
+# cardinality N'; the default matches the short master's total scenario-years
+# (200 x 10yr = 40 x 50yr).
 _MASTER_N_FORCING = int(os.environ.get("NYCOPT_MASTER_N_FORCING", "200"))
+_MASTER_N_FORCING_LONG = int(os.environ.get("NYCOPT_MASTER_N_FORCING_LONG", "40"))
 _MASTER_REALS_PER_PROFILE = int(os.environ.get("NYCOPT_MASTER_REALS_PER_PROFILE", "1"))
-_MASTER_YEARS = int(os.environ.get("NYCOPT_MASTER_YEARS", "5"))
 _MASTER_SUBSET_N = int(os.environ.get("NYCOPT_MASTER_SUBSET_N", "64"))
 
 # Stationary-KN sizing for the scaling experiment's stand-in search ensemble
@@ -100,14 +119,11 @@ class ScenarioDesign:
     n_ensemble_draws
         Replication structure: number of independent ensemble constructions
         (each optimized across several seeds). ``None`` until decided.
-    master_pool_size
-        For pool-based designs (``resample_per_eval`` and ``hazard_fill``): size
-        of the master pool that Step-1 stages and from which ``n_realizations``
-        are drawn (per-eval for resampled; once, offline, for hazard-filling).
-        ``None`` for the fixed designs that stage their search ensemble directly.
     subset_seed
-        For ``hazard_fill`` only: the selector (LHS) seed; part of the final
-        ensemble slug so different selector seeds stage to distinct directories.
+        Base selector seed for the master-subset designs (random draw, LHS+NN,
+        hazard filling). Draw ``k`` uses ``subset_seed + k`` as its effective
+        seed, which is part of the staged reduced-ensemble slug so distinct
+        draws/seeds stage to distinct directories.
     selector
         For ``hazard_fill`` only: the subsample selector name (provenance/record;
         the wired selector is LHS + nearest-neighbor, ``"lhs_nn"``).
@@ -124,9 +140,10 @@ class ScenarioDesign:
         final ensemble slug so the two do not collide.
     master_kind
         How the master (pool) this design draws from is built: ``"stationary"``
-        (direct Kirsch-Nowak, ``kn_{Y}yr_n{N}``) or ``"forcing"`` (the shared
-        CMIP6-forced master ``master_{L}yr_n{N_M}``; methods §3.2). Forcing
-        designs (``hazard_filling``, ``input_stratified``) share one master.
+        (direct Kirsch-Nowak, ``kn_{Y}yr_n{N}``; supplemental scaling design
+        only) or ``"forcing"`` (a CMIP6-forced master ``master_{L}yr_n{N_M}``;
+        methods §3.2). All short-window forcing designs share ONE master; the
+        long design has its own long master of the same construction.
     n_forcing_profiles
         For ``master_kind == "forcing"``: number of CMIP6 forcing profiles
         (N_Theta). Master cardinality = ``n_forcing_profiles *
@@ -148,7 +165,6 @@ class ScenarioDesign:
     n_realizations: int | None = None
     realization_years: int | None = None
     n_ensemble_draws: int | None = None
-    master_pool_size: int | None = None
     subset_seed: int | None = None
     selector: str = "lhs_nn"
     selector_space: str = "cdf"
@@ -163,29 +179,16 @@ class ScenarioDesign:
         This is the single source of truth shared by :meth:`resolve_search_spec`
         and the Step-1 generation script, so the generated ensemble and the
         resolved search spec always name the same staged ``kn_{Y}yr_n{N}``
-        directory. Returns ``None`` for designs that do not stage a direct KN
-        ensemble (historic, preset-backed, or not-yet-wired designs).
-
-        - Fixed probabilistic (direct-KN): stage exactly the search ensemble
-          ``(realization_years, n_realizations)``.
-        - Resampled probabilistic / hazard-filling: stage the *master pool*
-          ``(realization_years, master_pool_size)``; the search ensemble is a
-          subset of that pool (per-evaluation random for resampled; a fixed
-          space-filling subset for hazard-filling).
+        directory. Only the supplemental ``scaling_stationary`` design stages a
+        direct stationary KN ensemble; every forcing design (all manuscript
+        ensemble designs) returns ``None`` (they stage a CMIP6 master instead).
         """
-        if self.master_kind == "forcing":
-            return None  # forcing designs stage a CMIP6 master, not a stationary kn ensemble
-        if self.ensemble_preset is not None:
+        if self.master_kind == "forcing" or self.ensemble_preset is not None:
             return None
-        if self.selection not in ("random", "hazard_fill"):
+        if self.selection != "random" or self.resample_per_eval:
             return None
         if self.realization_years is None or self.n_realizations is None:
             return None
-        uses_master_pool = self.resample_per_eval or self.selection == "hazard_fill"
-        if uses_master_pool:
-            if self.master_pool_size is None:
-                return None
-            return (self.realization_years, self.master_pool_size)
         return (self.realization_years, self.n_realizations)
 
     def master_n_realizations(self) -> int | None:
@@ -219,7 +222,7 @@ class ScenarioDesign:
         dims = self.kn_staged_dims()
         return None if dims is None else kirsch_nowak_slug(dims[0], dims[1])
 
-    def hazard_filling_slug(self) -> str | None:
+    def hazard_filling_slug(self, draw: int = 0) -> str | None:
         """Return the final reduced-ensemble slug for a ``hazard_fill`` design.
 
         This is the standalone ensemble the scengen subsample step stages and the
@@ -227,12 +230,17 @@ class ScenarioDesign:
         source of truth shared by the subsample script (output dir) and
         :meth:`resolve_search_spec` (resolution). Returns ``None`` for non-
         hazard-filling designs or before sizes are decided.
+
+        Args:
+            draw: Independent ensemble-draw index; the effective selector seed
+                is ``subset_seed + draw``, so each draw stages (and resolves)
+                its own reduced ensemble.
         """
         if self.selection != "hazard_fill":
             return None
         if self.realization_years is None or self.n_realizations is None:
             return None
-        seed = self.subset_seed or 0
+        seed = (self.subset_seed or 0) + draw
         space_tag = "" if self.selector_space == "cdf" else f"_{self.selector_space}"
         return (
             f"hazfill{space_tag}_{self.realization_years}yr_"
@@ -243,23 +251,48 @@ class ScenarioDesign:
         """Resolve this design's search ensemble to an ``EnsembleSpec``.
 
         Args:
-            draw: Index of the independent ensemble draw (replication). Only the
-                static-preset and direct-KN paths are wired today, and only for
-                ``draw == 0``; multi-draw replication awaits the
-                subsample-from-master construction.
+            draw: Index of the independent ensemble draw (replication unit,
+                so replicate runs partition). Master-subset designs (fixed
+                probabilistic short/long, ``input_stratified``,
+                ``hazard_filling*``) map each draw to a distinct deterministic
+                subset of their master, with effective selector seed
+                ``subset_seed + draw``. ``historic`` and the resampled design
+                have no fixed ensemble to redraw (structural) and accept only
+                ``draw == 0``.
 
         Returns:
             The ``EnsembleSpec`` describing the search ensemble. For the
-            resampled design this is the master-pool spec marked
+            resampled design this is the shared forcing-master spec marked
             ``resample_per_eval=True``; the simulation layer redraws a subset of
             ``n_realizations`` indices from the pool at each evaluation.
 
         Raises:
-            NotImplementedError: For ``draw != 0`` on a direct-KN design, or when a design's
-                master/reduced ensemble is not staged yet (with instructions to build it).
+            ValueError: For ``draw != 0`` on a design with no fixed ensemble to
+                replicate (``historic``, ``resampled_probabilistic``).
+            NotImplementedError: When a design's master/reduced ensemble is not
+                staged yet (with instructions to build it), or for ``draw != 0``
+                on the stationary scaling stand-in.
         """
         if self.ensemble_preset is not None:
+            if draw != 0:
+                raise ValueError(
+                    f"Scenario design '{self.name}' uses a single fixed "
+                    f"trace/preset; there is no ensemble draw to replicate "
+                    f"(got draw={draw}). Replicate over MOEA seeds instead."
+                )
             return get_ensemble_spec(self.ensemble_preset)
+        if self.resample_per_eval:
+            if draw != 0:
+                raise ValueError(
+                    f"Scenario design '{self.name}' redraws its scenarios at "
+                    f"every function evaluation; there is no fixed ensemble "
+                    f"draw to replicate (got draw={draw}). Replicate over MOEA "
+                    f"seeds instead."
+                )
+            # Per-evaluation resampling POOL = the shared forcing master; the
+            # simulation layer draws `n_realizations` indices from it at every
+            # evaluation (Trindade et al. 2017).
+            return as_resampling_pool(self._master_spec_or_raise(), self.n_realizations)
         if self.selection == "lhs_input":
             return self._resolve_input_stratified(draw)
         if self.selection == "hazard_fill":
@@ -267,41 +300,113 @@ class ScenarioDesign:
             # subsample step stages (its own HDF5 + _meta.json), not the master
             # pool. The optimizer loads it directly by slug — no manifest, no
             # realization-index override.
-            final_slug = self.hazard_filling_slug()
+            final_slug = self.hazard_filling_slug(draw)
             try:
                 return get_ensemble_spec(final_slug)
             except KeyError:
                 raise NotImplementedError(
-                    f"hazard_filling ensemble '{final_slug}' is not staged yet. "
-                    f"Generate the master pool ('{self.kn_ensemble_slug()}', "
-                    f"workflow step 02 with NYCOPT_SCENARIO_DESIGN=hazard_filling), then "
+                    f"hazard_filling ensemble '{final_slug}' (draw={draw}) is not "
+                    f"staged yet. Generate the master pool ('{self.kn_ensemble_slug()}', "
+                    f"workflow step 02 with NYCOPT_SCENARIO_DESIGN={self.name}), then "
                     f"run workflow step 03 (scripts/main/subsample_hazard_filling.py) to stage the "
-                    f"reduced ensemble."
+                    f"reduced ensemble for this draw."
                 ) from None
+        if self.master_kind == "forcing" and self.selection == "random":
+            return self._resolve_random_subset(draw)
         slug = self.kn_ensemble_slug()
         if slug is not None:
             if draw != 0:
                 raise NotImplementedError(
-                    f"Scenario design '{self.name}': multi-draw replication "
-                    f"(draw={draw}) is not wired yet. The stand-up path stages a "
-                    f"single ensemble; independent draws await the "
-                    f"subsample-from-master construction (experimental_design.md "
-                    f"#5)."
+                    f"Scenario design '{self.name}' stages a single stationary "
+                    f"KN ensemble (supplemental timing stand-in); multi-draw "
+                    f"replication is not defined for it (got draw={draw})."
                 )
-            spec = get_ensemble_spec(slug)
-            if self.resample_per_eval:
-                # Master pool: the simulation layer draws `n_realizations`
-                # indices from it at every evaluation (Trindade et al. 2017).
-                return as_resampling_pool(spec, self.n_realizations)
-            return spec
+            return get_ensemble_spec(slug)
         raise NotImplementedError(
             f"Scenario design '{self.name}' ({self.family}) has no ensemble "
             f"construction wired yet. Its sizes/lengths/draws/selection are "
-            f"open decisions (see experimental_design.md). Runnable today: "
-            f"'historic', 'fixed_probabilistic_short', "
-            f"'fixed_probabilistic_long', 'resampled_probabilistic', "
-            f"'input_stratified', 'hazard_filling'."
+            f"open decisions (see experimental_design.md)."
         )
+
+    def _master_spec_or_raise(self) -> EnsembleSpec:
+        """Resolve the staged forcing master this design draws from.
+
+        Returns:
+            The master's ``EnsembleSpec`` (resolved by slug from its staged
+            ``_meta.json``).
+
+        Raises:
+            NotImplementedError: If the design lacks forcing-master sizing or
+                the master is not staged yet (workflow step 02).
+        """
+        master = self.master_slug()
+        if master is None:
+            raise NotImplementedError(
+                f"Scenario design '{self.name}' is missing forcing-master sizing "
+                f"(master_kind/n_forcing_profiles/realization_years)."
+            )
+        try:
+            return get_ensemble_spec(master)
+        except KeyError:
+            raise NotImplementedError(
+                f"Scenario design '{self.name}': forcing master '{master}' is not "
+                f"staged yet. Generate it with workflow step 02 "
+                f"(NYCOPT_SCENARIO_DESIGN={self.name})."
+            ) from None
+
+    def _resolve_random_subset(self, draw: int) -> EnsembleSpec:
+        """Resolve a fixed uniform-random index draw from the forcing master.
+
+        This is the probabilistic control of methods §2.1:
+        the same master the hazard-filling / input-stratified designs subsample,
+        selected by *random* draw instead of a space-filling selector, so
+        cross-design differences are attributable to selection. Draw ``k``
+        selects a deterministic without-replacement subset of
+        ``n_realizations`` master realizations (seed = ``subset_seed + k``) and
+        materializes it from the master's daily chunks into a standalone
+        reduced ensemble ``rand_{L}yr_n{N}_s{seed}`` (resolved by slug).
+        Idempotent: reuses the staged reduced ensemble on later resolves.
+
+        Args:
+            draw: Independent ensemble-draw index (replication unit).
+
+        Returns:
+            The staged reduced ensemble's ``EnsembleSpec``.
+
+        Raises:
+            NotImplementedError: If sizing is missing or the master is not
+                staged yet (workflow step 02).
+        """
+        import numpy as np
+
+        if self.n_realizations is None or self.realization_years is None:
+            raise NotImplementedError(
+                f"Scenario design '{self.name}' is missing subset sizing "
+                f"(n_realizations/realization_years)."
+            )
+        seed = (self.subset_seed or 0) + draw
+        out_slug = f"rand_{self.realization_years}yr_n{self.n_realizations}_s{seed}"
+        try:
+            return get_ensemble_spec(out_slug)  # already materialized
+        except KeyError:
+            pass
+
+        master_spec = self._master_spec_or_raise()
+        rng = np.random.default_rng(seed)
+        idx = sorted(
+            int(i) for i in
+            rng.choice(master_spec.n_realizations, size=self.n_realizations, replace=False)
+        )
+        try:
+            materialize_subset_from_master(self.master_slug(), idx, out_slug, extra_meta={
+                "design": self.name, "selection": "random",
+                "subset_seed": seed, "draw": draw})
+        except KeyError as exc:  # master daily chunks absent
+            raise NotImplementedError(
+                f"random-draw design '{self.name}' could not materialize from "
+                f"master '{self.master_slug()}': {exc}"
+            ) from None
+        return get_ensemble_spec(out_slug)
 
     def _resolve_input_stratified(self, draw: int) -> EnsembleSpec:
         """Resolve the input-stratified search ensemble (methods §4.5).
@@ -316,7 +421,6 @@ class ScenarioDesign:
         """
         import numpy as np
         from scengen.subsample import input_stratified_subsample
-        from src.ensembles import materialize_subset_from_master
 
         master = self.master_slug()
         if master is None or self.n_realizations is None:
@@ -374,45 +478,63 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
     "fixed_probabilistic_short": ScenarioDesign(
         name="fixed_probabilistic_short",
         family="fixed_probabilistic_ensemble",
-        description="Many short synthetic sequences, drawn once at random from "
-                    "the master ensemble (here generated directly).",
+        description="Many short synthetic sequences, drawn once uniformly at "
+                    "random from the shared forcing master.",
         resample_per_eval=False,
         selection="random",
+        master_kind="forcing",
+        n_forcing_profiles=_MASTER_N_FORCING,
+        realizations_per_profile=_MASTER_REALS_PER_PROFILE,
         n_realizations=10,
-        realization_years=5,
+        realization_years=SCENARIO_YEARS,
+        subset_seed=0,
         notes="Baseline structured design (sample average approximation). "
-              "PROVISIONAL small test sizes (10 x 5yr = 50 scenario-years) for "
-              "the workflow stand-up; matched in scenario-years to "
-              "fixed_probabilistic_long. Final sizes + subsample-from-master TBD.",
+              "Random index-draw from the SAME forcing master as hazard_filling/"
+              "input_stratified (methods §2.1: differences attributable to "
+              "selection; the reference measure is the master's empirical "
+              "measure). Materialized per draw as rand_{L}yr_n{N}_s{seed}. "
+              "PROVISIONAL small test sizes (10 x L yr), matched in "
+              "scenario-years to fixed_probabilistic_long. Final sizes TBD.",
     ),
     "fixed_probabilistic_long": ScenarioDesign(
         name="fixed_probabilistic_long",
         family="fixed_probabilistic_ensemble_long",
         description="A few multi-decadal synthetic records at equal total "
-                    "simulated years.",
+                    "simulated years, drawn from a long forcing master.",
         resample_per_eval=False,
         selection="random",
+        master_kind="forcing",
+        n_forcing_profiles=_MASTER_N_FORCING_LONG,
+        realizations_per_profile=_MASTER_REALS_PER_PROFILE,
         n_realizations=2,
-        realization_years=25,
-        notes="Tests many-short vs few-long at equal simulated years. "
-              "PROVISIONAL small test sizes (2 x 25yr = 50 scenario-years), "
+        realization_years=LONG_RECORD_YEARS,
+        subset_seed=0,
+        notes="Tests many-short vs few-long at equal simulated years. Cannot "
+              "index-draw from the shared L-yr master (records are L' yr), so "
+              "it draws from its OWN long master master_{L'}yr_n{N'} built by "
+              "the same forcing pipeline (same theta hypercube, years=L'). "
+              "PROVISIONAL small test sizes (2 x 50yr = 100 scenario-years), "
               "matched to fixed_probabilistic_short. Final sizes TBD.",
     ),
     "resampled_probabilistic": ScenarioDesign(
         name="resampled_probabilistic",
         family="resampled_probabilistic_ensemble",
-        description="Scenarios redrawn at random from the master ensemble at "
-                    "every function evaluation (per Trindade et al. 2017).",
+        description="Scenarios redrawn at random from the shared forcing master "
+                    "at every function evaluation (per Trindade et al. 2017).",
         resample_per_eval=True,
         selection="random",
+        master_kind="forcing",
+        n_forcing_profiles=_MASTER_N_FORCING,
+        realizations_per_profile=_MASTER_REALS_PER_PROFILE,
         n_realizations=10,
-        realization_years=5,
-        master_pool_size=50,
+        realization_years=SCENARIO_YEARS,
         notes="No fixed ensemble to replicate; seeds only. Comparisons rely "
-              "entirely on the held-out re-evaluation. PROVISIONAL small test "
-              "sizes: draw 10 of a 50-realization master pool, 5yr each "
-              "(per-eval draw matches fixed_probabilistic_short). The simulation "
-              "layer redraws indices each evaluation. Final sizes TBD.",
+              "entirely on the held-out re-evaluation. The per-evaluation "
+              "resampling POOL is the SAME forcing master as hazard_filling/"
+              "input_stratified/fixed_probabilistic_short; the simulation layer "
+              "redraws n_realizations indices each evaluation. PROVISIONAL "
+              "per-eval draw size 10 (matches fixed_probabilistic_short). "
+              "Final sizes TBD. Requires a non-chunked (single-HDF5) master.",
     ),
     "scaling_stationary": ScenarioDesign(
         name="scaling_stationary",
@@ -442,7 +564,7 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         master_kind="forcing",
         n_forcing_profiles=_MASTER_N_FORCING,
         realizations_per_profile=_MASTER_REALS_PER_PROFILE,
-        realization_years=_MASTER_YEARS,
+        realization_years=SCENARIO_YEARS,
         n_realizations=_MASTER_SUBSET_N,
         subset_seed=0,
         notes="Most common recent DMDU approach; contrast with hazard_filling "
@@ -463,7 +585,7 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         n_forcing_profiles=_MASTER_N_FORCING,
         realizations_per_profile=_MASTER_REALS_PER_PROFILE,
         n_realizations=_MASTER_SUBSET_N,
-        realization_years=_MASTER_YEARS,
+        realization_years=SCENARIO_YEARS,
         subset_seed=0,
         selector="lhs_nn",
         notes="The proposed contribution. Subsample N of the shared CMIP6-forced "
@@ -476,7 +598,8 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "tail-balanced final set (2 dry + 2 wet, target m=4 -> N>=~64 to "
               "fill). Both the master pool and candidate axes may change. The "
               "subsample step stages a standalone reduced ensemble "
-              "(hazfill_5yr_n64_s0 + _meta.json) the optimizer loads by slug.",
+              "(hazfill_{L}yr_n{N}_s{seed} + _meta.json) the optimizer loads by "
+              "slug; draw k stages/loads seed = subset_seed + k.",
     ),
     "hazard_filling_absolute": ScenarioDesign(
         name="hazard_filling_absolute",
@@ -491,7 +614,7 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         n_forcing_profiles=_MASTER_N_FORCING,
         realizations_per_profile=_MASTER_REALS_PER_PROFILE,
         n_realizations=_MASTER_SUBSET_N,
-        realization_years=_MASTER_YEARS,
+        realization_years=SCENARIO_YEARS,
         subset_seed=0,
         selector="lhs_nn",
         selector_space="abs",
@@ -507,7 +630,7 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "scaling (that samples for post-hoc evaluation and re-imposes "
               "likelihoods; it never distorts the search). Objectives are held "
               "fixed across both arms; the held-out re-evaluation is the common "
-              "comparison basis. Stages hazfill_abs_5yr_n64_s0.",
+              "comparison basis. Stages hazfill_abs_{L}yr_n{N}_s{seed}.",
     ),
 }
 

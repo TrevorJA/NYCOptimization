@@ -1163,7 +1163,7 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
          single dict. Each dict has the same shape as
          :func:`run_simulation_inmemory`'s output, so existing metric
          functions in ``src/objectives.py`` work unchanged when wrapped by
-         an ``EnsembleObjective`` aggregator.
+         an ``AnnualUnitObjective`` from ``src/objectives_ensemble.py``.
 
       4. Salinity LSTM is now scenario-aware (PywrDRB-ML + Pywr-DRB
          salt_front_location refactor, 2026-05-06): ``ml_model.records``
@@ -1453,36 +1453,60 @@ def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
                                batch_size: int) -> list:
     """Borg-format ensemble objectives via the memory-batched simulation path.
 
-    Builds the per-realization base-metric matrix ``(n_real, n_obj)`` by
-    simulating the ensemble in sequential batches (freeing each batch's
-    timeseries), then collapses each objective's column with its satisficing
-    aggregator. Identical result to the legacy
-    ``ObjectiveSet.compute_for_borg_ensemble`` (same per-realization base
-    metrics, same aggregation), but never holds all N data dicts at once.
+    Implements the two-layer annual-unit scheme (objective_definitions.md §2)
+    batch by batch: each batch's realizations are reduced to their stage-(i)
+    per-unit-year annual-metric vectors (NOT per-realization scalars) and the
+    batch's timeseries are freed; after all batches, each objective's pooled
+    unit-years (all realizations' units concatenated, in realization order)
+    are collapsed with its stage-(ii) unit operator. Identical result to the
+    unbatched ``ObjectiveSet.compute_for_borg_ensemble`` (same pooled units,
+    same operator), but never holds all N data dicts at once.
 
-    Requires an ObjectiveSet of ``EnsembleObjective`` instances (exposing
-    ``.base`` and ``.compute_for_borg_from_values``), as returned by
+    Requires an ObjectiveSet of ``AnnualUnitObjective`` instances (exposing
+    ``annual_units`` and ``compute_for_borg_from_units``), as returned by
     ``formulations.get_objective_set()`` when the search ensemble is active.
     """
-    base_matrix, _ = _ensemble_base_matrix(
-        nyc_config, ensemble_spec, objective_set, batch_size,
-    )
     ens_objs = list(objective_set)
-    return [o.compute_for_borg_from_values(base_matrix[:, k])
-            for k, o in enumerate(ens_objs)]
+    if not ens_objs or not all(
+        hasattr(o, "annual_units") and hasattr(o, "compute_for_borg_from_units")
+        for o in ens_objs
+    ):
+        raise NotImplementedError(
+            "batched ensemble evaluation requires AnnualUnitObjective "
+            "instances (with .annual_units and .compute_for_borg_from_units). "
+            "Build the set via src.objectives_ensemble."
+            "build_ensemble_objective_set or pass the active set returned by "
+            "formulations.get_objective_set()."
+        )
+
+    def per_real(data):
+        # Stage (i): one annual-metric vector per objective for this
+        # realization (length = its metric-bearing water-year unit count).
+        return [o.annual_units(data) for o in ens_objs]
+
+    unit_rows = run_simulation_ensemble_batched(
+        nyc_config, ensemble_spec, batch_size, per_real,
+    )
+    return [
+        o.compute_for_borg_from_units(
+            np.concatenate([row[k] for row in unit_rows])
+            if unit_rows else np.array([], dtype=float)
+        )
+        for k, o in enumerate(ens_objs)
+    ]
 
 
 def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
                           batch_size: int, *, skip_failed_batches: bool = False):
     """Per-realization base-metric matrix ``(n_real, n_obj)`` in NATURAL units.
 
-    The shared matrix-building half of the batched ensemble path: used by both
-    :func:`_evaluate_ensemble_batched` (search) and :func:`evaluate_raw`
-    (re-eval), so the two compute base metrics from one code path. Column ``k``
-    holds ``objective_set[k].base.compute(data)`` for each realization (NOT
-    Borg-negated, NOT aggregated). Requires an ObjectiveSet of
-    ``EnsembleObjective`` instances (exposing ``.base`` and
-    ``.compute_for_borg_from_values``).
+    The matrix-building half of the batched RE-EVAL path (:func:`evaluate_raw`):
+    column ``k`` holds ``objective_set[k].base.compute(data)`` — the §1
+    single-trace temporal metric — for each realization (NOT Borg-negated,
+    NOT aggregated). Search does NOT use this: its batched path
+    (:func:`_evaluate_ensemble_batched`) pools per-unit-year annual metrics
+    instead. Requires an ObjectiveSet of ``AnnualUnitObjective`` instances
+    (exposing ``.base``).
 
     Args:
         skip_failed_batches: When True (re-eval path), a batch whose simulation
@@ -1499,13 +1523,10 @@ def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
         column ``k``. Rows for skipped batches are all-NaN.
     """
     ens_objs = list(objective_set)
-    if not ens_objs or not all(
-        hasattr(o, "base") and hasattr(o, "compute_for_borg_from_values")
-        for o in ens_objs
-    ):
+    if not ens_objs or not all(hasattr(o, "base") for o in ens_objs):
         raise NotImplementedError(
-            "batched ensemble evaluation requires EnsembleObjective instances "
-            "(with .base and .compute_for_borg_from_values). Build the set via "
+            "batched ensemble base-matrix evaluation requires "
+            "AnnualUnitObjective instances (with .base). Build the set via "
             "src.objectives_ensemble.build_ensemble_objective_set or pass the "
             "active set returned by formulations.get_objective_set()."
         )
@@ -1530,13 +1551,14 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
                  ensemble_spec=None, realization_batch=None):
     """Per-realization base-objective matrix in NATURAL units (not Borg-negated).
 
-    Re-eval-facing companion to :func:`evaluate`: runs the SAME simulation and
-    per-realization base-metric computation, but returns the raw
-    ``(n_realizations, n_base_objs)`` matrix instead of the aggregated/negated
-    objectives. This lets robustness metrics (satisficing, regret, ...) be scored
-    offline from the persisted matrix without re-simulating. Mirrors
-    ``evaluate()``'s dispatch (resample / single-trace / batched / legacy
-    unbatched) so re-eval base metrics match the search path.
+    Re-eval-facing companion to :func:`evaluate`: runs the SAME simulation
+    path, but computes each realization's §1 single-trace temporal metrics
+    (``objective.base``) and returns the raw ``(n_realizations, n_base_objs)``
+    matrix instead of search's pooled annual-unit objectives. This lets
+    robustness metrics (satisficing, regret, ...) be scored offline from the
+    persisted matrix without re-simulating. Mirrors ``evaluate()``'s dispatch
+    (resample / single-trace / batched / legacy unbatched) so re-eval
+    simulations match the search path.
 
     Args:
         dv_vector: Decision-variable vector.
@@ -1554,7 +1576,7 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
         ``(n_realizations, n_base_objs)`` in natural units; ``base_names[k]`` is
         column ``k``'s base objective name. Single-trace (``is_ensemble=False``)
         returns shape ``(1, n_obj)`` where the base metrics ARE the natural
-        objective values (no satisficing wrapper); robustness metrics defined
+        objective values (no ensemble aggregation); robustness metrics defined
         over realizations are degenerate at ``n_realizations == 1`` and the
         offline scorer treats them as N/A.
     """
@@ -1597,7 +1619,7 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
     ens_objs = list(objective_set)
     if not ens_objs or not all(hasattr(o, "base") for o in ens_objs):
         raise NotImplementedError(
-            "ensemble evaluate_raw requires EnsembleObjective instances "
+            "ensemble evaluate_raw requires AnnualUnitObjective instances "
             "(with .base). Build the set via "
             "src.objectives_ensemble.build_ensemble_objective_set."
         )
@@ -1708,11 +1730,13 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
         data = run_simulation_inmemory(nyc_config)
         objs = objective_set.compute_for_borg(data)
     elif realization_batch and realization_batch > 0:
-        # Memory-batched ensemble path: simulate in sequential batches and
-        # collapse the per-realization base-metric matrix to satisficing
-        # objectives, never holding all N data dicts at once. Shares
-        # run_simulation_ensemble_batched with the objective-sensitivity
-        # diagnostic, so search and diagnostic handle realizations identically.
+        # Memory-batched ensemble path: simulate in sequential batches,
+        # keeping only each realization's per-unit-year annual metrics
+        # (stage i), then collapse the pooled unit-years with each
+        # objective's unit operator (stage ii) — never holding all N data
+        # dicts at once. Shares run_simulation_ensemble_batched with the
+        # objective-sensitivity diagnostic, so search and diagnostic handle
+        # realizations identically.
         objs = _evaluate_ensemble_batched(
             nyc_config, ensemble_spec, objective_set, realization_batch,
         )

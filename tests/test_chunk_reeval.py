@@ -60,9 +60,14 @@ def test_chunk_reeval_matches_unchunked(tmp_path, monkeypatch):
 
     master_spec = ensembles.get_ensemble_spec(master)
     monkeypatch.setattr(config, "REEVAL_ENSEMBLE_SPEC", master_spec)
-    # The ensemble path resolves the (suffixed) ensemble objective names, not the single-trace set.
-    from src.objectives_ensemble import ENSEMBLE_OBJECTIVES
-    monkeypatch.setattr(config, "ACTIVE_OBJECTIVES", sorted(ENSEMBLE_OBJECTIVES)[:3])
+    # The ensemble path resolves the annual-unit objective names, not the single-trace set.
+    # Use objectives with DISTINCT §1 bases: the persisted re-eval matrix is keyed by
+    # base name, so the mean/P99 flood variants (which share a base) cannot coexist here.
+    monkeypatch.setattr(config, "ACTIVE_OBJECTIVES", [
+        "downstream_flood_days_annual",
+        "montague_flow_deficit_p99_pct",
+        "nyc_delivery_reliability_annual",
+    ])
     monkeypatch.setattr(reeval_core, "_REEVAL_CACHE", None)
 
     obj_set, _, is_ens = reeval_core.resolve_reeval()
