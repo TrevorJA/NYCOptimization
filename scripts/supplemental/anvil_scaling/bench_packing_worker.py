@@ -55,6 +55,31 @@ from src.formulations import get_baseline_values  # noqa: E402
 from src.simulation import _ensemble_window, evaluate  # noqa: E402
 
 
+def _code_sha() -> str:
+    """Short git SHA of the working tree the evals actually ran against.
+
+    Recorded per shard because a SLURM job runs the code as it exists at
+    START time, not submit time: a merge/checkout while the job sits in the
+    queue silently changes the model under test. The analyzer refuses to pool
+    shards from different SHAs, so a mid-queue code change shows up as an
+    incomparable epoch instead of a contaminated average.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             cwd=str(PROJECT_DIR), capture_output=True,
+                             text=True, timeout=10)
+        sha = out.stdout.strip()
+        if out.returncode != 0 or not sha:
+            return "unknown"
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                               cwd=str(PROJECT_DIR), capture_output=True,
+                               text=True, timeout=10).stdout.strip()
+        return f"{sha}-dirty" if dirty else sha
+    except Exception:  # noqa: BLE001 - provenance is best-effort, never fatal
+        return "unknown"
+
+
 def _mem_available_mb() -> float:
     """Node-wide MemAvailable from /proc/meminfo in MB (NaN if unreadable)."""
     try:
@@ -82,6 +107,7 @@ def main() -> int:
     mode = os.environ.get("NYCOPT_PACK_MODE", "ladder")
     job_id = os.environ.get("SLURM_JOB_ID", "local")
     batch = int(SEARCH_REALIZATION_BATCH or 0)
+    code_sha = _code_sha()
 
     spec = SEARCH_ENSEMBLE_SPEC
     if spec is None or not spec.is_ensemble:
@@ -131,6 +157,7 @@ def main() -> int:
             "obj2": f"{objs[2]:.6f}",
             "t_start_epoch": f"{t_start_epoch:.1f}",
             "job_id": job_id,
+            "code_sha": code_sha,
         })
 
     out_csv = scfg.packing_shard_path(k_concurrent, batch, rank, job_id)
