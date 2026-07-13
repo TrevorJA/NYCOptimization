@@ -21,9 +21,6 @@ v1 ships:
 DU factors are intentionally absent from v1 presets — see
 local_notes/followups/du_factor_design.md (TBD) for the deferred design notes;
 the ``du_factors`` field is the forward hook.
-
-Plan reference:
-    /home/fs02/pmr82_0001/tja73/.claude/plans/in-this-session-i-tranquil-feigenbaum.md
 """
 
 import re

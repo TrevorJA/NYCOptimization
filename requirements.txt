@@ -9,7 +9,7 @@
 #     ../Pywr-DRB                        -> pywrdrb simulation model
 #     ../SynHydro                        -> Kirsch-Nowak synthetic generator
 #     ../NYCOptimization_scenario_generation  -> scengen (ensemble gen + hazard diagnostics)
-# NOTE: keep ../Pywr-DRB checked out on the `nyc_opt` branch (see .claude/CLAUDE.md).
+# NOTE: keep ../Pywr-DRB checked out on the `nyc_opt` branch.
 # scengen imports synhydro at runtime, so SynHydro must be installed too (it is, below).
 -e ../Pywr-DRB
 -e ../SynHydro

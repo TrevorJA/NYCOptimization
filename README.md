@@ -2,8 +2,8 @@
 
 Multi-objective optimization of NYC reservoir operations (Pywr-DRB + MM-Borg),
 focused on the design of the streamflow ensembles used during MOEA evaluation.
-Method + design notes: `docs/notes/methods/experimental_design.md`; conventions:
-`.claude/CLAUDE.md`; per-step details: `workflow/README.md`.
+Method + design notes: `docs/notes/methods/experimental_design.md`;
+per-step details: `workflow/README.md`.
 
 ## Experimental Replication
 
