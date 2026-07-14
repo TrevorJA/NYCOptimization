@@ -26,6 +26,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -89,6 +90,57 @@ def load_packing() -> "tuple[pd.DataFrame | None, pd.DataFrame | None]":
     return rows, steps
 
 
+def _epoch_key(rows: pd.DataFrame) -> pd.Series:
+    """Identify the code version each shard row was measured against.
+
+    Prefers the ``code_sha`` the worker records. Shards written before that
+    column existed fall back to a *model fingerprint*: the per-job median
+    objective vector. Identical DVs on the same ensemble must give identical
+    objectives, so a job whose objectives differ from another job's was run
+    against different model code — which is exactly what happened on
+    2026-07-13, when a merge landed while the spot/batch jobs sat in the
+    queue (a SLURM job runs the code present at START time, not submit time).
+    """
+    if "code_sha" in rows.columns and rows["code_sha"].notna().all():
+        return rows["code_sha"].astype(str)
+    fp = (rows.groupby("job_id")[["obj0", "obj1", "obj2"]]
+          .median().round(4)
+          .apply(lambda r: "objfp:" + "_".join(f"{v:.4f}" for v in r), axis=1))
+    return rows["job_id"].map(fp).astype(str)
+
+
+def select_epoch(rows: pd.DataFrame, what: str) -> pd.DataFrame:
+    """Restrict ``rows`` to one code version; loudly refuse to pool across them.
+
+    Pooling shards measured against different model code silently averages two
+    different experiments (and biases every slowdown normalized to a stale
+    K=1 baseline). When several epochs are present we keep the NEWEST (latest
+    ``t_start_epoch``) and report what was dropped, so stale measurements
+    surface as "re-run the ladder", not as a contaminated curve. Override with
+    ``NYCOPT_SCALING_EPOCH=<code_sha|objfp:...>`` to pin a specific epoch.
+    """
+    epochs = _epoch_key(rows)
+    if epochs.nunique() <= 1:
+        return rows
+    pinned = os.environ.get("NYCOPT_SCALING_EPOCH")
+    order = (rows.assign(_e=epochs).groupby("_e")["t_start_epoch"]
+             .max().sort_values(ascending=False))
+    keep = pinned if pinned in set(order.index) else str(order.index[0])
+    print(f"[analyze] WARNING: {what} spans {epochs.nunique()} code versions "
+          f"(shards measured against different model code -- they are NOT "
+          f"comparable). Keeping the newest epoch '{keep}'; dropping:")
+    for e in order.index:
+        if e == keep:
+            continue
+        sub = rows[epochs == e]
+        ks = sorted(sub["k_concurrent"].unique())
+        jobs = sorted(sub["job_id"].astype(str).unique())
+        print(f"[analyze]   - epoch '{e}': {len(sub)} rows, K={ks}, jobs={jobs}")
+    print("[analyze]   -> re-run the dropped steps against the current code "
+          "to restore a single-epoch dataset.")
+    return rows[epochs == keep]
+
+
 def summarize_packing(rows: pd.DataFrame,
                       steps: "pd.DataFrame | None") -> pd.DataFrame:
     """Aggregate shard rows to one summary row per (K, realization_batch).
@@ -109,6 +161,7 @@ def summarize_packing(rows: pd.DataFrame,
             print(f"[analyze] excluding {n_dropped} smoke-mode shard rows "
                   f"from the packing summary (ladder/spot data present)")
         rows = measured
+    rows = select_epoch(rows, "packing summary")
     out = []
     for (k, batch), grp in rows.groupby(["k_concurrent", "realization_batch"]):
         warm = grp.loc[grp["kind"] == "warm", "wall_seconds"].astype(float)
@@ -185,6 +238,7 @@ def summarize_batch(rows: pd.DataFrame) -> "pd.DataFrame | None":
     b = rows[rows["mode"] == "batch"]
     if not len(b):
         return None
+    b = select_epoch(b, "batch sweep")
     n_real = int(b["n_realizations"].mode().iloc[0])
     out = []
     for (k, batch), grp in b.groupby(["k_concurrent", "realization_batch"]):
