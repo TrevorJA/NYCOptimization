@@ -546,24 +546,34 @@ ENSEMBLE_COST_STAGGER_MAX_S: int = 30
 # cells before the production sweeps run. Every reported number comes from the
 # measurement, never from these.
 
-#: Peak RSS per rank, MB: base + per_ry * (N * L). Seeded from the packing
-#: sweep's K=1 rows (kn_20yr_n20 trimmed: 755 MB at 400 realization-years, and
-#: 502 MB at batch=1 => base ~490 MB, ~0.67 MB per realization-year). The full
-#: model simulates ~13 more reservoirs live, so its placeholder is 1.5x base
-#: and 2x slope until the probe measures it.
+#: Peak RSS per rank, MB: base + per_ry * (N * L). CALIBRATED from the probe
+#: (K=1, no contention) at (N=1, L=5) and (N=200, L=10), plus the smoke cell at
+#: (N=20, L=20). Fitted to the two LARGE cells, which makes the model
+#: over-predict the small ones (603 MB vs an actual 441 MB at 5
+#: realization-years) — the safe direction, since the error only costs a small
+#: cell some packing density it does not need, while an under-prediction at the
+#: large end would OOM a node.
+#: The full model's memory is barely above the trimmed model's (+3% base, +13%
+#: slope), NOT the 1.5-2x its extra live reservoirs suggested. Those reservoirs
+#: are STARFIT release rules, not additional LP structure.
 ENSEMBLE_COST_RSS_MB: "dict[str, tuple[float, float]]" = {
-    "trimmed": (490.0, 0.67),
-    "full": (735.0, 1.34),
+    "trimmed": (601.0, 0.394),
+    "full": (617.0, 0.444),
 }
 
-#: Warm per-eval seconds: a + b * L * N**alpha. Seeded so the trimmed model
-#: reproduces the packing sweep's 64 s at (N=20, L=20) with the sub-linear
-#: exponent the pywr-scenario structure implies; the full placeholder is 2x.
-#: alpha here is an ASSUMPTION for the walltime guard — measuring it is the
-#: experiment's deliverable (see ``scaling_fits.csv``).
+#: Warm per-eval seconds: a + b * L * N**alpha. CALIBRATED from the same three
+#: cells (a = the fixed per-eval overhead read off the N=1 cell; alpha from the
+#: N=200 cell). Reproduces the smoke cell to within 3% (trimmed) and 12%
+#: (full, over-predicting).
+#: NOTE the exponents: ~0.96 trimmed, ~0.93 full — cost is very nearly LINEAR in
+#: N, not the strong sub-linearity the pywr-scenario structure was assumed to
+#: buy. Cost per scenario-year is almost flat (0.158 s/ry at 400 ry vs 0.145 s/ry
+#: at 2000 ry). These constants only size the sweep's walltime guard; the
+#: exponent is MEASURED properly by the N sweep at fixed L (see
+#: ``scaling_fits.csv``), which is the deliverable.
 ENSEMBLE_COST_T_EST_S: "dict[str, tuple[float, float, float]]" = {
-    "trimmed": (5.0, 0.268, 0.80),
-    "full": (10.0, 0.536, 0.80),
+    "trimmed": (1.5, 0.182, 0.956),
+    "full": (1.5, 0.248, 0.929),
 }
 
 #: Fixed per-step cost beyond the evals themselves: interpreter + pywrdrb

@@ -1,0 +1,15 @@
+=== Ensemble-cost sweep manifest: probe job 19210282 ===
+Date:        2026-07-14T19:08:28Z
+Host:        a046.anvil.rcac.purdue.edu
+Partition:   shared
+Env file:    workflow/envs/ensemble_cost.env
+Mode:        probe
+Budget (s):  13000 (time limit 14400s)
+Ranks avail: 1
+Cells (N L model M K est_s):
+  1 5 trimmed 1 1 212
+  1 5 full 1 1 232
+  200 10 trimmed 1 1 802
+  200 10 full 1 1 1412
+Python:      /home/x-tamestoy/.conda/envs/2024.02-py311/venv/bin/python3
+Git HEAD:    48e59c8f1b64786cc915533696706576dac4db86

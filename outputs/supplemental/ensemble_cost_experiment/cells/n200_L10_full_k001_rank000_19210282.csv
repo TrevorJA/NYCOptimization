@@ -1,0 +1,3 @@
+experiment,preset,formulation,model_variant,n_realizations,realization_years,sim_start,sim_end,k_concurrent,realization_batch,mode,rank,hostname,stagger_s,eval_index,kind,wall_seconds,ru_maxrss_mb,mem_available_mb,objs_ok,obj0,obj1,obj2,t_start_epoch,job_id,code_sha
+ensemble_cost,kn_10yr_n200,ffmp,full,200,10,1945-10-01,1955-09-30,1,0,probe,0,a046.anvil.rcac.purdue.edu,0,0,cold,342.483,1503.7,59740.0,True,-0.322778,35.000000,-0.330000,1784056710.1,19210282,48e59c8
+ensemble_cost,kn_10yr_n200,ffmp,full,200,10,1945-10-01,1955-09-30,1,0,probe,0,a046.anvil.rcac.purdue.edu,0,1,warm,341.980,1503.8,70361.1,True,-0.322778,35.000000,-0.330000,1784057052.6,19210282,48e59c8
