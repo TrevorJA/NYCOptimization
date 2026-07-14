@@ -1,7 +1,7 @@
-"""chunk_reeval.py - Simulate a large chunked master ensemble and score it, metrics-only.
+"""chunk_reeval.py - Simulate a large chunked test ensemble and score it, metrics-only.
 
 Re-evaluates a set of policies (decision-variable vectors) against **every chunk** of a chunked
-forcing master (``src.ensemble_generation.generate_master_ensemble`` with ``chunk_size > 0``),
+test ensemble (``src.ensemble_generation.generate_forcing_ensemble`` with ``chunk_size > 0``),
 computing objectives/robustness from **in-memory reduced metrics** — full simulation-output
 timeseries are never persisted. Memory is bounded three ways: (1) each chunk is a small standalone
 ensemble; (2) ``run_simulation_ensemble_batched`` (``SEARCH_REALIZATION_BATCH``) batches realizations
@@ -12,7 +12,7 @@ Design (reusing the re-evaluation stack):
   :func:`sensitivity_common.assign_rank_slots` (extends re-eval's solution-only split to the
   realization/chunk axis). Ranks coordinate through ``.done`` marker files, not flaky MPI collectives.
 - Each unit reduces to a ``(S_chunk, M)`` base-metric matrix via :func:`src.simulation.evaluate_raw`
-  (recorder -> ``/dev/null``); rows are re-keyed from the chunk's local ids to the master's **global**
+  (recorder -> ``/dev/null``); rows are re-keyed from the chunk's local ids to the ensemble's **global**
   realization ids. Each rank writes its rows to a long-format parquet partial.
 - Rank 0 concatenates the partials, reassembles per-solution ``(N_M, M)`` matrices, and reuses
   :func:`src.reeval_core.persist_reeval_raw` (so ``reeval_raw.parquet`` / ``reeval_raw_meta.json`` /
@@ -20,7 +20,7 @@ Design (reusing the re-evaluation stack):
   :func:`src.robustness.run` for the robustness scorecards.
 
 The re-eval ensemble (``config.REEVAL_ENSEMBLE_SPEC``, via ``NYCOPT_REEVAL_ENSEMBLE_PRESET``) must be
-the master slug: its ``realization_indices == range(N_M)`` are exactly the global ids, so the reused
+the test-ensemble slug: its ``realization_indices == range(N_M)`` are exactly the global ids, so the reused
 persistence keys every row to its true global realization.
 """
 
@@ -67,7 +67,7 @@ def _rank_long_rows(
                   f"{type(exc).__name__}: {exc}")
             continue
         # Vectorized long rows (row-major over local realization, objective),
-        # re-keyed from the chunk's local ids to the master's global ids.
+        # re-keyed from the chunk's local ids to the ensemble's global ids.
         arr = np.asarray(base_matrix, dtype=float)
         r_i, m_i = arr.shape
         gid_row = np.asarray(global_ids[:r_i], dtype=int)
@@ -119,8 +119,8 @@ def _merge_and_persist(
     )
     base_names = [o.base.name for o in obj_set]
 
-    # Reassemble each solution's (N_M, M) matrix in global-id order (NaN for failed/absent cells);
-    # persist_reeval_raw maps row j -> realization_indices[j] == global id j (master spec).
+    # Reassemble each solution's (N, M) matrix in global-id order (NaN for failed/absent cells);
+    # persist_reeval_raw maps row j -> realization_indices[j] == global id j.
     raw_results = []
     for sid in solution_ids:
         sub = long_df[long_df["solution_id"] == sid]
@@ -132,15 +132,31 @@ def _merge_and_persist(
         raw_results.append((sid, piv.to_numpy(dtype=float), base_names, None))
 
     persist_reeval_raw(reeval_dir, raw_results, formulation, len(solution_ids), seed)
-    robustness.run(reeval_dir)
+
+    # Pass the status-quo re-eval matrix if step 05 staged one under this same
+    # reeval tag. Without it `improvement_vs_baseline` warns and silently drops --
+    # which is what happened on every chunked run before this.
+    from config import REEVALUATION_SETTINGS
+
+    baseline_dir = reeval_dir / "baseline"
+    has_baseline = any(
+        (baseline_dir / f).exists()
+        for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")
+    )
+    robustness.run(
+        reeval_dir,
+        baseline_dir=baseline_dir if has_baseline else None,
+        metrics=tuple(REEVALUATION_SETTINGS["robustness_metrics"]),
+        within_sow_agg=REEVALUATION_SETTINGS.get("within_sow_aggregator", "mean"),
+    )
     return reeval_dir
 
 
-def simulate_master_chunks(
+def simulate_test_chunks(
     formulation: str, dvs: np.ndarray, solution_ids: list[int] | None = None,
     *, seed=None, realization_batch: int | None = None, reeval_dir: Path | None = None,
 ) -> Path | None:
-    """Re-evaluate ``dvs`` against every chunk of the master and write robustness artifacts.
+    """Re-evaluate ``dvs`` against every chunk of the test ensemble and write robustness artifacts.
 
     Args:
         formulation: Formulation name (DV grammar).
@@ -149,25 +165,26 @@ def simulate_master_chunks(
         seed: Optional provenance seed (output subdir + meta).
         realization_batch: Realizations per within-chunk simulation batch (default
             ``config.SEARCH_REALIZATION_BATCH``).
-        reeval_dir: Output dir (default ``reeval_output_dir`` under the master's re-eval tag).
+        reeval_dir: Output dir (default ``reeval_output_dir`` under the test ensemble's re-eval tag).
 
     Returns:
         The re-eval output directory on rank 0; ``None`` on worker ranks.
     """
     from config import (REEVAL_ENSEMBLE_SPEC, SEARCH_REALIZATION_BATCH,
                         active_scenario_name, derive_slug)
-    from src.ensembles import master_chunk_specs
+    from src.ensembles import pool_chunk_specs
     from src.reeval_core import reeval_output_dir, resolve_reeval
 
     if REEVAL_ENSEMBLE_SPEC is None or not REEVAL_ENSEMBLE_SPEC.is_ensemble:
         raise ValueError(
-            "chunk re-eval requires NYCOPT_REEVAL_ENSEMBLE_PRESET to resolve to the chunked master "
-            "ensemble (an is_ensemble spec whose realization_indices span the global master)."
+            "chunk re-eval requires NYCOPT_REEVAL_ENSEMBLE_PRESET to resolve to the chunked "
+            "test ensemble (an is_ensemble spec whose realization_indices span its global index "
+            "space)."
         )
-    obj_set, master_spec, _ = resolve_reeval()
-    master_slug = master_spec.inflow_type
-    n_realizations = master_spec.n_realizations
-    chunks = master_chunk_specs(master_slug)
+    obj_set, test_spec, _ = resolve_reeval()
+    test_slug = test_spec.inflow_type
+    n_realizations = test_spec.n_realizations
+    chunks = pool_chunk_specs(test_slug)
 
     dvs = np.atleast_2d(np.asarray(dvs, dtype=float))
     n_solutions = dvs.shape[0]
@@ -179,7 +196,7 @@ def simulate_master_chunks(
     comm, rank, size = get_mpi_context()
     if reeval_dir is None:
         reeval_dir = reeval_output_dir(active_scenario_name(), derive_slug(formulation),
-                                       master_spec, seed)
+                                       test_spec, seed)
     partial_dir = Path(reeval_dir) / "partial"
     prepare_partial_dir(partial_dir, rank)
 

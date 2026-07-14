@@ -10,7 +10,7 @@ policies, objective by objective.
 Usage:
     python scripts/supplemental/reeval_compare_figures.py \
         --reeval-tag kn_78yr_n100 \
-        --arms hazard_filling fixed_probabilistic_short
+        --arms hazard_filling_du input_stratified
 """
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from config import OUTPUTS_DIR  # noqa: E402
+from src.scenario_designs import campaign_designs  # noqa: E402
 
 # 5 discriminating satisficing objectives (trenton reliability & minor-flood are
 # degenerate/non-discriminating and excluded). Short, clean axis labels.
@@ -42,9 +43,13 @@ OBJECTIVES = [
 
 # Muted, colorblind-friendly palette; clean labels.
 STYLE = {
-    "hazard_filling":            ("#2c7fb8", "hazard_filling (faithful, cdf)"),
-    "hazard_filling_absolute":   ("#d95f0e", "hazard_filling_absolute (abs)"),
-    "fixed_probabilistic_short": ("#636363", "fixed_probabilistic_short (baseline)"),
+    "historic":                  ("#bdbdbd", "historic (record)"),
+    "fixed_probabilistic":       ("#636363", "fixed_probabilistic (i.i.d. control)"),
+    "resampled_probabilistic":   ("#756bb1", "resampled_probabilistic (per-eval redraw)"),
+    "hazard_filling_stationary": ("#2c7fb8", "hazard_filling_stationary (cdf)"),
+    "input_stratified":          ("#fdae6b", "input_stratified (LHS over theta)"),
+    "hazard_filling_du":         ("#d95f0e", "hazard_filling_du (cdf)"),
+    "hazard_filling_absolute":   ("#8c564b", "hazard_filling_absolute (abs)"),
 }
 
 
@@ -69,8 +74,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--slug", default="ffmp_obj7_pilot")
     p.add_argument("--reeval-tag", required=True)
-    p.add_argument("--arms", nargs="+",
-                   default=["hazard_filling", "fixed_probabilistic_short"])
+    p.add_argument("--arms", nargs="+", default=campaign_designs(),
+                   help="Scenario designs to compare (default: the campaign "
+                        "designs). Arms with no staged re-eval are skipped.")
     p.add_argument("--outdir", default=None)
     args = p.parse_args(argv)
 

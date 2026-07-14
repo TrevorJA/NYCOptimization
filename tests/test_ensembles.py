@@ -4,7 +4,8 @@ tests/test_ensembles.py - Unit tests for the ensemble-evaluation registry.
 Covers:
   1. EnsembleSpec immutability and derived properties.
   2. PRESETS registry contents (v1 ships three: historic_single,
-     wcu_kirsch_n5, reeval_wcu_kirsch_n300).
+     wcu_kirsch_n5). The held-out test ensemble E_test needs no preset entry:
+     it resolves from its staged _meta.json by slug.
   3. get_ensemble_spec resolver behavior (hit / miss).
   4. with_indices_override returns a new spec without mutating the original.
   5. derive_slug integration: ensemble fragment is inserted only when the
@@ -82,8 +83,17 @@ def test_du_factor_signature_is_sorted_deterministic():
 # ---------------------------------------------------------------------------
 
 def test_v1_presets_present():
-    expected = {"historic_single", "wcu_kirsch_n5", "reeval_wcu_kirsch_n300"}
-    assert expected.issubset(set(PRESETS))
+    assert {"historic_single", "wcu_kirsch_n5"}.issubset(set(PRESETS))
+
+
+def test_no_reeval_preset_is_registered():
+    """E_test is resolved from its staged directory, not from PRESETS.
+
+    The old ``reeval_wcu_kirsch_n300`` entry named an inflow directory that never
+    existed. ``_spec_from_staged_dir`` resolves any staged slug carrying a
+    ``_meta.json``, so E_test needs no registry code.
+    """
+    assert not [k for k in PRESETS if k.startswith("reeval")]
 
 
 def test_historic_single_is_legacy_passthrough():
@@ -100,15 +110,6 @@ def test_wcu_kirsch_n5_shape():
     assert spec.n_realizations == 5
     assert spec.slug_fragment == "wcu5"
     assert spec.source_kind == "synhydro_kn"
-
-
-def test_reeval_wcu_kirsch_n300_shape():
-    spec = PRESETS["reeval_wcu_kirsch_n300"]
-    assert spec.is_ensemble is True
-    assert spec.n_realizations == 300
-    assert spec.slug_fragment == "reeval_wcu300"
-    # Independent seed from search preset (selection-bias guard).
-    assert spec.seed != PRESETS["wcu_kirsch_n5"].seed
 
 
 # ---------------------------------------------------------------------------
@@ -196,10 +197,10 @@ def test_derive_slug_moea_config_suffix():
 @pytest.mark.slow
 def test_ensemble_not_in_slug_is_scenario_dir():
     """The search ensemble is the parent {scenario} dir, NOT part of the slug."""
-    env = {"NYCOPT_SCENARIO_DESIGN": "fixed_probabilistic_short",
+    env = {"NYCOPT_SCENARIO_DESIGN": "fixed_probabilistic",
            "NYCOPT_MOEA_CONFIG": "production"}
     slug = _slug_with_env(env)
-    assert "kn_" not in slug and "fixed_probabilistic_short" not in slug
+    assert "kn_" not in slug and "fixed_probabilistic" not in slug
     # The scenario name is the partition instead.
     code = (
         "import sys; sys.path.insert(0, '.'); "
@@ -216,7 +217,7 @@ def test_ensemble_not_in_slug_is_scenario_dir():
         capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stderr
-    assert [ln for ln in result.stdout.splitlines() if ln.strip()][-1] == "fixed_probabilistic_short"
+    assert [ln for ln in result.stdout.splitlines() if ln.strip()][-1] == "fixed_probabilistic"
 
 
 @pytest.mark.slow

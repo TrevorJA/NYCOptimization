@@ -1,0 +1,28 @@
+{
+  "ensemble_dir": "..\\NYCOptimization\\outputs\\synthetic_ensembles\\hazfill_5yr_n64_s0",
+  "n_pool": 1000,
+  "n_selected": 64,
+  "hazard_axes": [
+    "drought_deficit_volume",
+    "drought_onset_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration"
+  ],
+  "coverage": {
+    "l2_star": 0.025283686619710633,
+    "random_l2_mean": 0.03164757213102675,
+    "random_l2_std": 0.006361261221534734,
+    "discrepancy_percentile": 0.111,
+    "nn_min": 0.08902948949645834,
+    "nn_mean": 0.22286821716800417,
+    "nn_cv": 0.29741374520369074,
+    "mst_mean": 0.257557475291984
+  },
+  "marginal_max_gap": {
+    "drought_deficit_volume": 0.10199999999999998,
+    "drought_onset_rate": 0.107,
+    "flood_peak_magnitude": 0.05999999999999994,
+    "flood_pulse_duration": 0.21300000000000002
+  },
+  "redundant_axis_pairs": []
+}

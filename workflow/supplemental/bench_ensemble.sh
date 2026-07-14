@@ -7,7 +7,7 @@
 #
 # The active search ensemble comes from the scenario design
 # (NYCOPT_SCENARIO_DESIGN), sourced from an env file under workflow/envs/.
-# Use an ensemble-based design (e.g. fixed_probabilistic_short) — historic is
+# Use an ensemble-based design (e.g. fixed_probabilistic) — historic is
 # single-trace.
 #
 # Usage (from repo root):

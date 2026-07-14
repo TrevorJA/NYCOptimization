@@ -1,0 +1,65 @@
+{
+  "scenario_design": "historic",
+  "slug": "ffmp_obj7_smoke",
+  "formulation": "ffmp",
+  "seed": null,
+  "reeval_tag": "kn_20yr_n5",
+  "is_ensemble": true,
+  "n_solutions": 1,
+  "n_realizations": 5,
+  "base_names": [
+    "nyc_delivery_reliability_weekly",
+    "nyc_delivery_deficit_cvar90_pct",
+    "montague_flow_reliability_weekly",
+    "montague_flow_deficit_cvar90_pct",
+    "trenton_flow_reliability_weekly",
+    "downstream_flood_days_minor",
+    "nyc_storage_p5_pct"
+  ],
+  "ensemble_obj_names": [
+    "nyc_delivery_reliability_weekly__sat95",
+    "nyc_delivery_deficit_cvar90_pct__sat10",
+    "montague_flow_reliability_weekly__sat85",
+    "montague_flow_deficit_cvar90_pct__sat25",
+    "trenton_flow_reliability_weekly__sat85",
+    "downstream_flood_days_minor__sat10",
+    "nyc_storage_p5_pct__sat25"
+  ],
+  "realization_indices": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "thresholds": {
+    "nyc_delivery_reliability_weekly": 0.95,
+    "nyc_delivery_deficit_cvar90_pct": 10.0,
+    "montague_flow_reliability_weekly": 0.85,
+    "montague_flow_deficit_cvar90_pct": 25.0,
+    "trenton_flow_reliability_weekly": 0.85,
+    "downstream_flood_days_minor": 10.0,
+    "nyc_storage_p5_pct": 25.0
+  },
+  "kinds": {
+    "nyc_delivery_reliability_weekly": "ge",
+    "nyc_delivery_deficit_cvar90_pct": "le",
+    "montague_flow_reliability_weekly": "ge",
+    "montague_flow_deficit_cvar90_pct": "le",
+    "trenton_flow_reliability_weekly": "ge",
+    "downstream_flood_days_minor": "le",
+    "nyc_storage_p5_pct": "ge"
+  },
+  "directions": {
+    "nyc_delivery_reliability_weekly": "maximize",
+    "nyc_delivery_deficit_cvar90_pct": "minimize",
+    "montague_flow_reliability_weekly": "maximize",
+    "montague_flow_deficit_cvar90_pct": "minimize",
+    "trenton_flow_reliability_weekly": "maximize",
+    "downstream_flood_days_minor": "minimize",
+    "nyc_storage_p5_pct": "maximize"
+  },
+  "solution_ids": [
+    0
+  ]
+}

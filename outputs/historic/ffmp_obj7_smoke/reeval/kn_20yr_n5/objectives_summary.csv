@@ -1,0 +1,4 @@
+solution_id,nyc_delivery_reliability_weekly__sat95,nyc_delivery_deficit_cvar90_pct__sat10,montague_flow_reliability_weekly__sat85,montague_flow_deficit_cvar90_pct__sat25,trenton_flow_reliability_weekly__sat85,downstream_flood_days_minor__sat10,nyc_storage_p5_pct__sat25
+0,0.0,0.0,0.8,1.0,1.0,1.0,1.0
+1,0.0,0.0,0.8,1.0,1.0,1.0,1.0
+2,0.0,0.0,0.2,1.0,1.0,1.0,1.0

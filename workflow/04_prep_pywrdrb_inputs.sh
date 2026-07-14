@@ -8,14 +8,18 @@
 #
 # The ensemble is the active scenario design's search ensemble
 # (config.SEARCH_ENSEMBLE_SPEC); the base catchment_inflow_mgd.hdf5 must
-# already exist (step 02 generator, + step 03 subsample for hazard-filling
+# already exist (step 02 generator, + step 03 selection for hazard-filling
 # designs). Pass `--preset NAME` to stage an arbitrary ensemble instead (e.g.
 # the held-out re-eval ensemble). Per-realization work is distributed across
 # MPI ranks automatically.
 #
+# Search ensembles are now staged PER DRAW, so this step runs once per draw:
+# the array index is the ensemble-draw index k (0..K-1), matching step 02.
+# (Pool-owning designs stage one draw-invariant pool, so a single task suffices.)
+#
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling \
-#          workflow/04_prep_pywrdrb_inputs.sh
+#   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+#          --array=0-9 workflow/04_prep_pywrdrb_inputs.sh
 #
 #SBATCH --job-name=prep_pywrdrb_inputs
 #SBATCH --account=ees260021
@@ -23,8 +27,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=33
 #SBATCH --time=01:00:00
-#SBATCH --output=logs/prep_pywrdrb_inputs_%j.out
-#SBATCH --error=logs/prep_pywrdrb_inputs_%j.err
+#SBATCH --array=0
+#SBATCH --output=logs/prep_pywrdrb_inputs_%A_%a.out
+#SBATCH --error=logs/prep_pywrdrb_inputs_%A_%a.err
 set -euo pipefail
 
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
@@ -35,7 +40,11 @@ nycopt_source_env_file optional
 # oversubscribing the node.
 nycopt_pin_threads
 
+# Array index = ensemble draw k; config.py resolves SEARCH_ENSEMBLE_SPEC to that
+# draw's staged slug.
+export NYCOPT_ENSEMBLE_DRAW="${SLURM_ARRAY_TASK_ID:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
+
 NTASKS="${SLURM_NTASKS:-1}"
-echo "[prep_pywrdrb_inputs] design=${NYCOPT_SCENARIO_DESIGN:-<default>} ranks=${NTASKS} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "[prep_pywrdrb_inputs] design=${NYCOPT_SCENARIO_DESIGN:-<default>} draw=${NYCOPT_ENSEMBLE_DRAW} ranks=${NTASKS} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 mpirun -np "${NTASKS}" python3 -u scripts/main/prep_pywrdrb_inputs.py "$@"
 echo "[prep_pywrdrb_inputs] done: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

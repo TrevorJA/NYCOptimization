@@ -1,0 +1,108 @@
+{
+  "axes": [
+    "drought_deficit_volume",
+    "drought_onset_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration"
+  ],
+  "n": 64,
+  "M": 1000,
+  "reports": {
+    "cdf": {
+      "per_axis": {
+        "drought_deficit_volume": {
+          "ks_vs_pool": 0.07675,
+          "tail_share_p90": 0.03125,
+          "median_ratio": 1.0227747027205982
+        },
+        "drought_onset_rate": {
+          "ks_vs_pool": 0.08925,
+          "tail_share_p90": 0.109375,
+          "median_ratio": 0.9286318503574678
+        },
+        "flood_peak_magnitude": {
+          "ks_vs_pool": 0.04875,
+          "tail_share_p90": 0.109375,
+          "median_ratio": 0.992809014240622
+        },
+        "flood_pulse_duration": {
+          "ks_vs_pool": 0.0435,
+          "tail_share_p90": 0.0625,
+          "median_ratio": 0.9999999999997999
+        }
+      },
+      "frac_in_any_p90_corner": 0.28125,
+      "mean_ks_vs_pool": 0.0645625,
+      "mean_tail_share_p90": 0.078125,
+      "nn_min_abs": 0.03602636182567722,
+      "nn_cv_abs": 0.8521284385657202,
+      "L2star_cdf_space": 0.025283686619710633,
+      "L2star_abs_space": 0.4829434941523337,
+      "mean_abs_spearman": 0.12134090512186384
+    },
+    "absolute": {
+      "per_axis": {
+        "drought_deficit_volume": {
+          "ks_vs_pool": 0.236,
+          "tail_share_p90": 0.28125,
+          "median_ratio": 1.4379126811570646
+        },
+        "drought_onset_rate": {
+          "ks_vs_pool": 0.4255,
+          "tail_share_p90": 0.4375,
+          "median_ratio": 3.3610414375299698
+        },
+        "flood_peak_magnitude": {
+          "ks_vs_pool": 0.352875,
+          "tail_share_p90": 0.390625,
+          "median_ratio": 1.3268711401127384
+        },
+        "flood_pulse_duration": {
+          "ks_vs_pool": 0.413875,
+          "tail_share_p90": 0.40625,
+          "median_ratio": 2.19999999999956
+        }
+      },
+      "frac_in_any_p90_corner": 0.96875,
+      "mean_ks_vs_pool": 0.3570625,
+      "mean_tail_share_p90": 0.37890625,
+      "nn_min_abs": 0.052563129691411824,
+      "nn_cv_abs": 0.6249918691952263,
+      "L2star_cdf_space": 0.10868830742172741,
+      "L2star_abs_space": 0.16265675580127267,
+      "mean_abs_spearman": 0.23669751129303354
+    },
+    "absolute_p1_99": {
+      "per_axis": {
+        "drought_deficit_volume": {
+          "ks_vs_pool": 0.2785,
+          "tail_share_p90": 0.25,
+          "median_ratio": 1.6675420588052081
+        },
+        "drought_onset_rate": {
+          "ks_vs_pool": 0.42775,
+          "tail_share_p90": 0.390625,
+          "median_ratio": 2.6327145554732896
+        },
+        "flood_peak_magnitude": {
+          "ks_vs_pool": 0.273,
+          "tail_share_p90": 0.296875,
+          "median_ratio": 1.2511751149856685
+        },
+        "flood_pulse_duration": {
+          "ks_vs_pool": 0.37475,
+          "tail_share_p90": 0.34375,
+          "median_ratio": 1.9999999999995999
+        }
+      },
+      "frac_in_any_p90_corner": 0.890625,
+      "mean_ks_vs_pool": 0.3385,
+      "mean_tail_share_p90": 0.3203125,
+      "nn_min_abs": 0.06456863884845575,
+      "nn_cv_abs": 0.6185378053523741,
+      "L2star_cdf_space": 0.10428213320346291,
+      "L2star_abs_space": 0.23055034531218396,
+      "mean_abs_spearman": 0.22643917828463378
+    }
+  }
+}

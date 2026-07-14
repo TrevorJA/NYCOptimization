@@ -139,19 +139,25 @@ rerun step `05` later.
 #### 2.1 Ensemble generation and staging
 
 The `historic` scenario design uses the single observed trace and **skips this
-section**. Ensemble scenario designs need their search ensemble generated
-(step `02`), optionally subsampled (step `03`, hazard-filling designs), and
-formatted into pywrdrb HDF5 inputs (step `04`):
+section**. Every other design **generates its own realizations** (step `02`),
+the hazard-filling designs then select their search ensemble from their own
+candidate pool (step `03`), and each draw is formatted into pywrdrb HDF5 inputs
+(step `04`). The array index in `02`/`04` is the ensemble-draw index *k*
+(`K = design.n_ensemble_draws`); sizing and seeds come from the design registry,
+never from the command line:
 
 ```bash
-# Generate the stochastic flow ensemble / master pool
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_kn_short.env workflow/02_generate_ensemble.sh
+# Generate the design's own realizations (or its candidate pool), one array task per draw
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+       workflow/02_generate_ensemble.sh
 
-# Hazard-filling designs only: subsample the master pool into the reduced search ensemble
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling workflow/03_subsample_ensemble.sh
+# Hazard-filling designs only: select N members from the design's own pool (all K draws in one job)
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+       workflow/03_subsample_ensemble.sh
 
-# Format the search ensemble into pywrdrb inputs
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling workflow/04_prep_pywrdrb_inputs.sh
+# Format each draw's search ensemble into pywrdrb inputs
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+       --array=0-9 workflow/04_prep_pywrdrb_inputs.sh
 ```
 
 The held-out re-evaluation ensemble is staged the same way (steps `02` + `04`

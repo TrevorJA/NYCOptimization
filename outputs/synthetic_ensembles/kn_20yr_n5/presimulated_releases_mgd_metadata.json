@@ -1,0 +1,32 @@
+{
+  "inflow_type": "kn_20yr_n5",
+  "start_date": "1945-10-01",
+  "end_date": "1965-09-30",
+  "reservoirs": [
+    "wallenpaupack",
+    "prompton",
+    "shoholaMarsh",
+    "mongaupeCombined",
+    "beltzvilleCombined",
+    "fewalter",
+    "merrillCreek",
+    "hopatcong",
+    "nockamixon",
+    "assunpink",
+    "ontelaunee",
+    "stillCreek",
+    "blueMarsh",
+    "greenLane"
+  ],
+  "realization_ids": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4"
+  ],
+  "initial_volume_frac": 0.8,
+  "source": "STARFITReleaseEnsemblePreprocessor",
+  "output_file": "C:\\Users\\tjame\\Desktop\\Research\\DRB\\Pywr-DRB\\NYCOptimization\\outputs\\synthetic_ensembles\\kn_20yr_n5\\presimulated_releases_mgd.hdf5",
+  "metadata_file": "C:\\Users\\tjame\\Desktop\\Research\\DRB\\Pywr-DRB\\NYCOptimization\\outputs\\synthetic_ensembles\\kn_20yr_n5\\presimulated_releases_mgd_metadata.json"
+}

@@ -93,7 +93,7 @@ def test_chunk_reeval_matches_unchunked(tmp_path, monkeypatch):
 
     reeval_dir = tmp_path / "out"
     reeval_dir.mkdir()
-    out = chunk_reeval.simulate_master_chunks(
+    out = chunk_reeval.simulate_test_chunks(
         "ffmp", dvs, solution_ids=[0, 1], seed=0, reeval_dir=reeval_dir,
     )
     assert out == reeval_dir

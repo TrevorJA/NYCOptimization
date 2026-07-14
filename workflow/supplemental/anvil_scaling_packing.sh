@@ -77,9 +77,9 @@ scfg.configure_anvil_scaling_env()
 import config
 s = config.SEARCH_ENSEMBLE_SPEC
 assert s is not None and s.is_ensemble, (
-    'SEARCH_ENSEMBLE_SPEC is not a staged ensemble: stage the hazard-filling '
-    'design first (workflow steps 02-04 with '
-    'NYCOPT_SCENARIO_DESIGN=hazard_filling).')
+    'SEARCH_ENSEMBLE_SPEC is not a staged ensemble: stage the stand-in ensemble '
+    'first (workflow steps 02 + 04 with '
+    'NYCOPT_SCENARIO_DESIGN=scaling_stationary).')
 print(f'pre-flight OK: {s.preset_name} N={s.n_realizations} '
       f'years={s.realization_years}')
 "

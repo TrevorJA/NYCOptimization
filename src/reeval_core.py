@@ -83,9 +83,27 @@ def reeval_output_dir(scenario: str, slug: str, spec, seed=None):
 
 
 def reeval_obj_names() -> list:
-    """Objective names for the re-eval objective set (CSV columns)."""
-    obj_set, _, _ = resolve_reeval()
-    return list(obj_set.names)
+    """Column names for ``objectives_summary.csv``, naming what the cells CONTAIN.
+
+    For an ensemble re-eval the cells are **realization-level Starr satisficing
+    fractions** (``SatisficingAgg`` over the per-realization whole-trace metric),
+    so the columns are ``sat__{base_objective}``. They are NOT the search-time
+    annual-unit objectives: the search path pools per-unit-year annual metrics
+    through the §2 unit operators (``FailureFrequencyOp`` / ``PooledPercentileOp``
+    / ``PooledMeanOp``), which are never invoked at re-evaluation. Naming these
+    columns after the annual objectives (e.g. ``nyc_delivery_deficit_p99_pct``)
+    promised a percentile in percent and delivered a fraction in [0, 1].
+
+    The re-eval metric does not need to equal the search metric; it only needs to
+    be IDENTICAL ACROSS DESIGNS, which is what makes the comparison commensurable.
+
+    For a single-trace re-eval (R == 1) the row IS the natural objective vector,
+    so the base names are used unchanged.
+    """
+    obj_set, _, is_ensemble = resolve_reeval()
+    if not is_ensemble:
+        return list(obj_set.names)
+    return [f"sat__{o.base.name}" for o in obj_set]
 
 
 def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str,
@@ -152,6 +170,74 @@ def satisficing_from_raw(base_matrix, base_names=None) -> list:
     return [float(o.aggregator(arr[:, k])) for k, o in enumerate(ens_objs)]
 
 
+def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, int | None]:
+    """Recover which deeply-uncertain state of the world (SOW) each realization belongs to.
+
+    A *SOW* is one forcing profile theta. When the ensemble was generated with
+    ``realizations_per_profile = R``, realization ``k`` was generated under profile
+    ``p = k // R``, so the R realizations sharing a theta are R samples of natural
+    variability WITHIN one deeply-uncertain state — the unit of the Triangle-lineage
+    robustness measure (Herman et al. 2014; Trindade et al. 2017; Gold et al. 2022,
+    2023), which collapses the stochastic traces inside each SOW before applying the
+    Starr domain criterion across SOWs.
+
+    Persisting the grouping is what makes that metric computable OFFLINE from the
+    re-eval cube. The cube records ``realization_id``; without ``sow_ids`` the two
+    robustness units cannot be told apart after the fact, and re-simulating to recover
+    a grouping that generation already knew would be absurd.
+
+    Read from the staged ensemble's ``forcing_profiles.npz`` (which stores
+    ``realizations_per_profile`` alongside the per-realization theta), falling back to
+    the staged ``_meta.json``. An ensemble with NO forcing profiles — a stationary
+    ensemble, or the historic single trace — has no SOW structure, so this returns
+    ``(None, None, None)`` and the SOW metrics are N/A. A grouping is never fabricated.
+
+    Args:
+        spec: The re-eval ``EnsembleSpec``.
+        realization_indices: The realization ids the matrix rows map to.
+
+    Returns:
+        ``(sow_ids, n_sow, realizations_per_sow)``; ``sow_ids`` is aligned 1:1 with
+        ``realization_indices``. All three are ``None`` when the ensemble has no
+        forcing profiles.
+    """
+    import json
+
+    if spec is None or not spec.is_ensemble:
+        return None, None, None
+
+    from src.ensembles import staged_ensemble_dir
+
+    staged = staged_ensemble_dir(spec.inflow_type)
+    r_per_sow = None
+
+    npz = staged / "forcing_profiles.npz"
+    if npz.exists():
+        import numpy as np
+        with np.load(npz, allow_pickle=True) as z:
+            if "realizations_per_profile" in z:
+                r_per_sow = int(z["realizations_per_profile"])
+
+    if r_per_sow is None:
+        meta_path = staged / "_meta.json"
+        if not meta_path.exists():
+            return None, None, None
+        meta = json.loads(meta_path.read_text())
+        # No forcing profiles -> no SOW structure. `population` is authoritative;
+        # `theta_sampler` is None for a stationary ensemble.
+        if meta.get("population") != "du_forced" or meta.get("theta_sampler") is None:
+            return None, None, None
+        if meta.get("realizations_per_profile") is None:
+            return None, None, None
+        r_per_sow = int(meta["realizations_per_profile"])
+
+    if r_per_sow < 1:
+        return None, None, None
+
+    sow_ids = [int(i) // r_per_sow for i in realization_indices]
+    return sow_ids, len(set(sow_ids)), r_per_sow
+
+
 def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
     """Self-describing metadata sidecar for the persisted raw matrix.
 
@@ -160,8 +246,9 @@ def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
     ``NYCOPT_SAT_THRESHOLDS`` at scoring time (the moving-measuring-stick guard,
     McPhail et al. 2020). Carries per-objective thresholds/kinds/directions, the
     base-objective column order, the realization indices each matrix row maps to,
-    and the run provenance ``(scenario_design, slug, seed)`` so re-evals are
-    poolable across designs for cross-design comparison.
+    the SOW each realization belongs to (:func:`sow_grouping`), and the run
+    provenance ``(scenario_design, slug, seed)`` so re-evals are poolable across
+    designs for cross-design comparison.
     """
     obj_set, spec, is_ensemble = resolve_reeval()
 
@@ -180,6 +267,8 @@ def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
         directions = {o.name: o.direction for o in obj_set}
         realization_indices = [0]
 
+    sow_ids, n_sow, realizations_per_sow = sow_grouping(spec, realization_indices)
+
     from config import active_scenario_name, derive_slug
     return {
         "scenario_design": active_scenario_name(),
@@ -193,6 +282,12 @@ def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
         "base_names": base_names,
         "ensemble_obj_names": list(obj_set.names),
         "realization_indices": realization_indices,
+        # SOW grouping, aligned 1:1 with realization_indices. None when the ensemble
+        # carries no forcing profiles (stationary / historic) -- the SOW-unit metrics
+        # are then N/A rather than silently falling back to the realization unit.
+        "sow_ids": sow_ids,
+        "n_sow": n_sow,
+        "realizations_per_sow": realizations_per_sow,
         "thresholds": thresholds,
         "kinds": kinds,
         "directions": directions,

@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-30 (after batch 3 — Lin et al. preprint added: 25 papers).
 
-> **Status note (2026-06-11).** Still valid as cross-paper synthesis of the per-paper notes. The open question in §1 (DU-in-search vs DU-only-in-re-evaluation) has since been resolved by `../experimental_design.md`: the study compares six scenario designs during search, including the Trindade-style resampled probabilistic design and the proposed hazard-filling design, with cross-design comparison only via re-evaluation on a held-out deeply uncertain test ensemble. Newer and more specific scenario-design literature is organized as per-subtopic annotated-bibliography notes indexed in `scenario_design.md` (with `scenario_design_tables.md` and `scenario_design_taxonomy.md`), which take precedence where they overlap.
+> **Status note.** Still valid as cross-paper synthesis of the per-paper notes. The open question in §1 (DU-in-search vs DU-only-in-re-evaluation) is resolved by `../methods/experimental_design.md`: the study compares six scenario designs during search across two populations (stationary and DU-forced), including a Brodeur-style resampled probabilistic design and the two hazard-filling designs, with cross-design comparison only via re-evaluation on a held-out deeply uncertain test ensemble. Newer and more specific scenario-design literature is organized as per-subtopic annotated-bibliography notes indexed in `scenario_design.md` (with `scenario_design_tables.md` and `scenario_design_taxonomy.md`), which take precedence where they overlap.
 
 This file accumulates *cross-paper* synthesis. Per-paper findings stay in `notes/`; this file captures what the literature collectively says, where papers agree or disagree, and what gaps emerge for the NYCOptimization manuscript. **Editing rule:** new claims should cite the per-paper note(s) by slug.
 
@@ -90,7 +90,7 @@ Decision 2026-04-30: **DU-in-search using a structured drought-spread ensemble d
 - MSTmean (mean-of-MST-edges) is the best space-filling predictor of ranking convergence.
 - Method is post-hoc (subsample existing baseline) — no extra simulation needed.
 
-For us, Bonham 2024's framework applies primarily to the *re-evaluation* ensemble. The *search* ensemble is small (O(10)) by design — drought-characteristic-space coverage rather than statistical convergence is the relevant criterion for the search ensemble.
+For us, Bonham 2024's framework applies to both the *re-evaluation* ensemble and, through its space-filling metrics, to diagnosing coverage of the hazard-filling search ensembles (N = 100 × 10 yr). For the search ensemble, hazard-space coverage rather than statistical convergence is the relevant criterion.
 
 ### How the DU-in-search story plays out in the manuscript
 

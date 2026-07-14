@@ -1,0 +1,114 @@
+{
+  "pool": "..\\NYCOptimization\\outputs\\synthetic_ensembles\\kn_5yr_n200",
+  "candidate_axes": [
+    "drought_deficit_volume",
+    "drought_duration",
+    "drought_peak_depth",
+    "drought_onset_rate",
+    "drought_recovery_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration",
+    "flood_rise_rate"
+  ],
+  "spread": {
+    "drought_deficit_volume": {
+      "std": 9.021400358726934,
+      "iqr": 11.367491630142741,
+      "skew": 1.0203327449486272,
+      "zero_frac": 0.14,
+      "degenerate": false
+    },
+    "drought_duration": {
+      "std": 9.305609867171523,
+      "iqr": 13.0,
+      "skew": 0.6616920984925074,
+      "zero_frac": 0.14,
+      "degenerate": false
+    },
+    "drought_peak_depth": {
+      "std": 0.7697923102020972,
+      "iqr": 0.7790861479377518,
+      "skew": -0.3886990815897171,
+      "zero_frac": 0.14,
+      "degenerate": false
+    },
+    "drought_onset_rate": {
+      "std": 0.42829473398796153,
+      "iqr": 0.36038745963241897,
+      "skew": 2.098325177566831,
+      "zero_frac": 0.14,
+      "degenerate": false
+    },
+    "drought_recovery_rate": {
+      "std": 0.28558022617854395,
+      "iqr": 0.28538442234031863,
+      "skew": 2.822169575373152,
+      "zero_frac": 0.14,
+      "degenerate": false
+    },
+    "flood_peak_magnitude": {
+      "std": 5.817649489893707,
+      "iqr": 6.3118842698889726,
+      "skew": 2.70998002351763,
+      "zero_frac": 0.005,
+      "degenerate": false
+    },
+    "flood_pulse_duration": {
+      "std": 4.337049688440288,
+      "iqr": 5.0,
+      "skew": 2.213339189323301,
+      "zero_frac": 0.27,
+      "degenerate": false
+    },
+    "flood_rise_rate": {
+      "std": 5.969919612328117,
+      "iqr": 7.274486602724289,
+      "skew": 1.3959656163943803,
+      "zero_frac": 0.005,
+      "degenerate": false
+    }
+  },
+  "surviving_axes": [
+    "drought_deficit_volume",
+    "drought_duration",
+    "drought_peak_depth",
+    "drought_onset_rate",
+    "drought_recovery_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration",
+    "flood_rise_rate"
+  ],
+  "clusters": [
+    [
+      "flood_peak_magnitude",
+      "flood_rise_rate"
+    ],
+    [
+      "flood_pulse_duration"
+    ],
+    [
+      "drought_deficit_volume",
+      "drought_duration",
+      "drought_peak_depth"
+    ],
+    [
+      "drought_onset_rate"
+    ],
+    [
+      "drought_recovery_rate"
+    ]
+  ],
+  "recommended_axes": [
+    "drought_deficit_volume",
+    "drought_onset_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration"
+  ],
+  "effective_dimension": 4,
+  "explained_variance_ratio": [
+    0.3546600478198423,
+    0.28566432796035585,
+    0.2159208532374611,
+    0.14375477098234063
+  ]
+}

@@ -1,6 +1,6 @@
 # Project Terminology
 
-*Last updated: 2026-06-10. Controlled vocabulary for NYCOptimization manuscripts, code, and notes. Full citations live in the literature notes indexed by `docs/notes/literature/scenario_design.md`. When writing, use these terms exactly and avoid the flagged synonyms.*
+*Controlled vocabulary for NYCOptimization manuscripts, code, and notes. Full citations live in the literature notes indexed by `docs/notes/literature/scenario_design.md`. When writing, use these terms exactly and avoid the flagged synonyms.*
 
 ---
 
@@ -14,23 +14,35 @@
 
 ## Scenarios and ensembles
 
-**Scenario.** One streamflow sequence (here ~5 years, all model inflow nodes) over which a candidate policy is simulated during one evaluation. Used in the stochastic-programming sense of a discrete realization supplied to the optimizer (Dupačová et al. 2003; Kaut & Wallace 2007), not the narrative-futures sense.
+**Scenario.** One streamflow sequence (here 10 years, all model inflow nodes) over which a candidate policy is simulated during one evaluation. Used in the stochastic-programming sense of a discrete realization supplied to the optimizer, not the narrative-futures sense.
 
-**Realization.** A single output sequence of a stochastic generator. Every scenario is a realization (or a window of one), but most realizations in the master ensemble never become evaluation scenarios.
+**Realization.** A single output sequence of a stochastic generator. Every scenario is a realization (or a window of one).
 
 **Ensemble.** A finite set of realizations or scenarios. Always qualify which ensemble is meant.
 
-**Master ensemble** (synonym, "ensemble of ensembles"). The very large (order 1M member) collection of short realizations produced in pipeline step (ii) by running every sampled input-space parameter set through the generator. Cf. the large-ensemble architecture of Lamontagne et al. (2018, *Earth's Future*).
+**Population.** The law from which a design's realizations are drawn. Two are used: the **stationary** population (Kirsch–Nowak fit to the historic record, forcing held at the historic fit) and the **DU-forced** population (forcing parameters sampled from the CMIP6 harmonic hypercube). A design's population and its selection rule are independent choices, and the comparison holds one fixed while varying the other.
 
-**Evaluation ensemble** (synonym, "search ensemble"). The small scenario set actually used inside `evaluation()` during MOEA search. The object RQ1 designs. Enumerated by `config.ENSEMBLE_PRESETS`.
+**Candidate pool.** The pool of i.i.d. realizations that a hazard-filling design subsamples. It **belongs to that design**, is generated with its own seed stream, and is disjoint from the test ensemble. No other design draws from it. Hazard-filling is the only design that needs one, because hazard coordinates cannot be prescribed at generation — they are measured on a realized sequence, so a hazard-space design must *select from* a pool rather than *generate to* a target. Input-space designs face no such constraint and generate directly to their design points.
 
-**Test ensemble** (synonym, "re-evaluation ensemble"). The much larger held-out ensemble used in workflow step 08 to stress-test Pareto-approximate policies out of sample (the MORDM re-evaluation step, Kasprzyk et al. 2013; Herman et al. 2015, *JWRPM*). Deliberately broad and treated as containing deep uncertainty, expected to span many deeply uncertain generator parameterizations and other uncertain system factors. Its design is a standing methodological decision, not a default.
+**Evaluation ensemble** (synonym, "search ensemble"). The scenario set actually used inside `evaluation()` during MOEA search. The object this study designs. Enumerated by `src/scenario_designs.py`.
+
+**Test ensemble** ($E_{\text{test}}$; synonym, "re-evaluation ensemble"). The large held-out ensemble used in workflow step 08 to stress-test Pareto-approximate policies out of sample (the MORDM re-evaluation step, Kasprzyk et al. 2013; Herman et al. 2015, *JWRPM*). It is **never the source of any search ensemble**, and no search ensemble is a subset of it.
+
+**The largest ensemble in the study, by a wide margin**, and built to be maximally *uncertainty-encompassing*: a Latin hypercube over the **full range** of the deeply-uncertain forcing factors, with **many realizations per LHS point**. The campaign uses one construction (Kirsch–Nowak over the wide DU box); rankings are therefore conditional on it, which is a declared limitation. A structurally different second construction is registered as an optional sensitivity.
+
+$E_{\text{test}}$ is sampled by **LHS, not i.i.d.** The i.i.d. rule applies only to the candidate pools, where it underwrites the distributional-equivalence control. $E_{\text{test}}$ is never subsampled and is never a control — it is the measuring stick, and should *cover* the deeply-uncertain space, not sample it in proportion to a measure. It is therefore a **designed exploration, not a probability sample**: a satisficing fraction over it is a coverage-weighted count, never an expectation.
+
+**State of the world (SOW).** One deeply-uncertain factor vector $\theta$ — one LHS point of $E_{\text{test}}$. Its $R$ realizations sample natural variability *within* that SOW. The SOW is the unit of robustness in the MORDM lineage (Herman et al. 2014; Trindade et al. 2017; Gold et al. 2022, 2023), which collapses the stochastic traces inside each SOW before applying the domain criterion across SOWs. Precision is governed by the number of SOWs ($N_\theta$), not by the total realization count.
 
 ## Sampling and subsampling
 
-**Probabilistic (well-characterized) sampling.** Drawing evaluation scenarios i.i.d. from the assumed distribution, the sample average approximation baseline (Kleywegt et al. 2002, *SIAM J. Optim.*). Our 3 probabilistic presets.
+**Probabilistic sampling.** Drawing evaluation scenarios i.i.d. from the generator (Quinn et al. 2017, *WRR*; Zatarain Salazar et al. 2017, *AWR*). The reference against which designed selection is judged.
 
-**Structured (space-filling) subsampling.** Selecting evaluation scenarios from the master ensemble to be approximately uniform and well-spread in hazard space, analogous to a conditioned Latin hypercube on the empirical hazard marginals (Minasny & McBratney 2006, *Comput. Geosci.*) with maximin spread (Johnson et al. 1990; Morris & Mitchell 1995). Our 3 LHS presets. Distinct from **representative-in-probability** subset selection (scenario reduction, Dupačová et al. 2003; support points, Mak & Joseph 2018; twinning, Vakayil & Joseph 2022), which preserves the parent distribution.
+**Input stratification.** Latin hypercube sampling over the generator's forcing parameters, with realizations **generated at** each design point (Quinn et al. 2020, *Earth's Future*; Bartholomew & Kwakkel 2020, *EMS*). LHS alone — there is nothing to select from, because the parameters are a knob on the generator.
+
+**Hazard filling** (space-filling subsampling). Selecting evaluation scenarios from a candidate pool so their hazard coordinates are approximately uniform and well-spread. Implemented as Latin hypercube anchors in hazard space snapped to the nearest unused pool member. The nearest-neighbour step is **intrinsic, not an approximation**: hazard coordinates are emergent properties of a realized sequence, so no generator can be asked to produce a realization at a prescribed hazard point. Distinct from **representative-in-probability** subset selection (scenario reduction; support points), which preserves the parent distribution rather than filling the space.
+
+**Distributional equivalence (the control).** A uniform random size-*N* subset of an i.i.d. pool has exactly the joint law of *N* fresh i.i.d. draws. This is what makes a probabilistic design the *exact* statistical control for a hazard-filling design on the same population: only the selection rule differs. It requires the pool to be sampled **i.i.d., not LHS** — a random subset of an LHS design is not i.i.d.
 
 **Scenario redundancy.** Overlap of two or more scenarios' coordinates in hazard space, regardless of whether they came from different input-space samples. Motivated by the redundancy framing of Olden & Poff (2003) applied to scenarios rather than indices. Quantify via maximin/minimax distances (Johnson et al. 1990) or effective sample size.
 
@@ -49,6 +61,7 @@
 ## Style rules
 
 1. All `_pct` quantities are 0-1 fractions (repo-wide rule).
-2. Say "evaluation ensemble" not "training set" in manuscripts, but the ML training/generalization analogy (Brodeur et al. 2020, *WRR*) may be invoked explicitly when discussing overfitting.
-3. Sequence length is stated in years and window construction (disjoint vs overlapping, initialization of storages, handling of partial drought events at window edges) must be specified wherever 5-year scenarios are introduced (truncation caveats per Pardo et al. 2018, ICML).
-4. The units of the experimental comparison are called **scenario designs** (or experiments where the optimization run is meant). Avoid clinical-trial vocabulary such as "arm", "treatment", and "ablation". For a comparison that isolates a mechanism, write a controlled or diagnostic comparison.
+2. **"Master ensemble" is retired.** It previously named a single pool that every design subsampled — an architecture that has been removed. Write **candidate pool** (a hazard-filling design's own pool) or **test ensemble** (the held-out re-evaluation set), never "master".
+3. Say "evaluation ensemble" not "training set" in manuscripts, but the ML training/generalization analogy (Brodeur et al. 2020, *WRR*) may be invoked explicitly when discussing overfitting.
+4. Sequence length is stated in years, and window construction (disjoint vs overlapping, initialization of storages, handling of partial drought events at window edges) must be specified wherever scenarios are introduced.
+5. The units of the experimental comparison are called **scenario designs** (or experiments where the optimization run is meant). Avoid clinical-trial vocabulary such as "arm", "treatment", and "ablation". For a comparison that isolates a mechanism, write a controlled or diagnostic comparison.

@@ -1,0 +1,117 @@
+{
+  "candidate_axes": [
+    "drought_deficit_volume",
+    "drought_duration",
+    "drought_peak_depth",
+    "drought_onset_rate",
+    "drought_recovery_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration",
+    "flood_rise_rate"
+  ],
+  "chosen_axes": [
+    "drought_deficit_volume",
+    "drought_onset_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration"
+  ],
+  "coverage": {
+    "random_L2_star": 0.040345846144005375,
+    "selected_L2_star": 0.10868830742172741
+  },
+  "design": "hazard_filling_absolute",
+  "n_realizations": 64,
+  "realization_years": 5,
+  "redundancy_clusters": [
+    [
+      "flood_peak_magnitude",
+      "flood_rise_rate"
+    ],
+    [
+      "flood_pulse_duration"
+    ],
+    [
+      "drought_deficit_volume",
+      "drought_duration",
+      "drought_peak_depth"
+    ],
+    [
+      "drought_onset_rate"
+    ],
+    [
+      "drought_recovery_rate"
+    ]
+  ],
+  "selected_source_ids": [
+    8,
+    17,
+    20,
+    44,
+    59,
+    83,
+    86,
+    113,
+    128,
+    136,
+    157,
+    175,
+    192,
+    252,
+    255,
+    258,
+    267,
+    284,
+    297,
+    318,
+    327,
+    349,
+    350,
+    358,
+    368,
+    396,
+    441,
+    455,
+    462,
+    472,
+    476,
+    489,
+    499,
+    504,
+    531,
+    569,
+    594,
+    620,
+    644,
+    659,
+    687,
+    701,
+    712,
+    727,
+    770,
+    781,
+    794,
+    799,
+    801,
+    823,
+    842,
+    843,
+    853,
+    865,
+    885,
+    907,
+    913,
+    924,
+    928,
+    970,
+    974,
+    975,
+    989,
+    990
+  ],
+  "selector": "lhs_nn",
+  "selector_space": "abs",
+  "slug": "hazfill_abs_5yr_n64_s0",
+  "source_kind": "synhydro_kn",
+  "source_slug": "kn_5yr_n1000",
+  "subset_seed": 0
+}

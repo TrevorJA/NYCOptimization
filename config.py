@@ -22,9 +22,6 @@ Environment overrides (selected):
     NYCOPT_SALT_FRONT_RM        -> SALT_FRONT_REFERENCE_RM (float)
     NYCOPT_SALINITY_ASYNC       -> SALINITY_ASYNC_UPDATE (bool)
     NYCOPT_LSTM_START_DATE      -> LSTM_START_DATE
-    NYCOPT_REEVAL_N             -> REEVAL_REALIZATIONS (int)
-    NYCOPT_REEVAL_NODES         -> REEVAL_NODES (int)
-    NYCOPT_REEVAL_RANKS         -> REEVAL_RANKS_PER_NODE (int)
     NYCOPT_REEVAL_MODE          -> REEVAL_MODE ("mpi" | "single")
     NYCOPT_CLUSTER              -> CLUSTER ("anvil" | "hopper")
     NYCOPT_TEMPERATURE_LSTM_DIR -> TEMPERATURE_LSTM_DIR (path)
@@ -290,9 +287,9 @@ ENSEMBLE_KN_FORCE        = _parse_bool_env("NYCOPT_ENSEMBLE_KN_FORCE", False)
 
 
 ###############################################################################
-# Forcing-based master ensemble (Step 1, forcing designs: methods §3.1-3.2)
+# Forcing-based candidate pool (Step 1, forcing designs: methods §3.1-3.2)
 ###############################################################################
-# Settings for the CMIP6-forced master ensemble that backs the hazard_filling
+# Settings for the CMIP6-forced candidate pool that backs the hazard_filling
 # and input_stratified designs (scengen.forcing_space + master_ensemble). The
 # forcing designs read their sizes (N_forcing x realizations_per_profile, L)
 # from src/scenario_designs.py; these knobs supply the shared forcing-space
@@ -638,31 +635,39 @@ DIAGNOSTICS_SETTINGS = {
 # variant (Phase 1+) reads cluster sizing from these values, so a single
 # env-file edit reshapes the SLURM submission.
 
-# Number of stochastic realizations per solution. 1 = deterministic single-trace
-# re-eval (Phase 1 default). Phase 3 raises this for ensemble robustness.
-REEVAL_REALIZATIONS = _parse_int_env("NYCOPT_REEVAL_N", 1)
-
 # Re-eval execution mode: "mpi" uses src/reevaluate_mpi.py (multi-node);
-# "single" falls back to src/reevaluate.py (multiprocessing.Pool).
+# "single" falls back to src/reevaluate.py (multiprocessing.Pool). Read by
+# workflow/08_reevaluate.sh, not by Python.
 REEVAL_MODE = _parse_str_env("NYCOPT_REEVAL_MODE", "single")
-
-# Cluster sizing for MPI re-eval. Sourced into SLURM SBATCH directives.
-REEVAL_NODES = _parse_int_env("NYCOPT_REEVAL_NODES", 4)
-REEVAL_RANKS_PER_NODE = _parse_int_env("NYCOPT_REEVAL_RANKS", 16)
 
 REEVALUATION_SETTINGS = {
     # Metric identifiers scored offline by src.robustness from the persisted raw
-    # per-realization matrix. This is the only key consumed in code (the default
-    # metric set for the manuscript; src.robustness --metrics overrides). The
-    # realization count is REEVAL_REALIZATIONS above; the ensemble length /
-    # generator / climate scenarios come from the resolved REEVAL_ENSEMBLE_SPEC,
-    # not from static labels here.
+    # per-realization matrix. The manuscript metric set; `src.robustness
+    # --metrics` overrides. The realization count comes from the resolved
+    # REEVAL_ENSEMBLE_SPEC (the test ensemble), never from a static label here.
+    #
+    # NO PERFECT-FORESIGHT OPTIMIZATION APPEARS IN ANY OF THESE. Deliberately
+    # absent: `regret_from_best` (set-relative and design-coupled -- dropping one
+    # scenario design would change every other design's score -- and it needs 400+
+    # scenarios to converge, never converging on a tail objective; Bonham et al.
+    # 2024), and the search-vs-test overfitting gap (undefined in Brodeur et al.
+    # 2020, and structurally invalid when the in-sample term is coverage-weighted
+    # and the out-of-sample term is measure-weighted). See src/robustness.py.
     "robustness_metrics": [
-        "satisficing_univariate",
-        "satisficing_multivariate",
-        "regret_from_best",
-        "regret_from_baseline",
+        "satisficing_multivariate",      # PRIMARY: Starr domain criterion, realization unit
+        "satisficing_multivariate_sow",  # the same criterion on the SOW unit
+        "satisficing_univariate",        # per-objective decomposition
+        "laplace_mean",                  # McPhail T3 = mean  (risk-neutral anchor)
+        "maximin",                       # McPhail T3 = worst (risk-averse anchor)
+        "improvement_vs_baseline",       # fixed external reference; no optimization
     ],
+    # Risk attitude applied to the R realizations WITHIN one deeply-uncertain state of
+    # the world, before the Starr criterion is applied ACROSS states
+    # (satisficing_multivariate_sow, the Herman 2014 / Trindade 2017 / Gold 2022
+    # lineage). "mean" is risk-neutral (what those papers do); "worst" is the
+    # risk-averse sensitivity. It is a real methodological choice, it moves the
+    # number, and it is recorded in robustness_meta.json next to the scores.
+    "within_sow_aggregator": _parse_str_env("NYCOPT_WITHIN_SOW_AGG", "mean"),
 }
 
 
@@ -694,40 +699,53 @@ CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
 # Two specs are resolved at import time:
 #   SEARCH_ENSEMBLE_SPEC  - from ACTIVE_SCENARIO_DESIGN; used inside Borg's
 #                           evaluate() during optimization.
-#   REEVAL_ENSEMBLE_SPEC  - the held-out test ensemble; used by
-#                           src/reevaluate.py + reevaluate_mpi.py. Still selected
-#                           directly by preset name for now (its design is an
-#                           open decision — see experimental_design.md #3).
+#   REEVAL_ENSEMBLE_SPEC  - the held-out test ensemble E_test; used by
+#                           src/reevaluate.py + reevaluate_mpi.py. It is an
+#                           EnsembleSpec, never a ScenarioDesign: it never enters
+#                           search, and no search ensemble is drawn from it.
+#
+# Resolution is a PURE LOOKUP. Every design's ensemble is constructed by workflow
+# step 02 (and step 03 for hazard-filling), so importing config performs no RNG
+# draws and no bulk I/O.
 
 from src.ensembles import (             # noqa: E402
     get_ensemble_spec,
+    staged_ensemble_dir,
     with_indices_override,
 )
 from src.scenario_designs import (   # noqa: E402
-    SCENARIO_YEARS,  # single source of truth for the short-window scenario length L
+    SCENARIO_YEARS,  # single source of truth for the scenario length L
+    SEARCH_ENSEMBLE_N,  # common ensemble size N across the matched designs
+    SEED_ROOT,
+    assert_seed_domains_disjoint,
     get_scenario_design,
 )
 
 NYCOPT_SCENARIO_DESIGN = _parse_str_env("NYCOPT_SCENARIO_DESIGN", "historic")
 ACTIVE_SCENARIO_DESIGN = get_scenario_design(NYCOPT_SCENARIO_DESIGN)
 
-# Independent ensemble-draw replication index. Draw k
-# makes the master-subset designs select their k-th deterministic index subset
-# (effective selector seed = subset_seed + k). Designs with no fixed ensemble
-# to redraw (historic, resampled_probabilistic) accept only 0 and raise
-# otherwise (fail fast at import). Nonzero draws are appended to the moea slug
-# as "_d{k}" so replicate runs partition to distinct output directories.
+# Independent ensemble-draw replication index. A draw is the design's
+# construction RE-RUN FROM SCRATCH with a fresh seed — draws are now independent
+# generations, not re-indexings of shared data. Designs with no fixed ensemble to
+# redraw (historic) accept only 0 and raise otherwise (fail fast at import).
+# Nonzero draws are appended to the moea slug as "_d{k}" so replicate runs
+# partition to distinct output directories.
 SCENARIO_ENSEMBLE_DRAW = _parse_int_env("NYCOPT_ENSEMBLE_DRAW", 0)
 
 NYCOPT_REEVAL_ENSEMBLE_PRESET = _parse_str_env(
     "NYCOPT_REEVAL_ENSEMBLE_PRESET", "historic_single",
 )
 
-# Resolve the search ensemble. Designs whose construction is not yet wired
-# (input_stratified / hazard_filling) leave SEARCH_ENSEMBLE_SPEC None
-# so config stays importable — diagnostics/reeval/plotting on such a design's
-# outputs only need active_scenario_name(). Optimization fails fast with a clear
-# message (see src/mmborg.py) when the spec is None.
+# Seed domains must not collide: now that every design GENERATES rather than
+# selecting indices from shared data, two designs sharing a seed would produce
+# correlated realizations and reintroduce exactly the confound the per-design
+# architecture removes. Fail fast at import.
+assert_seed_domains_disjoint()
+
+# Resolve the search ensemble. Designs whose ensemble is not staged yet leave
+# SEARCH_ENSEMBLE_SPEC None so config stays importable — diagnostics/reeval/
+# plotting on such a design's outputs only need active_scenario_name().
+# Optimization fails fast with a clear message (see src/mmborg.py).
 try:
     SEARCH_ENSEMBLE_SPEC = ACTIVE_SCENARIO_DESIGN.resolve_search_spec(
         draw=SCENARIO_ENSEMBLE_DRAW
@@ -760,21 +778,55 @@ if _ensemble_indices_override and SEARCH_ENSEMBLE_SPEC is not None:
         SEARCH_ENSEMBLE_SPEC, _ensemble_indices_override,
     )
 
-# Selection-bias guard (Bonham 2024): re-eval ensemble should be independent
-# of the search ensemble. Warn loudly if both resolve to the same preset and
-# the search spec is actually an ensemble (single-trace re-eval with
-# single-trace search is the legacy case and need not warn).
-if (
-    SEARCH_ENSEMBLE_SPEC is not None
-    and SEARCH_ENSEMBLE_SPEC.is_ensemble
-    and NYCOPT_REEVAL_ENSEMBLE_PRESET == SEARCH_ENSEMBLE_SPEC.preset_name
-):
-    print(
-        f"  [config] WARN: search and re-eval ensemble resolve to the same "
-        f"preset ('{SEARCH_ENSEMBLE_SPEC.preset_name}'). This is a "
-        f"selection-bias risk per Bonham (2024) — prefer an independent "
-        f"re-eval preset (different seed and/or realization indices)."
-    )
+def _staged_seed_domain(spec) -> str | None:
+    """Read the ``seed_domain`` recorded in a staged ensemble's ``_meta.json``.
+
+    Written by ``src.ensemble_generation.generate_forcing_ensemble`` (from
+    ``ForcingEnsembleConfig.seed_domain``), which every generator path — the six
+    scenario designs via step 02, the hazard-filling subset via step 03, and E_test
+    via step 12 — now supplies. Returns ``None`` for specs with no staged metadata
+    (static presets, the historic trace), which cannot collide by construction.
+    """
+    import json
+
+    if spec is None or not spec.is_ensemble:
+        return None
+    meta_path = staged_ensemble_dir(spec.inflow_type) / "_meta.json"
+    if not meta_path.exists():
+        return None
+    return json.loads(meta_path.read_text()).get("seed_domain")
+
+
+def assert_search_test_seed_domains_disjoint(search_spec, reeval_spec) -> None:
+    """Selection-bias guard (Bonham et al. 2024): E_test must be seed-independent of search.
+
+    A HARD ERROR, not a warning — a warning nobody reads is not a guard, and a search
+    ensemble drawn from the same seed stream as the test ensemble would make the
+    held-out re-evaluation not held out at all. Compared on the RECORDED seed domain
+    rather than the preset name, because two ensembles can share a generator stream
+    under different slugs. E_test's reserved domains are ``etest:*``
+    (``scengen.seeds.SEED_DOMAINS``), which are disjoint from every search-side domain.
+
+    Args:
+        search_spec: The active search ``EnsembleSpec`` (or ``None``).
+        reeval_spec: The re-eval (test) ``EnsembleSpec``.
+
+    Raises:
+        RuntimeError: If both are staged and record the same seed domain.
+    """
+    search_domain = _staged_seed_domain(search_spec)
+    reeval_domain = _staged_seed_domain(reeval_spec)
+    if search_domain is not None and search_domain == reeval_domain:
+        raise RuntimeError(
+            f"Search and re-evaluation ensembles share seed domain "
+            f"'{search_domain}' (search='{search_spec.inflow_type}', "
+            f"re-eval='{reeval_spec.inflow_type}'). E_test must be generated "
+            f"from an independent seed stream ('etest:*'), or the held-out "
+            f"re-evaluation is not held out (selection bias, Bonham et al. 2024)."
+        )
+
+
+assert_search_test_seed_domains_disjoint(SEARCH_ENSEMBLE_SPEC, REEVAL_ENSEMBLE_SPEC)
 
 
 ###############################################################################

@@ -2,7 +2,9 @@
 
 *Paper 3 literature note. Annotated summaries of items in the Zotero collection "Paper 3 NYC Reoptimization" (`ISYGLK35`). Last updated 2026-06-16.*
 
-Scope: the classical stochastic-programming pedigree for constructing and reducing scenario sets, plus the energy-sector feature-space analogues. Every branch here defines a good subset as **representative in probability** — the precise foil for a uniform-in-hazard-space subsample (see the framing distinctions in the [scenario design overview](scenario_design.md)). Retained in trimmed form because the audience is MOEA-based: each entry anchors the foil, supplies the i.i.d. baseline, shows scenario-design comparison is publishable, or admits problem-driven concentration on hazardous scenarios.
+Scope: the classical stochastic-programming pedigree for constructing and reducing scenario sets, plus the energy-sector feature-space analogues. Every branch here defines a good subset as **representative in probability** — the precise foil for a uniform-in-hazard-space selection (see the framing distinctions in the [scenario design overview](scenario_design.md)).
+
+**Status: background, not a methods precedent.** None of the campaign designs is constructed by probability-metric scenario reduction, and the manuscript's precedents are the 2016+ MOEA / water-resources literature. This school earns at most one discussion sentence — it names the foil (representative-in-probability), supplies the i.i.d./SAA baseline, shows that head-to-head scenario-design comparison is publishable methodology (Löhndorf 2016), and concedes that the right set depends on what drives the objectives (Fairbrother 2022; Hilbers 2019).
 
 ---
 

@@ -151,19 +151,13 @@ PRESETS: dict[str, EnsembleSpec] = {
         # iteration; promote to None (full 78-yr window) for production.
         realization_years=20,
     ),
-    "reeval_wcu_kirsch_n300": EnsembleSpec(
-        preset_name="reeval_wcu_kirsch_n300",
-        # M2 KirschNowakGenerator stages this directory (independent seed
-        # from the search preset to protect against selection bias per
-        # Bonham 2024):
-        inflow_type="syn_kirsch_drb_n300_seed1337",
-        realization_indices=tuple(range(300)),
-        seed=1337,
-        is_ensemble=True,
-        source_kind="synhydro_kn",
-        slug_fragment="reeval_wcu300",
-    ),
 }
+
+# The held-out test ensemble E_test needs NO entry here: ``_spec_from_staged_dir``
+# resolves any staged directory carrying a ``_meta.json`` by slug, so
+# ``NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_30yr_n1000`` resolves once step 02 has
+# staged it. E_test is an ``EnsembleSpec``, never a ``ScenarioDesign``: it never
+# enters search, and no search ensemble is drawn from it.
 
 
 ###############################################################################
@@ -217,7 +211,10 @@ def _spec_from_staged_dir(slug: str) -> EnsembleSpec | None:
         preset_name=slug,
         inflow_type=slug,
         realization_indices=tuple(range(n)),
-        seed=meta.get("subset_seed", meta.get("seed")),
+        # Provenance seed, in specificity order: the selector anchor seed of a
+        # hazard-filled ensemble, else the generator root seed of a directly
+        # generated ensemble or pool.
+        seed=meta.get("selector_seed", meta.get("root_seed", meta.get("seed"))),
         is_ensemble=True,
         source_kind=meta.get("source_kind", "synhydro_kn"),
         slug_fragment=slug,
@@ -313,25 +310,25 @@ def staged_ensemble_dir(inflow_type: str):
     return Path(STAGED_ENSEMBLE_DIR).resolve() / inflow_type
 
 
-def load_chunk_index(master_slug: str) -> dict | None:
-    """Load a forcing master's ``chunk_index.json`` (chunks -> global realization ranges), or None."""
+def load_chunk_index(pool_slug: str) -> dict | None:
+    """Load a pool's ``chunk_index.json`` (chunks -> global realization ranges), or None."""
     import json
-    p = staged_ensemble_dir(master_slug) / "chunk_index.json"
+    p = staged_ensemble_dir(pool_slug) / "chunk_index.json"
     return json.loads(p.read_text()) if p.exists() else None
 
 
-def master_chunk_specs(master_slug: str) -> list[tuple["EnsembleSpec", list[int]]]:
-    """Return ``[(chunk_spec, global_realization_ids), ...]`` for a chunked (or single-dir) master.
+def pool_chunk_specs(pool_slug: str) -> list[tuple["EnsembleSpec", list[int]]]:
+    """Return ``[(chunk_spec, global_realization_ids), ...]`` for a chunked (or single-dir) pool.
 
     Each chunk resolves as a standalone staged ensemble with local realizations ``0..S-1``; the
-    paired ``global_realization_ids`` re-key its rows to the master's global index space for
-    aggregation. A single-dir master (no ``chunk_index.json``, or one whose only chunk is the master
-    dir itself) returns one chunk = the master spec with identity global ids.
+    paired ``global_realization_ids`` re-key its rows to the pool's global index space for
+    aggregation. A single-dir pool (no ``chunk_index.json``, or one whose only chunk is the pool
+    dir itself) returns one chunk = the pool spec with identity global ids.
     """
     import json
-    idx = load_chunk_index(master_slug)
+    idx = load_chunk_index(pool_slug)
     if idx is None or not idx.get("chunks"):
-        spec = get_ensemble_spec(master_slug)
+        spec = get_ensemble_spec(pool_slug)
         return [(spec, list(range(spec.n_realizations)))]
     out: list[tuple[EnsembleSpec, list[int]]] = []
     for s in idx["chunks"]:
@@ -344,21 +341,26 @@ def master_chunk_specs(master_slug: str) -> list[tuple["EnsembleSpec", list[int]
     return out
 
 
-def materialize_subset_from_master(
-    master_slug: str, global_indices, out_slug: str, *,
+def materialize_subset(
+    pool_slug: str, global_indices, out_slug: str, *,
     files=("gage_flow_mgd.hdf5", "catchment_inflow_mgd.hdf5"), extra_meta: dict | None = None,
 ) -> str:
-    """Stage a reduced ensemble of selected master realizations by reading only those from the chunks.
+    """Stage a reduced ensemble of selected pool realizations by reading only those from the chunks.
+
+    Used by the hazard-filling designs, which are the ONLY designs that subsample: hazard
+    coordinates are emergent properties of a realized sequence, so a hazard-space design must
+    select from a candidate pool rather than generate to a target. Every other design generates
+    its realizations directly.
 
     Groups the requested **global** indices by their containing chunk and reads only those columns
     from each chunk's HDF5 (memory-cheap ``from_hdf5(realization_subset=...)``), renumbers to local
     ``0..N-1``, and writes the reduced staged ensemble (+ ``_meta.json`` carrying
-    ``global_realization_ids``). Works for a chunked or single-dir master; peak memory scales with the
-    selection size, not the master. Requires the daily chunks to be stored (``store_daily``).
+    ``global_realization_ids``). Works for a chunked or single-dir pool; peak memory scales with the
+    selection size, not the pool. Requires the daily chunks to be stored (``store_daily``).
 
     Args:
-        master_slug: The forcing-master slug (holds ``chunk_index.json`` / daily chunks).
-        global_indices: Master global realization ids to materialize, in the desired output order.
+        pool_slug: The candidate-pool slug (holds ``chunk_index.json`` / daily chunks).
+        global_indices: Pool global realization ids to materialize, in the desired output order.
         out_slug: Slug for the staged reduced ensemble.
         files: HDF5 basenames to slice (default the pywrdrb gage + catchment pair).
         extra_meta: Extra provenance merged into the reduced ensemble's ``_meta.json``.
@@ -369,7 +371,7 @@ def materialize_subset_from_master(
     import json
     from synhydro.core.ensemble import Ensemble
 
-    chunks = master_chunk_specs(master_slug)
+    chunks = pool_chunk_specs(pool_slug)
     loc: dict[int, tuple[str, int]] = {}
     years = None
     for spec, gids in chunks:
@@ -380,7 +382,7 @@ def materialize_subset_from_master(
     requested = [int(g) for g in global_indices]
     missing = [g for g in requested if g not in loc]
     if missing:
-        raise KeyError(f"global indices not in master '{master_slug}': {missing[:10]}...")
+        raise KeyError(f"global indices not in pool '{pool_slug}': {missing[:10]}...")
 
     out_dir = staged_ensemble_dir(out_slug)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -406,7 +408,7 @@ def materialize_subset_from_master(
         "realization_years": years,
         "n_years": years,
         "global_realization_ids": requested,
-        "source_master": master_slug,
+        "source_pool": pool_slug,
         "source_kind": "synhydro_kn",
     }
     if extra_meta:

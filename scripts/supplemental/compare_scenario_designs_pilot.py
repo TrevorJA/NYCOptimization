@@ -16,7 +16,7 @@ This is a "do they differ at all" signal, NOT a held-out robustness verdict.
 Usage:
     python scripts/supplemental/compare_scenario_designs_pilot.py \
         --slug ffmp_obj7_pilot --seed 1 \
-        --arms hazard_filling hazard_filling_absolute fixed_probabilistic_short
+        --arms hazard_filling_du input_stratified fixed_probabilistic
 """
 from __future__ import annotations
 
@@ -37,12 +37,19 @@ import matplotlib.pyplot as plt  # noqa: E402
 from config import OUTPUTS_DIR  # noqa: E402
 from src.formulations import get_objective_set, get_n_vars  # noqa: E402
 from src.load.reference_set import load_reference_set  # noqa: E402
+from src.scenario_designs import campaign_designs  # noqa: E402
 
+# One colour per registered scenario design. The two hazard-filling arms are the
+# proposed method; their exact controls (fixed_probabilistic for the stationary
+# arm, input_stratified for the DU arm) are the warm/neutral tones.
 ARM_COLORS = {
-    "hazard_filling": "#1f77b4",
-    "hazard_filling_absolute": "#d62728",
-    "fixed_probabilistic_short": "#2ca02c",
     "historic": "#7f7f7f",
+    "fixed_probabilistic": "#2ca02c",
+    "resampled_probabilistic": "#9467bd",
+    "hazard_filling_stationary": "#1f77b4",
+    "input_stratified": "#ff7f0e",
+    "hazard_filling_du": "#d62728",
+    "hazard_filling_absolute": "#8c564b",
 }
 
 
@@ -144,9 +151,9 @@ def main(argv=None) -> int:
     p.add_argument("--slug", default="ffmp_obj7_pilot")
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--formulation", default="ffmp")
-    p.add_argument("--arms", nargs="+",
-                   default=["hazard_filling", "hazard_filling_absolute",
-                            "fixed_probabilistic_short"])
+    p.add_argument("--arms", nargs="+", default=campaign_designs(),
+                   help="Scenario designs to compare (default: the campaign "
+                        "designs). Arms with no staged output are skipped.")
     p.add_argument("--mc-samples", type=int, default=2_000_000)
     p.add_argument("--source", choices=["set", "reeval"], default="set",
                    help="'set' = in-search Pareto .set (raw, each design's OWN "

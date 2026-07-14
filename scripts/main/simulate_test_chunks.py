@@ -1,4 +1,4 @@
-"""simulate_master_chunks.py - Simulate + score a chunked master ensemble (metrics-only).
+"""simulate_test_chunks.py - Simulate + score a chunked test ensemble (metrics-only).
 
 Re-evaluates a policy set against every chunk of the chunked forcing master that
 ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` resolves to, writing objectives + robustness from in-memory reduced
@@ -10,10 +10,10 @@ Policies (env ``NYCOPT_CHUNK_POLICIES``):
     ``baseline`` (default) - the default FFMP policy only (1 solution).
     a ``.ref`` path          - a reference set of Pareto policies (var1..varN [obj...] per line).
 
-Launch (env-driven; via workflow/09_simulate_master_chunks.sh):
+Launch (env-driven; via workflow/09_simulate_test_chunks.sh):
 
     NYCOPT_REEVAL_ENSEMBLE_PRESET=master_5yr_n128000 \\
-    mpirun -np 64 python3 -m scripts.main.simulate_master_chunks --formulation ffmp
+    mpirun -np 64 python3 -m scripts.main.simulate_test_chunks --formulation ffmp
 """
 
 from __future__ import annotations
@@ -47,10 +47,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
-    from src.chunk_reeval import simulate_master_chunks
+    from src.chunk_reeval import simulate_test_chunks
 
     dvs = _load_policies(args.formulation)
-    out = simulate_master_chunks(args.formulation, dvs, seed=args.seed)
+    out = simulate_test_chunks(args.formulation, dvs, seed=args.seed)
     if out is not None:
         print(f"[chunk-reeval] done -> {out}")
 

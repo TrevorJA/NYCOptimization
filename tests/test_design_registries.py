@@ -4,6 +4,11 @@ test_design_registries.py - Tests for the two run-axis registries.
 Covers the scenario-design registry (src/scenario_designs.py), the MOEA-config
 registry (src/moea_config.py), their resolvers, and the two-axis output-path
 helper (config.run_output_dir). These are pure-Python and fast (no simulation).
+
+The scenario-design tests here are not incidental coverage: two of them
+(``test_pools_are_iid_sampled``, ``test_du_candidate_pool_has_one_realization_per_theta``)
+guard the statistical control the whole cross-design comparison rests on, and
+nothing else in the pipeline would fail if that control were broken.
 """
 
 import json
@@ -15,11 +20,17 @@ import pytest
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR))
 
+from scengen.seeds import design_seed
+
 from src.scenario_designs import (
-    LONG_RECORD_YEARS,
     SCENARIO_DESIGNS,
     SCENARIO_YEARS,
+    SEARCH_ENSEMBLE_N,
+    SEED_ROOT,
     ScenarioDesign,
+    assert_iid_pools,
+    assert_seed_domains_disjoint,
+    campaign_designs,
     get_scenario_design,
     list_scenario_designs,
 )
@@ -35,68 +46,47 @@ from src.moea_config import (
 # Scenario designs
 # ---------------------------------------------------------------------------
 
-EXPECTED_DESIGNS = {
-    "historic", "fixed_probabilistic_short", "fixed_probabilistic_long",
-    "resampled_probabilistic", "input_stratified", "hazard_filling",
-    "hazard_filling_absolute",
-}
-
-# Designs whose search ensemble resolves to an EnsembleSpec without any offline
-# staging step (static preset only — every ensemble design now draws from a
-# staged forcing master, methods §2.1).
-WIRED_DESIGNS = {"historic"}
-
-# Wired, but resolution requires the offline Step-02 (forcing master) and, for
-# hazard_filling*, Step-03 (reduced subsample) staging first. Raises a clear
-# NotImplementedError until then.
-STAGING_REQUIRED_DESIGNS = {
-    "fixed_probabilistic_short", "fixed_probabilistic_long",
+CAMPAIGN_DESIGNS = {
+    "historic",
+    "fixed_probabilistic",
     "resampled_probabilistic",
-    "hazard_filling", "hazard_filling_absolute", "input_stratified",
+    "hazard_filling_stationary",
+    "input_stratified",
+    "hazard_filling_du",
 }
+NON_CAMPAIGN_DESIGNS = {"hazard_filling_absolute", "scaling_stationary"}
 
-# Every manuscript ensemble design is forcing-master-backed.
-FORCING_MASTER_DESIGNS = STAGING_REQUIRED_DESIGNS
+# Resolve without reading any staged data: `historic` from a static preset, and
+# the supplemental scaling stand-in from the `kn_{Y}yr_n{N}` slug grammar.
+WIRED_DESIGNS = {"historic", "scaling_stationary"}
 
-# The short-window designs that must share ONE design-independent master
-# (master_{L}yr_n{N_M}) so cross-design differences are attributable to
-# selection alone. fixed_probabilistic_long uses its own long master
-# (master_{L'}yr_n{N'}) of the same construction.
-SHARED_MASTER_DESIGNS = FORCING_MASTER_DESIGNS - {"fixed_probabilistic_long"}
+# Every other design GENERATES its own realizations in workflow step 02 (and
+# selects in step 03 for hazard-filling), so resolution raises a clear
+# NotImplementedError until its data is staged.
+STAGING_REQUIRED_DESIGNS = (
+    CAMPAIGN_DESIGNS | NON_CAMPAIGN_DESIGNS
+) - WIRED_DESIGNS
 
 
-def _stage_fake_forcing_master(root: Path, slug: str, n: int, years: int,
-                               with_daily: bool = True) -> None:
-    """Stage a tiny fake single-dir forcing master (meta + optional daily HDF5s)."""
-    import numpy as np
-    import pandas as pd
-
-    out = root / slug
-    out.mkdir(parents=True, exist_ok=True)
-    if with_daily:
-        from synhydro.core.ensemble import Ensemble
-        dates = pd.date_range("2000-01-01", periods=8, freq="D")
-        data = {
-            k: pd.DataFrame(
-                {"siteA": np.full(8, float(k)), "siteB": np.full(8, 100.0 + k)},
-                index=dates,
-            )
-            for k in range(n)
-        }
-        for fname in ("gage_flow_mgd.hdf5", "catchment_inflow_mgd.hdf5"):
-            Ensemble(data).to_hdf5(str(out / fname))
-    (out / "_meta.json").write_text(json.dumps({
-        "slug": slug, "n_realizations": n, "realization_years": years,
-        "source_kind": "synhydro_kn",
-    }))
+def _stage(root: Path, slug: str, n: int, years: int, **extra) -> None:
+    """Stage a fake ensemble directory (``_meta.json`` only) resolvable by slug."""
+    d = root / slug
+    d.mkdir(parents=True, exist_ok=True)
+    meta = {"slug": slug, "n_realizations": n, "realization_years": years}
+    meta.update(extra)
+    (d / "_meta.json").write_text(json.dumps(meta))
 
 
 def test_all_designs_present_and_resolvable():
-    assert EXPECTED_DESIGNS <= set(SCENARIO_DESIGNS)
+    assert set(SCENARIO_DESIGNS) == CAMPAIGN_DESIGNS | NON_CAMPAIGN_DESIGNS
     for name in SCENARIO_DESIGNS:
         d = get_scenario_design(name)
         assert isinstance(d, ScenarioDesign)
         assert d.name == name
+
+
+def test_campaign_designs_are_the_six():
+    assert set(campaign_designs()) == CAMPAIGN_DESIGNS
 
 
 def test_list_scenario_designs_sorted():
@@ -110,230 +100,254 @@ def test_unknown_design_raises():
 
 def test_historic_resolves_to_single_trace():
     spec = get_scenario_design("historic").resolve_search_spec()
-    assert spec.preset_name == "historic_single"
     assert spec.is_ensemble is False
+    assert spec.n_realizations == 1
 
 
-def test_scenario_length_is_single_sourced():
-    """SCENARIO_YEARS is the one scenario-length constant: every
-    short-window design uses it; the long design keeps its own L'; config and
-    supplemental_config consume the same value."""
-    for name in sorted(SHARED_MASTER_DESIGNS):
-        assert get_scenario_design(name).realization_years == SCENARIO_YEARS
-    assert get_scenario_design("fixed_probabilistic_long").realization_years \
-        == LONG_RECORD_YEARS
-    import config
-    assert config.SCENARIO_YEARS == SCENARIO_YEARS
-    import supplemental_config as scfg
-    if not scfg.ENS_SMOKE:
-        assert scfg.ENS_REALIZATION_YEARS == SCENARIO_YEARS
+# -- the two invariants the control depends on ------------------------------
+
+def test_pools_are_iid_sampled():
+    """Only ``input_stratified`` may sample theta by LHS.
+
+    The cross-design control is distributional equivalence: a uniform random
+    size-N subset of an i.i.d. pool has exactly the joint law of N fresh i.i.d.
+    draws, which is what makes ``fixed_probabilistic`` the EXACT statistical
+    control for ``hazard_filling_stationary`` -- they differ only in the
+    selection rule applied to the same population law.
+
+    A random subset of an LHS design is NOT i.i.d. So if anyone "improves" a
+    candidate pool to LHS sampling because it fills the space better, the
+    control is silently void and NOTHING else in the pipeline would fail. Hence
+    this test.
+    """
+    assert_iid_pools()  # the import-time assertion, exercised explicitly
+    for name, d in SCENARIO_DESIGNS.items():
+        expected = "lhs" if d.construction == "lhs_theta" else "iid"
+        assert d.theta_sampler == expected, (
+            f"'{name}' has theta_sampler={d.theta_sampler!r}, expected {expected!r}"
+        )
 
 
-def test_fixed_probabilistic_short_and_long_equal_scenario_years():
-    short = get_scenario_design("fixed_probabilistic_short")
-    long = get_scenario_design("fixed_probabilistic_long")
-    assert short.n_realizations * short.realization_years == \
-        long.n_realizations * long.realization_years
+def test_du_candidate_pool_has_one_realization_per_theta():
+    """A DU candidate pool must draw an independent theta per realization.
+
+    R > 1 would make realizations sharing a theta dependent, breaking the i.i.d.
+    property of the pool from the other side.
+    """
+    for name, d in SCENARIO_DESIGNS.items():
+        if d.construction == "hazard_fill" and d.population == "du_forced":
+            assert d.realizations_per_profile == 1, f"'{name}' has R != 1"
 
 
-@pytest.mark.parametrize(
-    "name,staged_n",
-    [("fixed_probabilistic_short", 24), ("fixed_probabilistic_long", 4)],
-)
-def test_fixed_probabilistic_materializes_random_subset(name, staged_n, tmp_path,
-                                                        monkeypatch):
-    """Fixed probabilistic designs draw a random index subset from the staged
-    forcing master and materialize it as a standalone reduced ensemble."""
-    import config
-    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design(name)
-    _stage_fake_forcing_master(tmp_path, d.master_slug(), n=staged_n,
-                               years=d.realization_years)
+def test_seed_domains_do_not_collide():
+    """No two (design, draw) pairs -- nor any design and E_test -- share a seed.
 
-    spec = d.resolve_search_spec(draw=0)
-    assert spec.is_ensemble is True
-    assert spec.n_realizations == d.n_realizations
-    assert spec.realization_years == d.realization_years
-    assert spec.inflow_type == \
-        f"rand_{d.realization_years}yr_n{d.n_realizations}_s{d.subset_seed or 0}"
-    # Provenance: the reduced ensemble records the master and the drawn indices.
-    meta = json.loads((tmp_path / spec.inflow_type / "_meta.json").read_text())
-    assert meta["source_master"] == d.master_slug()
-    gids = meta["global_realization_ids"]
-    assert len(set(gids)) == d.n_realizations          # without replacement
-    assert all(0 <= g < staged_n for g in gids)
-    # Idempotent: a second resolve reuses the staged reduced ensemble.
-    assert d.resolve_search_spec(draw=0).inflow_type == spec.inflow_type
+    Now that every design GENERATES rather than selecting indices from shared
+    data, two designs on the same seed would produce correlated realizations,
+    reintroducing exactly the confound the per-design architecture removes.
+    """
+    assert_seed_domains_disjoint(max_draws=64)
 
 
-def test_multidraw_selects_distinct_deterministic_subsets(tmp_path, monkeypatch):
-    """Draw k stages its own reduced ensemble (seed = subset_seed + k) with a
-    different deterministic index subset."""
-    import config
-    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design("fixed_probabilistic_short")
-    _stage_fake_forcing_master(tmp_path, d.master_slug(), n=24,
-                               years=d.realization_years)
+def test_every_design_has_a_seed_domain():
+    for name, d in SCENARIO_DESIGNS.items():
+        if d.construction == "preset":
+            continue
+        assert d.seed_domain, f"'{name}' has no seed_domain"
 
-    spec0 = d.resolve_search_spec(draw=0)
-    spec1 = d.resolve_search_spec(draw=1)
-    assert spec0.inflow_type != spec1.inflow_type
-    assert spec0.inflow_type.endswith("_s0") and spec1.inflow_type.endswith("_s1")
-    gids = {
-        s.inflow_type: json.loads(
-            (tmp_path / s.inflow_type / "_meta.json").read_text()
-        )["global_realization_ids"]
-        for s in (spec0, spec1)
+
+def test_design_seed_is_deterministic_and_draw_dependent():
+    d = get_scenario_design("fixed_probabilistic")
+    assert d.generation_seed(3) == d.generation_seed(3)
+    assert d.generation_seed(3) != d.generation_seed(4)
+    assert d.generation_seed(0) == design_seed(SEED_ROOT, "fixed", 0)
+
+
+# -- populations and construction -------------------------------------------
+
+def test_two_populations_are_represented():
+    pops = {d.population for d in SCENARIO_DESIGNS.values() if d.campaign}
+    assert pops == {"historic", "stationary", "du_forced"}
+
+
+def test_matched_designs_share_one_n_and_l():
+    """The selection comparison requires a common (N, L).
+
+    If L differed across designs the selection rule would be confounded with
+    record length; if N differed, per-evaluation cost would differ and equal-NFE
+    would no longer coincide with equal-scenario-years.
+    """
+    matched = CAMPAIGN_DESIGNS - {"historic"}
+    for name in matched:
+        d = get_scenario_design(name)
+        assert d.n_realizations == SEARCH_ENSEMBLE_N, f"'{name}' N != {SEARCH_ENSEMBLE_N}"
+        assert d.realization_years == SCENARIO_YEARS, f"'{name}' L != {SCENARIO_YEARS}"
+
+
+def test_input_stratified_allocates_n_as_n_theta_times_r():
+    d = get_scenario_design("input_stratified")
+    assert d.n_theta_profiles * d.realizations_per_profile == d.n_realizations
+
+
+def test_only_hazard_filling_and_resample_own_a_pool():
+    """Hazard-filling is the only *selecting* design, because hazard coordinates
+    are emergent and cannot be prescribed at generation."""
+    with_pool = {n for n, d in SCENARIO_DESIGNS.items() if d.pool_slug(0) is not None}
+    assert with_pool == {
+        "resampled_probabilistic",
+        "hazard_filling_stationary",
+        "hazard_filling_du",
+        "hazard_filling_absolute",
     }
-    assert gids[spec0.inflow_type] != gids[spec1.inflow_type]
-    # Deterministic: re-resolving a draw reproduces the same subset.
-    assert json.loads(
-        (tmp_path / d.resolve_search_spec(draw=1).inflow_type / "_meta.json").read_text()
-    )["global_realization_ids"] == gids[spec1.inflow_type]
 
 
-def test_resampled_probabilistic_resolves_to_master_pool(tmp_path, monkeypatch):
-    """Resampled design's per-eval POOL is the shared forcing master itself,
-    marked for per-evaluation resampling."""
-    import config
-    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design("resampled_probabilistic")
-    _stage_fake_forcing_master(tmp_path, d.master_slug(), n=24,
-                               years=d.realization_years, with_daily=False)
-
-    spec = d.resolve_search_spec()
-    assert spec.inflow_type == d.master_slug()   # pool IS the shared master
-    assert spec.n_realizations == 24             # full staged pool
-    assert spec.resample_per_eval is True
-    assert spec.resample_size == d.n_realizations  # drawn per evaluation
+def test_du_hazard_designs_share_one_candidate_pool_per_draw():
+    """The CDF and absolute arms differ ONLY in selector space, so within a draw
+    the pool is generated once and both select from it."""
+    du = get_scenario_design("hazard_filling_du")
+    absolute = get_scenario_design("hazard_filling_absolute")
+    assert du.pool_slug(0) == absolute.pool_slug(0)
+    assert du.selector_space == "cdf"
+    assert absolute.selector_space == "abs"
+    # ...and they get the SAME anchor plan, so the only difference is the
+    # normalization geometry the anchors snap into.
+    assert du.selector_seed(0) == absolute.selector_seed(0)
 
 
-def test_resampled_per_eval_draw_is_a_distinct_subset(tmp_path, monkeypatch):
-    """The per-eval hook draws resample_size indices from the pool, varying per eval."""
-    import config
-    from src.simulation import _resampled_eval_spec
+def test_pools_are_redrawn_per_draw():
+    """A draw re-rolls EVERYTHING random about building the ensemble, pool included.
 
-    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design("resampled_probabilistic")
-    _stage_fake_forcing_master(tmp_path, d.master_slug(), n=24,
-                               years=d.realization_years, with_daily=False)
-    pool_spec = d.resolve_search_spec()
-    s1 = _resampled_eval_spec(pool_spec, eval_count=1)
-    s2 = _resampled_eval_spec(pool_spec, eval_count=2)
-    # Correct size, valid subset of the pool, no resampling flag carried into use.
-    assert s1.n_realizations == d.n_realizations
-    assert set(s1.realization_indices) <= set(pool_spec.realization_indices)
-    assert len(set(s1.realization_indices)) == d.n_realizations  # w/o replacement
-    # Different evaluations draw different subsets; same eval is reproducible.
-    assert s1.realization_indices != s2.realization_indices
-    s1_again = _resampled_eval_spec(pool_spec, eval_count=1)
-    assert s1.realization_indices == s1_again.realization_indices
+    If the pool were pinned across draws, a hazard-filling draw would vary only its
+    LHS anchor plan while a ``fixed_probabilistic`` draw re-rolls its entire sample.
+    The two between-draw variances would then not be commensurable, and hazard-filling
+    would look more stable BY CONSTRUCTION rather than as a finding.
+    """
+    for name in ("hazard_filling_du", "hazard_filling_stationary", "resampled_probabilistic"):
+        d = get_scenario_design(name)
+        assert d.pool_slug(0) != d.pool_slug(1), f"'{name}' pins its pool across draws"
+        assert d.generation_seed(0) != d.generation_seed(1)
 
 
-@pytest.mark.parametrize("name", ["historic", "resampled_probabilistic"])
-def test_draw_replication_structurally_rejected(name):
-    """Designs with no fixed ensemble to redraw accept only draw=0."""
-    with pytest.raises(ValueError, match="draw"):
-        get_scenario_design(name).resolve_search_spec(draw=1)
+def test_stationary_and_du_pools_are_distinct():
+    stat = get_scenario_design("hazard_filling_stationary")
+    du = get_scenario_design("hazard_filling_du")
+    assert stat.pool_slug(0) != du.pool_slug(0)
+    assert stat.generation_seed(0) != du.generation_seed(0)
+    assert stat.selector_seed(0) != du.selector_seed(0)
 
 
-def test_every_design_is_wired():
-    """No design is left with an un-decided construction (all raise only pending staging)."""
-    assert EXPECTED_DESIGNS - WIRED_DESIGNS - STAGING_REQUIRED_DESIGNS == set()
+def test_no_simulated_annealing_selector():
+    """The selector is deterministic LHS + nearest-neighbor snap. K draws vary
+    the anchor plan, not an annealer."""
+    for d in SCENARIO_DESIGNS.values():
+        if d.construction == "hazard_fill":
+            assert d.selector == "lhs_nn"
+
+
+def test_resample_flag_only_on_resampled():
+    resampling = {n for n, d in SCENARIO_DESIGNS.items() if d.resample_per_eval}
+    assert resampling == {"resampled_probabilistic"}
+
+
+def test_hazard_image_only_for_hazard_filling():
+    """Streaming the hazard image costs an SSI-6 fit + POT pass per realization;
+    it is pure waste for designs that never subsample."""
+    needs = {n for n, d in SCENARIO_DESIGNS.items() if d.needs_hazard_image}
+    assert needs == {
+        "hazard_filling_stationary",
+        "hazard_filling_du",
+        "hazard_filling_absolute",
+    }
+
+
+# -- slugs and resolution ---------------------------------------------------
+
+def test_slugs_key_on_draw_not_seed():
+    d = get_scenario_design("fixed_probabilistic")
+    assert d.search_ensemble_slug(0).endswith("_d0")
+    assert d.search_ensemble_slug(2).endswith("_d2")
+    assert d.search_ensemble_slug(0) != d.search_ensemble_slug(2)
+
+
+def test_hazard_filling_slugs_distinguish_population_and_space():
+    assert get_scenario_design("hazard_filling_stationary").search_ensemble_slug(0).startswith("hazfill_stat_")
+    assert get_scenario_design("hazard_filling_du").search_ensemble_slug(0).startswith("hazfill_du_")
+    assert get_scenario_design("hazard_filling_absolute").search_ensemble_slug(0).startswith("hazfill_du_abs_")
 
 
 @pytest.mark.parametrize("name", sorted(STAGING_REQUIRED_DESIGNS))
 def test_staging_required_designs_raise_when_not_staged(name, tmp_path, monkeypatch):
-    """Designs that need an offline staged master/ensemble raise a clear error until it exists."""
     import config
-    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)  # empty staging
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
     with pytest.raises(NotImplementedError):
         get_scenario_design(name).resolve_search_spec()
 
 
-def test_kn_staged_dims_only_for_stationary_standin():
-    """Only the supplemental scaling design stages a direct stationary KN
-    ensemble; every manuscript design stages a forcing master (or none)."""
-    assert get_scenario_design("scaling_stationary").kn_staged_dims() is not None
-    for name in sorted(EXPECTED_DESIGNS):
-        assert get_scenario_design(name).kn_staged_dims() is None
-
-
-@pytest.mark.parametrize("name", sorted(FORCING_MASTER_DESIGNS))
-def test_forcing_designs_share_one_master(name):
-    """Forcing designs stage no stationary kn pool; their pool slug IS a forcing master."""
-    d = get_scenario_design(name)
-    assert d.master_kind == "forcing"
-    assert d.kn_staged_dims() is None
-    assert d.master_slug() is not None
-    assert d.kn_ensemble_slug() == d.master_slug()
-    # All short-window designs — including the probabilistic controls — resolve
-    # to the SAME design-independent master (methods §2.1/§3.2, review A1).
-    shared = {get_scenario_design(n).master_slug() for n in SHARED_MASTER_DESIGNS}
-    assert len(shared) == 1
-    # The long design uses its own long master of the same construction.
-    long_master = get_scenario_design("fixed_probabilistic_long").master_slug()
-    assert long_master not in shared
-    assert f"{LONG_RECORD_YEARS}yr" in long_master
-
-
-def test_hazard_filling_resolves_from_staged_ensemble(tmp_path, monkeypatch):
-    """When the final reduced ensemble is staged, hazard_filling resolves to it by slug.
-
-    The scengen subsample step stages a standalone ensemble (HDF5s + _meta.json)
-    under ``hazfill_{L}yr_n{N}_s{seed}``; resolution reads only the _meta.json,
-    with no manifest and no realization-index override.
-    """
+@pytest.mark.parametrize("name", ["fixed_probabilistic", "input_stratified"])
+def test_generated_designs_resolve_own_staged_slug(name, tmp_path, monkeypatch):
+    """Generated designs resolve their OWN staged ensemble -- no pool, no subset."""
     import config
-    from src import ensembles
-
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design("hazard_filling")
-    final_slug = d.hazard_filling_slug()
-    out_dir = ensembles.staged_ensemble_dir(final_slug)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "_meta.json").write_text(
-        json.dumps({
-            "slug": final_slug,
-            "n_realizations": d.n_realizations,
-            "realization_years": d.realization_years,
-        })
-    )
+    d = get_scenario_design(name)
+    slug = d.search_ensemble_slug(0)
+    _stage(tmp_path, slug, d.n_realizations, d.realization_years)
 
-    spec = d.resolve_search_spec()
+    spec = d.resolve_search_spec(draw=0)
     assert spec.is_ensemble is True
-    assert spec.inflow_type == final_slug            # loads the staged reduced HDF5
-    assert spec.realization_indices == tuple(range(d.n_realizations))
+    assert spec.inflow_type == slug
     assert spec.n_realizations == d.n_realizations
     assert spec.realization_years == d.realization_years
+    assert d.pool_slug(0) is None  # it generates; it does not select
 
 
-def test_hazard_filling_draw_resolves_per_draw_slug(tmp_path, monkeypatch):
-    """Draw k of hazard_filling loads the reduced ensemble staged with
-    selector seed subset_seed + k."""
+def test_hazard_filling_resolves_reduced_ensemble_per_draw(tmp_path, monkeypatch):
+    """Step 03 stages one reduced ensemble per draw; resolution reads only its meta."""
     import config
-    from src import ensembles
-
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design("hazard_filling")
-    slug1 = d.hazard_filling_slug(draw=1)
-    assert slug1.endswith("_s1")
-    out_dir = ensembles.staged_ensemble_dir(slug1)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "_meta.json").write_text(json.dumps({
-        "slug": slug1,
-        "n_realizations": d.n_realizations,
-        "realization_years": d.realization_years,
-    }))
+    d = get_scenario_design("hazard_filling_du")
+
+    slug1 = d.search_ensemble_slug(draw=1)
+    _stage(tmp_path, slug1, d.n_realizations, d.realization_years)
 
     assert d.resolve_search_spec(draw=1).inflow_type == slug1
     with pytest.raises(NotImplementedError):
         d.resolve_search_spec(draw=2)  # that draw is not staged
 
 
-def test_resample_flag_only_on_resampled():
-    resampling = {n for n, d in SCENARIO_DESIGNS.items() if d.resample_per_eval}
-    assert resampling == {"resampled_probabilistic"}
+def test_resampled_probabilistic_resolves_to_its_own_pool(tmp_path, monkeypatch):
+    """The pool belongs to the design -- it is not a shared master."""
+    import config
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    d = get_scenario_design("resampled_probabilistic")
+    pool = d.pool_slug(0)
+    assert pool.startswith("respool_")
+    _stage(tmp_path, pool, d.pool_size, d.realization_years)
+
+    spec = d.resolve_search_spec()
+    assert spec.resample_per_eval is True
+    assert spec.resample_size == d.n_realizations
+    assert spec.n_realizations == d.pool_size  # the POOL, drawn from per eval
+
+
+def test_draw_replication_structurally_rejected():
+    """historic has no ensemble to redraw."""
+    with pytest.raises(ValueError):
+        get_scenario_design("historic").resolve_search_spec(draw=1)
+
+
+def test_resolution_is_a_pure_lookup(tmp_path, monkeypatch):
+    """Resolving must not generate anything.
+
+    Construction lives in workflow step 02/03. If resolution generated, importing
+    config would do RNG draws and bulk I/O on every process -- including every
+    Borg worker.
+    """
+    import config
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    d = get_scenario_design("fixed_probabilistic")
+    with pytest.raises(NotImplementedError):
+        d.resolve_search_spec()
+    assert not list(tmp_path.iterdir()), "resolution wrote to the staging dir"
 
 
 # ---------------------------------------------------------------------------
@@ -384,8 +398,8 @@ def test_max_time_seconds_conversion():
 def test_run_output_dir_layout(tmp_path, monkeypatch):
     import config
     monkeypatch.setattr(config, "OUTPUTS_DIR", tmp_path)
-    p = config.run_output_dir("hazard_filling", "ffmp_obj7_sal", "sets")
-    assert p == tmp_path / "hazard_filling" / "ffmp_obj7_sal" / "sets"
+    p = config.run_output_dir("hazard_filling_du", "ffmp_obj7_sal", "sets")
+    assert p == tmp_path / "hazard_filling_du" / "ffmp_obj7_sal" / "sets"
     assert p.is_dir()
 
 

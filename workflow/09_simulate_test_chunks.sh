@@ -1,5 +1,5 @@
 #!/bin/bash
-# Step 9: Simulate + score a chunked master ensemble (metrics-only).
+# Step 9: Simulate + score a chunked test ensemble (metrics-only).
 #
 # Re-evaluates a policy set against every chunk of the chunked forcing master
 # that NYCOPT_REEVAL_ENSEMBLE_PRESET resolves to, computing objectives +
@@ -26,7 +26,7 @@
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=master_5yr_n128000 \
-#          workflow/09_simulate_master_chunks.sh
+#          workflow/09_simulate_test_chunks.sh
 #
 #SBATCH --job-name=sim_master_chunks
 #SBATCH --account=ees260021
@@ -58,7 +58,7 @@ echo "=== Simulate master chunks: formulation=${FORMULATION} mode=${MODE} "\
 
 case "${MODE}" in
     single)
-        python3 -m scripts.main.simulate_master_chunks ${ARGS}
+        python3 -m scripts.main.simulate_test_chunks ${ARGS}
         ;;
     mpi)
         # Under SLURM the rank count IS the allocation (cannot mismatch the
@@ -66,7 +66,7 @@ case "${MODE}" in
         NTASKS_MPI="${SLURM_NTASKS:-$(( ${NYCOPT_CHUNK_SIM_NODES:-4} * ${NYCOPT_CHUNK_SIM_RANKS:-16} ))}"
         echo "[sim-chunks] MPI mode, ${NTASKS_MPI} ranks"
         mpirun -np "${NTASKS_MPI}" ${NYCOPT_MPI_MCA_FLAGS} \
-            python3 -m scripts.main.simulate_master_chunks ${ARGS}
+            python3 -m scripts.main.simulate_test_chunks ${ARGS}
         ;;
     *)
         echo "ERROR: unknown NYCOPT_CHUNK_SIM_MODE='${MODE}' (expected 'single' or 'mpi')" >&2
