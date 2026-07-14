@@ -162,10 +162,13 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
     Subsequent evaluations deep-copy this dict and patch only the DV-affected
     parameters, avoiding the ~1s cost of make_model() on every eval.
 
-    Cache key includes drought-level structure, T/S toggles, and ensemble
-    preset name + DU factor signature so that switching ensemble presets
-    (or enabling salinity) does not silently reuse a cache built for a
-    different inflow source.
+    Cache key includes drought-level structure, T/S toggles, the resolved
+    trimmed/full model variant, and ensemble preset name + DU factor signature
+    so that switching ensemble presets (or enabling salinity, or switching to
+    the full model) does not silently reuse a cache built for a different
+    model. ``use_trimmed`` is resolved against ``USE_TRIMMED_MODEL`` *before*
+    keying: every production caller passes ``None``, so keying on the raw
+    argument would collapse both variants onto one entry.
     """
     global _CACHED_MODEL_DICT, _CACHED_MODEL_DICTS
     if nyc_config is None:
@@ -173,11 +176,13 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
     if ensemble_spec is None:
         from src.ensembles import get_ensemble_spec
         ensemble_spec = get_ensemble_spec("historic_single")
+    use_trimmed = USE_TRIMMED_MODEL if use_trimmed is None else bool(use_trimmed)
     drought_levels, _ = _config_levels(nyc_config)
     key = (
         tuple(drought_levels),
         bool(INCLUDE_TEMPERATURE_MODEL),
         bool(INCLUDE_SALINITY_MODEL),
+        use_trimmed,
         ensemble_spec.preset_name,
         ensemble_spec.du_factor_signature,
     )
@@ -194,7 +199,7 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
         legacy_levels = tuple(
             ["level1a", "level1b", "level1c", "level2", "level3", "level4", "level5"]
         )
-        if key == (legacy_levels, False, False, "historic_single", ""):
+        if key == (legacy_levels, False, False, True, "historic_single", ""):
             _CACHED_MODEL_DICT = _CACHED_MODEL_DICTS[key]
     return _CACHED_MODEL_DICTS[key]
 

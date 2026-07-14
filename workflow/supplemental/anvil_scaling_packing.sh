@@ -4,7 +4,7 @@
 #
 # On ONE exclusive 128-core Anvil node, run the K-ladder from
 # supplemental_config.PACKING_MODES sequentially: for each step,
-# `mpirun -np K bench_packing_worker.py` has every rank time 1 cold + M warm
+# `mpirun -np K bench_eval_worker.py` has every rank time 1 cold + M warm
 # trimmed-model ensemble evaluations (the exact Borg-worker `evaluate()` path)
 # and record wall time + peak RSS to per-rank CSV shards under
 # outputs/supplemental/anvil_scaling_experiment/packing/. A fresh mpirun per
@@ -13,23 +13,23 @@
 # Usage (from repo root; the allocation account is set in the header below):
 #   # ~10-min smoke on the debug partition:
 #   sbatch --partition=debug --time=00:30:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_PACK_MODE=smoke \
+#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_BENCH_MODE=smoke \
 #          workflow/supplemental/anvil_scaling_packing.sh
 #   # full ladder (defaults below):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env \
 #          workflow/supplemental/anvil_scaling_packing.sh
 #   # spot re-measurement (edit PACKING_MODES["spot"] first, then):
 #   sbatch --partition=debug --time=02:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_PACK_MODE=spot,NYCOPT_PACK_BUDGET_S=6000 \
+#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_BENCH_MODE=spot,NYCOPT_PACK_BUDGET_S=6000 \
 #          workflow/supplemental/anvil_scaling_packing.sh
 #   # batched-evaluation (K, B) sweep at K=1 and K*=NYCOPT_PACK_BATCH_KSTAR
 #   # (set K* from the ladder's packing_summary before submitting):
 #   sbatch --partition=debug --time=02:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_PACK_MODE=batch,NYCOPT_PACK_BATCH_KSTAR=32,NYCOPT_PACK_BUDGET_S=6600 \
+#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_BENCH_MODE=batch,NYCOPT_PACK_BATCH_KSTAR=32,NYCOPT_PACK_BUDGET_S=6600 \
 #          workflow/supplemental/anvil_scaling_packing.sh
 #
 # Notes:
-#   * NYCOPT_PACK_MODE (smoke | ladder | spot) selects the step list — the
+#   * NYCOPT_BENCH_MODE (smoke | ladder | spot) selects the step list — the
 #     ladders themselves live in supplemental_config.py (no value flags).
 #   * The node must be exclusive (wholenode, or debug which is node-exclusive)
 #     so contention comes only from our own ranks; --ntasks-per-node=128
@@ -59,7 +59,7 @@ nycopt_setup_env
 nycopt_source_env_file required
 nycopt_pin_threads
 
-MODE="${NYCOPT_PACK_MODE:-ladder}"
+MODE="${NYCOPT_BENCH_MODE:-ladder}"
 BUDGET_S="${NYCOPT_PACK_BUDGET_S:-9600}"
 WORST_STEP_S=2400
 JOB_ID="${SLURM_JOB_ID:-local}"
@@ -124,11 +124,12 @@ for STEP in "${STEPS[@]}"; do
     _shm_clean
     echo "=== step K=${K} M=${M} batch=${BATCH} start $(date -u +%H:%M:%SZ) ==="
     T0=$(date +%s); RC=0
-    NYCOPT_PACK_WARM_EVALS="${M}" \
-    NYCOPT_PACK_MODE="${MODE}" \
+    NYCOPT_BENCH_EXPERIMENT=packing \
+    NYCOPT_BENCH_WARM_EVALS="${M}" \
+    NYCOPT_BENCH_MODE="${MODE}" \
     NYCOPT_SEARCH_REALIZATION_BATCH="${BATCH}" \
         mpirun -np "${K}" python3 -u \
-        scripts/supplemental/anvil_scaling/bench_packing_worker.py \
+        scripts/supplemental/bench_eval_worker.py \
         < /dev/null || RC=$?
     T1=$(date +%s)
     printf '{"k": %d, "m_warm": %d, "batch": %d, "rc": %d, "t0": %d, "t1": %d, "mode": "%s", "job_id": "%s"}\n' \

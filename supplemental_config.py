@@ -460,3 +460,365 @@ def packing_step_manifest_path(k: int, batch: int, job_id: str) -> Path:
 def borg_timing_csv_path(config_name: str, seed: int, job_id: str) -> Path:
     """One-row wall-time CSV path for one Stage B (geometry, seed) job."""
     return SCALING_BORG_DIR / f"timing_{config_name}_seed{seed:02d}_{job_id}.csv"
+
+
+###############################################################################
+# Ensemble-cost experiment — the t_eval(N, L, model) cost surface
+# (docs/notes/methods/ensemble_cost_experiment.md;
+#  workflow/supplemental/ensemble_cost_*.sh)
+#
+# The Anvil packing sweep measured ONE ensemble shape (kn_20yr_n20) across
+# ranks-per-node. It says nothing about how a Borg evaluation's cost moves with
+# the ensemble's SHAPE, and the campaign is sized in that shape: N realizations
+# x L years, trimmed model for search, full model for re-evaluation. pywrdrb
+# runs realizations as pywr SCENARIOS inside one model, so per-eval cost is
+# sub-linear in N (vectorized per-timestep work) but ~linear in L (timesteps);
+# a cost per scenario-year taken from one (N, L) point therefore misprices every
+# other point, in the direction that matters most for the N-vs-L trade.
+#
+# This experiment measures that surface directly: for every cell (N, L, model),
+# K concurrent ranks on one exclusive node each run 1 cold + M warm evaluations
+# through the production ``evaluate()`` path (the same worker the packing sweep
+# uses), recording wall time and peak RSS. The analysis derives the empirical N
+# and L exponents, the full/trimmed ratio, and the SU projection for the search
+# campaign and the held-out test-ensemble re-evaluation.
+#
+# DENSITY. Cells run at the largest memory-feasible ranks-per-node K <= 128.
+# The packing sweep found SU/eval is minimized at full packing (128 ranks:
+# 20.8 SU/1000 evals vs 71.7 at 32, only 1.17x per-eval slowdown), so 128 is the
+# density the campaign would actually run at and therefore the density the cost
+# surface must be priced at. Memory is the binding constraint, not contention:
+# a 256 GB node gives ~2 GB/rank at K=128, and the large cells exceed that.
+# ``ensemble_cost_cell_k`` derives each cell's K from the measured RSS model
+# below; K is recorded in every shard and all SU math normalizes by it.
+#
+# IMPORTANT: never combine this experiment with DEBUG_SIM or PYWRDRB_SIM_* date
+# overrides — the window self-derives from the realization length
+# (src/simulation.py::_ensemble_window) and an override shifts it off the staged
+# HDF5 date axis.
+###############################################################################
+
+
+def configure_ensemble_cost_env() -> None:
+    """Apply env knobs for the ensemble-cost experiment.
+
+    Salinity and temperature LSTMs off (the active 7-objective set uses
+    neither). No simulation-window override: the window self-derives from each
+    cell's realization length. Deliberately does NOT touch
+    ``NYCOPT_USE_TRIMMED_MODEL`` — the sweep script exports it per cell, and a
+    ``setdefault`` here would make every "full" cell silently re-measure the
+    trimmed model with no error.
+    """
+    _apply_env(salinity="0", temperature="0")
+
+
+# ---------------------------------------------------------------------------
+# The measured grid
+# ---------------------------------------------------------------------------
+#: Realizations N. Spans the campaign design point (100) by an order of
+#: magnitude either side, so the sub-linear exponent is estimated over a decade
+#: rather than interpolated between neighbours.
+ENSEMBLE_COST_N_GRID: "tuple[int, ...]" = (1, 10, 20, 50, 100, 200)
+
+#: Realization length L in years. 10 is the campaign design length; 30 bounds
+#: the held-out test ensemble's L_test.
+ENSEMBLE_COST_L_GRID: "tuple[int, ...]" = (5, 10, 20, 30)
+
+#: Model variants: the search path and the re-evaluation path.
+ENSEMBLE_COST_MODELS: "tuple[str, ...]" = ("trimmed", "full")
+
+#: Formulation whose baseline DVs are evaluated. Per-eval cost is set by model
+#: size x timesteps x scenarios, not by DV values; identical DVs across ranks
+#: also make the objective vector byte-comparable (a free correctness check).
+ENSEMBLE_COST_FORMULATION: str = "ffmp"
+
+#: Cap on the per-rank start stagger (rank r sleeps min(r, cap) s before its
+#: first eval), decorrelating the ranks' memory-access phases.
+ENSEMBLE_COST_STAGGER_MAX_S: int = 30
+
+# ---------------------------------------------------------------------------
+# Cost model — sets each cell's packing density K and the sweep's time guard
+# ---------------------------------------------------------------------------
+# Both models below are CALIBRATION CONSTANTS, not results: they exist only to
+# choose K per cell and to guard the job's walltime. They are committed edits
+# (the artifact of record, per the packing sweep's convention), seeded from the
+# packing sweep's measured point and updated from the "probe" mode's corner
+# cells before the production sweeps run. Every reported number comes from the
+# measurement, never from these.
+
+#: Peak RSS per rank, MB: base + per_ry * (N * L). Seeded from the packing
+#: sweep's K=1 rows (kn_20yr_n20 trimmed: 755 MB at 400 realization-years, and
+#: 502 MB at batch=1 => base ~490 MB, ~0.67 MB per realization-year). The full
+#: model simulates ~13 more reservoirs live, so its placeholder is 1.5x base
+#: and 2x slope until the probe measures it.
+ENSEMBLE_COST_RSS_MB: "dict[str, tuple[float, float]]" = {
+    "trimmed": (490.0, 0.67),
+    "full": (735.0, 1.34),
+}
+
+#: Warm per-eval seconds: a + b * L * N**alpha. Seeded so the trimmed model
+#: reproduces the packing sweep's 64 s at (N=20, L=20) with the sub-linear
+#: exponent the pywr-scenario structure implies; the full placeholder is 2x.
+#: alpha here is an ASSUMPTION for the walltime guard — measuring it is the
+#: experiment's deliverable (see ``scaling_fits.csv``).
+ENSEMBLE_COST_T_EST_S: "dict[str, tuple[float, float, float]]" = {
+    "trimmed": (5.0, 0.268, 0.80),
+    "full": (10.0, 0.536, 0.80),
+}
+
+#: Fixed per-step cost beyond the evals themselves: interpreter + pywrdrb
+#: import, model build, and the cold eval's extra model write/load.
+ENSEMBLE_COST_STEP_OVERHEAD_S: float = 120.0
+
+#: Safety factor on the step-time estimate used by the sweep's budget guard.
+ENSEMBLE_COST_GUARD_MARGIN: float = 1.6
+
+#: Fraction of node memory a cell may occupy at its chosen K. Headroom covers
+#: the cold-build spike, the /dev/shm model JSONs, and RSS-model error.
+ENSEMBLE_COST_MEM_SAFETY: float = 0.85
+
+#: Candidate packing densities, densest first. 128 = full node (the SU-optimal
+#: density measured by the packing sweep); the rest are fallbacks for cells whose
+#: RSS will not fit 128 ranks in 256 GB.
+ENSEMBLE_COST_K_LADDER: "tuple[int, ...]" = (128, 96, 64, 48, 32, 24, 16, 8, 4, 2, 1)
+
+
+def ensemble_cost_rss_est_mb(n: int, ell: int, model: str) -> float:
+    """Estimated peak RSS per rank (MB) for one cell, from the calibrated model.
+
+    Args:
+        n: Realizations.
+        ell: Realization length in years.
+        model: ``"trimmed"`` or ``"full"``.
+
+    Returns:
+        Estimated peak resident set size of one evaluating rank, in MB.
+    """
+    base, per_ry = ENSEMBLE_COST_RSS_MB[model]
+    return base + per_ry * float(n * ell)
+
+
+def ensemble_cost_t_est_s(n: int, ell: int, model: str) -> float:
+    """Estimated warm per-eval wall time (s) for one cell, from the cost model.
+
+    Used only to size the sweep's per-cell walltime guard; the measured value
+    is the experiment's output.
+
+    Args:
+        n: Realizations.
+        ell: Realization length in years.
+        model: ``"trimmed"`` or ``"full"``.
+
+    Returns:
+        Estimated warm evaluation wall time in seconds.
+    """
+    a, b, alpha = ENSEMBLE_COST_T_EST_S[model]
+    return a + b * float(ell) * float(n) ** alpha
+
+
+def ensemble_cost_cell_k(n: int, ell: int, model: str) -> int:
+    """Densest packing K a cell fits in node memory, from the RSS model.
+
+    Walks ``ENSEMBLE_COST_K_LADDER`` densest-first and returns the first K whose
+    projected node total ``K * RSS_est`` stays under
+    ``ENSEMBLE_COST_MEM_SAFETY * SCALING_NODE_MEM_GB``. Cells that cannot reach
+    128 are a finding in their own right: memory, not contention, is what caps
+    the campaign's packing density at large N.
+
+    Args:
+        n: Realizations.
+        ell: Realization length in years.
+        model: ``"trimmed"`` or ``"full"``.
+
+    Returns:
+        Ranks per node for this cell (>= 1; 1 even if the estimate exceeds node
+        memory, so the cell is still attempted and any OOM is recorded as a
+        measurement rather than silently skipped).
+    """
+    budget_mb = ENSEMBLE_COST_MEM_SAFETY * SCALING_NODE_MEM_GB * 1024.0
+    rss_mb = ensemble_cost_rss_est_mb(n, ell, model)
+    for k in ENSEMBLE_COST_K_LADDER:
+        if k * rss_mb <= budget_mb:
+            return k
+    return 1
+
+
+def ensemble_cost_step_estimate_s(n: int, ell: int, model: str, m_warm: int) -> float:
+    """Guard-sized wall time (s) for one sweep step: 1 cold + ``m_warm`` warm evals."""
+    evals_s = (1 + m_warm) * ensemble_cost_t_est_s(n, ell, model)
+    return ENSEMBLE_COST_GUARD_MARGIN * (evals_s + ENSEMBLE_COST_STEP_OVERHEAD_S)
+
+
+# ---------------------------------------------------------------------------
+# Sweep modes — the ordered cell lists each SLURM job runs
+# ---------------------------------------------------------------------------
+# A cell is ``(N, L, model, m_warm, k)``. ``k=0`` means "derive from the RSS
+# model" (``ensemble_cost_cell_k``), which is what every production cell uses:
+# recalibrating the RSS model then re-picks every density from one edit. smoke
+# and probe pin k explicitly because they run on the shared partition.
+#
+# Priority order follows the budget question. The campaign design point
+# (N=100, L=10) is measured first and with more warm evals than anything else,
+# because it is the number that prices the whole campaign; then the N sweep at
+# L=10 (the sub-linearity), the L sweep at N=100 (the linearity), and the
+# full-model points needed for the re-evaluation ratio. Everything else is the
+# factorial remainder, split trimmed/full so the memory-hungry full cells cannot
+# take the trimmed surface down with them.
+
+#: Cheap correctness gate on the already-staged kn_20yr_n20: proves the full
+#: model builds and runs on a staged ensemble, and that NYCOPT_USE_TRIMMED_MODEL
+#: actually reaches config (trimmed and full objective vectors must differ).
+ENSEMBLE_COST_SMOKE: "list[tuple[int, int, str, int, int]]" = [
+    (20, 20, "trimmed", 1, 4),
+    (20, 20, "full", 1, 4),
+]
+
+#: Corner cells at K=1 (no contention, one rank) that calibrate
+#: ``ENSEMBLE_COST_RSS_MB`` and ``ENSEMBLE_COST_T_EST_S`` before any wholenode
+#: job runs: the two extremes of the grid bracket both models' base and slope.
+ENSEMBLE_COST_PROBE: "list[tuple[int, int, str, int, int]]" = [
+    (1, 5, "trimmed", 1, 1),
+    (1, 5, "full", 1, 1),
+    (200, 30, "trimmed", 1, 1),
+    (200, 30, "full", 1, 1),
+]
+
+#: The cells that unblock the budget, in the order they must be measured.
+ENSEMBLE_COST_CORE: "list[tuple[int, int, str, int, int]]" = [
+    # N=1 first: it is the only cell whose staging and scenario block are a
+    # degenerate edge case, and it costs ~1 min — surface any failure in the
+    # job's first minutes rather than after hours.
+    (1, 10, "trimmed", 2, 0),
+    # (1) The campaign design point, both models. More warm evals than anywhere
+    # else: every SU number in the projection is this cell's median.
+    (100, 10, "trimmed", 4, 0),
+    (100, 10, "full", 4, 0),
+    # (2) N sweep at L=10, trimmed — the sub-linearity in N.
+    (10, 10, "trimmed", 2, 0),
+    (20, 10, "trimmed", 2, 0),
+    (50, 10, "trimmed", 2, 0),
+    (200, 10, "trimmed", 2, 0),
+    # (3) L sweep at N=100, trimmed — the linearity in L.
+    (100, 5, "trimmed", 2, 0),
+    (100, 20, "trimmed", 2, 0),
+    (100, 30, "trimmed", 2, 0),
+    # (4) Extra full-model points so the full/trimmed ratio is measured at >= 3
+    # (N, L) cells rather than assumed constant, and so the re-eval projection
+    # rests on a full-model point at the L_test=30 end.
+    (20, 10, "full", 2, 0),
+    (100, 30, "full", 2, 0),
+]
+
+
+def _remaining_cells(model: str, m_warm: int) -> "list[tuple[int, int, str, int, int]]":
+    """Factorial cells of one model not already covered by core, cheapest first.
+
+    Ordered by N*L (realization-years, the cost proxy) so a job that runs out of
+    walltime loses the most expensive cells, which are also the ones whose
+    absence the power-law fit tolerates best.
+    """
+    covered = {(n, ell, mdl) for n, ell, mdl, _, _ in ENSEMBLE_COST_CORE}
+    cells = [
+        (n, ell, model, m_warm, 0)
+        for ell in ENSEMBLE_COST_L_GRID
+        for n in ENSEMBLE_COST_N_GRID
+        if (n, ell, model) not in covered
+    ]
+    return sorted(cells, key=lambda c: c[0] * c[1])
+
+
+ENSEMBLE_COST_MODES: "dict[str, list[tuple[int, int, str, int, int]]]" = {
+    "smoke": ENSEMBLE_COST_SMOKE,
+    "probe": ENSEMBLE_COST_PROBE,
+    "core": ENSEMBLE_COST_CORE,
+    "rest_trimmed": _remaining_cells("trimmed", 2),
+    "rest_full": _remaining_cells("full", 2),
+}
+
+
+def ensemble_cost_staging_cells() -> "list[tuple[int, int]]":
+    """Every (N, L) ensemble the experiment needs staged, cheapest first."""
+    return sorted(
+        {(n, ell) for ell in ENSEMBLE_COST_L_GRID for n in ENSEMBLE_COST_N_GRID},
+        key=lambda c: c[0] * c[1],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Campaign projection — what the measured surface is FOR
+# ---------------------------------------------------------------------------
+#: Search side: 6 scenario designs x K draws x S MOEA seeds independent Borg
+#: runs, each of NFE evaluations at the campaign design point (N=100, L=10) on
+#: the trimmed model. The grids are the open sizing decisions.
+ENSEMBLE_COST_PROJ_DESIGNS: int = 6
+ENSEMBLE_COST_PROJ_DRAWS: "tuple[int, ...]" = (5, 10)
+ENSEMBLE_COST_PROJ_SEEDS: "tuple[int, ...]" = (2, 3)
+ENSEMBLE_COST_PROJ_NFE: "tuple[int, ...]" = (25_000, 50_000, 100_000)
+
+#: The campaign design point itself: the (N, L) whose measured trimmed cost
+#: prices the search campaign.
+ENSEMBLE_COST_DESIGN_POINT: "tuple[int, int]" = (100, 10)
+
+#: MM-Borg geometry the search projection assumes: nodes per Borg run and
+#: islands. The worker count is nodes*K - 1 - islands (one controller rank plus
+#: one master per island), matching the Stage-B convention in analyze_scaling.py.
+ENSEMBLE_COST_PROJ_NODES: int = 4
+ENSEMBLE_COST_PROJ_ISLANDS: int = 2
+
+#: Parallel efficiency applied to Borg search. Measured on the Anvil Stage-B
+#: strong-scaling sweep (scale_1x64: speedup 5.83 vs ideal 8.0 -> 0.729,
+#: outputs/supplemental/anvil_scaling_experiment/tables/borg_summary.csv). That
+#: run used ~13 s evals, so coordination overhead is a LARGER share of wall time
+#: there than at the campaign's minute-scale ensemble evals: applying it here
+#: over-estimates walltime, i.e. the search projection is conservative.
+ENSEMBLE_COST_PROJ_EFFICIENCY: float = 0.729
+
+#: Re-evaluation side: n_policies archived policies re-simulated on the held-out
+#: test ensemble E_test (N_theta forcing draws x R realizations each, L_test yr)
+#: on the FULL model. 600 = ~100 policies per design after archive filtering.
+ENSEMBLE_COST_REEVAL_POLICIES: int = 600
+ENSEMBLE_COST_ETEST_NTHETA: "tuple[int, ...]" = (200, 500, 1000)
+ENSEMBLE_COST_ETEST_R: "tuple[int, ...]" = (10, 20)
+ENSEMBLE_COST_ETEST_LTEST: "tuple[int, ...]" = (10, 30)
+
+#: Re-evaluation is an embarrassingly parallel task farm, not a Borg search: no
+#: island coordination, no synchronizing generations. Its only loss is a master
+#: rank plus the ragged tail of the last wave, so it is priced at a utilization
+#: factor, NOT at the Borg efficiency above.
+ENSEMBLE_COST_REEVAL_UTILIZATION: float = 0.90
+
+#: The allocation every projected cost is stated as a fraction of.
+ENSEMBLE_COST_ALLOCATION_SU: int = 1_000_000
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable; self-contained for the supplement)
+# ---------------------------------------------------------------------------
+ENSEMBLE_COST_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "ensemble_cost_experiment"
+ENSEMBLE_COST_CELLS_DIR: Path = ENSEMBLE_COST_OUTPUT_ROOT / "cells"
+ENSEMBLE_COST_TABLES_DIR: Path = ENSEMBLE_COST_OUTPUT_ROOT / "tables"
+ENSEMBLE_COST_FIGURES_DIR: Path = ENSEMBLE_COST_OUTPUT_ROOT / "figures"
+ENSEMBLE_COST_MANIFESTS_DIR: Path = ENSEMBLE_COST_OUTPUT_ROOT / "manifests"
+
+
+def ensemble_cost_shard_path(n: int, ell: int, model: str, k: int,
+                             rank: int, job_id: str) -> Path:
+    """Per-rank CSV shard path for one cell (N, L, model, K) of one job."""
+    return (ENSEMBLE_COST_CELLS_DIR
+            / f"n{n:03d}_L{ell:02d}_{model}_k{k:03d}_rank{rank:03d}_{job_id}.csv")
+
+
+def ensemble_cost_step_manifest_path(n: int, ell: int, model: str, k: int,
+                                     job_id: str) -> Path:
+    """JSON manifest path (exit code, epochs) for one sweep step."""
+    return (ENSEMBLE_COST_CELLS_DIR
+            / f"step_n{n:03d}_L{ell:02d}_{model}_k{k:03d}_{job_id}.json")
+
+
+def ensemble_cost_table_path(name: str) -> Path:
+    """Path for a named ensemble-cost table CSV (e.g. name='cost_surface')."""
+    return ENSEMBLE_COST_TABLES_DIR / f"{name}.csv"
+
+
+def ensemble_cost_figure_path(name: str) -> Path:
+    """Path stub for a named ensemble-cost figure (extension added by save_figure)."""
+    return ENSEMBLE_COST_FIGURES_DIR / name

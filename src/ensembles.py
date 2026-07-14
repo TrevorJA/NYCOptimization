@@ -310,6 +310,44 @@ def staged_ensemble_dir(inflow_type: str):
     return Path(STAGED_ENSEMBLE_DIR).resolve() / inflow_type
 
 
+#: Files a staged ensemble must carry before ``evaluate()`` can simulate on it,
+#: mapped to the workflow step that writes each. The two step-02 files come from
+#: the generator; the three step-04 files come from the pywrdrb preprocessors.
+#: The full model does not read ``presimulated_releases_mgd.hdf5`` itself, but
+#: step 04 bakes the ``perfect_foresight`` predicted inflows from it, so a
+#: complete staging carries it regardless of which model variant will run.
+STAGED_ENSEMBLE_FILES: dict[str, str] = {
+    "gage_flow_mgd.hdf5": "02",
+    "catchment_inflow_mgd.hdf5": "02",
+    "catchment_inflow_with_flood_nodes_mgd.hdf5": "04",
+    "presimulated_releases_mgd.hdf5": "04",
+    "predicted_inflows_mgd.hdf5": "04",
+}
+
+
+def staged_ensemble_missing(slug: str) -> list[str]:
+    """Return the required files ``slug`` is missing (empty = ready to simulate).
+
+    A directory's mere existence is NOT a staging test: an interrupted or
+    metadata-only run leaves a non-empty directory (``_meta.json`` plus
+    diagnostics) that the step-02 generator's own "already staged" check will
+    happily skip over, after which step 04 dies on the absent inflow HDF5. This
+    checks for the files themselves, and treats a zero-byte file as missing.
+
+    Args:
+        slug: Staged ensemble directory name (e.g. ``"kn_10yr_n100"``).
+
+    Returns:
+        The missing (or empty) required filenames, in ``STAGED_ENSEMBLE_FILES``
+        order. An empty list means the ensemble is fully staged.
+    """
+    d = staged_ensemble_dir(slug)
+    return [
+        name for name in STAGED_ENSEMBLE_FILES
+        if not (d / name).is_file() or (d / name).stat().st_size == 0
+    ]
+
+
 def load_chunk_index(pool_slug: str) -> dict | None:
     """Load a pool's ``chunk_index.json`` (chunks -> global realization ranges), or None."""
     import json

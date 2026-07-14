@@ -115,7 +115,7 @@ memory-bandwidth-safe packing, centralized as `NYCOPT_RANKS_PER_NODE` in
 `_common.sh`). Anvil ceilings: `wholenode` allows up to 16 nodes (2,048
 cores) and 96 h — at 33 ranks/node that is ~528 ranks (≈ 13 islands × 40
 workers); denser packing (override `NYCOPT_RANKS_PER_NODE` after
-benchmarking with `supplemental/bench_ensemble.sh`) raises the ceiling
+benchmarking with `supplemental/anvil_scaling_packing.sh`) raises the ceiling
 toward 2,048 ranks. The `wide` queue reaches 56 nodes but only 12 h. Seeds
 (`--array`) and experiments (env files) scale horizontally as fully
 independent jobs with no cross-job coordination. Shorter pilots can pass
@@ -126,8 +126,10 @@ independent jobs with no cross-job coordination. Shorter pilots can pass
 - `submit_smoke.sh` — one tiny-NFE end-to-end check per formulation
   (`bash workflow/submit_smoke.sh [--dry-run]`; Anvil `debug` queue, 2×40,
   2 h, `smoke` MOEA config + short 2018–2022 window via `envs/smoke.env`).
-- `supplemental/` — off-pipeline diagnostics: `bench_ensemble.sh` (per-eval
-  wall-clock benchmark), `objective_sensitivity.sh` and
+- `supplemental/` — off-pipeline diagnostics: `anvil_scaling_packing.sh`
+  (ranks-per-node packing sweep), `ensemble_cost_stage_submit.sh` +
+  `ensemble_cost_sweep.sh` (the t_eval(N, L, model) cost surface that prices
+  the campaign), `objective_sensitivity.sh` and
   `ensemble_objective_sensitivity{,_prep}.sh` (random-DV objective-sensitivity
   sweeps; all settings in root `supplemental_config.py`).
 
