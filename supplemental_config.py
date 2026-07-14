@@ -673,14 +673,22 @@ ENSEMBLE_COST_SMOKE: "list[tuple[int, int, str, int, int]]" = [
     (20, 20, "full", 1, 4),
 ]
 
-#: Corner cells at K=1 (no contention, one rank) that calibrate
+#: Cells at K=1 (one rank, no contention) that calibrate
 #: ``ENSEMBLE_COST_RSS_MB`` and ``ENSEMBLE_COST_T_EST_S`` before any wholenode
-#: job runs: the two extremes of the grid bracket both models' base and slope.
+#: job runs. Both models at the cheapest cell and at a large one: the base is
+#: read off the former, the slope off the lever arm between them.
+#: The large end is (200, 10) = 2000 realization-years rather than the grid's
+#: true corner (200, 30). Staging a 200-realization x 20-30 yr ensemble is by far
+#: the slowest step in the experiment (step 04's predicted-inflow pass is
+#: compute-bound and runs for hours at that size), and the calibration does not
+#: need it: RSS is linear in realization-years, so a 5 -> 2000 lever arm pins the
+#: model and extrapolates to 6000 fine. Blocking the whole sweep on those two
+#: ensembles would buy nothing.
 ENSEMBLE_COST_PROBE: "list[tuple[int, int, str, int, int]]" = [
     (1, 5, "trimmed", 1, 1),
     (1, 5, "full", 1, 1),
-    (200, 30, "trimmed", 1, 1),
-    (200, 30, "full", 1, 1),
+    (200, 10, "trimmed", 1, 1),
+    (200, 10, "full", 1, 1),
 ]
 
 #: The cells that unblock the budget, in the order they must be measured.

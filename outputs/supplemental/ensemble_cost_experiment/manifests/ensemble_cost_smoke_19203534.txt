@@ -1,0 +1,13 @@
+=== Ensemble-cost sweep manifest: smoke job 19203534 ===
+Date:        2026-07-14T17:32:33Z
+Host:        a147.anvil.rcac.purdue.edu
+Partition:   shared
+Env file:    workflow/envs/ensemble_cost.env
+Mode:        smoke
+Budget (s):  3000 (time limit 3600s)
+Ranks avail: 4
+Cells (N L model M K est_s):
+  20 20 trimmed 1 4 396
+  20 20 full 1 4 600
+Python:      /home/x-tamestoy/.conda/envs/2024.02-py311/venv/bin/python3
+Git HEAD:    426afcdc557362a7bc0932396ac74ff6e827251a
