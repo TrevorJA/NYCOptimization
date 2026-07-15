@@ -14,32 +14,36 @@ stream. No design is subsampled from a shared pool -- no published study builds
 its search ensemble that way, and doing so would misdescribe every method the
 comparison claims to represent.
 
-Two populations
----------------
-A *population* is the law a design's realizations are drawn from. Population and
-selection rule are independent choices; the comparison holds one fixed and
-varies the other.
-
-* ``stationary``  -- Kirsch-Nowak fitted to the historic record; no climate
-  perturbation. The flow model of the prevailing water-supply optimization
-  literature. Hazard variation comes from natural variability alone.
-* ``du_forced``   -- forcing parameters theta sampled from the CMIP6 harmonic
-  hypercube. Hazard variation comes from natural variability x forcing
-  uncertainty.
-
-Hazard-filling runs in BOTH, which is what makes every contrast exactly
-controlled:
+The campaign vs the registry
+----------------------------
+The manuscript campaign is THREE designs, all in the stationary population,
+flagged ``campaign=True``: ``historic`` (prevailing-practice reference),
+``fixed_probabilistic`` (the i.i.d. random-sampling control), and
+``hazard_filling_stationary`` (the proposed coverage-designed selection, in
+ABSOLUTE hazard space). The single controlled contrast is:
 
 * ``fixed_probabilistic`` -> ``hazard_filling_stationary``: same generator, same
-  population law, same N, same L. Only the SELECTION RULE differs.
-* ``input_stratified`` -> ``hazard_filling_du``: same forcing space, same N,
-  same L. Only the SELECTION SPACE differs (theta vs hazard). The central claim.
-* ``hazard_filling_stationary`` -> ``hazard_filling_du``: what the DU forcing
-  space adds.
+  population law, same N, same L. Only the SELECTION RULE differs. The i.i.d.
+  pool (below) makes ``fixed_probabilistic`` the EXACT statistical control.
 
-A stationary-only pool would leave ``input_stratified`` with no input space to
-stratify; a DU-only pool would leave hazard-filling with no exact
-random-selection control.
+Deep uncertainty enters ONLY in the held-out test ensemble ``src/etest.py``,
+not as a search population, so the re-evaluation is a generalization test.
+
+The registry ALSO retains other, non-campaign designs (``campaign=False``): the
+DU-forced input-stratified and hazard-filling designs, the resampled
+probabilistic design, the rank-space stationary hazard variant, and the scaling
+stand-in. These are modular, fully wired, and available for sensitivities and
+future work; they are simply not part of the main campaign. Campaign membership
+is the config-level switch -- ``campaign_designs()`` and the ``campaign`` flag
+select what the main comparison runs, without deleting any construction code.
+
+Two populations
+---------------
+A *population* is the law a design's realizations are drawn from. ``stationary``
+(Kirsch-Nowak fitted to the historic record, no climate perturbation) is the
+campaign's search population. ``du_forced`` (forcing parameters theta sampled
+from the CMIP6 harmonic hypercube) is used to build the test ensemble and by the
+retained non-campaign DU designs.
 
 Why only hazard-filling needs a pool
 ------------------------------------
@@ -419,7 +423,9 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         pool_size=RESAMPLE_POOL_SIZE,
         n_ensemble_draws=N_ENSEMBLE_DRAWS,
         seed_domain="resample_pool",
-        notes="Tests whether FREEZING the search ensemble causes overfitting. "
+        campaign=False,
+        notes="NON-CAMPAIGN (retained for future work). Tests whether FREEZING "
+              "the search ensemble causes overfitting. "
               "Primary precedent: Brodeur et al. (2020) (bagging / cross-validation "
               "in reservoir control-policy search). Trindade et al. (2017, 2019) and "
               "Gold et al. (2022, 2023) are cited ONLY for the principle that the "
@@ -444,22 +450,52 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         n_ensemble_draws=N_ENSEMBLE_DRAWS,
         seed_domain="stat_pool",
         selector="lhs_nn",
-        selector_space="cdf",
+        selector_space="abs",
         needs_hazard_image=True,
         campaign=True,
-        notes="The contribution, in the stationary population. Generalizes Zatarain "
-              "Salazar et al. (2017) -- which subsamples a stationary Kirsch-Nowak "
-              "pool by a realized-flow metric, in search -- from 1-D to m-D, and "
-              "from probability-preserving to coverage. Controlled by "
-              "fixed_probabilistic (same generator, same population law, same N, "
-              "same L; only the selection rule differs). Hazard axes are SCREENED "
-              "per pool (Olden & Poff redundancy screen, tail-balanced, target "
-              "m=3-4). The selector is deterministic LHS + nearest-neighbor; the "
-              "snap is intrinsic because hazard coordinates cannot be prescribed at "
-              "generation. No simulated annealing.",
+        notes="THE CAMPAIGN CONTRIBUTION, in the stationary population. Generalizes "
+              "Zatarain Salazar et al. (2017) -- which subsamples a stationary "
+              "Kirsch-Nowak pool by a realized-flow metric, in search -- from 1-D to "
+              "m-D, and from probability-preserving to coverage. Selection is in "
+              "ABSOLUTE, range-scaled hazard space (selector_space='abs'), which "
+              "deliberately over-represents the severe (rare) hazard corners relative "
+              "to their pool frequency -- the deliberate distribution shift the study "
+              "tests. Controlled by fixed_probabilistic (same generator, same "
+              "population law, same N, same L; only the selection rule differs). "
+              "Hazard axes are SCREENED per pool (Olden & Poff redundancy screen, "
+              "tail-balanced, target m=3-4). The selector is deterministic LHS + "
+              "nearest-neighbor; the snap is intrinsic because hazard coordinates "
+              "cannot be prescribed at generation. No simulated annealing. The "
+              "rank-space (empirical-CDF) variant is the non-campaign "
+              "hazard_filling_stationary_cdf sensitivity.",
+    ),
+    "hazard_filling_stationary_cdf": ScenarioDesign(
+        name="hazard_filling_stationary_cdf",
+        family="hazard_filling_ensemble",
+        description="Non-campaign sensitivity: stationary hazard-filling in "
+                    "empirical-CDF/rank space rather than absolute magnitude space.",
+        population="stationary",
+        construction="hazard_fill",
+        theta_sampler="iid",
+        n_realizations=SEARCH_ENSEMBLE_N,
+        realization_years=SCENARIO_YEARS,
+        pool_size=CANDIDATE_POOL_SIZE,
+        n_ensemble_draws=1,
+        seed_domain="stat_pool",
+        selector="lhs_nn",
+        selector_space="cdf",
+        needs_hazard_image=True,
+        campaign=False,
+        notes="NOT part of the manuscript campaign. Shares the stationary candidate "
+              "pool, axes and anchor plan with hazard_filling_stationary; differs "
+              "ONLY in the selection space (empirical-CDF/rank rather than absolute "
+              "magnitude), so it preserves the pool marginals and distorts only the "
+              "joint dependence among axes. Retained as a sensitivity that isolates "
+              "how much of any hazard-filling effect is attributable to absolute-space "
+              "tail over-representation specifically.",
     ),
 
-    # ---------------- DU-forced population ----------------
+    # ---------------- DU-forced designs (non-campaign; retained/future work) ------
     "input_stratified": ScenarioDesign(
         name="input_stratified",
         family="input_stratified_ensemble",
@@ -474,9 +510,11 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         realizations_per_profile=INPUT_STRAT_R,
         n_ensemble_draws=N_ENSEMBLE_DRAWS,
         seed_domain="input_strat",
-        notes="Precedent: Quinn et al. (2020); Bartholomew & Kwakkel (2020); Eker & "
-              "Kwakkel (2018); Watson & Kasprzyk (2017). The most common recent DMDU "
-              "approach, and the foil for hazard_filling_du: the contrast isolates "
+        campaign=False,
+        notes="NON-CAMPAIGN (retained for future work). Precedent: Quinn et al. "
+              "(2020); Bartholomew & Kwakkel (2020); Eker & Kwakkel (2018); Watson & "
+              "Kasprzyk (2017). The most common recent DMDU approach, and the foil "
+              "for hazard_filling_du: the contrast isolates "
               "the central claim that uniform coverage in INPUT space need not give "
               "uniform coverage in HAZARD space, because distinct theta often yield "
               "hydrologically redundant realizations (Quinn et al. 2020; Guo et al. "
@@ -506,9 +544,10 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
         selector="lhs_nn",
         selector_space="cdf",
         needs_hazard_image=True,
-        campaign=True,
-        notes="The contribution, in the DU-forced population, and the central "
-              "novelty claim. Controlled by input_stratified (same forcing space, "
+        campaign=False,
+        notes="NON-CAMPAIGN (retained for future work). Hazard-filling in the "
+              "DU-forced population. Controlled by input_stratified (same forcing "
+              "space, "
               "same N, same L; only the selection SPACE differs). Motivation: Cohen "
               "et al. (2021); Zaniolo et al. (2023). Machinery: Bonham et al. "
               "(2024). The pool's theta are sampled i.i.d. (NOT LHS) with "

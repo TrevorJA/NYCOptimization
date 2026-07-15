@@ -2,7 +2,7 @@
 
 *Paper 3 literature note. Annotated summaries of items in the Zotero collection "Paper 3 NYC Reoptimization" (`ISYGLK35`). Last updated 2026-06-16.*
 
-Scope: methods for choosing a small, informative, or representative **subset** from a larger candidate ensemble, and for diagnosing how subset size and coverage affect downstream conclusions. This is the methodological home of the two hazard-filling designs, each of which selects its N members (LHS anchors + nearest-neighbor snap in hazard space) from its own candidate pool; Bonham et al. (2024) is the closest published precedent. Probability-representative reduction from the stochastic-programming tradition is in [scenario reduction (stochastic programming)](scenario_reduction_stochastic_programming.md); the effect of finite ensembles on optimizer reliability is in [sampling noise & overfitting](sampling_noise_and_overfitting.md).
+Scope: methods for choosing a small, informative, or representative **subset** from a larger candidate ensemble, and for diagnosing how subset size and coverage affect downstream conclusions. This is the methodological home of the `hazard_filling` design, which selects its N members (LHS anchors + nearest-neighbor snap in absolute hazard space) from its own stationary candidate pool; Bonham et al. (2024) is the closest published precedent. Probability-representative reduction from the stochastic-programming tradition is in [scenario reduction (stochastic programming)](scenario_reduction_stochastic_programming.md); the effect of finite ensembles on optimizer reliability is in [sampling noise & overfitting](sampling_noise_and_overfitting.md).
 
 ---
 

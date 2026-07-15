@@ -32,9 +32,9 @@ What it produces, and why each piece exists
 
 2. **Cross-design scorecard aggregation + ranking stability.** Metric choice
    changes rankings (Herman et al. 2015; McPhail et al. 2018), so if satisficing
-   and maximin rank the six designs differently that is itself a result. This is
-   Kendall tau_b among the DESIGN rankings induced by each metric (not among
-   solution rankings -- ``robustness.ranking_stability`` already does those).
+   and maximin rank the campaign designs differently that is itself a result.
+   This is Kendall tau_b among the DESIGN rankings induced by each metric (not
+   among solution rankings -- ``robustness.ranking_stability`` already does those).
 
 3. **Variance components.** ``outcome ~ design (fixed) + draw(design) (random) +
    seed(draw) (random)``. The unit of analysis for between-design tests is the

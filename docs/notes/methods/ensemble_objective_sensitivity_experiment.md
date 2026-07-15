@@ -254,10 +254,9 @@ Figures are written as **PNG only** (vector copies dropped; centralized in
 
 ## Deferred (out of scope here)
 
-Full cross-scenario-design comparison (all six designs) and resampled-draw
-(redraw-per-evaluation) Monte-Carlo noise (Trindade et al. 2017; Brodeur et
-al. 2020) — both belong to the main scenario-design campaign
-(`docs/notes/methods/experimental_design.md`). The two arms here screen the
+Full cross-scenario-design comparison (all three campaign designs) belongs to
+the main scenario-design campaign
+(`docs/notes/methods/experimental_design.md`). The two compositions screened
+here (a probabilistic sample and a hazard-filled sample) test the
 operator-composition interaction; they are not the campaign's design
-comparison. The long-record design's final construction (L′ = 25–50 yr, N′)
-remains open pending the N-floor and D2(a) results.
+comparison.

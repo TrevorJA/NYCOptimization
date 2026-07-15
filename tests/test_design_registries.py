@@ -46,15 +46,25 @@ from src.moea_config import (
 # Scenario designs
 # ---------------------------------------------------------------------------
 
+# The manuscript campaign is three designs, all stationary-population. Deep
+# uncertainty enters only via E_test (src/etest.py), not as a search design.
 CAMPAIGN_DESIGNS = {
     "historic",
     "fixed_probabilistic",
-    "resampled_probabilistic",
     "hazard_filling_stationary",
+}
+# Retained, fully wired, but not in the main campaign: the DU-forced designs, the
+# resampled design, the rank-space stationary hazard variant, and the scaling
+# stand-in. Campaign membership is the config-level switch (the `campaign` flag);
+# no construction code is deleted.
+NON_CAMPAIGN_DESIGNS = {
+    "resampled_probabilistic",
     "input_stratified",
     "hazard_filling_du",
+    "hazard_filling_stationary_cdf",
+    "hazard_filling_absolute",
+    "scaling_stationary",
 }
-NON_CAMPAIGN_DESIGNS = {"hazard_filling_absolute", "scaling_stationary"}
 
 # Resolve without reading any staged data: `historic` from a static preset, and
 # the supplemental scaling stand-in from the `kn_{Y}yr_n{N}` slug grammar.
@@ -85,7 +95,7 @@ def test_all_designs_present_and_resolvable():
         assert d.name == name
 
 
-def test_campaign_designs_are_the_six():
+def test_campaign_designs_are_the_three():
     assert set(campaign_designs()) == CAMPAIGN_DESIGNS
 
 
@@ -165,9 +175,15 @@ def test_design_seed_is_deterministic_and_draw_dependent():
 
 # -- populations and construction -------------------------------------------
 
-def test_two_populations_are_represented():
+def test_campaign_search_population_is_stationary():
+    """Campaign designs search only the stationary population.
+
+    Deep uncertainty enters solely through the held-out test ensemble
+    (src/etest.py), which makes the re-evaluation a generalization test. The
+    du_forced population is used only by retained non-campaign designs and E_test.
+    """
     pops = {d.population for d in SCENARIO_DESIGNS.values() if d.campaign}
-    assert pops == {"historic", "stationary", "du_forced"}
+    assert pops == {"historic", "stationary"}
 
 
 def test_matched_designs_share_one_n_and_l():
@@ -196,6 +212,7 @@ def test_only_hazard_filling_and_resample_own_a_pool():
     assert with_pool == {
         "resampled_probabilistic",
         "hazard_filling_stationary",
+        "hazard_filling_stationary_cdf",
         "hazard_filling_du",
         "hazard_filling_absolute",
     }
@@ -255,6 +272,7 @@ def test_hazard_image_only_for_hazard_filling():
     needs = {n for n, d in SCENARIO_DESIGNS.items() if d.needs_hazard_image}
     assert needs == {
         "hazard_filling_stationary",
+        "hazard_filling_stationary_cdf",
         "hazard_filling_du",
         "hazard_filling_absolute",
     }
@@ -270,9 +288,25 @@ def test_slugs_key_on_draw_not_seed():
 
 
 def test_hazard_filling_slugs_distinguish_population_and_space():
-    assert get_scenario_design("hazard_filling_stationary").search_ensemble_slug(0).startswith("hazfill_stat_")
+    # Campaign stationary design is now ABSOLUTE space -> "hazfill_stat_abs_";
+    # the rank-space sensitivity keeps the plain "hazfill_stat_" stem.
+    assert get_scenario_design("hazard_filling_stationary").search_ensemble_slug(0).startswith("hazfill_stat_abs_")
+    assert get_scenario_design("hazard_filling_stationary_cdf").search_ensemble_slug(0).startswith("hazfill_stat_")
+    assert not get_scenario_design("hazard_filling_stationary_cdf").search_ensemble_slug(0).startswith("hazfill_stat_abs_")
     assert get_scenario_design("hazard_filling_du").search_ensemble_slug(0).startswith("hazfill_du_")
     assert get_scenario_design("hazard_filling_absolute").search_ensemble_slug(0).startswith("hazfill_du_abs_")
+
+
+def test_stationary_hazard_designs_share_one_candidate_pool_and_anchor_plan():
+    """The absolute (campaign) and rank-space (sensitivity) stationary hazard
+    designs differ ONLY in selector space, so within a draw they share the pool
+    and the anchor plan -- the cleanest possible paired sensitivity."""
+    abs_design = get_scenario_design("hazard_filling_stationary")
+    cdf_design = get_scenario_design("hazard_filling_stationary_cdf")
+    assert abs_design.pool_slug(0) == cdf_design.pool_slug(0)
+    assert abs_design.selector_seed(0) == cdf_design.selector_seed(0)
+    assert abs_design.selector_space == "abs"
+    assert cdf_design.selector_space == "cdf"
 
 
 @pytest.mark.parametrize("name", sorted(STAGING_REQUIRED_DESIGNS))

@@ -7,7 +7,7 @@ citations/DOIs synced to that collection.
 
 ## Scenario design (the Paper 3 methodological core)
 
-- [scenario_design.md](scenario_design.md) — **hub**: scope, the six campaign designs and their two populations, gap statement, framing distinctions, and the index below
+- [scenario_design.md](scenario_design.md) — **hub**: scope, the three campaign designs in one stationary population, gap statement, framing distinctions, and the index below
 - [scenario_choice_in_search.md](scenario_choice_in_search.md) — embedding/selecting scenarios in the MOEA search phase (multi-scenario MORDM, robustness-in-search)
 - [scenario_subset_selection.md](scenario_subset_selection.md) — informative/representative/space-filling subset selection and ensemble size
 - [scenario_reduction_stochastic_programming.md](scenario_reduction_stochastic_programming.md) — classical scenario reduction/generation + energy analogues (background, not a methods precedent)

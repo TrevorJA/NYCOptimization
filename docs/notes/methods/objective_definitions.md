@@ -170,10 +170,9 @@ is below NL and differs by design (disclosed with the ESS/clustered-SE machinery
 drought as a single unit; event-scale severity enters through the hazard axes and the
 re-evaluation metrics, not the search objectives.
 
-**Design mapping.** All ensemble designs (fixed short, long-record, resampled,
-input-stratified, hazard-filling, support points) use this same two-layer scheme —
-one scheme fits all naturally, even though commensurability is no longer *required*.
-For the resampled design the scheme applies within each per-evaluation redraw. The
+**Design mapping.** Both ensemble designs (`fixed_probabilistic` and
+`hazard_filling`) use this same two-layer scheme — one scheme fits both naturally,
+even though commensurability is no longer *required*. The
 **historic design** keeps the §1 temporal metrics on its single continuous trace
 (R = 1; prevailing-practice reference, Giuliani & Castelletti 2016). In McPhail
 terms: stage (i) is T1-threshold (reliability) or T1-absolute (magnitude/tail);
@@ -181,19 +180,19 @@ stage (ii) is T3 = frequency/expectation for #1/3/5/6 and T2 = tail percentile f
 #2/4/7.
 
 Implementation: the annual-metric computation and unit operators live in
-`src/objectives_ensemble.py` (annual-unit aggregation registry); the per-design
-sample's probability distortion relative to the master (input-stratified,
-hazard-filling) is deliberately not corrected — cross-design comparison rests
-entirely on the common re-evaluation (§3).
+`src/objectives_ensemble.py` (annual-unit aggregation registry); the
+`hazard_filling` sample's deliberate probability distortion relative to the
+generator is not corrected — cross-design comparison rests entirely on the common
+re-evaluation (§3).
 
 ---
 
 ## 3. Re-evaluation: the held-out metric set
 
-The six designs differ **only** in the search ensemble and its across-realization
+The three designs differ **only** in the search ensemble and its across-realization
 stage (§2). They are compared **once**, by re-evaluating *every* resulting
 Pareto-approximate set on **one common held-out test ensemble E_test with one
-fixed metric set, identical across all six designs**. Only at re-evaluation are
+fixed metric set, identical across all designs**. Only at re-evaluation are
 differences attributable to scenario design rather than to a moving measuring
 stick (McPhail et al. 2020: composition moves robustness *values* more than
 *rankings*).
@@ -272,7 +271,7 @@ dropped. Precedent: Kasprzyk et al. (2013) percent-deviation-from-baseline.
 (Implementation: `improvement_vs_baseline` in `src/robustness.py`.)
 
 Ranking agreement is summarized with **Kendall's τ_b computed across the *design*
-rankings** these metrics induce — i.e. do the five metrics rank the six scenario
+rankings** these metrics induce — i.e. do the metrics rank the scenario
 designs the same way? (Herman et al. 2015; McPhail et al. 2018, 2020.)
 
 ### 3.3 Metrics deliberately excluded
@@ -334,7 +333,7 @@ coincide.
 
 ---
 
-## 4. Threshold sweep, mechanism test, and the cross-design comparison rule
+## 4. Threshold sweep, optional mechanism analysis, and the cross-design comparison rule
 
 ### 4.1 Satisficing criteria are conventions — so they are swept (main-text figure)
 
@@ -365,19 +364,22 @@ lineage; it is a contribution, not a robustness check. (Implementation:
 `threshold_spectrum` in `src/robustness.py`; `NYCOPT_SAT_THRESHOLDS` re-scores
 the cube without re-simulating.)
 
-### 4.2 Scenario discovery in hazard space = the mechanism test
+### 4.2 Scenario discovery in hazard space — optional supporting analysis
 
-Boosted trees (Gold et al. 2022/2023 hyperparameters) are fit to each design's
-E_test failure realizations — labelled by the **conjunction** of the satisficing
-criteria, i.e. the §3.1 primary — **in the hazard space of E_test**, not only in
-its forcing-parameter (input) space.
+This is a supporting analysis, not the primary comparison and not a falsification
+device. The primary comparison is the re-evaluated robustness of the resulting
+solutions (§3). Where it is run, boosted trees (Gold et al. 2022/2023
+hyperparameters) are fit to each design's E_test failure realizations — labelled
+by the **conjunction** of the satisficing criteria, i.e. the §3.1 primary — **in
+the hazard space of E_test**, not only in its forcing-parameter (input) space.
 
-This is the falsifiable prediction of the coverage claim: **if hazard-filling
-works, its policies' discovered vulnerability region should sit in the hazard
-region that the design under-covered.** Scenario discovery is therefore the
-*evidence* for the coverage → robustness mechanism, not post-processing
-decoration, and it is strictly stronger than a correlational
-coverage-vs-robustness association.
+Its role is to characterize *where* policies fail and, if a robustness difference
+is observed, to offer supporting evidence for the coverage → robustness mechanism
+(the expectation being that a design's policies fail in the hazard region it
+under-covered). It is reported as support for a difference found on the primary
+metric, never as the basis of the comparison, because a coverage-vs-failure
+association alone cannot separate the claimed mechanism from intrinsic scenario
+difficulty.
 
 Caveat: correlated hazard axes destabilize factor-importance rankings (Quinn et
 al. 2020 report Sobol first-order sums going negative under correlated factors),
@@ -430,7 +432,7 @@ Three compounding reasons a pooled reference set is biased across designs:
   scenario selection did **not** beat random selection: "selecting the scenarios
   based on policy relevance and diversity does not lead to significantly more
   favorable results … compared to an arbitrary set of scenarios." The
-  `fixed_probabilistic` → `hazard_filling_stationary` contrast **is** that
+  `fixed_probabilistic` → `hazard_filling` contrast **is** that
   benchmark. Our differentiators: their diversity is in *outcome* space on a
   benchmark problem (the Lake Problem) with little scenario→outcome leverage, ours
   is in *hazard* space on a real system; and our comparison statistic has far more
@@ -488,7 +490,6 @@ Three compounding reasons a pooled reference set is biased across designs:
 | Robustness metrics can be degenerate → co-report raw performance | §5 | Huang et al. 2025; Bonham et al. 2024; Gold et al. 2023 |
 | Diversity-based selection did not beat random selection | §5 | Eker & Kwakkel 2018 |
 | Search-measure mismatch penalizes the mismatched policy | §5 | Giuliani & Castelletti 2016 |
-| Resampling reduces overfitting; per-eval noise | design 4 | Trindade et al. 2017; Brodeur et al. 2020 |
 | Composition moves values more than rankings; hold re-eval metric fixed | §3 | McPhail et al. 2020 |
 
 ---
@@ -497,7 +498,7 @@ Three compounding reasons a pooled reference set is biased across designs:
 
 1. Finalize the optional 8th objective (`nj_delivery_reliability_weekly`) after
    the redundancy screen (`objective_sensitivity_experiment.md`).
-2. From the two-arm ensemble sensitivity experiment
+2. From the two-design ensemble sensitivity experiment
    (`ensemble_objective_sensitivity_experiment.md`): (a) confirm the Decree-anchored
    annual failure criteria (#1/3/5/8) do not saturate under either a probabilistic
    or a hazard-filled composition (adjust the failure definition — e.g., ≥k failing
