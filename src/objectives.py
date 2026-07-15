@@ -42,6 +42,16 @@ Decree goalposts are the *static* 1954-Decree quantities (NYC 800 MGD; Montague
 `mrf_target` — scoring against the live target would let a policy "succeed" by
 triggering drought step-downs that lower its own goalpost.
 
+NYC (and NJ) delivery is a running-*average* right, not a daily ceiling: pywr-drb's
+`FfmpNycRunningAvgParameter` / `FfmpNjRunningAvgParameter` let daily diversion
+exceed the flat baseline by drawing down banked allowance, so long as the running
+average stays within the right. The delivery metrics therefore do NOT clip daily
+demand; they score against the reconstructed running-average entitlement
+`min(demand, allowance)` (`_delivery_entitlement`), where the allowance bank is
+accrued at the *static* Decree baseline — never the policy's drought-scaled
+allowance — so demand spikes within the banked right are honored and a policy
+cannot lower its own goalpost via drought step-downs.
+
 Diagnostic-only metrics (registered, not in the default active set): the
 worst-case variants above, NJ delivery reliability (optional 8th objective,
 pending the redundancy screen), salt-front intrusion (replaced by the Trenton
@@ -249,33 +259,127 @@ def _cvar_worst_mean(values, frac: float = _CVAR_TAIL_FRAC) -> float:
     return float(worst.mean())
 
 
-def _weekly_delivery_deficit_pct(demand: pd.Series, delivery: pd.Series,
+def _running_avg_budget(delivery: pd.Series, cap: float,
+                        reset: str = "annual") -> pd.Series:
+    """Reconstruct the FFMP running-average delivery allowance (the daily bank).
+
+    Mirrors pywr-drb's running-average delivery parameters
+    (``FfmpNycRunningAvgParameter`` / ``FfmpNjRunningAvgParameter``): the
+    allowance starts at ``cap``, accrues ``cap - delivery`` each day, and resets
+    to ``cap`` at the start of each budget period. It is accrued at the *static*
+    Decree/baseline ``cap`` — never the model's drought-scaled allowance — so the
+    deficit goalpost cannot be lowered by a policy's own drought step-downs (the
+    same anti-gaming rule the flow-Decree goalposts use). The returned series is
+    the maximum diversion the running-average right permits on each day, so a
+    demand spike above the flat daily baseline is legitimate whenever prior
+    under-use has banked the allowance for it.
+
+    Implementation is the exact day-by-day recursion the model uses
+    (``budget[t] = max(0, budget[t-1] + cap - delivery[t-1])``, or ``cap`` on a
+    reset day). The zero-floor essentially never binds for valid NYC output —
+    the static-``cap`` accrual is never slower than the model's own
+    (drought-scaled) accrual from the shared May-31 reset, so delivery never
+    exceeds the reconstructed bank — but it is applied exactly rather than
+    assumed away (the NJ path does not mirror the model's drought-factor resets).
+    The per-day loop is negligible beside the Pywr-DRB simulation that produced
+    ``delivery``.
+
+    Args:
+        delivery: Daily delivery series (MGD) over the FULL realization window
+            (the bank is path-dependent, so it must be built before any warm-up
+            or water-year slicing).
+        cap: Static running-average allowance (MGD); the daily accrual rate.
+        reset: Budget-period reset — ``"annual"`` (NYC: the model resets on
+            May 31, so the allowance is ``cap`` again on Jun 1) or ``"monthly"``
+            (NJ: reset on the 1st of each month). The NJ drought-factor reset and
+            its separate daily cap are intentionally not modeled — this is the
+            static-right entitlement, and NJ is a diagnostic objective.
+
+    Returns:
+        Daily allowance series aligned to ``delivery.index``.
+    """
+    idx = pd.DatetimeIndex(delivery.index)
+    dlv = delivery.to_numpy(dtype=float)
+    n = dlv.size
+    budget = np.empty(n, dtype=float)
+    if n == 0:
+        return pd.Series(budget, index=idx)
+    day = np.asarray(idx.day)
+    if reset == "annual":
+        is_reset = (np.asarray(idx.month) == 6) & (day == 1)
+    elif reset == "monthly":
+        is_reset = day == 1
+    else:
+        raise ValueError(f"reset must be 'annual' or 'monthly', got '{reset}'")
+    budget[0] = cap  # model reset() sets the bank to cap at the series start
+    for t in range(1, n):
+        if is_reset[t]:
+            budget[t] = cap
+        else:
+            b = budget[t - 1] + cap - dlv[t - 1]
+            budget[t] = b if b > 0.0 else 0.0
+    return pd.Series(budget, index=idx)
+
+
+def _delivery_entitlement(demand: pd.Series, delivery: pd.Series, cap: float,
+                          reset: str = "annual") -> pd.Series:
+    """Daily realizable delivery entitlement = min(demand, running-avg allowance).
+
+    Demand is NOT clipped at a flat daily ``cap``: the Decree limits the running
+    *average* diversion, so a day's entitlement is the smaller of what was
+    demanded and the running-average allowance banked to that day
+    (:func:`_running_avg_budget`). Voluntary low-take days keep entitlement =
+    demand (no penalty); demand spikes are honored up to the banked allowance;
+    demand beyond the banked right is not counted as owed.
+
+    Args:
+        demand: Daily demand series (MGD) over the full realization window.
+        delivery: Daily delivery series (MGD) over the full realization window.
+        cap: Static running-average allowance (MGD).
+        reset: Budget-period reset cadence (see :func:`_running_avg_budget`).
+
+    Returns:
+        Daily entitlement series aligned to ``demand.index``.
+    """
+    budget = _running_avg_budget(delivery, cap, reset)
+    target = np.minimum(demand.to_numpy(dtype=float),
+                        budget.to_numpy(dtype=float))
+    return pd.Series(target, index=demand.index)
+
+
+def _weekly_delivery_deficit_pct(target: pd.Series, delivery: pd.Series,
                                  cap: float) -> pd.Series:
     """Weekly delivery deficit as % of a static Decree cap (windowed series).
 
-    Demand is capped at the Decree cap so voluntary winter low-takes are not
-    penalized; only forced shortfalls below the Decree right count. Normalized
-    to the *static* cap so a 50 MGD shortfall reads identically year-round.
+    ``target`` is the daily realizable entitlement (:func:`_delivery_entitlement`)
+    — min(demand, running-average allowance) — so only shortfalls below the
+    running-average Decree right count and demand spikes above the banked
+    allowance do not. Normalized to the *static* ``cap`` so a fixed shortfall
+    reads identically year-round.
 
     Args:
-        demand: Already-windowed daily demand series (MGD).
+        target: Already-windowed daily entitlement series (MGD).
         delivery: Already-windowed daily delivery series (MGD).
-        cap: Static Decree cap (MGD).
+        cap: Static Decree cap (MGD), used as the normalization denominator.
 
     Returns:
         Weekly deficit series in % of ``cap`` [0-100].
     """
-    weekly_demand = demand.clip(upper=cap).resample("W").mean()
+    weekly_target = target.resample("W").mean()
     weekly_delivery = delivery.resample("W").mean()
-    deficit = (weekly_demand - weekly_delivery).clip(lower=0)
+    deficit = (weekly_target - weekly_delivery).clip(lower=0)
     return 100.0 * deficit / cap
 
 
 def _nyc_weekly_delivery_deficit_pct(data: dict) -> pd.Series:
     """Post-warmup weekly NYC delivery deficit, as % of the 800 MGD Decree cap."""
+    delivery = data["ibt_diversions"]["delivery_nyc"]
+    target = _delivery_entitlement(
+        data["ibt_demands"]["demand_nyc"], delivery,
+        NYC_DECREE_DIVERSION_CAP_MGD, reset="annual",
+    )
     return _weekly_delivery_deficit_pct(
-        _post_warmup(data["ibt_demands"]["demand_nyc"]),
-        _post_warmup(data["ibt_diversions"]["delivery_nyc"]),
+        _post_warmup(target), _post_warmup(delivery),
         NYC_DECREE_DIVERSION_CAP_MGD,
     )
 
@@ -305,23 +409,29 @@ def _flow_reliability_weekly(flow: pd.Series, target: float) -> float:
     return float(ok.sum()) / total
 
 
-def _weekly_delivery_ok(demand: pd.Series, delivery: pd.Series,
-                        cap: float) -> pd.Series:
-    """Weekly success indicators: weekly-total delivery >= 99% of capped demand.
+def _weekly_delivery_ok(target: pd.Series, delivery: pd.Series) -> pd.Series:
+    """Weekly success indicators: weekly-total delivery >= 99% of the entitlement.
 
     Operates on already-windowed daily series; weekly totals (sum basis) are the
-    Decree accounting convention. A non-finite weekly comparison is False (a
+    Decree accounting convention. ``target`` is the daily realizable entitlement
+    (:func:`_delivery_entitlement`). A non-finite weekly comparison is False (a
     degenerate week is a failure week).
     """
-    weekly_demand = demand.clip(upper=cap).resample("W").sum()
+    weekly_target = target.resample("W").sum()
     weekly_delivery = delivery.resample("W").sum()
-    return weekly_delivery >= 0.99 * weekly_demand
+    return weekly_delivery >= 0.99 * weekly_target
 
 
 def _delivery_reliability_weekly(demand: pd.Series, delivery: pd.Series,
-                                 cap: float) -> float:
-    """Fraction of post-warmup weeks weekly delivery >= 99% of capped demand."""
-    ok = _weekly_delivery_ok(_post_warmup(demand), _post_warmup(delivery), cap)
+                                 cap: float, reset: str = "annual") -> float:
+    """Fraction of post-warmup weeks weekly delivery >= 99% of the entitlement.
+
+    The entitlement is the running-average Decree right
+    (:func:`_delivery_entitlement`), reconstructed on the full series before
+    warm-up is dropped so the allowance bank carries the correct initial state.
+    """
+    target = _delivery_entitlement(demand, delivery, cap, reset)
+    ok = _weekly_delivery_ok(_post_warmup(target), _post_warmup(delivery))
     total = len(ok)
     if total == 0:
         return 0.0
@@ -364,11 +474,12 @@ def _nyc_combined_storage_pct(data: dict) -> pd.Series:
 
 
 def _nyc_delivery_reliability_weekly(data: dict) -> float:
-    """Fraction of weeks NYC delivery meets >= 99% of its capped Decree right. [0, 1]."""
+    """Fraction of weeks NYC delivery meets >= 99% of its running-average Decree right. [0, 1]."""
     return _delivery_reliability_weekly(
         data["ibt_demands"]["demand_nyc"],
         data["ibt_diversions"]["delivery_nyc"],
         NYC_DECREE_DIVERSION_CAP_MGD,
+        reset="annual",
     )
 
 
@@ -403,6 +514,7 @@ def _nj_delivery_reliability_weekly(data: dict) -> float:
         data["ibt_demands"]["demand_nj"],
         data["ibt_diversions"]["delivery_nj"],
         NJ_DELIVERY_CAP_MGD,
+        reset="monthly",
     )
 
 
@@ -582,8 +694,8 @@ def _register(name, direction, epsilon, description, func):
 
 # --- NYC water supply (Decree right = 800 MGD) ---
 _register("nyc_delivery_reliability_weekly", "maximize", 0.07,
-          f"Frac of weeks NYC delivery >= 99% of capped demand "
-          f"({NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree cap)",
+          f"Frac of weeks NYC delivery >= 99% of the running-avg entitlement "
+          f"(min(demand, allowance); {NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree right)",
           _nyc_delivery_reliability_weekly)
 _register("nyc_delivery_deficit_cvar90_pct", "minimize", 1.5,
           f"CVaR90 of weekly NYC delivery deficit, % of "
@@ -595,8 +707,8 @@ _register("nyc_delivery_deficit_max_pct", "minimize", 3.0,
 
 # --- New Jersey water supply (D&R Canal diversion; optional 8th objective) ---
 _register("nj_delivery_reliability_weekly", "maximize", 0.007,
-          f"Frac of weeks NJ diversion >= 99% of capped demand "
-          f"({NJ_DELIVERY_CAP_MGD:.0f} MGD baseline)",
+          f"Frac of weeks NJ diversion >= 99% of the running-avg entitlement "
+          f"(min(demand, allowance); {NJ_DELIVERY_CAP_MGD:.0f} MGD baseline)",
           _nj_delivery_reliability_weekly)
 
 # --- Montague flow Decree (NYC obligation; target = 1750 cfs = 1131.05 MGD) ---

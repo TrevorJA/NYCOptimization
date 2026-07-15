@@ -9,7 +9,8 @@ Covers:
      pooled P99 / P01 percentiles, pooled mean — including the non-finite
      policy (failure-year for frequency; worst-value sentinel otherwise).
   3. Stage-(i) annual metrics on synthetic data dicts (delivery failing-week
-     counts incl. the 0.99 factor and demand cap, flood days, storage minimum).
+     counts incl. the 0.99 factor and the running-average entitlement, flood
+     days, storage minimum).
   4. NYCOPT_FAILURE_K and NYCOPT_SAT_THRESHOLDS env overrides (JSON, no CLI).
   5. Registry / ObjectiveSet wiring: names, directions, base-name resolution,
      Borg sign convention via compute_for_borg_ensemble, and the batched-path
@@ -202,12 +203,30 @@ def test_delivery_failure_weeks_annual_tolerates_1pct_shortfall():
     assert np.all(units == 0.0)
 
 
-def test_delivery_failure_weeks_annual_caps_demand_at_decree_right():
-    """Demand above the 800 MGD cap is clipped: delivering 99% of the CAP
-    satisfies the week even when raw demand is higher."""
+def test_delivery_failure_weeks_annual_uses_running_avg_entitlement():
+    """Daily demand above the 800 MGD baseline is NOT clipped. Because prior
+    under-delivery (795 < 800) banks running-average allowance, the entitlement
+    tracks the higher demand, so delivering only 795 against a demand of 900
+    fails nearly every week — the opposite of the old static-daily-cap behavior,
+    which scored this as zero failures (795 >= 0.99 * 800)."""
     idx = _wy_index(1945, 3)
-    demand = pd.Series(900.0, index=idx)       # above the Decree cap
-    delivery = pd.Series(795.0, index=idx)     # >= 0.99 * 800 = 792
+    demand = pd.Series(900.0, index=idx)       # above the flat daily baseline
+    delivery = pd.Series(795.0, index=idx)     # under 800 -> allowance bank grows
+    units = obj_ens._nyc_delivery_failure_weeks_annual(
+        _delivery_data(idx, demand, delivery))
+    assert units.shape == (2,)
+    assert np.all(units >= 45.0)               # ~all weeks fail (was 0 under the old clip)
+
+
+def test_delivery_failure_weeks_annual_caps_at_running_avg_allowance():
+    """Demand far above the running-average right is not owed: delivering the
+    full 800 MGD allowance satisfies every week even when demand is absurdly
+    high, because the entitlement is capped at the banked allowance, not at
+    demand. With delivery == 800 the bank holds steady at 800, so entitlement =
+    min(5000, 800) = 800 == delivery every week."""
+    idx = _wy_index(1945, 3)
+    demand = pd.Series(5000.0, index=idx)      # absurd sustained demand
+    delivery = pd.Series(800.0, index=idx)     # exactly the running-avg right
     units = obj_ens._nyc_delivery_failure_weeks_annual(
         _delivery_data(idx, demand, delivery))
     assert np.all(units == 0.0)

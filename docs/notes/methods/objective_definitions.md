@@ -46,6 +46,19 @@ scoring is in `src/robustness.py`.
   baseline — never the time-varying live FFMP `mrf_target` (scoring against the
   live target would let a policy "succeed" by triggering drought step-downs that
   lower its own goalpost).
+- **NYC/NJ delivery is a running-*average* right, not a daily cap.** pywr-drb's
+  `FfmpNyc/NjRunningAvgParameter` let daily diversion exceed the flat baseline by
+  drawing down banked allowance, so daily demand is **not** clipped at the static
+  right. Each day's target is the realizable **entitlement**
+  `E_t = min(demand_t, A_t)`, where `A_t` is the running-average allowance bank
+  (`_delivery_entitlement` / `_running_avg_budget`): it starts at the static cap,
+  accrues `cap − delivery` daily (floored at 0), and resets (NYC annually on
+  Jun 1 following the model's May-31 reset; NJ monthly). The bank is accrued at
+  the **static** cap — never the policy's drought-scaled allowance — so a demand
+  spike within the banked right is honored, demand beyond it is not owed, and a
+  policy cannot lower its own goalpost. The demand generator already holds the
+  monthly-average demand ≤ the cap, so `A_t` almost always has headroom and
+  `E_t ≈ demand_t` except at rare spike-vs-reset collisions.
 - The **McPhail et al. (2018) T1/T2/T3 decomposition** classifies every
   aggregation: **T1** performance-value transform (absolute / regret /
   threshold-satisficing), **T2** scenario subset (worst-case / all / tail
@@ -68,14 +81,14 @@ drought).
 
 | # | Name (registry) | Source | Temporal aggregation | Dir | Units | ε |
 |---|-----------------|--------|----------------------|-----|-------|---|
-| 1 | `nyc_delivery_reliability_weekly` | `delivery_nyc`, `demand_nyc` (cap 800) | frac of weeks `Σ_w delivery ≥ 0.99·Σ_w min(demand,800)` | MAX | frac | 0.07 |
-| 2 | `nyc_delivery_deficit_cvar90_pct` | same | CVaR₉₀ of weekly deficit % `= 100·max(0, mean_w(min(demand,800)) − mean_w(delivery))/800` | MIN | % | 1.5 |
+| 1 | `nyc_delivery_reliability_weekly` | `delivery_nyc`, `demand_nyc` (right 800) | frac of weeks `Σ_w delivery ≥ 0.99·Σ_w E` (entitlement `E_t = min(demand,A_t)`) | MAX | frac | 0.07 |
+| 2 | `nyc_delivery_deficit_cvar90_pct` | same | CVaR₉₀ of weekly deficit % `= 100·max(0, mean_w(E) − mean_w(delivery))/800` | MIN | % | 1.5 |
 | 3 | `montague_flow_reliability_weekly` | `major_flow.delMontague` | frac of weeks `mean_w(flow) ≥ 1131.05` | MAX | frac | 0.02 |
 | 4 | `montague_flow_deficit_cvar90_pct` | `delMontague` | CVaR₉₀ of `100·max(0, 1131.05 − mean_w(flow))/1131.05` | MIN | % | 1.5 |
 | 5 | `trenton_flow_reliability_weekly` | `major_flow.delTrenton` | frac of weeks `mean_w(flow) ≥ 1938.95` | MAX | frac | 0.0003 |
 | 6 | `downstream_flood_days_minor` | `flood_stage` (Hale Eddy, Fishs Eddy, Bridgeville) | count of days any gauge `≥` its NWS **minor** flood stage | MIN | days | 1.0 |
 | 7 | `nyc_storage_p5_pct` | `res_storage[NYC]` | 5th percentile of daily `100·Σ_res storage / 270,837` | MAX | % | 1.5 |
-| 8 | `nj_delivery_reliability_weekly` *(optional)* | `delivery_nj`, `demand_nj` (cap 100) | frac of weeks `Σ_w delivery_nj ≥ 0.99·Σ_w min(demand_nj,100)` | MAX | frac | 0.007 |
+| 8 | `nj_delivery_reliability_weekly` *(optional)* | `delivery_nj`, `demand_nj` (right 100) | frac of weeks `Σ_w delivery_nj ≥ 0.99·Σ_w E_nj` (entitlement `E_nj = min(demand_nj,A_t)`, monthly reset) | MAX | frac | 0.007 |
 
 Epsilons are the calibrated values in `src/objectives.py`: ε ≈ IQR/10 of each
 objective's spread across N = 500 random-DV policies on the historic reference
@@ -133,7 +146,7 @@ unit-years** with the objective's **unit operator**:
 
 | # | Objective (registry) | Annual metric (per unit-year) | Unit operator (across pooled unit-years) | Dir | Anchor |
 |---|---|---|---|---|---|
-| 1 | `nyc_delivery_reliability_annual` | failure-year indicator: ≥1 week with `Σ_w delivery < 0.99·Σ_w min(demand,800)` | **frequency of non-failure years** | MAX | Zeff et al. 2014 Eq. 2; Trindade et al. 2017 Eq. 16; Gold et al. 2023 |
+| 1 | `nyc_delivery_reliability_annual` | failure-year indicator: ≥1 week with `Σ_w delivery < 0.99·Σ_w E` (entitlement `E_t = min(demand,A_t)`) | **frequency of non-failure years** | MAX | Zeff et al. 2014 Eq. 2; Trindade et al. 2017 Eq. 16; Gold et al. 2023 |
 | 2 | `nyc_delivery_deficit_p99_pct` | CVaR₉₀ of weekly deficit % within the year | **worst-1st-percentile unit-year** (P99) | MIN | Quinn et al. 2017 (WP1), 2018; Trindade/Gold worst-1%-cost |
 | 3 | `montague_flow_reliability_annual` | failure-year indicator: ≥1 week with `mean_w(flow) < 1131.05` | frequency of non-failure years | MAX | as #1 |
 | 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | as #2 |

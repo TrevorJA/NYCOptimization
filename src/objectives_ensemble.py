@@ -38,7 +38,8 @@ annual flood days, 0% for annual minimum storage) before aggregation, so a
 degenerate unit pushes the objective toward failure instead of being dropped.
 
 Metric reuse: all weekly accounting (weekly sums for delivery, weekly means
-for flows, the 0.99 satisfaction factor, deficit-% normalization, CVaR90 via
+for flows, the 0.99 satisfaction factor, deficit-% normalization, the
+running-average delivery entitlement via ``_delivery_entitlement``, CVaR90 via
 ``_cvar_worst_mean``) is imported from `src.objectives` windowed-series cores,
 so §1 and §2 share one formula per quantity. Deficit-% and storage-% metrics
 are 0-100 scales matching §1; frequency objectives are 0-1 fractions.
@@ -90,6 +91,7 @@ from src.objectives import (
     Objective,
     ObjectiveSet,
     _cvar_worst_mean,
+    _delivery_entitlement,
     _DOWNSTREAM_GAUGES,
     _flood_over_stage_daily,
     _nyc_storage_pct_daily,
@@ -336,31 +338,38 @@ class AnnualUnitObjective:
 
 
 def _delivery_failure_weeks_annual(data: dict, demand_key: str,
-                                   delivery_key: str, cap: float) -> np.ndarray:
+                                   delivery_key: str, cap: float,
+                                   reset: str) -> np.ndarray:
     """Failing-week count per unit-year for a delivery objective.
 
-    A week fails when weekly-total delivery < 99% of weekly-total capped
-    demand (same weekly-sum basis as the §1 reliability metric).
+    A week fails when weekly-total delivery < 99% of the weekly-total
+    running-average entitlement (min(demand, banked allowance); same weekly-sum
+    basis as the §1 reliability metric). The entitlement bank is path-dependent,
+    so it is reconstructed on the full realization series before water-year
+    slicing.
     """
     demand = data["ibt_demands"][demand_key]
     delivery = data["ibt_diversions"][delivery_key]
+    target = _delivery_entitlement(demand, delivery, cap, reset)
     return np.asarray([
-        float((~_weekly_delivery_ok(demand.iloc[sl], delivery.iloc[sl], cap)).sum())
+        float((~_weekly_delivery_ok(target.iloc[sl], delivery.iloc[sl])).sum())
         for sl in water_year_unit_slices(demand.index)
     ], dtype=float)
 
 
 def _nyc_delivery_failure_weeks_annual(data: dict) -> np.ndarray:
-    """NYC failing-week count per unit-year (Decree cap 800 MGD)."""
+    """NYC failing-week count per unit-year (running-avg right, 800 MGD)."""
     return _delivery_failure_weeks_annual(
         data, "demand_nyc", "delivery_nyc", NYC_DECREE_DIVERSION_CAP_MGD,
+        reset="annual",
     )
 
 
 def _nj_delivery_failure_weeks_annual(data: dict) -> np.ndarray:
-    """NJ failing-week count per unit-year (diversion baseline 100 MGD)."""
+    """NJ failing-week count per unit-year (running-avg baseline, 100 MGD)."""
     return _delivery_failure_weeks_annual(
         data, "demand_nj", "delivery_nj", NJ_DELIVERY_CAP_MGD,
+        reset="monthly",
     )
 
 
@@ -368,10 +377,12 @@ def _nyc_delivery_deficit_cvar90_annual(data: dict) -> np.ndarray:
     """CVaR90 of weekly NYC delivery deficit % within each unit-year. [0, 100]."""
     demand = data["ibt_demands"]["demand_nyc"]
     delivery = data["ibt_diversions"]["delivery_nyc"]
+    target = _delivery_entitlement(
+        demand, delivery, NYC_DECREE_DIVERSION_CAP_MGD, reset="annual")
     return np.asarray([
         _cvar_worst_mean(
             _weekly_delivery_deficit_pct(
-                demand.iloc[sl], delivery.iloc[sl], NYC_DECREE_DIVERSION_CAP_MGD,
+                target.iloc[sl], delivery.iloc[sl], NYC_DECREE_DIVERSION_CAP_MGD,
             ).values
         )
         for sl in water_year_unit_slices(demand.index)

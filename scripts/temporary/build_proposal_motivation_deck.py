@@ -2,16 +2,20 @@ import pathlib
 # -*- coding: utf-8 -*-
 """Build docs/NYCOptimization_project_proposal_and_motivation_CLAUDE.pptx.
 
-Content is the FINALIZED method: six scenario designs across two populations,
-each generating its own realizations from its own seed stream (there is no
-shared master ensemble); a deterministic LHS + nearest-neighbour hazard-space
-selector (there is no simulated annealing); one budget condition at N = 100,
-L = 10 yr; and the held-out metric set of `src/robustness.py` (satisficing
-primary, no regret and no perfect-foresight optimization anywhere).
+Content is the FINALIZED method: three scenario designs (historic,
+fixed_probabilistic, hazard_filling) in one stationary population (Kirsch-Nowak
+fit to the record, no climate perturbation); deep uncertainty enters ONLY in
+the held-out test ensemble E_test. A deterministic LHS + nearest-neighbour
+selector in ABSOLUTE, range-scaled hazard space (there is no simulated
+annealing and no empirical-CDF/rank scaling); one budget condition at N = 100,
+L = 10 yr; and the held-out metric set (multivariate satisficing primary, no
+regret and no perfect-foresight optimization anywhere). The single controlled
+contrast is fixed_probabilistic -> hazard_filling: same generator, population,
+N, L, NFE, only the selection rule differs.
 
-Sources of truth: docs/notes/methods/{scenario_design_methods, experimental_design,
-objective_definitions}.md, docs/notes/terminology.md, src/scenario_designs.py,
-src/robustness.py.
+Sources of truth: docs/manuscript/Amestoy_NYC_reoptimization_manuscript_draft.md,
+docs/notes/methods/{scenario_design_methods, experimental_design,
+objective_definitions}.md, docs/notes/terminology.md, src/scenario_designs.py.
 """
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -284,7 +288,7 @@ add_body(s, [
     ("h", "Proposal"),
     ("b", "hypothesis  ·  research questions  ·  contributions"),
     ("h", "Planned experiment"),
-    ("b", "six designs, two populations  ·  controlled contrasts  ·  objectives  ·  controls"),
+    ("b", "three designs, one stationary population  ·  deep uncertainty only in re-evaluation  ·  the controlled contrast  ·  objectives  ·  controls"),
     ("h", "How designs are compared"),
     ("b", "held-out metric set  ·  threshold sweep  ·  mechanism test  ·  threats to validity"),
     ("h", "Status & open decisions"),
@@ -341,16 +345,20 @@ label(s, 7.15, 6.35, 5.7, 0.75, "share of years whose lowest NYC storage stays i
 # 5 — Motivation 3: input-space redundancy
 # =====================================================================
 s = add_slide(notes=(
-    "Input-space designs (LHS over generator/climate parameters) do not control where realizations "
-    "land in hazard space: the parameter-to-stress mapping is many-to-one. Right figure: a large "
-    "forcing modification barely moves the flow distribution. Our diagnostic: ~1.3x hazard-coverage "
-    "discrepancy gap vs hazard-space designs, surviving input-sample enrichment."))
-add_title(s, "Motivation: input-space sampling leaves hazard-space gaps")
+    "MOTIVATION ONLY: why hazard space is the interesting space to control, not a campaign contrast. "
+    "Sampling generator/climate parameters (the prevailing deep-uncertainty design) does not control "
+    "where realizations land in hazard space: the parameter-to-stress mapping is many-to-one. Right "
+    "figure: a large forcing modification barely moves the flow distribution. Preliminary DRB "
+    "diagnostic: input-parameter sampling leaves ~1.3x higher discrepancy (unevenness) in hazard "
+    "space, surviving input-sample enrichment. This motivates selecting directly in hazard space; "
+    "input-parameter sampling is NOT one of the three campaign designs."))
+add_title(s, "Motivation: input-parameter sampling leaves hazard-space gaps")
 claim(s, "Distinct generator parameters produce overlapping hazard conditions.")
 add_body(s, [
     ("b", "sampling generator / climate parameters is the prevailing deep-uncertainty design (Quinn et al. 2020; Bartholomew & Kwakkel 2020)"),
     ("b", "distinct parameter sets often yield hydrologically redundant realizations (Guo et al. 2018; Quinn et al. 2020)"),
-    ("b", "DRB diagnostic: input-space designs leave about 1.3× higher discrepancy (unevenness) in hazard space, surviving input enrichment (preliminary, this study)"),
+    ("b", "preliminary DRB diagnostic: sampling input parameters leaves about 1.3× higher discrepancy (unevenness) in hazard space, surviving input enrichment (this study)"),
+    ("b", "this motivates controlling coverage **directly in hazard space** — the point of the proposed selector, not a campaign design of its own"),
 ], top=2.1, size=20)
 py = 4.85; ph = 1.55; pw = 2.5
 axes_panel(s, 2.5, py, pw, ph, "forcing parameter 1", "parameter 2")
@@ -505,15 +513,16 @@ s = add_slide(notes=(
     "design points (LHS alone, nothing to snap to) while hazard-space designs must SELECT FROM a "
     "finite candidate pool (LHS anchors + nearest-neighbour snap). That asymmetry is intrinsic, not "
     "an implementation shortcut, and it is why hazard-filling is the only design that needs a pool. "
-    "Each hazard-filling design owns its pool; nothing is shared."))
+    "The hazard-filling design owns its i.i.d. candidate pool; nothing is shared. The selector fills "
+    "ABSOLUTE, range-scaled hazard space, deliberately over-representing the severe corners."))
 add_title(s, "Proposed design: hazard-filling search ensembles")
 claim(s, "θ is a knob on the generator. Hazard is not — it is emergent, measured after the fact.")
 add_body(s, [
-    ("b", "input-space designs **generate to** their design points: LHS alone, nothing to snap to"),
-    ("b", "hazard-space designs must **select from** a finite **candidate pool** of 10⁵–10⁶ short (10-yr) i.i.d. realizations, which the design generates and owns"),
-    ("b", "selector: **Latin-hypercube anchors in hazard space, snapped to the nearest unused pool member** — deterministic, no tuning"),
+    ("b", "input-parameter designs **generate to** their design points: LHS alone, nothing to snap to"),
+    ("b", "hazard-space design must **select from** a finite **candidate pool** of 10⁵–10⁶ short (10-yr) i.i.d. realizations, which the design generates and owns"),
+    ("b", "selector: **LHS anchors in ABSOLUTE, range-scaled hazard space, snapped to the nearest unused pool member** — deliberately over-represents the severe corners; deterministic, no tuning"),
     ("b", "the nearest-neighbour step is **intrinsic to hazard-space design**, not an approximation of something better; the asymmetry is part of the argument"),
-    ("b", "deliberately distorts probabilities toward severe corners; all cross-design comparison happens on the probability-faithful held-out ensemble (cf. Hilbers et al. 2019)"),
+    ("b", "the shift toward the severe corners is the deliberate intervention RQ1 tests; the single comparison point is the held-out, deeply uncertain re-evaluation on E_test"),
 ], top=2.05, size=20, space_after=7)
 py = 5.15; ph = 1.75; pw = 2.85
 axes_panel(s, 2.6, py, pw, ph, "hazard metric 1", "metric 2")
@@ -536,19 +545,19 @@ label(s, 8.85, py - 0.45, 3.6, 0.36, "search ensemble (N = 100)", size=18, color
 s = add_slide(notes=(
     "Falsifiable hypothesis; contribution 1 stands even under a null result. Positioning vs Cohen "
     "2021: they showed composition matters; we contribute the scalable, simulation-free, "
-    "coverage-designed construction, an exact within-population control for every claim, and a "
+    "coverage-designed construction, an exact statistical control (fixed_probabilistic), and a "
     "genuinely held-out deep-uncertainty test."))
 add_title(s, "Hypothesis & planned contributions")
 hb = box(s, 0.6, 1.6, 12.15, 1.45, None, fill=LIGHTB, line=ACCENT, line_w=1.25)
 tf = hb.text_frame; tf.word_wrap = True
 tf.margin_left = Inches(0.18); tf.margin_right = Inches(0.18); tf.vertical_anchor = MSO_ANCHOR.MIDDLE
 _apply_runs(tf.paragraphs[0],
-            "**Hypothesis.**  Search ensembles that uniformly cover hazard space produce Pareto-approximate policies that are more robust under held-out re-evaluation than probabilistic or input-space designs, at equal N, equal L and equal NFE.",
+            "**Hypothesis.**  Search ensembles that fill hazard space produce Pareto-approximate policies that are more robust under held-out re-evaluation than probabilistic (i.i.d.) sampling from the same stochastic generator, at equal N, equal L and equal NFE.",
             20, INK)
 add_body(s, [
     ("h", "Planned contributions"),
-    ("b", "**first budget-controlled comparison of scenario designs**, with an **exact within-population control** for every claim, judged on a genuinely held-out, deeply uncertain re-evaluation"),
-    ("b", "**scalable, simulation-free, coverage-designed** search-ensemble construction (hazard-filling), demonstrated in both a stationary and a deeply-uncertain population"),
+    ("b", "**first budget-controlled comparison of scenario designs**, with an **exact statistical control** (fixed_probabilistic) for the hazard-filling claim, judged on a genuinely held-out, deeply uncertain re-evaluation"),
+    ("b", "**scalable, simulation-free, coverage-designed** search-ensemble construction (hazard-filling), selecting in absolute hazard space over its own i.i.d. pool"),
     ("b", "**design-ranking stability under threshold stringency** — the sweep nobody in this lineage has run"),
     ("b", "evidence on **FFMP re-optimization** and a variable-resolution rule structure"),
 ], top=3.35, size=20, space_after=8)
@@ -588,7 +597,8 @@ arrow(s, rx + 0.5, 2.35, 8.3, 2.8)
 s = add_slide(notes="RQ1 drives the experimental design; RQ2/RQ3 answered by the same campaign.")
 add_title(s, "Research questions")
 add_body(s, [
-    ("h", "RQ1 (core).  Does search-ensemble composition change re-evaluated robustness?"),
+    ("h", "RQ1 (core).  Does building the search ensemble by hazard-space coverage, rather than i.i.d. sampling from the same generator, change re-evaluated robustness?"),
+    ("b", "held-out, deeply uncertain re-evaluation of the resulting Pareto-approximate policies; the single controlled contrast is fixed_probabilistic vs hazard_filling"),
     ("gap", 10),
     ("h", "RQ2.  Can FFMP re-optimization improve NYC / basin outcomes?"),
     ("b", "supply reliability · Decree flow targets · flooding · storage resilience; judged against the current FFMP policy re-evaluated on the same test ensemble"),
@@ -602,36 +612,36 @@ add_body(s, [
 # =====================================================================
 s = add_slide(notes=(
     "Diagram style follows staged method figures (Bonham et al. 2024 Fig. 1; Cohen et al. 2021 "
-    "Fig. 3). KEY POINT of stage 1: there is NO shared pool. Every design generates its own "
-    "realizations from its own namespaced seed stream, so no two designs ever share a realization "
-    "-- no published study builds a search ensemble by subsampling a common pool, and claiming so "
-    "would misdescribe every method the comparison represents. Only the two hazard-filling designs "
-    "need a pool, and each owns its own. Stage 3: identical N, L and NFE for every matched design. "
-    "Stage 4: one common held-out evaluation; search-time values are never compared across designs."))
+    "Fig. 3). ONE stationary population (Kirsch-Nowak fit to the record, no climate perturbation). "
+    "KEY POINT of stage 1: there is NO shared pool. Every design generates its own realizations from "
+    "its own namespaced seed stream, so no two designs ever share a realization. Only hazard_filling "
+    "needs a pool, and it owns it. Deep uncertainty enters ONLY in stage 4 (E_test), which spans a "
+    "CMIP6-forced envelope no search ensemble contains, making re-evaluation a generalization test. "
+    "Stage 3: identical N, L and NFE for both matched designs. Stage 4: one common held-out "
+    "evaluation; search-time values are never compared across designs."))
 add_title(s, "The planned experiment")
 LX = 0.42   # stage label x
 BX = 1.75   # content x start
 # stage 1: GENERATE
 label(s, LX, 1.72, 1.4, 0.8, "**1**\nGENERATE", size=18, color=GRAY, align=PP_ALIGN.LEFT, wrap=False)
-box(s, BX, 1.5, 3.2, 0.9, "stationary population\nKirsch–Nowak at θ_hist", size=18)
-box(s, BX + 3.4, 1.5, 3.2, 0.9, "DU-forced population\nθ ~ CMIP6 harmonic hypercube", size=18)
-box(s, BX + 6.8, 1.5, 4.3, 0.9,
+box(s, BX, 1.5, 4.4, 0.9, "one stationary population\nKirsch–Nowak fit to the record (no climate perturbation)", size=18)
+box(s, BX + 4.7, 1.5, 5.0, 0.9,
     "**each design generates its own realizations**\nfrom its own namespaced seed stream", size=18,
     line=ACCENT, line_w=1.75)
-arrow(s, BX + 3.2, 1.95, BX + 3.4, 1.95)
-arrow(s, BX + 6.6, 1.95, BX + 6.8, 1.95)
+arrow(s, BX + 4.4, 1.95, BX + 4.7, 1.95)
+label(s, BX + 9.85, 1.5, 1.7, 0.9, "deep uncertainty\nenters only in E_test\n(stage 4)", size=18, color=RUST, align=PP_ALIGN.LEFT)
 line(s, 0.42, 2.72, 12.9, 2.72, dash="dash")
 # stage 2: SELECT
 label(s, LX, 3.05, 1.4, 0.8, "**2**\nBUILD", size=18, color=GRAY, align=PP_ALIGN.LEFT, wrap=False)
 arrow(s, BX + 4.75, 2.4, BX + 4.75, 2.96)
-chip_names = ["historic*", "fixed prob.", "resampled", "input-strat.", "hazard-fill\n(stationary)", "hazard-fill\n(DU)"]
-cw = 1.78
+chip_names = ["historic*", "fixed prob.", "hazard-fill"]
+cw = 2.4
 for i, nm in enumerate(chip_names):
     acc = nm.startswith("hazard-fill")
-    box(s, BX + i * (cw + 0.09), 2.99, cw, 0.62, nm, size=18,
+    box(s, BX + i * (cw + 0.2), 2.99, cw, 0.62, nm, size=18,
         fill=(LIGHTB if acc else WHITE), line=(ACCENT if acc else MIDGRAY), line_w=(1.75 if acc else 1.0))
 label(s, BX, 3.67, 11.2, 0.4,
-      "no design subsamples a shared pool; only the hazard-filling designs need a pool, and each owns its own candidate pool + hazard image",
+      "no design subsamples a shared pool; only hazard-filling needs a pool, and it owns its candidate pool + hazard image",
       size=18, color=GRAY, align=PP_ALIGN.LEFT, wrap=False)
 line(s, 0.42, 4.08, 12.9, 4.08, dash="dash")
 # stage 3: SEARCH
@@ -644,7 +654,7 @@ line(s, 0.42, 5.35, 12.9, 5.35, dash="dash")
 # stage 4: EVALUATE
 label(s, LX, 5.75, 1.4, 0.8, "**4**\nEVALUATE", size=18, color=GRAY, align=PP_ALIGN.LEFT, wrap=False)
 arrow(s, BX + 9.35, 5.2, BX + 4.9, 5.68)
-box(s, BX, 5.65, 4.95, 0.95, "common held-out test ensemble\n(≥ 1,000 × ≥ 30-yr; never searched)", size=18, line=ACCENT, line_w=1.75)
+box(s, BX, 5.65, 4.95, 0.95, "common held-out E_test (DU-forced)\nLHS over CMIP6 forcing box × realizations; never searched", size=18, line=ACCENT, line_w=1.75)
 arrow(s, BX + 4.95, 6.12, BX + 5.3, 6.12)
 box(s, BX + 5.3, 5.65, 5.8, 0.95, "multivariate satisficing (primary) + secondary metrics;\nnondominated sets recomputed for all designs", size=18)
 label(s, BX, 6.68, 11.1, 0.62,
@@ -655,109 +665,101 @@ label(s, BX, 6.68, 11.1, 0.62,
 # 15 — Scenario designs table
 # =====================================================================
 s = add_slide(notes=(
-    "The six designs, verbatim from src/scenario_designs.py. Two populations: stationary "
-    "(Kirsch-Nowak fit to the record, no climate perturbation) and DU-forced (theta from the CMIP6 "
-    "harmonic hypercube). Each design is built by ITS OWN published recipe from ITS OWN seed "
-    "stream. resampled_probabilistic: Brodeur 2020 is the primary anchor; Trindade/Gold are cited "
-    "only for the PRINCIPLE of per-evaluation re-randomization -- Trindade evaluates all 1,000 "
-    "realizations every evaluation and re-randomizes the flow<->DU pairing, and our theta is fused "
-    "into the realization at generation, so there is no pairing to re-randomize. Declared, not "
-    "footnoted."))
+    "The three campaign designs, from src/scenario_designs.py. ONE stationary population "
+    "(Kirsch-Nowak fit to the record, no climate perturbation). Each design is built by its own "
+    "published recipe from its own seed stream. fixed_probabilistic is the EXACT statistical control "
+    "for hazard_filling (a uniform random size-N subset of an i.i.d. pool = N fresh i.i.d. draws), so "
+    "the pair differs only in the selection rule. historic is the unmatched prevailing-practice "
+    "reference (N = 1). Deep uncertainty lives only in E_test. resampled_probabilistic, "
+    "input_stratified, and a DU-forced hazard_filling variant are out of the campaign (future work "
+    "at most)."))
 add_title(s, "Scenario designs compared (RQ1)")
 rows = [
     ["Population", "Design", "Construction of the search ensemble", "Precedent"],
     ["stationary", "historic", "the observed record as one continuous trace (N = 1)", "Giuliani et al. 2016; Herman et al. 2020"],
     ["stationary", "fixed_probabilistic", "N × L realizations generated i.i.d.; frozen across the search", "Quinn et al. 2017; Zatarain Salazar et al. 2017"],
-    ["stationary", "resampled_probabilistic", "its own pool; N redrawn at every function evaluation", "Brodeur et al. 2020 (Trindade 2017 / Gold 2023: principle only)"],
-    ["stationary", "**hazard_filling_stationary**", "LHS + nearest-neighbour snap in hazard space, over its own stationary pool", "**proposed**"],
-    ["DU-forced", "input_stratified", "LHS over the harmonic forcing parameters; R realizations generated per design point", "Quinn et al. 2020; Bartholomew & Kwakkel 2020"],
-    ["DU-forced", "**hazard_filling_du**", "the same selector, over its own DU-forced pool", "**proposed**"],
+    ["stationary", "**hazard_filling**", "LHS + nearest-neighbour snap in ABSOLUTE hazard space, over its own i.i.d. stationary pool", "**proposed**"],
 ]
-add_table(s, rows, [1.35, 2.85, 4.75, 3.2], left=0.6, top=1.45, row_h=0.66, size=18,
-          highlight_row=[4, 6], highlight_color=LIGHTB)
+add_table(s, rows, [1.35, 2.85, 4.75, 3.2], left=0.6, top=1.6, row_h=0.8, size=18,
+          highlight_row=[3], highlight_color=LIGHTB)
 add_body(s, [
-    ("b", "every design generates its own realizations from its own seed stream; **no design is subsampled from a shared pool**"),
-    ("b", "all matched designs run at **N = 100, L = 10 yr**; historic is an unmatched prevailing-practice reference"),
-], top=6.08, size=18, space_after=2)
+    ("b", "each design generates its own realizations from its own seed stream; **no design is subsampled from a shared pool**"),
+    ("b", "the two matched designs run at **N = 100, L = 10 yr, equal NFE**; **fixed_probabilistic is the exact statistical control** for hazard_filling"),
+    ("b", "historic is an unmatched prevailing-practice reference; deep uncertainty enters only in the held-out E_test"),
+], top=4.55, size=18, space_after=4)
 
 # =====================================================================
 # 16 — Why both populations
 # =====================================================================
 s = add_slide(notes=(
-    "Why hazard-filling is run in BOTH populations. Whichever single population you pick, one of "
-    "the two key comparisons is confounded. Running the method in both dissolves the problem and "
-    "invents no design purely to serve a control. The literature supports both: hazard-space design "
-    "does NOT require a DU input space -- Zatarain Salazar 2017 subsamples a stationary 10,000-trace "
-    "Kirsch-Nowak pool by a realized-flow metric, in search; Zaniolo 2023 / FIND 2024 control "
-    "drought frequency, intensity and duration in SSI space with no climate input space at all."))
-add_title(s, "Why hazard-filling runs in both populations")
-claim(s, "Either population alone confounds one of the two key comparisons.")
+    "The single controlled contrast rests on an exact statistical control. A uniform random size-N "
+    "subset of an i.i.d. pool is distributionally identical to N fresh i.i.d. draws, so "
+    "fixed_probabilistic is the EXACT control for hazard_filling: same generator, population, N, L, "
+    "NFE, only the selection rule differs. This requires the pool to be sampled i.i.d. (never by "
+    "LHS), enforced by an invariant test. Deep uncertainty enters only in E_test, which spans a "
+    "CMIP6-forced envelope no search ensemble contains, making re-evaluation a generalization test "
+    "to conditions never seen in search. This upgrades the Eker & Kwakkel (2018) null benchmark "
+    "(diversity selection did not beat random) to hazard space, a real system, and draw-based "
+    "replication."))
+add_title(s, "The exact statistical control")
+claim(s, "fixed_probabilistic is the exact statistical control for hazard_filling.")
 add_body(s, [
-    ("b", "**stationary only**: an exact control against fixed_probabilistic — but input_stratified then has **no input space to stratify** (θ is fixed by the historic fit)"),
-    ("b", "**DU-forced only**: an exact control against input_stratified — but fixed_probabilistic is then **a different population**"),
-    ("b", "running the method in **both** dissolves this, and invents no design purely to serve a control"),
-    ("b", "the literature supports both: **hazard-space design does not require a DU input space** — Zatarain Salazar et al. (2017) subsamples a *stationary* 10,000-trace pool by a realized-flow metric, in search; Zaniolo et al. (2023) and FIND (2024) control drought frequency, intensity and duration in SSI space with no climate input space at all"),
+    ("b", "same generator, same stationary population, same N, same L, same NFE — **only the selection rule differs**"),
+    ("b", "so any difference in re-evaluated robustness is attributable to the **selection rule alone**; this is the Eker & Kwakkel (2018) null benchmark upgraded to hazard space, a real system, and draw-based replication"),
+    ("b", "**deep uncertainty enters only in E_test**, which spans a CMIP6-forced envelope no search ensemble contains — so re-evaluation is a **generalization test** to conditions never seen in search"),
 ], top=2.05, size=20, space_after=9)
 cb = box(s, 0.6, 5.15, 12.15, 1.55, None, fill=LIGHTB, line=ACCENT, line_w=1.25)
 tf = cb.text_frame; tf.word_wrap = True
 tf.margin_left = Inches(0.18); tf.margin_right = Inches(0.18); tf.vertical_anchor = MSO_ANCHOR.MIDDLE
 _apply_runs(tf.paragraphs[0],
-            "**The exact control.**  A uniform random size-N subset of an i.i.d. pool is distributionally identical to N fresh i.i.d. draws. That is what makes fixed_probabilistic the exact statistical control for hazard_filling_stationary: they differ only in the selection rule applied to the same population law. It requires the pool to be sampled i.i.d., never by LHS — enforced by an invariant test, because nothing else would fail if it were broken.",
+            "**The exact control.**  A uniform random size-N subset of an i.i.d. pool is distributionally identical to N fresh i.i.d. draws. That is what makes fixed_probabilistic the exact statistical control for hazard_filling: they differ only in the selection rule applied to the same population law. It requires the pool to be sampled i.i.d., never by LHS — enforced by an invariant test, because nothing else would fail if it were broken.",
             20, INK)
 
 # =====================================================================
 # 17 — The controlled contrasts
 # =====================================================================
 s = add_slide(notes=(
-    "The experimental core, in one picture. Each contrast varies exactly one thing and maps onto a "
-    "real published design. N = 100 and L = 10 yr are held fixed throughout. The input_stratified "
-    "-> hazard_filling_du contrast is the central claim: does hazard coverage beat INPUT coverage."))
-add_title(s, "The controlled contrasts")
-label(s, 1.6, 1.55, 4.4, 0.4, "**Stationary population**", size=20, color=INK)
-label(s, 7.3, 1.55, 4.4, 0.4, "**DU-forced population**", size=20, color=INK)
-box(s, 1.6, 2.05, 4.4, 0.8, "fixed_probabilistic\nN i.i.d. draws, frozen", size=18)
-box(s, 7.3, 2.05, 4.4, 0.8, "input_stratified\nLHS over the forcing space θ", size=18)
-arrow(s, 2.45, 2.85, 2.45, 3.72, color=ACCENT, weight=1.75)
-arrow(s, 8.15, 2.85, 8.15, 3.72, color=ACCENT, weight=1.75)
-label(s, 2.65, 2.95, 3.4, 0.7, "only the selection\n**RULE** differs", size=18, color=ACCENT, align=PP_ALIGN.LEFT)
-label(s, 8.35, 2.95, 3.4, 0.7, "only the selection\n**SPACE** differs (θ vs hazard)", size=18, color=ACCENT, align=PP_ALIGN.LEFT)
-box(s, 1.6, 3.75, 4.4, 0.8, "hazard_filling_stationary", size=18, line=ACCENT, line_w=1.75, bold=True)
-box(s, 7.3, 3.75, 4.4, 0.8, "hazard_filling_du", size=18, line=ACCENT, line_w=1.75, bold=True)
-arrow(s, 6.0, 4.15, 7.3, 4.15, color=RUST, weight=1.75)
-label(s, 5.85, 4.22, 1.6, 0.6, "what the DU\nspace adds", size=18, color=RUST)
-label(s, 1.6, 4.62, 4.4, 0.4, "Does hazard coverage beat\nrandom sampling?", size=18, color=GRAY)
-label(s, 7.3, 4.62, 4.4, 0.4, "Does hazard coverage beat\n**input** coverage?  (central claim)", size=18, color=GRAY)
+    "The experimental core, in one picture. ONE controlled contrast: fixed_probabilistic -> "
+    "hazard_filling. Same stationary generator, same population, same N = 100, same L = 10 yr, same "
+    "NFE; only the selection RULE differs (i.i.d. sampling vs absolute hazard-space filling). Because "
+    "the pool is i.i.d., fixed_probabilistic is the exact statistical control. historic is the "
+    "unmatched prevailing-practice reference. RQ1: does hazard coverage beat random sampling?"))
+add_title(s, "The controlled contrast")
+box(s, 4.4, 2.1, 4.55, 0.95, "fixed_probabilistic\nN i.i.d. draws from the generator, frozen", size=18)
+arrow(s, 6.68, 3.05, 6.68, 3.95, color=ACCENT, weight=1.9)
+label(s, 6.9, 3.18, 4.0, 0.7, "only the selection\n**RULE** differs", size=18, color=ACCENT, align=PP_ALIGN.LEFT)
+box(s, 4.4, 3.98, 4.55, 0.95, "hazard_filling\nLHS + snap in absolute hazard space", size=18, line=ACCENT, line_w=1.9, bold=True)
+label(s, 4.4, 5.05, 4.55, 0.5, "Does hazard coverage beat\nrandom sampling?", size=20, color=GRAY)
 add_body(s, [
-    ("b", "all three contrasts hold **N = 100 and L = 10 yr** fixed; each varies exactly one thing and maps onto a real published design"),
-    ("b", "historic (prevailing-practice anchor) and resampled_probabilistic (overfitting probe) sit outside the matched contrasts"),
+    ("b", "the contrast holds **N = 100, L = 10 yr and NFE** fixed; only the rule that selects the N realizations changes"),
+    ("b", "because the candidate pool is **i.i.d.**, fixed_probabilistic is the **exact statistical control** — a uniform random size-N subset equals N fresh draws"),
+    ("b", "historic (prevailing-practice anchor, N = 1) sits outside the matched contrast; deep uncertainty enters only at re-evaluation (E_test)"),
 ], top=5.75, size=20, space_after=6)
 
 # =====================================================================
 # 18 — Candidate pools & forcing space
 # =====================================================================
 s = add_slide(notes=(
-    "How the two candidate pools are built. Pools are sampled i.i.d., NEVER by LHS -- a random "
-    "subset of an LHS design is not i.i.d., which would silently void the exact control. Only "
-    "input_stratified uses LHS, and it uses it to GENERATE, never to build a pool. The pool is "
-    "re-drawn on every ensemble draw: generating the pool IS part of a hazard-filling design's "
+    "How the stationary candidate pool is built. The pool is sampled i.i.d., NEVER by LHS -- a "
+    "random subset of an LHS design is not i.i.d., which would silently void the exact control. The "
+    "pool is re-drawn on every ensemble draw: generating the pool IS part of hazard_filling's "
     "construction, so pinning it would make hazard-filling look more stable by construction. "
-    "Storage: only hazard image + seeds persisted; realizations regenerate deterministically. "
-    "Caveat: historical interannual persistence retained; claims scoped accordingly."))
-add_title(s, "Candidate pools & the forcing space")
+    "Storage: only hazard image + seeds persisted; realizations regenerate deterministically. The "
+    "CMIP6 harmonic forcing box is NOT a search design; it is the envelope for the held-out E_test "
+    "(shown later). Caveat: historical interannual persistence retained; claims scoped accordingly."))
+add_title(s, "The candidate pool (and where the forcing box lives)")
 r1y = 1.75; bh = 1.0
-box(s, 0.65, r1y, 2.8, bh, "CMIP6 monthly\nchange-factor anchors", size=18)
-arrow(s, 3.45, r1y + bh / 2, 3.95, r1y + bh / 2)
-box(s, 3.95, r1y, 3.3, bh, "fixed-phase harmonic hypercube\n(m, r₁, r₂), sampled i.i.d.", size=18)
-arrow(s, 7.25, r1y + bh / 2, 7.75, r1y + bh / 2)
-box(s, 7.75, r1y, 2.3, bh, "Kirsch–Nowak\ngeneration", size=18)
-arrow(s, 10.05, r1y + bh / 2, 10.55, r1y + bh / 2)
-box(s, 10.55, r1y, 2.2, bh, "two i.i.d. pools\n(stationary, DU)", size=18, line=ACCENT, line_w=1.5)
+box(s, 0.65, r1y, 3.1, bh, "stationary Kirsch–Nowak\nfit to the record (no perturbation)", size=18)
+arrow(s, 3.75, r1y + bh / 2, 4.25, r1y + bh / 2)
+box(s, 4.25, r1y, 3.1, bh, "i.i.d. sampling\n(never LHS)", size=18)
+arrow(s, 7.35, r1y + bh / 2, 7.85, r1y + bh / 2)
+box(s, 7.85, r1y, 4.6, bh, "one i.i.d. candidate pool\n(hazard_filling selects N = 100 from it)", size=18, line=ACCENT, line_w=1.5)
 add_body(s, [
-    ("b", "each hazard-filling design **owns** its pool; the pool is **re-drawn on every ensemble draw**, so a draw re-rolls everything that is random about building the ensemble"),
-    ("b", "pools are sampled **i.i.d., never by LHS** — a random subset of an LHS design is not i.i.d., which would silently void the exact control (enforced by an invariant test)"),
-    ("b", "harmonic change-factor parameterization follows Quinn et al. (2018): amplitudes sampled, seasonal phases fixed at the CMIP6 shape; generation by Kirsch monthly + Nowak daily disaggregation (Kirsch et al. 2013; Nowak et al. 2010)"),
-    ("b", "only the **hazard image + seeds** are stored; any realization **regenerates deterministically** on demand (about 440 GB avoided)"),
+    ("b", "hazard_filling **owns** its pool; the pool is **re-drawn on every ensemble draw**, so a draw re-rolls everything that is random about building the ensemble"),
+    ("b", "the pool is sampled **i.i.d., never by LHS** — a random subset of an LHS design is not i.i.d., which would silently void the exact control (enforced by an invariant test)"),
+    ("b", "only the **hazard image + seeds** are stored; any realization **regenerates deterministically** on demand (hundreds of GB avoided)"),
     ("b", "seed domains are **disjoint** across designs, draws, and the test ensemble, so no two ever share a realization"),
+    ("b", "the **CMIP6 harmonic forcing box** (m, r₁, r₂; amplitudes sampled, phases fixed, Quinn et al. 2018) is **not a search design** — it is the envelope for the held-out E_test (Kirsch et al. 2013; Nowak et al. 2010)"),
     ("b", "historical interannual persistence is retained by the generator; claims scoped accordingly"),
 ], top=3.2, size=19, space_after=7)
 
@@ -765,19 +767,23 @@ add_body(s, [
 # 19 — Hazard axes & selector
 # =====================================================================
 s = add_slide(notes=(
-    "Selector: normalize each hazard axis by its empirical CDF, draw N Latin-hypercube anchors, "
-    "snap each to the nearest not-yet-selected pool member. Deterministic given the anchor seed. "
-    "NO simulated annealing, no tuning, no discrepancy objective -- which is exactly why L2-star "
-    "discrepancy remains an INDEPENDENT diagnostic of the achieved design rather than the quantity "
-    "being minimized, so coverage can be reported as a RESULT rather than a build-verification "
-    "gate. Axes chosen by a redundancy screen run on each production pool's hazard image."))
+    "Selector: range-scale each hazard axis to [0,1] by its pool min-max (ABSOLUTE space, NOT "
+    "empirical-CDF / rank space), draw N Latin-hypercube anchors, snap each to the nearest "
+    "not-yet-selected pool member. Deterministic given the anchor seed. NO simulated annealing, no "
+    "tuning, no discrepancy objective. Absolute-space filling deliberately OVER-REPRESENTS the "
+    "severe (rare) hazard corners relative to their pool frequency -- that is the genuine "
+    "distribution shift under study. Because the selector does not minimize a discrepancy objective, "
+    "L2-star discrepancy / MST / snap distance are BUILD-QC that the intervention was administered at "
+    "strength (vs a random design at the same N, m), NOT a comparison result. Axes chosen by a "
+    "redundancy screen on the production pool's hazard image. A rank-space ECDF variant is a "
+    "non-campaign sensitivity only."))
 add_title(s, "Hazard axes & the hazard-filling selector")
 add_body(s, [
     ("b", "candidate axes: SSI-6 drought-event metrics (deficit volume, duration, peak depth, onset and recovery rate) and peaks-over-threshold flood metrics (peak magnitude, pulse duration, rise rate), computed per sequence"),
     ("b", "redundancy screen retains **3–4** low-collinearity axes, balanced across the dry and wet concepts (|ρ| ≥ 0.7 clustering, Olden & Poff 2003)"),
-    ("b", "selector: normalize each axis by its empirical CDF, draw **N Latin-hypercube anchors**, snap each to the **nearest unused pool member**. Deterministic given the anchor seed; **no annealing, no tuning**"),
-    ("b", "because the selector does **not** optimize a discrepancy objective, **L2-star discrepancy stays an independent diagnostic** of the achieved design — coverage is a **result**, reported against a random design at the same (N, m), not a build-verification gate"),
-    ("b", "severe corners are over-represented **by design**; K draws re-roll both the anchor plan and the pool"),
+    ("b", "selector: **range-scale each axis to [0,1] by its pool min-max (ABSOLUTE space)**, draw **N Latin-hypercube anchors**, snap each to the **nearest unused pool member**. Deterministic given the anchor seed; **no annealing, no tuning**"),
+    ("b", "absolute-space filling **deliberately over-represents the severe corners** relative to their pool frequency — the distribution shift RQ1 tests (a rank-space ECDF variant is a non-campaign sensitivity only)"),
+    ("b", "coverage stats (L2-star discrepancy, MST, snap distance) are **build-QC / method verification** that the intervention was administered at strength, reported against a random design at the same (N, m) — **not a comparison result**"),
 ], left=0.6, top=1.6, width=7.4, size=19, space_after=8)
 gx, gy, gw, gh = 8.6, 2.0, 3.75, 3.75
 box(s, gx, gy, gw, gh, None, fill=WHITE, line=MIDGRAY, line_w=1.0)
@@ -800,7 +806,7 @@ for i, (fx, fy) in enumerate(anchors):
     ring(s, ax, ay, d=0.14, color=MIDGRAY, weight=1.0)
     line(s, ax + 0.07, ay + 0.07, sx + 0.06, sy + 0.06, color=MIDGRAY, weight=0.75)
     dot(s, sx, sy, d=0.12, color=RUST)
-label(s, gx, gy + gh + 0.06, gw, 0.35, "hazard axis 1 (empirical-CDF space)", size=18, color=GRAY)
+label(s, gx, gy + gh + 0.06, gw, 0.35, "hazard axis 1 (absolute, range-scaled space)", size=18, color=GRAY)
 ylab = label(s, gx - 1.05, gy + gh / 2 - 0.175, 1.6, 0.35, "hazard axis 2", size=18, color=GRAY)
 ylab.rotation = 270
 label(s, gx - 0.15, gy - 0.44, gw + 0.3, 0.36, "hollow = LHS anchor; filled = snapped pool member", size=18, color=RUST)
@@ -888,9 +894,10 @@ add_body(s, [
     ("b", "because N and L are common, per-evaluation cost, warm-up, scenario-years and wall-clock are **identical** — equal-NFE and equal-scenario-years **coincide**. One budget condition, no arms, no confound between composition and search effort"),
     ("b", "the common (N, L) is **required, not convenient**: if L differed across designs, the selection rule would be confounded with record length"),
     ("b", "N is bounded below by the **fill requirement** — at m = 4 hazard axes, N = 100 gives ~3.2 points per dimension (~4.6 at m = 3), the smallest defensible fill. This is why long records are not viable: at a fixed per-evaluation budget L = 50 forces N ≈ 20, and space-filling in 4-D with 20 points is noise"),
-    ("b", "**replication**: K = 10 ensemble draws × S = 2–3 seeds. A **draw** = the design's construction re-run from scratch with a fresh seed, **including its pool**. The draw is the unit of analysis (effective n ≈ K, not K·S)"),
+    ("b", "**NFE = 500,000 per search is a target** (revisable once initial searches reveal convergence; the runtime archive keeps intermediate NFE so a lower budget can be justified after the fact)"),
+    ("b", "**replication (targets)**: K = 3 ensemble draws × S = 2 seeds per matched design (historic K = 1); revisable from a pilot minimum-detectable-effect calc. A **draw** = the construction re-run from scratch with a fresh seed, **including its pool**, and is the unit of analysis (effective n ≈ K)"),
     ("b", "search-time objective values are **never compared across designs**; convergence is a per-design diagnostic only"),
-], top=2.15, size=19, space_after=10)
+], top=2.15, size=19, space_after=9)
 
 # =====================================================================
 # 23 — Comparison metrics
@@ -910,7 +917,8 @@ _apply_runs(tf.paragraphs[0],
             20, INK)
 add_body(s, [
     ("b", "the standard robustness unit of the Herman (2014, 2015) / Trindade (2017) / Gold (2022, 2023) lineage; converges at 50–300 scenarios (Bonham et al. 2024)"),
-    ("b", "**secondary, all free from the same persisted cube**: univariate satisficing; **Laplace / mean** and **maximin** (risk-neutral and risk-averse anchors — a single robustness family is never sufficient, Herman et al. 2015; McPhail et al. 2018); **improvement over the status quo** (shortfall vs the current FFMP policy on the same test ensemble — a fixed external reference that needs no optimization, Kasprzyk et al. 2013)"),
+    ("b", "**run-level endpoint (pre-specified)**: the **max satisficing fraction** attained in a run's re-evaluated set, with a **leave-one-out reference-set correction** and **robustness-space hypervolume** as bounding co-reports"),
+    ("b", "**secondary, all free from the same persisted cube**: univariate satisficing; **Laplace / mean** and **maximin** (risk-neutral and risk-averse anchors — a single robustness family is never sufficient, Herman et al. 2015; McPhail et al. 2018); **improvement over the status quo** (shortfall vs the current FFMP policy on the same test ensemble — the **only** fixed-reference regret-type quantity, design-independent, needs no optimization, Kasprzyk et al. 2013)"),
     ("b", "**attainability screen** (free): which test realizations no policy from any design can win — separating *this design searched badly* from *this scenario is impossible for anyone* (Shavazipour et al. 2021 found 23% unwinnable)"),
     ("b", "ranking agreement via **Kendall's τ_b, computed across the design rankings**"),
 ], top=2.55, size=19, space_after=7)
@@ -1007,7 +1015,7 @@ ylab.rotation = 270
 # =====================================================================
 s = add_slide(notes=(
     "Name them before a reviewer does. Eker & Kwakkel 2018 is a NULL RESULT and our "
-    "fixed_probabilistic -> hazard_filling_stationary contrast IS that benchmark. Giuliani & "
+    "fixed_probabilistic -> hazard_filling contrast IS that benchmark. Giuliani & "
     "Castelletti 2016 Fig. 4 predicts hazard-filling will be PENALIZED for search-measure mismatch "
     "-- that is the null this study must beat, and we say so. Bartholomew & Kwakkel 2020 already "
     "wrote the reviewer's objection: selection bias is NOT corrected by held-out re-evaluation, and "
@@ -1015,7 +1023,7 @@ s = add_slide(notes=(
 add_title(s, "Threats to validity, named before a reviewer names them")
 add_body(s, [
     ("h", "Eker & Kwakkel (2018) is a null result"),
-    ("b", "diversity-based scenario selection did **not** beat random selection. Our fixed_probabilistic → hazard_filling_stationary contrast **is** that benchmark. Differentiators: their diversity is in *outcome* space on the Lake Problem (little scenario → outcome leverage), ours is in hazard space on a real system; and our statistic has far more power (K draws × S seeds, the draw as the unit of analysis, vs counting solutions above a group median)"),
+    ("b", "diversity-based scenario selection did **not** beat random selection. Our fixed_probabilistic vs hazard_filling contrast **is** that benchmark. Differentiators: their diversity is in *outcome* space on the Lake Problem (little scenario-to-outcome leverage), ours is in absolute hazard space on a real system; and our statistic has far more power (K draws × S seeds, the draw as the unit of analysis, vs counting solutions above a group median)"),
     ("h", "Giuliani & Castelletti (2016): search-measure mismatch is a one-directional penalty"),
     ("b", "policies designed under one aggregation rule and scored under another are **dominated** (their Fig. 4). Hazard-filling searches under a distorted measure and is scored under the test measure, so Giuliani predicts it will be **penalized**. **That is the null this study must beat**"),
     ("h", "Bartholomew & Kwakkel (2020) wrote the objection already"),
@@ -1028,30 +1036,33 @@ add_body(s, [
 # 27 — Evaluation funnel
 # =====================================================================
 s = add_slide(notes=(
-    "Single point of cross-design comparison. E_test: target >=1000 long (>=30-yr) realizations "
-    "across the full forcing space, never searched and never the source of any search ensemble. The "
-    "structurally-different-generator construction (multi-site HMM) guards against a coverage "
-    "home-field advantage: if E_test shares the pools' generator and forcing space, held-out holds "
-    "only in realization, not structure; expect this question. Nondominated sets recomputed from "
-    "re-evaluated values for all designs alike."))
+    "Single point of cross-design comparison, and the SOLE carrier of deep uncertainty. E_test is an "
+    "LHS over the CMIP6 harmonic forcing box crossed with many realizations per point -- LHS, NOT "
+    "i.i.d. -- spanning a forced envelope no search ensemble contains. So re-evaluation is a "
+    "GENERALIZATION test to conditions never seen in search, and E_test is structurally distinct "
+    "from both designs (it favours neither). No robustness number is an expectation: a satisficing "
+    "fraction over E_test is a coverage-weighted count over a designed exploration of the deeply "
+    "uncertain box; the comparison is valid because E_test is identical across designs, not because "
+    "it is probability-faithful. An optional 2nd construction (multi-site HMM) would test ranking "
+    "stability across generator families. Nondominated sets recomputed from re-evaluated values for "
+    "all designs alike."))
 add_title(s, "Evaluation: one common held-out test ensemble")
-names = ["historic", "fixed prob.", "resampled", "input-strat.", "hazard-fill (stat)",
-         "hazard-fill (DU)", "current FFMP"]
-by0 = 1.7
+names = ["historic", "fixed prob.", "hazard-fill", "current FFMP"]
+by0 = 2.05
 for i, nm in enumerate(names):
-    yy = by0 + i * 0.58
+    yy = by0 + i * 0.72
     base = (nm == "current FFMP")
-    box(s, 0.7, yy, 2.9, 0.48, ("baseline: " if base else "Pareto set: ") + nm, size=18,
+    box(s, 0.7, yy, 2.9, 0.55, ("baseline: " if base else "Pareto set: ") + nm, size=18,
         fill=WHITE, line=MIDGRAY, line_w=1.0)
-    arrow(s, 3.6, yy + 0.24, 4.75, 3.95, color=MIDGRAY, weight=1.0)
-box(s, 4.8, 3.2, 3.6, 1.5, "**E_test**, held-out\n≥ 1,000 × ≥ 30-yr realizations\nspanning the full forcing space", size=18, line=ACCENT, line_w=1.75)
+    arrow(s, 3.6, yy + 0.27, 4.75, 3.95, color=MIDGRAY, weight=1.0)
+box(s, 4.8, 3.1, 3.6, 1.7, "**E_test**, held-out (DU-forced)\nLHS over the CMIP6 forcing box × realizations\nspans a forced envelope no search ensemble contains", size=18, line=ACCENT, line_w=1.75)
 arrow(s, 8.4, 3.95, 9.0, 3.95)
 box(s, 9.0, 3.05, 3.7, 1.8, "**multivariate satisficing** (primary)\n+ Laplace · maximin · vs status quo\n+ attainability screen", size=18)
 add_body(s, [
-    ("b", "rankings are **conditional on E_test** (Quinn et al. 2020): ≥ 2 constructions, one from a **structurally different generator** (multi-site HMM), guarding a coverage home-field advantage"),
-    ("b", "E_test is **never the source of any search ensemble**; seed domains are disjoint by construction"),
-    ("b", "supplement: does hazard coverage **predict** re-evaluated robustness? (design-level association; may be null)"),
-], top=5.85, size=18, space_after=4)
+    ("b", "E_test is the **sole carrier of deep uncertainty** — search is stationary, so re-evaluation is a **generalization test** to conditions never seen in search; E_test is structurally distinct from both designs and favours neither"),
+    ("b", "**no robustness number is an expectation** — a satisficing fraction over E_test is a coverage-weighted count; the comparison is valid because E_test is **identical across designs**, not because it is probability-faithful (Quinn et al. 2020)"),
+    ("b", "E_test is **LHS, not i.i.d.**, and **never the source of any search ensemble**; seed domains are disjoint by construction. Optional 2nd construction (multi-site HMM) tests ranking stability across generator families"),
+], top=6.05, size=18, space_after=4)
 
 # =====================================================================
 # 28 — Status & open decisions
@@ -1065,7 +1076,7 @@ add_body(s, [
     ("b", "end-to-end pipeline at test scale"),
     ("b", "per-design generation, disjoint seed domains"),
     ("b", "deterministic pools + on-demand regeneration"),
-    ("b", "hazard-filling selector (LHS + nearest-neighbour) wired"),
+    ("b", "hazard-filling selector (LHS + nearest-neighbour, absolute space) wired"),
     ("b", "Anvil scaling experiment running"),
     ("gap", 8),
     ("h", "Next"),
@@ -1075,11 +1086,11 @@ ln = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(6.8), Inches(1.7), In
 ln.line.color.rgb = MIDGRAY; ln.line.width = Pt(1.0); ln.shadow.inherit = False
 add_body(s, [
     ("h", "Open, input requested"),
-    ("b", "campaign scope vs SU budget (designs × K × S)"),
-    ("b", "E_test design: which structurally different generator?"),
-    ("b", "hazard-axis set (post-screen); the N_θ / R split for input_stratified"),
-    ("b", "flood operator (mean vs P99) and annual failure criteria"),
-    ("b", "centre and span of the satisficing-threshold grid"),
+    ("b", "**coverage adequacy at m ≈ 4, N = 100** — uniform filling is sparse; must be **demonstrated** against a random-design null, not asserted (the biggest methodological risk)"),
+    ("b", "NFE (target, revisable); K / S replication targets"),
+    ("b", "pool size P; the hazard-axis set (post-screen)"),
+    ("b", "E_test sizing; thresholds / ε; whether to stand up the optional 2nd (HMM) E_test"),
+    ("b", "which design carries the RQ3 variable-resolution (ffmp_N) sweep"),
 ], left=7.2, top=1.7, width=5.5, size=19)
 
 # =====================================================================
@@ -1176,20 +1187,21 @@ s = add_slide(notes=(
     "is decomposed into a low-order harmonic with phases FIXED at the canonical CMIP6 seasonal "
     "shape; only amplitudes sampled. Left: best fits; right: worst (flat profiles, low R2 but "
     "small amplitude, harmless)."))
-add_title(s, "Supplemental: fixed-phase harmonic fits to CMIP6")
+add_title(s, "Supplemental: fixed-phase harmonic fits to CMIP6 (E_test forcing)")
 pic(s, "image16.png", 1.15, 1.65, w=11.0)
 add_body(s, [
-    ("b", "sampled axes: volume m · seasonal amplitude r₁ · shoulder shape r₂; phases fixed at the canonical CMIP6 shape (Quinn et al. 2018)"),
+    ("b", "sampled axes: volume m · seasonal amplitude r₁ · shoulder shape r₂; phases fixed at the canonical CMIP6 shape (Quinn et al. 2018). This parameterization defines the **held-out E_test forcing envelope**, not a search design"),
 ], top=6.3, size=19, space_after=6)
 
 s = add_slide(notes=(
-    "The DMDU box = empirical 90% range of the CMIP6 fitted parameters (markers). input_stratified "
-    "draws its theta by LHS inside this box; the DU candidate pool draws its theta i.i.d. inside "
-    "the same box. Panel c: phase held at the canonical winter peak."))
-add_title(s, "Supplemental: the CMIP6 90% amplitude envelope")
+    "The DMDU box = empirical 90% range of the CMIP6 fitted parameters (markers). This box is the "
+    "forcing envelope for the held-out E_test: E_test is an LHS over this box crossed with "
+    "realizations. It is NOT a search design (search is stationary; no input_stratified design). "
+    "Panel c: phase held at the canonical winter peak."))
+add_title(s, "Supplemental: the CMIP6 90% amplitude envelope (E_test)")
 pic(s, "image18.png", 0.75, 1.6, w=11.8)
 add_body(s, [
-    ("b", "deeply uncertain magnitude combinations the GCMs did not jointly produce, with a physically plausible seasonal shape"),
+    ("b", "the **E_test forcing envelope**: deeply uncertain magnitude combinations the GCMs did not jointly produce, with a physically plausible seasonal shape; sampled by LHS to build E_test"),
 ], top=6.5, size=19, space_after=6)
 
 s = add_slide(notes=(
@@ -1199,17 +1211,19 @@ add_title(s, "Supplemental: sampled forcing spans the CMIP6 monthly range")
 pic(s, "image19.png", 0.9, 1.7, w=11.6)
 
 s = add_slide(notes=(
-    "Scaling experiment currently running on Anvil; sets production parallel geometry and the SU "
-    "budget that gates campaign scope."))
-add_title(s, "Supplemental: Anvil scaling experiments (running)")
+    "Scaling experiment run on Anvil; sets production parallel geometry and the SU budget that gates "
+    "campaign scope. Measured cost surface: 173.8 s/eval at N=100, L=10 on the trimmed model; full "
+    "model 1.16x; ~33,300 SU per 500k-NFE search; full campaign ~415,000 of the 750,000-SU "
+    "allocation; re-evaluation nearly free."))
+add_title(s, "Supplemental: Anvil scaling & measured cost surface")
 add_body(s, [
     ("h", "Parallelism levers"),
     ("b", "nodes · cores per node · MM-Borg islands · workers per island · realizations per simulation"),
     ("gap", 6),
-    ("h", "Design"),
-    ("b", "packing sweep: throughput vs realizations-per-simulation"),
-    ("b", "Borg strong scaling: island × worker ladder at short NFE"),
-    ("b", "output: SU per (design × draw × seed), giving the campaign scope table"),
+    ("h", "Measured cost (Anvil)"),
+    ("b", "**173.8 s per evaluation** (N = 100, L = 10, trimmed model); full model **1.16×**"),
+    ("b", "**~33,300 SU per 500k-NFE search**; full campaign **~415,000 of the 750,000-SU allocation**; re-evaluation nearly free"),
+    ("b", "packing sweep + Borg strong scaling set the production parallel geometry"),
 ], top=1.7, size=20)
 
 # =====================================================================
@@ -1244,17 +1258,17 @@ def polyline(s, pts, color, weight=1.5):
 # ---- Overview list ----
 s = add_slide(notes=(
     "One-line map of the planned figures. Figs 1-2 methods; 3-7 RQ1 (headline, threshold "
-    "stringency, the controlled contrasts, policy differences, mechanism); 8 RQ2; 9 RQ3. There is "
+    "stringency, the controlled contrast, policy differences, mechanism); 8 RQ2; 9 RQ3. There is "
     "no robustness-vs-regret figure (regret is not computed) and no budget-interaction figure "
     "(there is one budget condition). Leave-one-out reference-set hypervolume stays in the "
-    "supplement, per Zatarain Salazar 2017."))
+    "supplement, per Zatarain Salazar 2017. Three designs, one stationary population."))
 add_title(s, "Planned figure sequence (conceptual)")
 add_body(s, [
     ("b", "**Fig. 1**  System & experiment: the NYC-DRB testbed and the four-stage comparison workflow."),
-    ("b", "**Fig. 2**  Search ensembles in hazard space: what each design actually samples from its own population."),
+    ("b", "**Fig. 2**  Search ensembles in hazard space: what each of the three designs samples from the stationary population."),
     ("b", "**Fig. 3**  Robustness by design: held-out multivariate satisficing per design and objective (RQ1 headline)."),
     ("b", "**Fig. 4**  Threshold sweep: design robustness vs criterion stringency, with τ_b of the design ranking (the credibility figure)."),
-    ("b", "**Fig. 5**  The two controlled contrasts, as a 2 × 2 (selection rule × selection space)."),
+    ("b", "**Fig. 5**  The controlled contrast: fixed_probabilistic vs hazard_filling robustness, with historic as reference."),
     ("b", "**Fig. 6**  Policy differences: do designs change the policies, not just the scores (RQ1)."),
     ("b", "**Fig. 7**  Mechanism test: failure rate vs coverage deficit, against the random-ensemble null (RQ1)."),
     ("b", "**Fig. 8**  Re-optimized vs current FFMP: objective gains and drought behavior (RQ2)."),
@@ -1286,22 +1300,21 @@ for k in range(4):
 
 # ---- Fig 2: search ensembles in hazard space ----
 s = fig_slide(2, "search ensembles in hazard space",
-    [("b", "shows: each design's realized search ensemble over **its own population's** hazard cloud, with coverage statistics (L2-star discrepancy, MST edge spread)"),
-     ("b", "comparison: what each design actually samples; the visual case for redundancy vs coverage"),
+    [("b", "shows: each of the three designs' realized search ensembles over the **stationary population's** hazard cloud, with coverage statistics (L2-star discrepancy, MST edge spread)"),
+     ("b", "comparison: what each design actually samples; the visual case for random sampling vs hazard coverage"),
      ("b", "role: makes the design tangible before any outcome is shown"),
      ("gap", 2),
      ("c", "processing: hazard image per design draw; discrepancy + spread vs a random design at the same (N, m).")],
-    ("Small multiples, one per design. Each panel's gray cloud is that design's OWN population "
-     "(stationary or DU-forced) -- there is no shared cloud, because there is no shared pool. "
-     "Historic shown as its own trace marker. Processing: hazard coordinates for every staged "
-     "search ensemble; coverage metrics per draw, reported against the random-design expectation."))
+    ("Small multiples, one per design, over the SINGLE stationary population's hazard cloud "
+     "(there is no shared pool, but all designs share the one population's support). Historic shown "
+     "as its own trace marker. Processing: hazard coordinates for every staged search ensemble; "
+     "coverage metrics per draw, reported against the random-design expectation."))
 fx, fy, fw, fh = mock_frame(s)
-panel_names = ["historic", "fixed prob.", "resampled", "input-strat.", "hz-fill (stat)", "hz-fill (DU)"]
+panel_names = ["historic", "fixed prob.", "hazard-fill"]
 _r.seed(9)
 for idx, nm in enumerate(panel_names):
-    row, col = divmod(idx, 3)
-    px = fx + 0.2 + col * 1.85
-    pyy = fy + 0.35 + row * 2.05
+    px = fx + 0.35 + idx * 1.85
+    pyy = fy + 1.4
     pw2, ph2 = 1.6, 1.25
     box(s, px, pyy, pw2, ph2, None, fill=WHITE, line=MIDGRAY, line_w=0.75)
     for _ in range(14):
@@ -1312,13 +1325,7 @@ for idx, nm in enumerate(panel_names):
     elif nm == "fixed prob.":
         for fx2, fy2 in [(0.4, 0.5), (0.55, 0.3), (0.35, 0.75), (0.6, 0.65), (0.5, 0.45), (0.7, 0.5)]:
             dot(s, px + fx2 * (pw2 - 0.2), pyy + fy2 * (ph2 - 0.2), d=0.08, color=ACCENT)
-    elif nm == "resampled":
-        for fx2, fy2 in [(0.3, 0.4), (0.5, 0.6), (0.6, 0.3), (0.45, 0.5), (0.65, 0.55), (0.35, 0.65)]:
-            ring(s, px + fx2 * (pw2 - 0.2), pyy + fy2 * (ph2 - 0.2), d=0.09, color=ACCENT, weight=1.25)
-    elif nm == "input-strat.":
-        for fx2, fy2 in [(0.25, 0.35), (0.3, 0.45), (0.35, 0.3), (0.65, 0.6), (0.7, 0.7), (0.6, 0.68)]:
-            dot(s, px + fx2 * (pw2 - 0.2), pyy + fy2 * (ph2 - 0.2), d=0.08, color=ACCENT)
-    else:  # the two hazard-filling panels
+    else:  # the hazard-filling panel
         for gx2 in range(3):
             for gy2 in range(3):
                 dot(s, px + 0.2 + gx2 * (pw2 - 0.55) / 2, pyy + 0.15 + gy2 * (ph2 - 0.45) / 2,
@@ -1340,10 +1347,10 @@ arrow(s, fx + 0.55, fy + fh - 0.55, fx + 0.55, fy + 0.3, color=MIDGRAY, weight=1
 line(s, fx + 0.55, fy + fh - 0.55, fx + fw - 0.25, fy + fh - 0.55, color=MIDGRAY, weight=1.2)
 ylab = label(s, fx - 0.9, fy + 1.7, 2.2, 0.35, "satisficing", size=18, color=GRAY)
 ylab.rotation = 270
-short = ["hist", "fixp", "resm", "in-st", "hz-s", "hz-du"]
-heights = [1.4, 1.9, 1.8, 2.1, 2.8, 2.9]
+short = ["hist", "fixp", "hz-fill"]
+heights = [1.4, 1.9, 2.8]
 for i, (nm, hgt) in enumerate(zip(short, heights)):
-    cx = fx + 1.1 + i * 0.72
+    cx = fx + 1.35 + i * 1.4
     ybase = fy + fh - 0.55
     line(s, cx, ybase - hgt - 0.45, cx, ybase - hgt + 0.75, color=GRAY, weight=1.0)
     bb = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(cx - 0.14), Inches(ybase - hgt - 0.2), Inches(0.28), Inches(0.5))
@@ -1386,40 +1393,38 @@ label(s, fx + 0.15, fy + 3.35, 2.6, 0.3, "(b) τ_b of the design ranking", size=
 line(s, fx + 0.85, fy + 4.15, fx + 4.75, fy + 4.15, color=MIDGRAY, weight=1.0, dash="dash")
 polyline(s, [(fx + 0.85, fy + 3.95), (fx + 2.15, fy + 4.05), (fx + 3.45, fy + 4.3), (fx + 4.75, fy + 4.15)], ACCENT, 2.0)
 
-# ---- Fig 5: the controlled contrasts ----
-s = fig_slide(5, "the two controlled contrasts (RQ1)",
-    [("b", "shows: a 2 × 2 of population (stationary / DU-forced) × selection (probabilistic-or-input / hazard), each cell a re-evaluated robustness distribution"),
-     ("b", "comparison: the **selection-rule** effect (left column) and the **selection-space** effect (right column, the central claim), read off the same panel"),
+# ---- Fig 5: the controlled contrast ----
+s = fig_slide(5, "the controlled contrast (RQ1)",
+    [("b", "shows: re-evaluated robustness distributions for the single contrast fixed_probabilistic vs hazard_filling, with historic as a reference marker"),
+     ("b", "comparison: the **selection-rule** effect, read directly — same generator, population, N, L, NFE; only the rule differs"),
      ("b", "role: makes the exact-control argument visible rather than asserted"),
      ("gap", 2),
-     ("c", "processing: the same per-draw robustness table as Fig. 3, arranged by the contrast structure.")],
-    ("2x2 small multiples with the two vertical contrasts annotated: fixed_probabilistic -> "
-     "hazard_filling_stationary (only the selection RULE differs) and input_stratified -> "
-     "hazard_filling_du (only the selection SPACE differs). The horizontal comparison of the two "
-     "hazard cells is what the DU forcing space adds. Replaces the deleted budget-interaction "
-     "figure: there is one budget condition."))
+     ("c", "processing: the same per-draw robustness table as Fig. 3, arranged by the contrast.")],
+    ("Two stacked robustness distributions: fixed_probabilistic (top) and hazard_filling (bottom), "
+     "the vertical contrast annotated 'only the selection RULE differs'. historic drawn as a "
+     "reference line. Replaces the deleted 2x2 population-by-selection and budget-interaction "
+     "figures: there is one stationary population and one budget condition."))
 fx, fy, fw, fh = mock_frame(s)
-cellw, cellh = 2.2, 1.4
-for cix in range(2):
-    for ciy in range(2):
-        cx0 = fx + 0.75 + cix * (cellw + 0.35)
-        cy0 = fy + 0.85 + ciy * (cellh + 0.55)
-        hz = (ciy == 1)
-        box(s, cx0, cy0, cellw, cellh, None, fill=WHITE,
-            line=(ACCENT if hz else MIDGRAY), line_w=(1.75 if hz else 1.0))
-        for k in range(5):
-            hgt = 0.35 + 0.13 * k + (0.35 if hz else 0.0)
-            bx = cx0 + 0.28 + k * 0.34
-            bb = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bx), Inches(cy0 + cellh - 0.18 - hgt),
-                                    Inches(0.2), Inches(hgt))
-            bb.fill.solid(); bb.fill.fore_color.rgb = (RUST if hz else LIGHTB)
-            bb.line.fill.background(); bb.shadow.inherit = False
-label(s, fx + 0.75, fy + 0.45, cellw, 0.32, "stationary", size=18, color=GRAY)
-label(s, fx + 0.75 + cellw + 0.35, fy + 0.45, cellw, 0.32, "DU-forced", size=18, color=GRAY)
-arrow(s, fx + 1.85, fy + 2.3, fx + 1.85, fy + 2.75, color=ACCENT, weight=1.75)
-arrow(s, fx + 1.85 + cellw + 0.35, fy + 2.3, fx + 1.85 + cellw + 0.35, fy + 2.75, color=ACCENT, weight=1.75)
-label(s, fx + 0.35, fy + 4.05, fw - 0.7, 0.6,
-      "rows: probabilistic / input design (top) vs hazard-filling (bottom)", size=18, color=GRAY)
+cellw, cellh = 4.6, 1.55
+for ciy in range(2):
+    cx0 = fx + 0.65
+    cy0 = fy + 0.75 + ciy * (cellh + 0.7)
+    hz = (ciy == 1)
+    box(s, cx0, cy0, cellw, cellh, None, fill=WHITE,
+        line=(ACCENT if hz else MIDGRAY), line_w=(1.75 if hz else 1.0))
+    for k in range(5):
+        hgt = 0.4 + 0.14 * k + (0.4 if hz else 0.0)
+        bx = cx0 + 0.5 + k * 0.78
+        bb = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bx), Inches(cy0 + cellh - 0.18 - hgt),
+                                Inches(0.34), Inches(hgt))
+        bb.fill.solid(); bb.fill.fore_color.rgb = (RUST if hz else LIGHTB)
+        bb.line.fill.background(); bb.shadow.inherit = False
+    label(s, cx0 + cellw + 0.05, cy0 + cellh / 2 - 0.2, 1.2, 0.4,
+          "hazard-fill" if hz else "fixed prob.", size=18, color=(RUST if hz else GRAY), align=PP_ALIGN.LEFT)
+arrow(s, fx + 1.5, fy + 2.3, fx + 1.5, fy + 2.75, color=ACCENT, weight=1.9)
+label(s, fx + 1.75, fy + 2.32, 3.2, 0.4, "only the selection RULE differs", size=18, color=ACCENT, align=PP_ALIGN.LEFT)
+label(s, fx + 0.35, fy + 4.6, fw - 0.7, 0.4,
+      "historic shown as a reference line", size=18, color=GRAY)
 
 # ---- Fig 6: policy differences ----
 s = fig_slide(6, "do designs find different policies? (RQ1)",
