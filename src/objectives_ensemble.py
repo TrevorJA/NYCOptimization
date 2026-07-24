@@ -445,13 +445,18 @@ def _nyc_storage_min_annual(data: dict) -> np.ndarray:
 ###############################################################################
 # Failure-year week-count thresholds (k) & env override
 ###############################################################################
-# k = minimum number of failing weeks that marks a unit-year as a failure-year
-# for the frequency objectives (objective_definitions.md §2:
-# raise k if the Decree-anchored criteria saturate under a design composition).
-
+# k = minimum number of failing weeks that marks a water-year unit as a
+# failure-year for the frequency (reliability) objectives (objective_definitions.md
+# §2). NYC and Montague use k = 3: a failure year is a ~month-scale shortfall, not
+# an isolated off week. This materially raises Montague reliability (its failing
+# weeks are graded, so k reclassifies the 1-2-week years); NYC is nearly
+# threshold-insensitive (its shortfalls are whole-season curtailments), so there
+# the choice is mainly definitional. Trenton and NJ stay at k = 1 — at k = 3
+# Trenton saturates toward 1.0, compressing the metric. Placeholder pending the
+# ensemble objective-sensitivity experiment; overridable via NYCOPT_FAILURE_K.
 _DEFAULT_FAILURE_K: dict[str, int] = {
-    "nyc_delivery_reliability_annual":   1,
-    "montague_flow_reliability_annual":  1,
+    "nyc_delivery_reliability_annual":   3,
+    "montague_flow_reliability_annual":  3,
     "trenton_flow_reliability_annual":   1,
     "nj_delivery_reliability_annual":    1,
 }
