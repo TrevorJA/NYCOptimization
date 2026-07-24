@@ -445,13 +445,18 @@ def _nyc_storage_min_annual(data: dict) -> np.ndarray:
 ###############################################################################
 # Failure-year week-count thresholds (k) & env override
 ###############################################################################
-# k = minimum number of failing weeks that marks a unit-year as a failure-year
-# for the frequency objectives (objective_definitions.md §2:
-# raise k if the Decree-anchored criteria saturate under a design composition).
-
+# k = minimum number of failing weeks that marks a water-year unit as a
+# failure-year for the frequency (reliability) objectives (objective_definitions.md
+# §2). NYC and Montague use k = 3: a failure year is a ~month-scale shortfall, not
+# an isolated off week. This materially raises Montague reliability (its failing
+# weeks are graded, so k reclassifies the 1-2-week years); NYC is nearly
+# threshold-insensitive (its shortfalls are whole-season curtailments), so there
+# the choice is mainly definitional. Trenton and NJ stay at k = 1 — at k = 3
+# Trenton saturates toward 1.0, compressing the metric. Placeholder pending the
+# ensemble objective-sensitivity experiment; overridable via NYCOPT_FAILURE_K.
 _DEFAULT_FAILURE_K: dict[str, int] = {
-    "nyc_delivery_reliability_annual":   1,
-    "montague_flow_reliability_annual":  1,
+    "nyc_delivery_reliability_annual":   3,
+    "montague_flow_reliability_annual":  3,
     "trenton_flow_reliability_annual":   1,
     "nj_delivery_reliability_annual":    1,
 }
@@ -550,8 +555,16 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"], float]] = [
 #   (name, base_name, direction, epsilon, annual_metric, operator, description)
 # `operator` is either the string "frequency" (built with the resolved
 # per-objective k) or a stage-(ii) operator instance whose `worst_value` is
-# the metric's orientation-aware non-finite sentinel. Epsilons are
-# PLACEHOLDERS in native units, pending the sensitivity experiment.
+# the metric's orientation-aware non-finite sentinel. The ACTIVE/default
+# objectives' epsilons are in native units, calibrated as ~IQR/10 (Reed et al.
+# 2013) of each objective's spread across 24 random-DV policies on the historic
+# reference trace scored as N=1 over its 76 water-year units
+# (objective_sensitivity_run.py, seed 42, 2026-07-15), rounded to clean steps
+# and floored at the 1/76 frequency granularity; to be reconciled against the
+# larger-NL ensemble sensitivity experiment
+# (ensemble_objective_sensitivity_experiment.md). The optional NJ objective and
+# the diagnostic P99 flood variant (both absent from the default set) keep
+# PLACEHOLDER epsilons pending their own inclusion/calibration.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
@@ -560,17 +573,17 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of NYC delivery "
      "< 99% of capped demand (800 MGD Decree cap)"),
     ("nyc_delivery_deficit_p99_pct",
-     "nyc_delivery_deficit_cvar90_pct", "minimize", 0.5,
+     "nyc_delivery_deficit_cvar90_pct", "minimize", 1.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
      "delivery deficit, % of Decree cap [0-100]"),
     ("montague_flow_reliability_annual",
-     "montague_flow_reliability_weekly", "maximize", 0.01,
+     "montague_flow_reliability_weekly", "maximize", 0.05,
      _montague_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of weekly-mean Montague "
      "flow < 1131.05 MGD Decree target"),
     ("montague_flow_deficit_p99_pct",
-     "montague_flow_deficit_cvar90_pct", "minimize", 0.5,
+     "montague_flow_deficit_cvar90_pct", "minimize", 1.5,
      _montague_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
      "flow deficit, % of Decree target [0-100]"),
@@ -580,7 +593,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of weekly-mean Trenton "
      "flow < 1938.95 MGD Decree target"),
     ("downstream_flood_days_annual",
-     "downstream_flood_days_minor", "minimize", 1.0,
+     "downstream_flood_days_minor", "minimize", 0.005,
      _flood_days_minor_annual, PooledMeanOp(worst_value=366.0),
      "Mean across pooled unit-years of days any tail gauge >= NWS minor "
      "flood stage (expected annual flood days)"),
@@ -590,7 +603,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "DIAGNOSTIC: P99 across pooled unit-years of annual minor-flood days "
      "(expectation can mask floods — Quinn et al. 2017)"),
     ("nyc_storage_min_p01_pct",
-     "nyc_storage_p5_pct", "maximize", 0.5,
+     "nyc_storage_p5_pct", "maximize", 2.0,
      _nyc_storage_min_annual, PooledPercentileOp(1.0, worst_value=0.0),
      "P01 across pooled unit-years of the annual minimum daily aggregate "
      "NYC storage, % of capacity [0-100]"),

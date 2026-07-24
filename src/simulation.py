@@ -47,6 +47,7 @@ from config import (
     NYC_RESERVOIRS,
     INCLUDE_SALINITY_MODEL,
     INCLUDE_TEMPERATURE_MODEL,
+    NYC_DECREE_DIVERSION_CAP_MGD,
 )
 from src.formulations import get_formulation, get_var_names
 from src.formulations.salt_front_dvs import apply_salt_front_dvs
@@ -85,6 +86,28 @@ _DROUGHT_LEVELS = ["level1a", "level1b", "level1c", "level2", "level3", "level4"
 _ZONE_LEVELS = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
 _NYC_RESERVOIRS_OPT = ["cannonsville", "pepacton", "neversink"]
 _DOWNSTREAM_LOCS = ["delMontague", "delTrenton"]
+
+# Day-of-year windows for the seasonal MRF profile-scaling DVs (the
+# monthly flow-target tables use the matching month lists in
+# _apply_flow_target_scaling). These are the FFMP's OWN season definitions
+# from the Tables 4a-4g headers — winter Dec 1-Mar 31, spring Apr 1-May 31,
+# summer Jun 1-Aug 31, fall Sep 1-Nov 30 — indexed as calendar dates on the
+# 366-column (leap-year) daily profiles. The FFMP's finer date bins nest
+# inside these seasons, so seasonally scaled schedules only ever step on
+# the FFMP's own bin edges.
+_SEASON_DOY_RANGES = {
+    "winter": list(range(336, 367)) + list(range(1, 92)),
+    "spring": list(range(92, 153)),
+    "summer": list(range(153, 245)),
+    "fall": list(range(245, 336)),
+}
+
+# Corner detection for the per-breakpoint zone-boundary shifts: number of
+# major breakpoints retained per curve and their minimum circular separation
+# (days). _ZONE_CORNER_COUNT MUST equal formulations.ffmp._BREAKPOINT_COUNT
+# so the zone_vshift/zone_tshift DV indices align with the detected corners.
+_ZONE_CORNER_COUNT = 4
+_ZONE_CORNER_MIN_SEP = 25
 
 # Evaluation counter for progress reporting
 _EVAL_COUNT = 0
@@ -415,15 +438,10 @@ def _apply_ffmp_params(config, params: dict):
     Maps flat DV parameters to NYCOperationsConfig.update_*() methods.
     Method signatures verified against pywrdrb source (nyc_operations_config.py).
     """
-    # MRF baselines
-    # update_mrf_baselines(cannonsville, pepacton, neversink, montague, trenton)
-    config.update_mrf_baselines(
-        cannonsville=params["mrf_cannonsville"],
-        pepacton=params["mrf_pepacton"],
-        neversink=params["mrf_neversink"],
-        montague=params["mrf_montague"],
-        trenton=params["mrf_trenton"],
-    )
+    # MRF baselines are fixed at the FFMP defaults (config.constants values
+    # from the pywrdrb constants CSV) — not DVs. Montague/Trenton baseline
+    # targets are 1954-Decree quantities, likewise fixed; only the
+    # drought-zone adjustment factors are optimized (below).
 
     # Delivery constraints
     # update_delivery_constraints(max_nyc_delivery, drought_factors_nyc, drought_factors_nj, ...)
@@ -470,27 +488,41 @@ def _apply_ffmp_params(config, params: dict):
         params["nj_drought_factor_L4"],
         params["nj_drought_factor_L5"],
     ])
+    # Monotonicity clamp: a deeper drought stage can never allow MORE
+    # diversion than a milder one (mirrors the zone-curve and flood-zone
+    # clamps).
+    nyc_factors = np.minimum.accumulate(nyc_factors)
+    nj_factors = np.minimum.accumulate(nj_factors)
+    # The NYC diversion cap is Decree-fixed (800 MGD), not a DV.
     config.update_delivery_constraints(
-        max_nyc_delivery=params["max_nyc_delivery"],
+        max_nyc_delivery=NYC_DECREE_DIVERSION_CAP_MGD,
         drought_factors_nyc=nyc_factors,
         drought_factors_nj=nj_factors,
     )
 
-    # Storage zone vertical shifts
+    # Storage zone shifts (per-breakpoint vertical offset + temporal shift)
     zone_levels = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
-    shifts = {level: params[f"zone_shift_{level}"] for level in zone_levels}
-    _apply_zone_shifts(config, shifts)
+    vshifts = {
+        level: [params.get(f"zone_vshift_{level}_c{k}", 0.0)
+                for k in range(_ZONE_CORNER_COUNT)]
+        for level in zone_levels
+    }
+    tshifts = {
+        level: [params.get(f"zone_tshift_{level}_c{k}", 0.0)
+                for k in range(_ZONE_CORNER_COUNT)]
+        for level in zone_levels
+    }
+    _apply_zone_shifts(config, vshifts, tshifts)
 
-    # Flood release maximums
-    # update_flood_limits(max_release_cannonsville, max_release_pepacton, max_release_neversink)
-    config.update_flood_limits(
-        max_release_cannonsville=params["flood_max_cannonsville"],
-        max_release_pepacton=params["flood_max_pepacton"],
-        max_release_neversink=params["flood_max_neversink"],
-    )
-
-    # MRF seasonal profile scaling
+    # MRF seasonal profile scaling (conservation zones only), then
+    # flood-zone (L1a/L1b) release scaling on the still-pristine flood rows.
+    # The flood_max_release_{res}_cfs constants (FFMP Table 5) are fixed —
+    # no update_flood_limits call.
     _apply_mrf_profile_scaling(config, params)
+    _apply_flood_release_scaling(config, params)
+
+    # Downstream flow-target factor scaling (Montague/Trenton, per level)
+    _apply_flow_target_scaling(config, params)
 
     # Stash salt-front DV-derived options for downstream model-dict patching.
     _stash_salt_front_options(config, params)
@@ -503,14 +535,8 @@ def _apply_nzone_ffmp_params(config, params: dict):
     build_nzone_config(). DV names use zone_{i} naming; missing DV keys fall
     back to the interpolated defaults already stored in config.constants.
     """
-    # MRF baselines
-    config.update_mrf_baselines(
-        cannonsville=params["mrf_cannonsville"],
-        pepacton=params["mrf_pepacton"],
-        neversink=params["mrf_neversink"],
-        montague=params["mrf_montague"],
-        trenton=params["mrf_trenton"],
-    )
+    # MRF baselines fixed at defaults; Montague/Trenton targets Decree-fixed
+    # (as in the base path).
 
     # Delivery constraints — build factor arrays from defaults + DV overrides
     drought_levels, storage_levels_nz = _config_levels(config)
@@ -524,43 +550,142 @@ def _apply_nzone_ffmp_params(config, params: dict):
                    float(config.constants[f"{level}_factor_delivery_nj"]))
         for level in drought_levels
     ])
+    # Monotonicity clamp (see _apply_ffmp_params).
+    nyc_factors = np.minimum.accumulate(nyc_factors)
+    nj_factors = np.minimum.accumulate(nj_factors)
     config.update_delivery_constraints(
-        max_nyc_delivery=params["max_nyc_delivery"],
+        max_nyc_delivery=NYC_DECREE_DIVERSION_CAP_MGD,
         drought_factors_nyc=nyc_factors,
         drought_factors_nj=nj_factors,
     )
 
-    # Zone shifts
-    shifts = {level: params.get(f"zone_shift_{level}", 0.0) for level in storage_levels_nz}
-    _apply_zone_shifts(config, shifts)
+    # Zone shifts (per-breakpoint vertical offset + temporal shift)
+    vshifts = {
+        level: [params.get(f"zone_vshift_{level}_c{k}", 0.0)
+                for k in range(_ZONE_CORNER_COUNT)]
+        for level in storage_levels_nz
+    }
+    tshifts = {
+        level: [params.get(f"zone_tshift_{level}_c{k}", 0.0)
+                for k in range(_ZONE_CORNER_COUNT)]
+        for level in storage_levels_nz
+    }
+    _apply_zone_shifts(config, vshifts, tshifts)
 
-    # Flood limits
-    config.update_flood_limits(
-        max_release_cannonsville=params["flood_max_cannonsville"],
-        max_release_pepacton=params["flood_max_pepacton"],
-        max_release_neversink=params["flood_max_neversink"],
-    )
-
-    # MRF seasonal scaling
+    # MRF seasonal scaling (conservation zones only), then flood-zone
+    # release scaling. Table 5 flood caps stay at their constants.
     _apply_mrf_profile_scaling(config, params)
+    _apply_flood_release_scaling(config, params)
+
+    # Downstream flow-target factor scaling (Montague/Trenton, per level)
+    _apply_flow_target_scaling(config, params)
 
     # Stash salt-front DV-derived options for downstream model-dict patching.
     _stash_salt_front_options(config, params)
 
 
-def _apply_zone_shifts(config, shifts: dict):
-    """Apply vertical shifts to storage zone thresholds with monotonic constraint.
+def _zone_curve_corners(row: np.ndarray) -> np.ndarray:
+    """Detect a curve's major corner positions (0-based day indices).
+
+    The stored FFMP curves are digitized daily and carry many tiny slope
+    changes; the major corners are the _ZONE_CORNER_COUNT points of
+    largest circular second difference (curvature), kept at least
+    _ZONE_CORNER_MIN_SEP days apart. Deterministic for a given curve.
+
+    Args:
+        row: Daily curve values (length 365/366).
+
+    Returns:
+        Sorted array of corner indices.
+    """
+    n = row.size
+    curvature = np.abs(np.diff(np.concatenate([[row[-1]], row, [row[0]]]), 2))
+    chosen = []
+    for i in np.argsort(curvature, kind="stable")[::-1]:
+        if all(min((i - j) % n, (j - i) % n) >= _ZONE_CORNER_MIN_SEP
+               for j in chosen):
+            chosen.append(int(i))
+        if len(chosen) == _ZONE_CORNER_COUNT:
+            break
+    return np.array(sorted(chosen))
+
+
+def _reconstruct_breakpoint_curve(x_nodes: np.ndarray, y_nodes: np.ndarray,
+                                  n_days: int) -> np.ndarray:
+    """Circular piecewise-linear curve through breakpoint control points.
+
+    Given breakpoint day positions ``x_nodes`` (0-based, within [0, n_days))
+    and their values ``y_nodes``, returns the length-``n_days`` daily curve
+    formed by linear interpolation between consecutive breakpoints, wrapping
+    the year end. Nodes need not be pre-sorted.
+
+    Args:
+        x_nodes: Breakpoint day positions.
+        y_nodes: Breakpoint values.
+        n_days: Profile length (365/366).
+
+    Returns:
+        Daily curve array of length ``n_days``.
+    """
+    x = np.asarray(x_nodes, dtype=float)
+    y = np.asarray(y_nodes, dtype=float)
+    order = np.argsort(x, kind="stable")
+    x = x[order]
+    y = y[order]
+    # Wrap: replicate the last node one period before the first and the first
+    # node one period after the last so np.interp covers the whole year.
+    xp = np.concatenate([[x[-1] - n_days], x, [x[0] + n_days]])
+    fp = np.concatenate([[y[-1]], y, [y[0]]])
+    return np.interp(np.arange(n_days, dtype=float), xp, fp)
+
+
+def _apply_zone_shifts(config, vshifts: dict, tshifts: dict = None):
+    """Apply per-breakpoint vertical and temporal shifts to storage curves.
+
+    Each curve's ``_ZONE_CORNER_COUNT`` major breakpoints are detected on the
+    baseline curve (_zone_curve_corners). Each breakpoint is moved along the
+    day-of-year axis by its temporal-shift DV and offset vertically by its
+    additive vertical-shift DV, and the daily curve is rebuilt as a circular
+    piecewise-linear curve through the moved, offset breakpoints
+    (_reconstruct_breakpoint_curve). Finally the curves are clipped to [0, 1]
+    and the cross-curve monotonicity clamp is applied (each more severe
+    level's curve is capped at the less severe one's). Temporal shifts are
+    rounded to whole days.
+
+    Args:
+        config: NYCOperationsConfig to mutate.
+        vshifts: Mapping level -> list of per-breakpoint additive vertical
+            offsets (zone_vshift_{level}_c{k} DVs).
+        tshifts: Mapping level -> list of per-breakpoint temporal shifts in
+            days (zone_tshift_{level}_c{k} DVs).
 
     Operates on config.storage_zones_df (rows=levels, 366 daily columns).
     Works for both default level1b..level5 and N-zone zone_1..zone_N naming.
     """
+    tshifts = tshifts or {}
     _, zone_order = _config_levels(config)
     zones = config.storage_zones_df.copy()
     date_cols = [c for c in zones.columns if c != "doy"]
 
     for level in zone_order:
-        if level in zones.index:
-            zones.loc[level, date_cols] = zones.loc[level, date_cols] + shifts[level]
+        if level not in zones.index:
+            continue
+        baseline_row = zones.loc[level, date_cols].values.astype(float)
+        n = baseline_row.size
+        corners = _zone_curve_corners(baseline_row)
+        v = vshifts.get(level, [])
+        t = tshifts.get(level, [])
+        x_nodes = np.array([
+            (corners[k] + int(round(float(t[k])))) if k < len(t) else corners[k]
+            for k in range(len(corners))
+        ], dtype=float) % n
+        y_nodes = np.array([
+            baseline_row[corners[k]] + (float(v[k]) if k < len(v) else 0.0)
+            for k in range(len(corners))
+        ], dtype=float)
+        zones.loc[level, date_cols] = _reconstruct_breakpoint_curve(
+            x_nodes, y_nodes, n
+        )
 
     zones[date_cols] = zones[date_cols].clip(lower=0.0, upper=1.0)
 
@@ -582,22 +707,26 @@ def _apply_mrf_profile_scaling(config, params: dict):
     Operates on config.mrf_factors_daily_df. The DataFrame is loaded from
     ffmp_reservoir_operation_daily_profiles.csv (index_col='profile') which
     contains both storage zone rows and MRF factor rows. This function
-    scales ALL rows by the seasonal multiplier — storage zone rows are
-    unaffected because config.storage_zones_df is a separate copy that
-    was already modified by _apply_zone_shifts.
+    scales all rows EXCEPT the flood-zone (L1a/L1b) reservoir release rows,
+    which are controlled exclusively by the flood_release_scale_* DVs
+    (_apply_flood_release_scaling). Storage zone rows are also scaled but
+    unaffected in practice because config.storage_zones_df is a separate
+    copy that was already modified by _apply_zone_shifts.
 
     NOTE: In pywrdrb from_defaults(), mrf_factors_daily_df is initialized
     as storage_zones_df.copy(). Both reference the same CSV. This is the
     pywrdrb design — the daily profiles CSV contains all profile types
     (zone thresholds and MRF factors) indexed by the 'profile' column.
     """
-    season_ranges = {
-        "winter": list(range(335, 367)) + list(range(1, 60)),
-        "spring": list(range(60, 152)),
-        "summer": list(range(152, 244)),
-        "fall": list(range(244, 335)),
-    }
+    season_ranges = _SEASON_DOY_RANGES
     mrf_factors = config.mrf_factors_daily_df.copy()
+
+    # Flood zones = drought level indices below flood_conservation_boundary
+    # (= 2): level1a/level1b for standard FFMP, zone_0/zone_1 for N-zone.
+    drought_levels, _ = _config_levels(config)
+    flood_rows = {f"{lev}_factor_mrf_{res}"
+                  for lev in drought_levels[:2] for res in _NYC_RESERVOIRS_OPT}
+    scalable = ~mrf_factors.index.isin(flood_rows)
 
     # The DataFrame columns are date strings (e.g. "1-Jan") or DOY integers,
     # NOT including a "doy" column (index_col='profile' was used at load).
@@ -619,9 +748,242 @@ def _apply_mrf_profile_scaling(config, params: dict):
         # Map day-of-year to column indices (DOY is 1-indexed, list is 0-indexed)
         cols_to_scale = [numeric_or_date_cols[d - 1] for d in doy_range
                          if d - 1 < len(numeric_or_date_cols)]
-        mrf_factors.loc[:, cols_to_scale] *= scale
+        mrf_factors.loc[scalable, cols_to_scale] *= scale
 
     config.mrf_factors_daily_df = mrf_factors
+
+
+def _apply_flood_release_scaling(config, params: dict):
+    """Scale the flood-zone (L1a/L1b) reservoir release factor rows.
+
+    DVs named ``flood_release_scale_{l1a|l1b}_{res}`` multiply the DEFAULT
+    flood-zone release schedule (FFMP Tables 4a-4g spill-mitigation rows),
+    season-invariant — matching the FFMP, which holds these rows constant
+    across its tables and seasons. The within-year shape (L1a-absent window
+    Apr 16-Jun 15, Neversink's L1b step) is preserved by the multiplier
+    form; seasonal flood policy is carried by the zone-boundary shift DVs.
+    The mrf_baseline_{res} constants are fixed (not DVs), so scaling the
+    factor rows scales the effective release rates directly.
+
+    Guardrails, applied in effective-MGD space: cap at the Table 5
+    combined-discharge constant (flood_max_release_{res}_cfs), then clamp
+    effective L1b <= L1a elementwise. Flood zones are drought_levels[0]
+    and [1] (indices below flood_conservation_boundary = 2): level1a and
+    level1b for the standard FFMP, zone_0 and zone_1 for N-zone variants.
+    Missing DV keys default to 1.0 (no-op for formulations without them).
+
+    Must run after _apply_mrf_profile_scaling, which leaves the flood-zone
+    rows pristine (default values) for this function to read.
+    """
+    drought_levels, _ = _config_levels(config)
+    flood_levels = {"l1a": drought_levels[0], "l1b": drought_levels[1]}
+    factors = config.mrf_factors_daily_df.copy()
+    date_cols = [c for c in factors.columns
+                 if c not in ("doy", "profile", "type")]
+
+    for res in _NYC_RESERVOIRS_OPT:
+        baseline = float(config.constants[f"mrf_baseline_{res}"])
+        cap_mgd = (float(config.constants[f"flood_max_release_{res}_cfs"])
+                   * _CFS_TO_MGD)
+        eff = {}
+        for key, level in flood_levels.items():
+            row = factors.loc[
+                f"{level}_factor_mrf_{res}", date_cols
+            ].values.astype(float)
+            mult = float(params.get(f"flood_release_scale_{key}_{res}", 1.0))
+            eff[key] = np.minimum(row * baseline * mult, cap_mgd)
+        eff["l1b"] = np.minimum(eff["l1b"], eff["l1a"])
+        for key, level in flood_levels.items():
+            factors.loc[f"{level}_factor_mrf_{res}", date_cols] = (
+                eff[key] / baseline
+            )
+
+    config.mrf_factors_daily_df = factors
+
+
+def _apply_flow_target_scaling(config, params: dict):
+    """Scale the Montague/Trenton monthly flow-target factor tables per DV.
+
+    DVs named ``mrf_target_scale_{montague|trenton}_{level}`` multiply the
+    corresponding drought level's default monthly factors across all months
+    (non-seasonal). The effective factor is capped at 1.0 so an adjusted
+    target never exceeds the Decree-fixed baseline target. Levels without a
+    matching DV (normal-operation levels, factors == 1.0) are left untouched.
+    Missing DV keys default to 1.0 (no change), which keeps this a no-op for
+    formulations without these DVs.
+
+    Operates on config.mrf_factors_monthly_df, which _patch_model_dict
+    reads back via get_mrf_factor_profile(..., daily=False).
+    """
+    months = ["jan", "feb", "mar", "apr", "may", "jun",
+              "jul", "aug", "sep", "oct", "nov", "dec"]
+    loc_keys = {"montague": "delMontague", "trenton": "delTrenton"}
+    drought_levels, _ = _config_levels(config)
+
+    monthly = config.mrf_factors_monthly_df.copy()
+    for loc, loc_key in loc_keys.items():
+        for level in drought_levels:
+            row = f"{level}_factor_mrf_{loc_key}"
+            if row not in monthly.index:
+                continue
+            scale = params.get(f"mrf_target_scale_{loc}_{level}", 1.0)
+            monthly.loc[row, months] = np.minimum(
+                monthly.loc[row, months].values.astype(float) * scale,
+                1.0,
+            )
+    config.mrf_factors_monthly_df = monthly
+
+
+###############################################################################
+# Formal Borg constraints (pure DV arithmetic — no simulation)
+###############################################################################
+
+# Violations at or below this magnitude are returned as exact 0.0. Borg
+# treats ANY nonzero constraint value as infeasible, so arithmetic rounding
+# noise must not leak into the feasibility signal.
+_CONSTRAINT_VIOLATION_TOL = 1e-9
+
+
+def _constraint_defaults(formulation_name: str):
+    """Return the cached pristine defaults config for a formulation."""
+    if formulation_name == "ffmp":
+        return _get_cached_defaults()
+    if formulation_name.startswith("ffmp_"):
+        return _get_cached_nzone_defaults(int(formulation_name.split("_")[1]))
+    raise NotImplementedError(
+        f"Formulation '{formulation_name}' not yet implemented."
+    )
+
+
+def _delivery_factor_arrays(cfg, params: dict, formulation_name: str):
+    """Assemble the NYC/NJ delivery-factor arrays a DV vector implies.
+
+    Mirrors the array construction in ``_apply_ffmp_params`` (standard FFMP:
+    explicit L3-L5 / L4-L5 DV names atop the config.constants defaults) and
+    ``_apply_nzone_ffmp_params`` (N-zone: per-level DV names with default
+    fallback), BEFORE the ``np.minimum.accumulate`` clamp.
+
+    Args:
+        cfg: Pristine defaults NYCOperationsConfig for the formulation.
+        params: DV name -> value mapping.
+        formulation_name: "ffmp" or "ffmp_N".
+
+    Returns:
+        Tuple (nyc_factors, nj_factors) as float arrays over drought levels.
+    """
+    defaults = cfg.constants
+    if formulation_name == "ffmp":
+        nyc = np.array([
+            float(defaults["level1a_factor_delivery_nyc"]),
+            float(defaults["level1b_factor_delivery_nyc"]),
+            float(defaults["level1c_factor_delivery_nyc"]),
+            float(defaults["level2_factor_delivery_nyc"]),
+            params["nyc_drought_factor_L3"],
+            params["nyc_drought_factor_L4"],
+            params["nyc_drought_factor_L5"],
+        ])
+        nj = np.array([
+            float(defaults["level1a_factor_delivery_nj"]),
+            float(defaults["level1b_factor_delivery_nj"]),
+            float(defaults["level1c_factor_delivery_nj"]),
+            float(defaults["level2_factor_delivery_nj"]),
+            float(defaults["level3_factor_delivery_nj"]),
+            params["nj_drought_factor_L4"],
+            params["nj_drought_factor_L5"],
+        ])
+    else:
+        drought_levels, _ = _config_levels(cfg)
+        nyc = np.array([
+            params.get(f"nyc_drought_factor_{level}",
+                       float(defaults[f"{level}_factor_delivery_nyc"]))
+            for level in drought_levels
+        ])
+        nj = np.array([
+            params.get(f"nj_drought_factor_{level}",
+                       float(defaults[f"{level}_factor_delivery_nj"]))
+            for level in drought_levels
+        ])
+    return nyc, nj
+
+
+def _delivery_monotonicity_violation(cfg, params: dict,
+                                     formulation_name: str) -> float:
+    """Sum of positive adjacent increments in the delivery-factor arrays.
+
+    Zero exactly when the ``np.minimum.accumulate`` clamp is a no-op: a
+    deeper drought stage never allows more diversion than a milder one
+    (NYC L3 >= L4 >= L5 and NJ L4 >= L5 under the standard bounds).
+    Units: fraction.
+    """
+    nyc, nj = _delivery_factor_arrays(cfg, params, formulation_name)
+    return float(np.clip(np.diff(nyc), 0.0, None).sum()
+                 + np.clip(np.diff(nj), 0.0, None).sum())
+
+
+def _flood_zone_ordering_violation(cfg, params: dict) -> float:
+    """Worst-day exceedance of effective L1b over L1a, summed over reservoirs.
+
+    Mirrors ``_apply_flood_release_scaling`` elementwise in effective-MGD
+    space (default factor rows x baseline x scale DV, Table 5 cap applied),
+    normalized by the reservoir MRF baseline so the value is dimensionless
+    and order-1. Zero exactly when the L1b <= L1a clamp is a no-op.
+    """
+    drought_levels, _ = _config_levels(cfg)
+    flood_levels = {"l1a": drought_levels[0], "l1b": drought_levels[1]}
+    factors = cfg.mrf_factors_daily_df
+    date_cols = [c for c in factors.columns
+                 if c not in ("doy", "profile", "type")]
+
+    total = 0.0
+    for res in _NYC_RESERVOIRS_OPT:
+        baseline = float(cfg.constants[f"mrf_baseline_{res}"])
+        cap_mgd = (float(cfg.constants[f"flood_max_release_{res}_cfs"])
+                   * _CFS_TO_MGD)
+        eff = {}
+        for key, level in flood_levels.items():
+            row = factors.loc[
+                f"{level}_factor_mrf_{res}", date_cols
+            ].values.astype(float)
+            mult = float(params.get(f"flood_release_scale_{key}_{res}", 1.0))
+            eff[key] = np.minimum(row * baseline * mult, cap_mgd)
+        total += max(0.0, float((eff["l1b"] - eff["l1a"]).max())) / baseline
+    return total
+
+
+def compute_constraint_violations(dv_vector,
+                                  formulation_name: str = "ffmp") -> list:
+    """Compute the formal Borg constraint violations for a DV vector.
+
+    Pure DV arithmetic on the cached defaults config — no config deepcopy,
+    no Pywr-DRB model build or simulation. Each value is a violation
+    magnitude: 0.0 = feasible, positive values scale linearly with the
+    degree of violation (Borg's constraint-dominance sums |c_i|). The
+    apply-time clamps in this module remain in place, so every simulated
+    policy is operationally valid regardless; these functions give Borg a
+    direct feasibility signal so infeasible vectors can skip simulation.
+
+    Zone-curve crossings are deliberately NOT a constraint: the per-breakpoint
+    shift DV bounds make crossings ubiquitous under random sampling, and
+    the cross-curve monotonicity clamp resolves them cleanly at apply
+    time — the clamped geometry is the intended policy, not a defect.
+
+    Args:
+        dv_vector: Array-like of decision variable values.
+        formulation_name: "ffmp" or "ffmp_N".
+
+    Returns:
+        List of two floats, ordered [delivery_monotonicity,
+        flood_zone_ordering]. Violations at or below
+        ``_CONSTRAINT_VIOLATION_TOL`` are returned as exact 0.0.
+    """
+    cfg = _constraint_defaults(formulation_name)
+    params = dict(zip(get_var_names(formulation_name), dv_vector))
+    violations = [
+        _delivery_monotonicity_violation(cfg, params, formulation_name),
+        _flood_zone_ordering_violation(cfg, params),
+    ]
+    return [0.0 if v <= _CONSTRAINT_VIOLATION_TOL else float(v)
+            for v in violations]
 
 
 ###############################################################################
@@ -1605,9 +1967,18 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
     nyc_config = dvs_to_config(dv_vector, formulation_name)
 
     if not ensemble_spec.is_ensemble:
+        # Single-trace re-eval: return the §1 per-realization base metrics
+        # (one "realization"). With the annual-unit search set the base metrics
+        # live on ``.base``; a plain §1 set (no ``.base``) is used directly.
         data = run_simulation_inmemory(nyc_config)
-        base_names = list(objective_set.names)
-        base_matrix = np.asarray([objective_set.compute(data)], dtype=float)
+        ens_objs = list(objective_set)
+        if ens_objs and all(hasattr(o, "base") for o in ens_objs):
+            base_matrix = np.asarray(
+                [[o.base.compute(data) for o in ens_objs]], dtype=float)
+            base_names = [o.base.name for o in ens_objs]
+        else:
+            base_matrix = np.asarray([objective_set.compute(data)], dtype=float)
+            base_names = list(objective_set.names)
         return base_matrix, base_names
 
     if realization_batch and realization_batch > 0:
@@ -1732,8 +2103,15 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
 
     nyc_config = dvs_to_config(dv_vector, formulation_name)
     if not ensemble_spec.is_ensemble:
+        # Single-trace (historic) design: evaluate the SAME annual-unit (§2)
+        # objective as the ensembles, treating the one trace as a single
+        # realization (N=1 -> its L-1 water-year units). The objective function
+        # is held fixed across designs; only the scenario set differs
+        # (objective_definitions.md §2/§3). Requires the annual-unit objective
+        # set (AnnualUnitObjective instances), i.e. the set returned by
+        # formulations.get_objective_set() for any wired design.
         data = run_simulation_inmemory(nyc_config)
-        objs = objective_set.compute_for_borg(data)
+        objs = objective_set.compute_for_borg_ensemble([data])
     elif realization_batch and realization_batch > 0:
         # Memory-batched ensemble path: simulate in sequential batches,
         # keeping only each realization's per-unit-year annual metrics

@@ -27,10 +27,12 @@ from src.moea_config import MOEAConfig
 from src.formulations import (
     get_n_vars,
     get_n_objs,
+    get_n_constrs,
     get_bounds,
     get_var_names,
     get_obj_names,
     make_objective_function,
+    make_constraint_function,
 )
 
 
@@ -108,13 +110,21 @@ def run_mmborg(
 
     n_vars = get_n_vars(formulation_name)
     n_objs = get_n_objs()
+    n_constrs = get_n_constrs()
 
     print(f"[MM-Borg] Pre-MPI setup: scenario={scenario}, slug={slug}, "
           f"formulation={formulation_name}, {n_vars} vars, {n_objs} objs, "
-          f"{n_islands} islands, {max_evaluations} NFE/island", flush=True)
+          f"{n_constrs} constrs, {n_islands} islands, "
+          f"{max_evaluations} NFE/island", flush=True)
 
     # --- Objective function (passNFE branch passes NFE as second arg) ---
-    # Uses make_objective_function() for "ffmp" / "ffmp_N" formulations.
+    # Uses make_objective_function() for "ffmp" / "ffmp_N" formulations,
+    # returning (objectives, constraints) tuples. Constraint violations are
+    # pure DV arithmetic computed BEFORE any Pywr-DRB simulation; infeasible
+    # vectors skip simulation entirely and return penalty objectives —
+    # constraint-dominance precedes Pareto dominance in Borg, so their
+    # objective values are never consulted against feasible solutions.
+    # Constraints must be plain Python lists (borg.py truth-tests them).
     #
     # IMPORTANT: borg.py's innerFunction only catches KeyboardInterrupt; any
     # other Python exception propagates through the ctypes C→Python boundary
@@ -122,11 +132,15 @@ def run_mmborg(
     # We catch all exceptions here and return a large penalty so Borg keeps
     # running even if a specific DV combination causes a simulation failure.
     _eval_fn = make_objective_function(formulation_name)
+    _constraint_fn = make_constraint_function(formulation_name)
     _penalty = [1e10] * n_objs
 
     def objective(vars, NFE):
         try:
-            return _eval_fn(np.array(vars))
+            cons = _constraint_fn(np.array(vars))
+            if any(c > 0.0 for c in cons):
+                return (_penalty, cons)
+            return (_eval_fn(np.array(vars)), cons)
         except Exception as e:
             try:
                 from mpi4py import MPI
@@ -138,14 +152,14 @@ def run_mmborg(
                 f"{type(e).__name__}: {e}\n"
             )
             sys.stderr.flush()
-            return _penalty
+            return (_penalty, [0.0] * n_constrs)
 
     # --- Borg instance (dict constructor from passNFE_ALH_PyCheckpoint) ---
     lower, upper = get_bounds(formulation_name)
     borg = Borg(
         numberOfVariables=n_vars,
         numberOfObjectives=n_objs,
-        numberOfConstraints=0,
+        numberOfConstraints=n_constrs,
         function=objective,
         epsilons=list(get_epsilons()),
         bounds=[[lo, hi] for lo, hi in zip(lower, upper)],
@@ -194,7 +208,13 @@ def run_mmborg(
 
 
 def _write_set_file(result, set_file: Path, formulation_name: str, seed: int):
-    """Write Borg archive to a whitespace-delimited .set file."""
+    """Write Borg archive to a whitespace-delimited .set file.
+
+    Rows are variables + objectives, feasible solutions only — mirroring the
+    C runtime writer (BORG_Archive_append skips constraint violators and
+    never writes constraint columns). An infeasible solution can appear in
+    the final archive only if the run found no feasible solution at all.
+    """
     var_names = get_var_names(formulation_name)
     obj_names = get_obj_names()
 
@@ -204,6 +224,8 @@ def _write_set_file(result, set_file: Path, formulation_name: str, seed: int):
         f.write(f"# Objectives: {','.join(obj_names)}\n")
 
         for solution in result:
+            if solution.violatesConstraints():
+                continue
             variables = solution.getVariables()
             objectives = solution.getObjectives()
             line = " ".join(

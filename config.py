@@ -395,7 +395,7 @@ ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
 # frontier experiment. Each value maps to formulation "ffmp_{N}".
 #
 # NOTE on baseline equivalence: generate_ffmp_formulation(n_zones=6) reproduces
-# the standard FFMP's 7-level zone count and the same 24-DV layout, so
+# the standard FFMP's 7-level zone count and the same 69-DV layout, so
 # `ffmp_6` is operationally identical to `ffmp` and is omitted from the sweep
 # to avoid a redundant 10-seed slot. The sweep starts at N=8 (one resolution
 # step above baseline). Re-include 6 via NYCOPT_FFMP_VR_N if intentionally

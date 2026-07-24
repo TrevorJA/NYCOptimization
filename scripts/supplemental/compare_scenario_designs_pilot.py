@@ -35,7 +35,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from config import OUTPUTS_DIR  # noqa: E402
-from src.formulations import get_objective_set, get_n_vars  # noqa: E402
+from src.formulations import get_n_vars  # noqa: E402
 from src.load.reference_set import load_reference_set  # noqa: E402
 from src.scenario_designs import campaign_designs  # noqa: E402
 
@@ -174,7 +174,11 @@ def main(argv=None) -> int:
         p.error("--source reeval requires --reeval-tag <common_ensemble_preset>")
 
     n_vars = get_n_vars(args.formulation)
-    obj_set = get_objective_set()
+    # Compare on the §1 base objective names (re-eval matrices are keyed by
+    # them); get_objective_set() now returns the annual-unit search set.
+    from src.objectives import build_objective_set
+    from config import ACTIVE_OBJECTIVES
+    obj_set = build_objective_set(ACTIVE_OBJECTIVES)
     full_names = list(obj_set.names)
     full_dirs = list(obj_set.directions)  # 1=maximize, -1=minimize
     drop = set(args.drop_objectives or [])

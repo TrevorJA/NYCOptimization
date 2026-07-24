@@ -37,6 +37,12 @@ import supplemental_config as scfg  # noqa: E402  (env-then-config contract)
 scfg.configure_historic_env()  # set experiment env before config is imported
 
 from src.objectives import OBJECTIVES  # noqa: E402
+from src.objectives_ensemble import ENSEMBLE_OBJECTIVES  # noqa: E402
+
+# The random-DV diagnostic now evaluates the ANNUAL-UNIT (§2) objectives (the
+# set the historic single-trace design searches under). Look objectives up in a
+# combined registry so both §1 and §2 names resolve for direction/labels.
+_ALL_OBJ = {**OBJECTIVES, **ENSEMBLE_OBJECTIVES}
 from src.plotting.style import (  # noqa: E402
     annotated_corr_heatmap,
     apply_style,
@@ -44,6 +50,7 @@ from src.plotting.style import (  # noqa: E402
     label_for as _label,
     save_figure,
 )
+from src.plotting.parallel_coordinates import render_parallel_coordinates  # noqa: E402
 from src.sensitivity_common import spearman_and_flagged  # noqa: E402
 
 import matplotlib  # noqa: E402
@@ -79,7 +86,7 @@ PREFERRED_ORDER: list[str] = [
 
 def _ordered_objectives(columns) -> list:
     """Objective columns present in the data, in PREFERRED_ORDER then extras."""
-    present = [c for c in columns if c in OBJECTIVES]
+    present = [c for c in columns if c in _ALL_OBJ]
     ordered = [n for n in PREFERRED_ORDER if n in present]
     ordered += [n for n in present if n not in ordered]
     return ordered
@@ -117,7 +124,7 @@ def discrimination_summary(samples: pd.DataFrame, baseline: pd.Series | None,
             sat = float("nan")
         rows.append({
             "objective": name,
-            "direction": OBJECTIVES[name].direction,
+            "direction": _ALL_OBJ[name].direction,
             "n_valid": n_valid,
             "frac_nan": float(1.0 - n_valid / n_total) if n_total else float("nan"),
             "frac_saturated": sat,
@@ -151,7 +158,7 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
     for i, name in enumerate(obj_names):
         y = n - i  # top-to-bottom in PREFERRED_ORDER
         col = samples[name].dropna() if name in samples.columns else pd.Series(dtype=float)
-        arrow = "↑" if OBJECTIVES[name].direction == "maximize" else "↓"
+        arrow = "↑" if _ALL_OBJ[name].direction == "maximize" else "↓"
         labels.append((y, f"{_label(name)} {arrow}"))
         lo, hi = summary.loc[name, "min"], summary.loc[name, "max"]
         if len(col) >= 1 and np.isfinite(lo) and np.isfinite(hi) and hi > lo:
@@ -204,6 +211,35 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
     plt.close(fig)
 
 
+def fig_parallel_coordinates(samples: pd.DataFrame, baseline: pd.Series | None,
+                             obj_names: list, out_png: Path):
+    """Parallel-coordinates view of the random-DV objective spread.
+
+    Complements the min-max-normalized discrimination boxplot: each axis keeps
+    its NATIVE scale (raw min/max annotated at the ends), so the actual value
+    range of every objective is legible while the axes stay aligned. Axes are
+    oriented so "up" is the preferred direction. Reuses
+    :func:`src.plotting.parallel_coordinates.render_parallel_coordinates`.
+    """
+    s = samples[obj_names].dropna()
+    if s.empty:
+        return
+    directions = [1 if _ALL_OBJ[n].direction == "maximize" else -1
+                  for n in obj_names]
+    labels = [_label(n) for n in obj_names]
+    baseline_raw = None
+    if baseline is not None and all(n in baseline for n in obj_names):
+        baseline_raw = baseline[obj_names].to_numpy(dtype=float)
+    render_parallel_coordinates(
+        s.to_numpy(dtype=float), labels, directions,
+        title=f"Objective spread across {len(s)} random policies "
+              "(raw axes; ↑ better)",
+        output_file=out_png, baseline_raw=baseline_raw,
+        figsize=(1.5 * len(obj_names) + 2, 5),
+        line_color="steelblue", line_alpha=0.35,
+    )
+
+
 def fig_redundancy_heatmap(spearman: pd.DataFrame, threshold: float,
                            out_stub: Path):
     """F2: annotated Spearman heatmap with |rho| > threshold cells boxed."""
@@ -231,9 +267,15 @@ def main():
                  "Run objective_sensitivity_run.py first.")
 
     df = pd.read_csv(csv).set_index("sample_id")
-    obj_names = _ordered_objectives(df.columns)
+    # Show only the DEFAULT active objective set (config.ACTIVE_OBJECTIVES,
+    # resolved to their annual-unit counterparts) — not any diagnostic /
+    # optional columns that may also be present in the CSV.
+    from config import ACTIVE_OBJECTIVES
+    from src.objectives_ensemble import build_ensemble_objective_set
+    active = set(build_ensemble_objective_set(ACTIVE_OBJECTIVES).names)
+    obj_names = [n for n in _ordered_objectives(df.columns) if n in active]
     if not obj_names:
-        sys.exit("ERROR: no objective columns found in the samples CSV.")
+        sys.exit("ERROR: no active objective columns found in the samples CSV.")
 
     baseline = df.loc[-1] if -1 in df.index else None
     samples = df.drop(index=-1, errors="ignore")
@@ -253,6 +295,8 @@ def main():
     apply_style()
     fig_discrimination(samples, baseline, summary, obj_names,
                        scfg.figure_path("discrimination", "pdf").with_suffix(""))
+    fig_parallel_coordinates(samples, baseline, obj_names,
+                             scfg.figure_path("parallel_coordinates", "png"))
     if spearman.shape[0] >= 2:
         fig_redundancy_heatmap(spearman, scfg.RHO_FLAG_THRESHOLD,
                                scfg.figure_path("redundancy_heatmap", "pdf").with_suffix(""))

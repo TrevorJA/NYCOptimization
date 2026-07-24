@@ -17,6 +17,9 @@ Exported API
     get_obj_directions()        -> list of direction ints (+1 max, -1 min)
     get_objective_set(name)     -> ObjectiveSet instance
     make_objective_function(name) -> callable for Borg evaluation
+    get_n_constrs()             -> int (formal Borg constraint count)
+    get_constraint_names()      -> list of constraint names
+    make_constraint_function(name) -> callable: dv_vector -> violation list
     generate_ffmp_formulation(n_zones) -> formulation dict
 
 Circular-import note
@@ -47,6 +50,10 @@ __all__ = [
     "get_obj_directions",
     "get_objective_set",
     "make_objective_function",
+    "CONSTRAINT_NAMES",
+    "get_n_constrs",
+    "get_constraint_names",
+    "make_constraint_function",
     "generate_ffmp_formulation",
 ]
 
@@ -140,10 +147,12 @@ def get_baseline_values(formulation_name: str = "ffmp") -> np.ndarray:
 def get_objective_set(items=None):
     """Return an ObjectiveSet built from the given (or active) list of items.
 
-    Resolves names against the **ensemble** registry (``src.objectives_ensemble``)
-    when ``config.SEARCH_ENSEMBLE_SPEC.is_ensemble`` is True; otherwise resolves
-    against the legacy single-trace registry (``src.objectives``). The legacy
-    path is byte-identical to the manuscript baseline.
+    Resolves names against the **annual-unit** registry
+    (``src.objectives_ensemble``) whenever a scenario design is wired
+    (``config.SEARCH_ENSEMBLE_SPEC is not None``) — the historic single-trace
+    design searches under the same annual-unit objective as the ensembles
+    (N=1). Resolves against the single-trace registry (``src.objectives``)
+    only when no design is wired.
 
     Args:
         items: List of objective names (str) and/or Objective instances.
@@ -156,12 +165,19 @@ def get_objective_set(items=None):
         from config import ACTIVE_OBJECTIVES
         items = ACTIVE_OBJECTIVES
 
-    # SEARCH_ENSEMBLE_SPEC is None when the active scenario design has no search
-    # ensemble wired yet; the single-trace registry (objective *definitions* are
-    # identical across paths) is the safe default for non-optimization tasks
-    # such as diagnostics and re-evaluation.
+    # All wired scenario designs — the single-trace historic design
+    # (is_ensemble=False) and the multi-realization ensembles alike — now search
+    # under the SAME annual-unit (§2) objective function
+    # (objective_definitions.md §2/§3: the objective is held fixed across
+    # designs so the only factor that varies is the scenario set). The
+    # single-trace case is evaluated as N=1 over its L-1 water-year units; the
+    # dispatch in src.simulation.evaluate wraps the one data dict as [data].
+    # The §1 single-trace registry is returned ONLY when no design is wired
+    # (a pure diagnostic / non-optimization context); callers that specifically
+    # want the §1 whole-trace metric on one data dict build it explicitly via
+    # src.objectives.build_objective_set(ACTIVE_OBJECTIVES).
     from config import SEARCH_ENSEMBLE_SPEC
-    if SEARCH_ENSEMBLE_SPEC is not None and SEARCH_ENSEMBLE_SPEC.is_ensemble:
+    if SEARCH_ENSEMBLE_SPEC is not None:
         from src.objectives_ensemble import build_ensemble_objective_set
         return build_ensemble_objective_set(items)
 
@@ -186,6 +202,57 @@ def get_obj_directions(items=None) -> list:
     the sign flip automatically — callers should not negate manually.
     """
     return get_objective_set(items).directions
+
+
+###############################################################################
+# Formal Borg constraint accessors
+###############################################################################
+
+#: Names/order of the formal Borg constraint functions (violation magnitude
+#: convention: 0.0 = feasible, positive scales linearly with the degree of
+#: violation). The same conditions are also enforced by the apply-time clamps
+#: in src/simulation.py — the constraints give Borg a direct pre-simulation
+#: feasibility signal; the clamps remain as intentional redundancy.
+#: Zone-curve crossings are clamp-only (not a constraint): the monotonicity
+#: clamp resolves them at apply time and the clamped geometry is the
+#: intended policy.
+CONSTRAINT_NAMES = [
+    "delivery_monotonicity",
+    "flood_zone_ordering",
+]
+
+
+def get_n_constrs() -> int:
+    """Number of formal Borg constraints (same for all FFMP formulations)."""
+    return len(CONSTRAINT_NAMES)
+
+
+def get_constraint_names() -> list:
+    """Ordered list of formal Borg constraint names."""
+    return list(CONSTRAINT_NAMES)
+
+
+def make_constraint_function(formulation_name: str = "ffmp"):
+    """Return the constraint-violation callable for a FFMP formulation.
+
+    The returned callable is pure DV arithmetic (no simulation, no config
+    deepcopy) and is safe to call before/instead of the objective function.
+
+    Args:
+        formulation_name: "ffmp" or "ffmp_N" (N-zone variable-resolution FFMP).
+
+    Returns:
+        Callable: dv_vector -> list of ``get_n_constrs()`` violation floats,
+        ordered per ``CONSTRAINT_NAMES`` (0.0 = feasible).
+    """
+    from src.simulation import compute_constraint_violations
+
+    def _constraint_fn(dv_vector):
+        return compute_constraint_violations(
+            np.asarray(dv_vector), formulation_name=formulation_name
+        )
+
+    return _constraint_fn
 
 
 ###############################################################################

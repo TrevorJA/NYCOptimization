@@ -7,28 +7,16 @@ Three-step workflow for computing runtime metrics from Borg output:
     2. MetricsEvaluator:     runtime files + .set -> per-snapshot metrics
 
 MOEAFramework v5.0 requires a registered problem definition (JAR in lib/)
-to parse runtime files correctly (knowing #DVs vs #objectives). The problem
-was created via:
+to parse runtime files correctly (knowing #DVs vs #objectives). The JARs
+are built by workflow/00_setup_borg_jars.sh, which derives the counts from
+get_n_vars()/get_n_objs() at build time (one JAR per formulation,
+registered as "drb_{formulation}" in MOEAFramework-5.0/lib/).
 
-    ./MOEAFramework-5.0/cli BuildProblem \\
-        --problemName drb_ffmp \\
-        --language python \\
-        --numberOfVariables 24 \\
-        --numberOfObjectives 6 \\
-        --lowerBound -1000000.0 \\
-        --upperBound 1000000.0 \\
-        --directory MOEAFramework-5.0/native
-
-    cd MOEAFramework-5.0/native/drb_ffmp
-    mkdir -p bin && cp -r META-INF bin
-    javac -classpath "../../lib/*:." -d bin \\
-        src/drb_ffmp/drb_ffmp.java src/drb_ffmp/drb_ffmpProvider.java
-    cp drb_ffmp.py bin/drb_ffmp
-    jar -cf drb_ffmp.jar -C bin META-INF/ -C bin drb_ffmp
-    cp drb_ffmp.jar ../../lib/
-
-The resulting JAR (drb_ffmp.jar) is in MOEAFramework-5.0/lib/ and registers
-the problem name "drb_ffmp" with 24 real-valued DVs and 6 objectives.
+The problem definitions declare 0 constraints even though the Borg search
+uses formal constraints (get_n_constrs() == 3): the runtime/.set files
+parsed here contain only feasible solutions in vars+objs format — the C
+writer (BORG_Archive_append) strips constraint violators and never writes
+constraint columns. See the header of 00_setup_borg_jars.sh.
 
 References:
     - WaterProgramming: "MM Borg MOEA Python Wrapper - Checkpointing,
@@ -51,7 +39,7 @@ from config import (
 # Per-formulation MOEAFramework problem registrations. Each is built as a
 # separate JAR in MOEAFramework-5.0/lib/ with the correct (nvars, nobjs).
 # All use the current 7-objective set.
-#   drb_ffmp     -> 24 DVs
+#   drb_ffmp     -> 69 DVs
 #   drb_ffmp_{N} -> per-N DV count (varies with number of zones).
 #                   Built automatically by workflow/00_setup_borg_jars.sh.
 # Slugs can be any string; we infer the formulation family by finding the

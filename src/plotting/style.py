@@ -42,37 +42,63 @@ for _i, _n in enumerate(FFMP_VR_N_SWEEP):
 # Objective labels
 # ---------------------------------------------------------------------------
 
-#: Short per-objective labels for scatter-plot axes (ordered to match _DEFAULT_OBJECTIVES).
+# Objective display labels name the METRIC, its statistic, AND its timescale /
+# aggregation, in the language of the water-resources DMDU literature
+# (objective_definitions.md §0-§2, §6): Hashimoto (1982) reliability; CVaR90
+# deficit (Rockafellar & Uryasev 2000; Quinn et al. 2017); count of flood days
+# over the NWS minor-flood stage (Quinn et al. 2017); low-percentile storage as a
+# vulnerability proxy (Quinn et al. 2017). Each objective is keyed by BOTH names:
+# the whole-trace (§1) metric carries its native timescale (weekly reliability /
+# CVaR90, whole-record flood count, daily-storage percentile); the annual-unit
+# (§2) search metric is marked "annual" (per-water-year metric). Labels therefore
+# differ between the two reductions exactly where the timescale/statistic differs.
+
+#: Short per-objective labels for scatter-plot axes (ordered to match the
+#: default whole-trace objective set).
 OBJ_SHORT: list[str] = [
-    "NYC Rel.",
-    "NYC Deficit %\n(CVaR90)",
-    "Montague\nRel.",
-    "Montague\nDeficit %\n(CVaR90)",
-    "Trenton\nRel.",
-    "Flood Days\n(minor)",
-    "Stor. p5 %",
+    "NYC Rel.\n(weekly)",
+    "NYC Deficit\n(wk CVaR90)",
+    "Montague Rel.\n(weekly)",
+    "Montague Def.\n(wk CVaR90)",
+    "Trenton Rel.\n(weekly)",
+    "Flood Days\n(minor, rec.)",
+    "Storage\n(daily P5)",
 ]
 
-#: Compact single-line labels for **every** registry objective (recommended set
-#: plus the diagnostics they replace). Shared by the objective-sensitivity
-#: diagnostic figure scripts; ``label_for`` falls back to the raw name.
+#: Compact single-line objective labels; ``label_for`` falls back to the raw name.
 OBJECTIVE_LABELS: dict[str, str] = {
-    "nyc_delivery_reliability_weekly": "NYC delivery rel.",
-    "nyc_delivery_deficit_cvar90_pct": "NYC deficit CVaR90",
-    "nyc_delivery_deficit_max_pct": "NYC deficit max",
-    "nj_delivery_reliability_weekly": "NJ delivery rel.",
-    "montague_flow_reliability_weekly": "Montague rel.",
-    "montague_flow_deficit_cvar90_pct": "Montague deficit CVaR90",
-    "montague_flow_deficit_max_pct": "Montague deficit max",
-    "trenton_flow_reliability_weekly": "Trenton rel.",
-    "trenton_flow_deficit_cvar90_pct": "Trenton deficit CVaR90",
-    "downstream_flood_days_minor": "Flood days (minor)",
-    "downstream_flood_days_action": "Flood days (action)",
-    "downstream_flood_days_major": "Flood days (major)",
-    "nyc_storage_p5_pct": "Storage p5",
-    "nyc_storage_min_pct": "Storage min",
-    "salt_front_intrusion_max_rm": "Salt front max RM",
-    "lordville_temp_exceedance_days": "Lordville temp days",
+    # NYC delivery: satisficing reliability; CVaR90 of the deficit (% of Decree)
+    "nyc_delivery_reliability_weekly":  "NYC Delivery Reliability (weekly)",
+    "nyc_delivery_reliability_annual":  "NYC Delivery Reliability (annual)",
+    "nyc_delivery_deficit_cvar90_pct":  "NYC Delivery Deficit (weekly CVaR90, %)",
+    "nyc_delivery_deficit_p99_pct":     "NYC Delivery Deficit (annual CVaR90, %)",
+    "nyc_delivery_deficit_max_pct":     "NYC Delivery Deficit (weekly max, %)",
+    # NJ delivery
+    "nj_delivery_reliability_weekly":   "NJ Delivery Reliability (weekly)",
+    "nj_delivery_reliability_annual":   "NJ Delivery Reliability (annual)",
+    # Montague Decree flow
+    "montague_flow_reliability_weekly": "Montague Flow Reliability (weekly)",
+    "montague_flow_reliability_annual": "Montague Flow Reliability (annual)",
+    "montague_flow_deficit_cvar90_pct": "Montague Flow Deficit (weekly CVaR90, %)",
+    "montague_flow_deficit_p99_pct":    "Montague Flow Deficit (annual CVaR90, %)",
+    "montague_flow_deficit_max_pct":    "Montague Flow Deficit (weekly max, %)",
+    # Trenton Decree flow
+    "trenton_flow_reliability_weekly":  "Trenton Flow Reliability (weekly)",
+    "trenton_flow_reliability_annual":  "Trenton Flow Reliability (annual)",
+    "trenton_flow_deficit_cvar90_pct":  "Trenton Flow Deficit (weekly CVaR90, %)",
+    # Downstream flooding: count of days over the NWS minor-flood stage
+    "downstream_flood_days_minor":      "Flood Days (NWS minor, whole record)",
+    "downstream_flood_days_annual":     "Flood Days (NWS minor, annual mean)",
+    "downstream_flood_days_annual_p99": "Flood Days (NWS minor, annual P99)",
+    "downstream_flood_days_action":     "Flood Days (NWS action, whole record)",
+    "downstream_flood_days_major":      "Flood Days (NWS major, whole record)",
+    # NYC storage: low-percentile storage (vulnerability proxy)
+    "nyc_storage_p5_pct":               "NYC Storage (daily 5th pctile, %)",
+    "nyc_storage_min_p01_pct":          "NYC Storage (annual-min 1st pctile, %)",
+    "nyc_storage_min_pct":              "NYC Storage (whole-record min, %)",
+    # Other registered diagnostics
+    "salt_front_intrusion_max_rm":      "Salt Front (max, river mi)",
+    "lordville_temp_exceedance_days":   "Lordville Temp Exceedance (days)",
 }
 
 
@@ -81,15 +107,23 @@ def label_for(name: str) -> str:
     return OBJECTIVE_LABELS.get(name, name)
 
 
-#: Parallel-coordinates axis labels (multi-line, direction hint on third line).
+#: Parallel-coordinates axis labels (multi-line: metric, timescale + statistic +
+#: unit, optimization direction).
 OBJ_AXIS_LABELS: dict[str, str] = {
-    "nyc_delivery_reliability_weekly":   "NYC\nReliability\n(max)",
-    "nyc_delivery_deficit_cvar90_pct":   "NYC Deficit %\nCVaR90\n(min)",
-    "montague_flow_reliability_weekly":  "Montague\nReliability\n(max)",
-    "montague_flow_deficit_cvar90_pct":  "Montague Deficit %\nCVaR90\n(min)",
-    "trenton_flow_reliability_weekly":   "Trenton\nReliability\n(max)",
-    "downstream_flood_days_minor":       "Flood\nDays\n(min)",
-    "nyc_storage_p5_pct":                "Storage\np5 %\n(max)",
+    "nyc_delivery_reliability_weekly":   "NYC Delivery\nReliability (weekly)\n(max)",
+    "nyc_delivery_reliability_annual":   "NYC Delivery\nReliability (annual)\n(max)",
+    "nyc_delivery_deficit_cvar90_pct":   "NYC Delivery Deficit\nweekly CVaR90 %\n(min)",
+    "nyc_delivery_deficit_p99_pct":      "NYC Delivery Deficit\nannual CVaR90 %\n(min)",
+    "montague_flow_reliability_weekly":  "Montague Flow\nReliability (weekly)\n(max)",
+    "montague_flow_reliability_annual":  "Montague Flow\nReliability (annual)\n(max)",
+    "montague_flow_deficit_cvar90_pct":  "Montague Flow Deficit\nweekly CVaR90 %\n(min)",
+    "montague_flow_deficit_p99_pct":     "Montague Flow Deficit\nannual CVaR90 %\n(min)",
+    "trenton_flow_reliability_weekly":   "Trenton Flow\nReliability (weekly)\n(max)",
+    "trenton_flow_reliability_annual":   "Trenton Flow\nReliability (annual)\n(max)",
+    "downstream_flood_days_minor":       "Flood Days\nNWS minor, whole record\n(min)",
+    "downstream_flood_days_annual":      "Flood Days\nNWS minor, annual mean\n(min)",
+    "nyc_storage_p5_pct":                "NYC Storage\ndaily 5th pctile %\n(max)",
+    "nyc_storage_min_p01_pct":           "NYC Storage\nannual-min 1st pctile %\n(max)",
 }
 
 # ---------------------------------------------------------------------------

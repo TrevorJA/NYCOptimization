@@ -40,7 +40,6 @@ from src.formulations import (
     get_baseline_values,
     get_formulation,
     get_var_names,
-    get_objective_set,
 )
 from src.simulation import dvs_to_config, run_simulation_inmemory
 
@@ -103,7 +102,11 @@ def main():
         sys.exit("ERROR: NYCOPT_OBJECTIVES must include 'salt_front_intrusion_max_rm' "
                  "(swap it in for trenton_flow_reliability_weekly to test salinity).")
 
-    objective_set = get_objective_set()
+    # §1 whole-trace metrics on one single-trace data dict (this diagnostic
+    # requires the §1-only salt_front objective); get_objective_set() now
+    # returns the annual-unit search set.
+    from src.objectives import build_objective_set
+    objective_set = build_objective_set(ACTIVE_OBJECTIVES)
     rng = np.random.default_rng(args.seed)
 
     # Run baseline first as a reference row.

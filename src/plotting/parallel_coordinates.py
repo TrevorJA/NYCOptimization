@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from src.formulations import get_obj_names, get_obj_directions, get_n_vars
+from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
 
 
@@ -36,7 +36,7 @@ def plot_parallel_coordinates(
             solution so the screen's effect is visible. None = all solutions blue.
     """
     n_vars = get_n_vars(formulation)
-    _, obj_data = load_reference_set(set_file, n_vars)
+    _, obj_data = load_reference_set(set_file, n_vars, n_objs=get_n_objs())
     obj_names = get_obj_names()
     directions = get_obj_directions()
     n_objs = len(obj_names)
@@ -54,10 +54,51 @@ def plot_parallel_coordinates(
         if directions[i] == 1:
             raw[:, i] = -raw[:, i]
 
-    # Prepare baseline in raw space
     baseline_raw = None
     if baseline_objs is not None:
         baseline_raw = np.array(baseline_objs, dtype=float)
+
+    render_parallel_coordinates(
+        raw, obj_names, directions,
+        title=f"Pareto Approximate Set ({formulation}, {obj_data.shape[0]} solutions)",
+        output_file=output_file, baseline_raw=baseline_raw, figsize=figsize,
+        line_color="steelblue", line_alpha=0.15,
+    )
+
+
+def render_parallel_coordinates(
+    raw: np.ndarray,
+    obj_names: list,
+    directions,
+    title: str = "",
+    output_file: Path = None,
+    baseline_raw: np.ndarray = None,
+    figsize: tuple = (12, 5),
+    line_color: str = "steelblue",
+    line_alpha: float = 0.15,
+    baseline_label: str = "FFMP Baseline",
+):
+    """Render a parallel-coordinates plot from RAW (un-negated) objective values.
+
+    Each axis carries its own native scale with the raw min/max annotated at the
+    bottom/top, and all axes are oriented so "up" is the preferred direction — so
+    the value *range* of every objective is legible while the axes stay aligned.
+    Shared by the Pareto-set viewer (:func:`plot_parallel_coordinates`) and the
+    random-DV objective-sensitivity diagnostic.
+
+    Args:
+        raw: ``(n_rows, n_objs)`` array of raw objective values (NOT Borg-negated).
+        obj_names: Axis labels, one per objective column.
+        directions: Per-objective direction, +1 (maximize) or -1 (minimize).
+        title: Figure title.
+        output_file: Path to save (PNG); if None, ``plt.show()``.
+        baseline_raw: Optional ``(n_objs,)`` raw baseline vector, drawn bold.
+        figsize: Figure size.
+        line_color, line_alpha: Style for the sample polylines.
+        baseline_label: Legend label for the baseline line.
+    """
+    raw = np.asarray(raw, dtype=float)
+    n_objs = len(obj_names)
 
     # Compute normalization range (include baseline if present)
     all_data = raw.copy()
@@ -115,7 +156,7 @@ def plot_parallel_coordinates(
     if baseline_raw is not None:
         ax.plot(
             x, baseline_normed, color="firebrick", linewidth=2.5,
-            marker="o", markersize=5, label="FFMP Baseline", zorder=10,
+            marker="o", markersize=5, label=baseline_label, zorder=10,
         )
     if baseline_raw is not None or keep_mask is not None:
         ax.legend(loc="lower right", fontsize=8)
