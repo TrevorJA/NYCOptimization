@@ -16,6 +16,7 @@ def plot_parallel_coordinates(
     output_file: Path = None,
     baseline_objs: np.ndarray = None,
     figsize: tuple = (12, 5),
+    keep_mask: np.ndarray = None,
 ):
     """Plot parallel coordinates of objectives from a .set or .ref file.
 
@@ -29,6 +30,10 @@ def plot_parallel_coordinates(
         baseline_objs: Optional array of baseline objective values (raw, not
             Borg-negated). If provided, drawn as a bold highlighted line.
         figsize: Figure size.
+        keep_mask: Optional boolean array aligned to the set rows. Rows where
+            False are drawn faint grey (screened out by a stakeholder floor) and
+            rows where True are drawn in blue; the axis ranges still span every
+            solution so the screen's effect is visible. None = all solutions blue.
     """
     n_vars = get_n_vars(formulation)
     _, obj_data = load_reference_set(set_file, n_vars)
@@ -39,6 +44,9 @@ def plot_parallel_coordinates(
     if obj_data.shape[0] == 0:
         print("Empty solution set — nothing to plot.")
         return
+
+    if keep_mask is not None:
+        keep_mask = np.asarray(keep_mask, dtype=bool)
 
     # Un-negate maximization objectives (Borg stores all-minimized)
     raw = obj_data.copy()
@@ -86,9 +94,22 @@ def plot_parallel_coordinates(
     fig, ax = plt.subplots(figsize=figsize)
     x = np.arange(n_objs)
 
-    # Draw Pareto solutions
-    for row in normed:
-        ax.plot(x, row, alpha=0.15, color="steelblue", linewidth=0.8)
+    # Draw Pareto solutions. With a keep_mask, screened-out rows are faint grey
+    # (drawn first, underneath) and accepted rows are blue on top.
+    if keep_mask is not None:
+        for row in normed[~keep_mask]:
+            ax.plot(x, row, alpha=0.10, color="0.6", linewidth=0.7, zorder=1)
+        for row in normed[keep_mask]:
+            ax.plot(x, row, alpha=0.22, color="steelblue", linewidth=0.8, zorder=2)
+        n_keep = int(keep_mask.sum())
+        # proxy handles for the legend
+        ax.plot([], [], color="steelblue", lw=2,
+                label=f"acceptable (n={n_keep})")
+        ax.plot([], [], color="0.6", lw=2,
+                label=f"screened out (n={int((~keep_mask).sum())})")
+    else:
+        for row in normed:
+            ax.plot(x, row, alpha=0.15, color="steelblue", linewidth=0.8)
 
     # Draw baseline
     if baseline_raw is not None:
@@ -96,13 +117,16 @@ def plot_parallel_coordinates(
             x, baseline_normed, color="firebrick", linewidth=2.5,
             marker="o", markersize=5, label="FFMP Baseline", zorder=10,
         )
-        ax.legend(loc="lower right", fontsize=9)
+    if baseline_raw is not None or keep_mask is not None:
+        ax.legend(loc="lower right", fontsize=8)
 
     ax.set_xticks(x)
     ax.set_xticklabels(obj_names, rotation=25, ha="right", fontsize=9)
     ax.set_ylabel("Preference Direction  (↑ better)")
+    _title_n = (f"{obj_data.shape[0]} solutions" if keep_mask is None
+                else f"{int(keep_mask.sum())} acceptable of {obj_data.shape[0]}")
     ax.set_title(
-        f"Pareto Approximate Set ({formulation}, {obj_data.shape[0]} solutions)"
+        f"Pareto Approximate Set ({formulation}, {_title_n})"
     )
     ax.set_ylim(-0.12, 1.12)
     ax.grid(True, alpha=0.3, axis="x")

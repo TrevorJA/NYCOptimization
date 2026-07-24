@@ -166,6 +166,25 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         notes="MM-Borg production run: 50k NFE, 165 ranks (4x40+5), "
               "historic single-trace 7-objective baseline.",
     ),
+    # Moderate first full-workflow run. Same 165-rank layout as mm_pilot/mm_full
+    # (4 islands x 40 workers + 4 island-masters + 1 controller = 165 ranks =
+    # 5 nodes x 33), so the step-06 SBATCH header, allocation check, and
+    # pre-flight are reused unchanged. 20k total NFE (5,000 per island) sits
+    # between mm_pilot (5k) and mm_full (50k): a meaningful-but-modest historic
+    # single-trace search that finishes in ~1.5-2 h/seed on Anvil. Single seed
+    # (the array index supplies the Borg RNG seed).
+    "mm_moderate": MOEAConfig(
+        name="mm_moderate",
+        n_islands=4,
+        n_workers_per_island=40,
+        max_evaluations=5000,     # per island -> 20,000 total NFE
+        runtime_frequency=500,    # ~10 runtime snapshots/island (restart safety)
+        n_seeds=1,
+        max_time_hours=None,      # NFE-bounded; SLURM --time is the wall safety
+        notes="Moderate first full-workflow historic run: 20k NFE, 165 ranks "
+              "(4x40+5). Between mm_pilot (5k) and mm_full (50k); "
+              "~1.5-2h/seed on Anvil.",
+    ),
     # Anvil scaling supplement (Stage B strong scaling; see
     # workflow/supplemental/anvil_scaling_borg.sh and supplemental_config.py).
     # Fixed TOTAL NFE = 1280 across all scale_* geometries so wall time is
