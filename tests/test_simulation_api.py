@@ -244,8 +244,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
         "ibt_diversions": ibt_diversions_df,
     }
 
-    from src.formulations import get_objective_set
-    active = get_objective_set()
+    # §1 whole-trace metrics on one data dict (get_objective_set() now returns
+    # the annual-unit set, which needs a LIST of realizations).
+    from src.objectives import build_objective_set
+    from config import ACTIVE_OBJECTIVES
+    active = build_objective_set(ACTIVE_OBJECTIVES)
 
     try:
         obj_values = active.compute(data)

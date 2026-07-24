@@ -8,6 +8,15 @@
 # `src.formulations.get_n_objs()`. Keeps the JARs in lock-step with the
 # active config (e.g., salinity-on adds an obj; salt-front DVs add DVs).
 #
+# Constraint count is DELIBERATELY 0 even though the Borg search itself uses
+# formal constraints (src.formulations.get_n_constrs() == 3): every file this
+# problem definition parses — solveMPI runtime snapshots and .set files — is
+# written via BORG_Archive_append semantics (feasible solutions only, columns
+# = variables + objectives, never constraints). Declaring constraints here
+# would make MOEAFramework expect constraint columns that never exist in the
+# data. Revisit only if allEvaluations output or the serial Borg.solve()
+# runtime writer (both of which DO emit constraint columns) is ever parsed.
+#
 # Usage (from repo root):
 #   bash workflow/00_setup_borg_jars.sh                # use PRODUCTION_FORMULATIONS
 #   bash workflow/00_setup_borg_jars.sh ffmp ffmp_8    # explicit list
@@ -62,7 +71,7 @@ import sys
 
 nvars = ${NVARS}
 nobjs = ${NOBJS}
-nconstrs = 0
+nconstrs = 0  # deliberately 0: parsed files are feasible-only vars+objs (see header)
 
 def evaluate(vars):
     return ([0.0]*nobjs, [0.0]*nconstrs)
@@ -124,6 +133,9 @@ public class ${NAME} extends ExternalProblem {
 
     @Override
     public int getNumberOfConstraints() {
+        // Deliberately 0: the runtime/.set files this problem parses are
+        // feasible-only vars+objs rows with no constraint columns (see the
+        // header comment in 00_setup_borg_jars.sh).
         return 0;
     }
 

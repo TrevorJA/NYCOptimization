@@ -14,6 +14,8 @@ outputs/baseline/
 outputs/presim/
 outputs/figures/
 outputs/run_manifests/
+outputs/supplemental/*/*.png
+outputs/synthetic_ensembles/
 
 # Slug-aware figure tree (regenerable PNGs; .py scripts at the figures/
 # root are tracked).
@@ -61,3 +63,4 @@ docs/notes/literature/pdfs/
 docs/notes/literature/notes/
 docs/notes/literature/fulltext/
 
+scripts/temporary/

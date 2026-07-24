@@ -11,7 +11,7 @@ is the record of what exists and the note is a proposal.*
 ## The study in one paragraph
 
 We re-optimize the operating rules of the four NYC reservoirs in the Delaware River
-Basin (the FFMP rule structure, 24 decision variables) with the multi-master Borg MOEA
+Basin (the FFMP rule structure, 69 decision variables) with the multi-master Borg MOEA
 coupled to the Pywr-DRB simulation model. The methodological contribution is not the
 re-optimization itself but a controlled test of how the streamflow scenario ensemble
 used to evaluate candidate policies *during search* is constructed. The proposed design

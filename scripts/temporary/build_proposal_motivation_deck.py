@@ -928,7 +928,7 @@ tf.margin_left = Inches(0.18); tf.margin_right = Inches(0.18); tf.vertical_ancho
 p0 = tf.paragraphs[0]
 _apply_runs(p0, "**Deliberately excluded.**  **Regret** — Cohen et al. (2021) baseline regret needs a perfect-foresight MOEA run per scenario (97 optimizations, ~3,233 CPU-h) and does not scale to a 10⁵–10⁶ pool; regret-from-best is set-relative and design-coupled (dropping one design changes every other design's score) and never converges on a tail objective (Bonham et al. 2024). **No perfect-foresight optimization appears anywhere in this study.**", 18, INK)
 p1 = tf.add_paragraph()
-_apply_runs(p1, "**Pooled-reference-set hypervolume across designs** — contributor bias, cardinality asymmetry, and noise-induced spurious dominance (a noisier design is flattered). Reference sets are built per design; cross-design comparison is re-evaluation only (Zatarain Salazar et al. 2017, §5.3).", 18, INK)
+_apply_runs(p1, "**Pooled-reference-set hypervolume across designs** — contributor bias, cardinality asymmetry, and noise-induced spurious dominance (a noisier design is flattered). Reference sets are built per design; cross-design comparison is re-evaluation only (Zatarain Salazar et al. 2017, Section 5.3).", 18, INK)
 
 # =====================================================================
 # 24 — Threshold sweep
@@ -1103,13 +1103,14 @@ s = add_slide(notes="Plain-language building blocks for the objective slides.")
 add_title(s, "Notation: building blocks")
 add_body(s, [
     ("f", "shortfall:  (gap)₊ = max(gap, 0)"),
-    ("f", "reliability = (weeks meeting the goal) ÷ (total weeks)"),
+    ("f", "unit-year = one water year (Oct 1–Sep 30);  an L-yr record scores L−1 unit-years"),
     ("f", "CVaR₉₀(series) = mean of the worst 10% of weekly values"),
-    ("f", "P₅(series) = 5th-percentile value"),
+    ("f", "P₉₉ / P₀₁(units) = worst / 1st-percentile unit-year"),
 ], top=1.5, size=20, space_after=8)
 add_body(s, [
     ("b", "flows / demands in MGD; storage in MG; first 365 days (warm-up) dropped"),
     ("b", "Decree goalposts: NYC 800 MGD; Montague 1,131.05 MGD (1,750 cfs); Trenton 1,938.95 MGD; NYC capacity 270,837 MG"),
+    ("b", "every objective is two-layer — an annual metric per unit-year, then a unit operator over the pooled unit-years. The SAME function for every design (historic = 1 record × 76 unit-years; ensembles = N × (L−1)), so only the scenario set varies"),
 ], top=3.9, size=19)
 
 
@@ -1123,63 +1124,72 @@ def objective_slide(num, name, direction, formulas, bullets, notes):
 
 objective_slide(
     1, "NYC delivery reliability", "higher is better",
-    ["demand = min(NYC demand, 800 MGD)",
-     "f₁ = (weeks with delivery ≥ 99% of demand) ÷ (total weeks)"],
-    ["weekly success rate; demand capped at the Decree right so voluntary low-takes don't count",
-     "success rates are stable, fast-converging search signals (Hashimoto et al. 1982; Herman et al. 2015)",
-     "ensemble form: frequency of non-failure years (Zeff et al. 2014)"],
-    "Weekly satisficing frequency; annual failure-year frequency in ensemble mode.")
+    ["entitlement:  Eₜ = min(demandₜ, allowanceₜ)      [allowance = running-avg bank]",
+     "failing week:  Σ delivery < 99% × Σ E       failure-year:  ≥ k failing weeks  (k = 1)",
+     "f₁ = (unit-years without failure) ÷ (total unit-years)"],
+    ["the Decree caps the running AVERAGE diversion, not any single day — demand is never clipped at a flat 800 MGD, and a spike is owed whenever prior under-use has banked the allowance for it",
+     "the bank accrues 800 − delivery per day (reset Jun 1) at the STATIC Decree right, so a policy's own drought step-downs cannot lower its own goalpost",
+     "failure-year frequency is the citable search-time satisficing operator (Zeff et al. 2014; Trindade et al. 2017)",
+     "re-evaluation metric: whole-record weekly reliability, per realization"],
+    "Annual failure-year frequency vs the running-average entitlement; same objective for every design.")
 
 objective_slide(
     2, "NYC delivery deficit", "lower is better",
-    ["weekly deficit = (demand − delivery)₊ ÷ 800 MGD × 100%",
-     "f₂ = CVaR₉₀ of weekly deficits"],
-    ["magnitude of shortfalls, not just frequency; scaled to the fixed cap",
+    ["weekly deficit = (E − delivery)₊ ÷ 800 MGD × 100%",
+     "annual metric = CVaR₉₀ of that unit-year's weekly deficits",
+     "f₂ = P₉₉ across pooled unit-years   (worst 1st-percentile unit-year)"],
+    ["magnitude of shortfalls below the running-average entitlement E, not just their frequency; scaled to the fixed 800 MGD right",
      "the tail average is far stabler than the single worst week (Rockafellar & Uryasev 2000; Quinn et al. 2017)",
-     "ensemble form: worst 1st-percentile unit-year of within-year CVaR₉₀"],
-    "CVaR90 tail deficit.")
+     "re-evaluation metric: whole-record CVaR₉₀, per realization"],
+    "Within-year CVaR90, then worst-1%-unit-year across the pool.")
 
 objective_slide(
     3, "Montague flow reliability", "higher is better",
-    ["f₃ = (weeks with flow ≥ 1,131.05 MGD) ÷ (total weeks)      [1,750 cfs]"],
-    ["weekly success rate vs the fixed Decree target, never the live FFMP step-down target",
+    ["failing week:  mean flow < 1,131.05 MGD      [1,750 cfs]",
+     "f₃ = (unit-years with < k failing weeks) ÷ (total unit-years)"],
+    ["vs the fixed Decree target, never the live FFMP step-down target",
      "won't reach 100%: FFMP drought rules cut releases below target by design, keeping the signal continuous",
-     "ensemble form: frequency of non-failure years (Zeff et al. 2014; Trindade et al. 2017)"],
-    "Weekly reliability vs static Decree target.")
+     "failure-year frequency (Zeff et al. 2014; Trindade et al. 2017)",
+     "re-evaluation metric: whole-record weekly reliability, per realization"],
+    "Annual failure-year frequency vs static Decree target.")
 
 objective_slide(
     4, "Montague flow deficit", "lower is better",
     ["weekly deficit = (1,131.05 − flow)₊ ÷ 1,131.05 × 100%",
-     "f₄ = CVaR₉₀ of weekly deficits"],
+     "annual metric = CVaR₉₀ of that unit-year's weekly deficits",
+     "f₄ = P₉₉ across pooled unit-years"],
     ["depth of target misses in the bad weeks, as % of target",
      "Montague flow is storm-dominated, so the single worst week is mostly exogenous noise; use the tail average (Quinn et al. 2017)",
-     "ensemble form: worst 1st-percentile unit-year"],
-    "CVaR90 of Montague deficit.")
+     "re-evaluation metric: whole-record CVaR₉₀, per realization"],
+    "Within-year CVaR90, then worst-1%-unit-year.")
 
 objective_slide(
     5, "Trenton flow reliability", "higher is better",
-    ["f₅ = (weeks with flow ≥ 1,938.95 MGD) ÷ (total weeks)"],
+    ["failing week:  mean flow < 1,938.95 MGD",
+     "f₅ = (unit-years with < k failing weeks) ÷ (total unit-years)"],
     ["lower-basin / NJ obligation; direct representation of a co-equal Decree party (Trindade et al. 2017; Hadjimichael et al. 2020)",
      "replaces the salt-front objective: physically redundant target, cleaner signal in drought",
-     "ensemble form: frequency of non-failure years"],
+     "re-evaluation metric: whole-record weekly reliability, per realization"],
     "Trenton reliability replacing salt front.")
 
 objective_slide(
     6, "Downstream flood days", "lower is better",
-    ["f₆ = days any tail gauge ≥ NWS minor flood stage",
+    ["annual metric = days any tail gauge ≥ NWS minor flood stage, per unit-year",
+     "f₆ = mean across pooled unit-years   (expected annual flood days)",
      "gauges: Hale Eddy, Fishs Eddy, Bridgeville"],
     ["tail gauges respond to release decisions, so flooding here is attributable to operations",
-     "count-over-threshold avoids the expected-damage trap (Quinn et al. 2017)",
-     "ensemble form: mean annual flood days (P99 variant registered)"],
-    "Flood day count at minor stage.")
+     "count-over-threshold avoids the expected-damage trap (Quinn et al. 2017); a P₉₉ variant is registered because an expectation can mask floods",
+     "re-evaluation metric: whole-record flood-day count, per realization"],
+    "Expected annual flood days at minor stage.")
 
 objective_slide(
     7, "NYC storage resilience", "higher is better",
     ["storage% = combined NYC storage ÷ 270,837 MG × 100%",
-     "f₇ = P₅ of daily storage%"],
+     "annual metric = that unit-year's minimum daily storage%",
+     "f₇ = P₀₁ across pooled unit-years   (1st-percentile unit-year)"],
     ["how depleted the system routinely runs; a low percentile is stabler than the single-day minimum, which one event dominates (Quinn et al. 2017)",
-     "ensemble form: 1st-percentile unit-year of annual minimum storage"],
-    "Storage P5; ensemble P01 of annual minima.")
+     "re-evaluation metric: whole-record P₅ of daily storage%, per realization"],
+    "Annual minimum storage, then P01 across the pool.")
 
 # ---- Forcing supplement ----
 s = add_slide(notes=(

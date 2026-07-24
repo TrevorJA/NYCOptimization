@@ -51,14 +51,13 @@ scfg.configure_historic_env()  # set experiment env before config is imported
 
 import config  # noqa: E402
 from src.formulations import get_baseline_values  # noqa: E402
-from src.objectives import build_objective_set  # noqa: E402
+from src.objectives_ensemble import build_ensemble_objective_set  # noqa: E402
 from src.sensitivity_common import (  # noqa: E402
     assign_rank_slots,
     await_all_done,
     get_mpi_context,
     mark_rank_done,
     prepare_partial_dir,
-    resolve_objective_names,
     sample_lhs_dvs,
 )
 from src.simulation import dvs_to_config, run_simulation_inmemory  # noqa: E402
@@ -86,7 +85,11 @@ def _run_one(sample_id: int, dv: np.ndarray, formulation: str,
     try:
         cfg = dvs_to_config(dv, formulation)
         data = run_simulation_inmemory(cfg, use_trimmed=True)
-        objs = objective_set.compute(data)
+        # Annual-unit objectives on the single trace as N=1: the historic design
+        # now searches under the SAME §2 objective as the ensembles
+        # (objective_definitions.md §2/§3), so wrap the one data dict as [data]
+        # and aggregate over its water-year units.
+        objs = objective_set.compute([data])
         out["elapsed_s"] = time.perf_counter() - t0
         for name, val in zip(objective_set.names, objs):
             out[name] = float(val)
@@ -103,8 +106,12 @@ def main():
 
     formulation = scfg.FORMULATION
 
-    obj_names = resolve_objective_names(scfg.OBJECTIVE_SET)
-    objective_set = build_objective_set(obj_names)
+    # Calibrate the ANNUAL-UNIT (§2) objectives — the ones the historic
+    # single-trace design now searches under — over the trace's water-year
+    # units (N=1). Use the DEFAULT active objective set (config.ACTIVE_OBJECTIVES,
+    # resolved to their annual counterparts), not the full registry.
+    objective_set = build_ensemble_objective_set(config.ACTIVE_OBJECTIVES)
+    obj_names = list(objective_set.names)
 
     # The salt-front objective only returns real values with the salinity LSTM
     # on. Warn (don't abort) if it is requested but unavailable — it will be

@@ -31,10 +31,14 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
-from config import OUTPUTS_DIR
+from config import OUTPUTS_DIR, ACTIVE_OBJECTIVES
 from src.formulations import get_baseline_values, get_var_names
 from src.simulation import dvs_to_config, run_simulation_to_disk, run_simulation_inmemory
-from src.formulations import get_objective_set
+# Baseline objectives are the §1 whole-trace metrics on the single baseline
+# trace (one data dict). The search-facing get_objective_set() now returns the
+# annual-unit set (which needs a LIST of realizations), so build the §1 set
+# explicitly here.
+from src.objectives import build_objective_set
 
 
 def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
@@ -48,7 +52,7 @@ def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
     Returns:
         Tuple of (data dict, objectives list).
     """
-    _ACTIVE_OBJS = get_objective_set()
+    _ACTIVE_OBJS = build_objective_set(ACTIVE_OBJECTIVES)
     baseline_dir = OUTPUTS_DIR / "baseline"
     baseline_dir.mkdir(parents=True, exist_ok=True)
 
@@ -135,7 +139,7 @@ def run_inmemory_test(formulation: str = "ffmp", use_trimmed: bool = False):
         formulation: Problem formulation name.
         use_trimmed: Use trimmed model. Requires presim data if True.
     """
-    _ACTIVE_OBJS = get_objective_set()
+    _ACTIVE_OBJS = build_objective_set(ACTIVE_OBJECTIVES)
     model_mode = "trimmed" if use_trimmed else "full"
     print(f"\n--- In-memory test ({formulation}, {model_mode} model) ---")
 
@@ -203,7 +207,7 @@ if __name__ == "__main__":
             args.formulation, use_trimmed=args.use_trimmed
         )
         print(f"\n--- Comparison: disk vs in-memory ---")
-        obj_names = get_objective_set().names
+        obj_names = build_objective_set(ACTIVE_OBJECTIVES).names
         for name, vd, vm in zip(obj_names, objs_disk, objs_mem):
             diff = abs(vd - vm)
             flag = " <-- MISMATCH" if diff > 1e-6 else ""

@@ -39,6 +39,69 @@ def _interpolate_factors(default_values, n_target):
 
 
 ###############################################################################
+# Downstream flow-target factor scaling DVs
+###############################################################################
+
+#: Default FFMP monthly flow-target factor tables (jan..dec) for the seven
+#: standard drought levels. Levels 1a-2 are 1.0 (no adjustment; the Decree
+#: targets apply unmodified) and are never exposed as DVs. Values match
+#: ffmp_reservoir_operation_monthly_profiles.csv.
+_DEFAULT_FLOW_TARGET_FACTORS = {
+    "montague": np.array([
+        [1.0] * 12,                                # level1a
+        [1.0] * 12,                                # level1b
+        [1.0] * 12,                                # level1c
+        [1.0] * 12,                                # level2
+        [0.942857] * 12,                           # level3
+        [0.885714] * 12,                           # level4
+        [0.771429] * 4 + [0.914286] * 4 + [0.857143] * 3 + [0.771429],  # level5
+    ]),
+    "trenton": np.array([
+        [1.0] * 12,
+        [1.0] * 12,
+        [1.0] * 12,
+        [1.0] * 12,
+        [0.9] * 12,
+        [0.9] * 12,
+        [0.9] * 12,
+    ]),
+}
+
+#: Bounds for the flow-target factor scale multipliers. The effective factor
+#: (default table value x DV) is capped at 1.0 at apply time so adjusted
+#: targets never exceed the Decree-fixed baseline target. The cap binds at
+#: scale ~1.06-1.13 depending on the row, so 1.15 leaves every row just
+#: enough headroom to reach the cap without a long flat region above it.
+FLOW_TARGET_SCALE_BOUNDS = [0.5, 1.15]
+
+
+def _add_flow_target_scale_dvs(dvs, loc, level_names, factor_matrix):
+    """Append flow-target factor scale DVs for the drought-affected levels.
+
+    One non-seasonal multiplier DV per drought level is exposed for each
+    level whose default monthly factor row deviates from 1.0. The multiplier
+    scales the level's default monthly factors across all months, so
+    baseline = 1.0 reproduces the FFMP exactly. Levels with all-unity
+    factors (normal operations) are never exposed — the Decree target
+    applies unmodified.
+
+    Args:
+        dvs: Target DV registry (OrderedDict), mutated in place.
+        loc: Location tag used in DV names ("montague" or "trenton").
+        level_names: Drought level names aligned with factor_matrix rows.
+        factor_matrix: (n_levels, 12) default monthly factor table.
+    """
+    for i, level in enumerate(level_names):
+        if np.min(factor_matrix[i]) >= 1.0:
+            continue
+        dvs[f"mrf_target_scale_{loc}_{level}"] = {
+            "baseline": 1.0,
+            "bounds": list(FLOW_TARGET_SCALE_BOUNDS),
+            "units": "multiplier",
+        }
+
+
+###############################################################################
 # Salt-front DV merge helper
 ###############################################################################
 
@@ -93,8 +156,104 @@ def _merge_salt_front_dvs(dvs: OrderedDict, n_drought_levels: int = None) -> Ord
 
 
 ###############################################################################
-# Standard FFMP formulation (24 DVs base, optionally extended via salt_front)
+# Standard FFMP formulation (69 DVs base, optionally extended via salt_front)
 ###############################################################################
+
+# --- Flood-zone (L1a/L1b) spill-mitigation release scaling ---
+# Dimensionless multipliers on the DEFAULT FFMP Tables 4a-4g flood-zone
+# release schedule (e.g., L1a Cannonsville = mult x 1500 cfs), applied by
+# simulation._apply_flood_release_scaling. Season-invariant — matching the
+# FFMP, which holds these rows constant across its tables and seasons;
+# seasonal flood policy (void scheduling, CSSO shape) is carried by the
+# per-breakpoint zone-boundary shift DVs (zone_vshift_*) instead. The
+# multiplier form preserves the within-year shape (L1a-absent window
+# Apr 16-Jun 15, Neversink L1b step).
+# The Table 5 combined-discharge caps (flood_max_release_{res}_cfs =
+# 4200/2400/3400) are physical/regulatory constants and are NOT decision
+# variables. L1a upper bounds are anchored to the maximum controlled
+# release observed 2000-2021 (2062/842/303 cfs — the demonstrated
+# release-works capacity) divided by the L1a schedule rate (1500/700/190
+# cfs); 2.0 x L1b stays within that demonstrated range for all three
+# reservoirs. All uppers sit below the Table 5 combined caps.
+FLOOD_RELEASE_ZONES = ["l1a", "l1b"]
+_FLOOD_RESERVOIRS = ["cannonsville", "pepacton", "neversink"]
+_FLOOD_SCALE_UPPER = {
+    ("l1a", "cannonsville"): 1.35,
+    ("l1a", "pepacton"): 1.20,
+    ("l1a", "neversink"): 1.55,
+    ("l1b", "cannonsville"): 2.0,
+    ("l1b", "pepacton"): 2.0,
+    ("l1b", "neversink"): 2.0,
+}
+FLOOD_RELEASE_SCALE_SPECS = OrderedDict(
+    (
+        f"flood_release_scale_{zone}_{res}",
+        {
+            "baseline": 1.0,
+            "bounds": [0.5, _FLOOD_SCALE_UPPER[(zone, res)]],
+            "units": "multiplier",
+        },
+    )
+    for zone in FLOOD_RELEASE_ZONES
+    for res in _FLOOD_RESERVOIRS
+)
+
+# --- Per-breakpoint storage-zone boundary shifts ---
+# Each storage-zone threshold curve is represented by its _BREAKPOINT_COUNT
+# major breakpoints (the largest-curvature corners of the baseline curve,
+# detected once by simulation._zone_curve_corners). Each breakpoint gets two
+# DVs: an additive vertical offset (fraction of capacity, zone_vshift_*) and
+# a temporal shift (days, zone_tshift_*). At apply time the breakpoints are
+# offset/moved and the daily curve is rebuilt as a circular piecewise-linear
+# curve through them (simulation._apply_zone_shifts), then clipped to [0, 1]
+# and monotonicity-clamped. All-zero DVs reproduce the piecewise-linear form
+# of the default curves through their breakpoints. This is where the
+# formulation's seasonal flood policy lives — the FFMP's own seasonal flood
+# instrument is the CSSO / zone boundary geometry (15% Nov-Feb void), not the
+# release rates. Vertical upper bounds are trimmed for the top two curves,
+# which sit near full storage (level1b 0.975-1.0, level1c 0.85-1.0 of
+# capacity — larger upward offsets clip to 1.0).
+#
+# _BREAKPOINT_COUNT MUST equal simulation._ZONE_CORNER_COUNT so the DV indices
+# c0..c{n-1} align one-to-one with the detected baseline corners.
+_BREAKPOINT_COUNT = 4
+_ZONE_VSHIFT_UPPER = {"level1b": 0.025, "level1c": 0.05}
+_ZONE_VSHIFT_BOUND = 0.10
+_ZONE_TSHIFT_BOUND = 30.0
+
+
+def _zone_breakpoint_specs(levels, vshift_upper_by_level):
+    """Build the per-breakpoint zone-shift DV specs for the given curves.
+
+    For each curve and each of the _BREAKPOINT_COUNT breakpoints, adds an
+    additive vertical-offset DV (``zone_vshift_{level}_c{k}``, fraction of
+    capacity) and a temporal-shift DV (``zone_tshift_{level}_c{k}``, days).
+    Baselines are 0.0 so the curve is unperturbed at the baseline vector.
+
+    Args:
+        levels: Storage-zone curve names.
+        vshift_upper_by_level: Per-curve upper-bound override for the
+            vertical offset (defaults to ``_ZONE_VSHIFT_BOUND``).
+
+    Returns:
+        OrderedDict of DV specs (all vertical then all temporal per curve).
+    """
+    specs = OrderedDict()
+    for level in levels:
+        upper = vshift_upper_by_level.get(level, _ZONE_VSHIFT_BOUND)
+        for k in range(_BREAKPOINT_COUNT):
+            specs[f"zone_vshift_{level}_c{k}"] = {
+                "baseline": 0.0,
+                "bounds": [-_ZONE_VSHIFT_BOUND, upper],
+                "units": "fraction",
+            }
+        for k in range(_BREAKPOINT_COUNT):
+            specs[f"zone_tshift_{level}_c{k}"] = {
+                "baseline": 0.0,
+                "bounds": [-_ZONE_TSHIFT_BOUND, _ZONE_TSHIFT_BOUND],
+                "units": "days",
+            }
+    return specs
 
 # FFMP decision variable specification.
 # Each entry: {"baseline": <default value>, "bounds": [lo, hi], "units": <str>}
@@ -102,39 +261,14 @@ FFMP_FORMULATION = {
     "description": "Parameterized 2017 FFMP rule structure",
     "decision_variables": OrderedDict({
 
-        # --- MRF baselines (MGD) ---
-        "mrf_cannonsville": {
-            "baseline": 122.8,
-            "bounds": [60.0, 250.0],
-            "units": "MGD",
-        },
-        "mrf_pepacton": {
-            "baseline": 64.63,
-            "bounds": [30.0, 130.0],
-            "units": "MGD",
-        },
-        "mrf_neversink": {
-            "baseline": 48.47,
-            "bounds": [20.0, 100.0],
-            "units": "MGD",
-        },
-        "mrf_montague": {
-            "baseline": 1131.05,
-            "bounds": [800.0, 1500.0],
-            "units": "MGD",
-        },
-        "mrf_trenton": {
-            "baseline": 1938.95,
-            "bounds": [1400.0, 2500.0],
-            "units": "MGD",
-        },
-
-        # --- NYC delivery constraints ---
-        "max_nyc_delivery": {
-            "baseline": 800.0,
-            "bounds": [500.0, 900.0],
-            "units": "MGD",
-        },
+        # NOTE: The reservoir MRF baselines (122.8/64.63/48.47 MGD), the
+        # Montague/Trenton baseline flow targets, and the NYC diversion cap
+        # are NOT decision variables. The baselines are the fixed FFMP
+        # Table 4a base rates (operational variation comes through the
+        # mrf_profile_scale_* FAW-like seasonal scales below); the targets
+        # and cap are 1954 Decree quantities fixed at
+        # config.MONTAGUE_DECREE_TARGET_MGD, TRENTON_DECREE_TARGET_MGD,
+        # and NYC_DECREE_DIVERSION_CAP_MGD.
 
         # --- NYC drought factors (L3, L4, L5) ---
         # L1a-L2 factors are effectively unconstrained (set to large values)
@@ -155,90 +289,76 @@ FFMP_FORMULATION = {
         },
 
         # --- NJ drought factors (L4, L5) ---
+        # No NJ delivery objective is active, so these lower bounds are the
+        # only guardrail on the Decree-party interest; they bracket the
+        # negotiated FFMP values (0.90/0.80). Widen only if the NJ
+        # reliability objective is activated.
         "nj_drought_factor_L4": {
             "baseline": 0.90,
-            "bounds": [0.60, 1.0],
+            "bounds": [0.80, 1.0],
             "units": "fraction",
         },
         "nj_drought_factor_L5": {
             "baseline": 0.80,
-            "bounds": [0.50, 1.0],
+            "bounds": [0.65, 1.0],
             "units": "fraction",
         },
 
-        # --- Storage zone vertical shifts (fraction of capacity) ---
-        # Applied as additive shifts to each drought level threshold curve
-        "zone_shift_level1b": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level1c": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level2": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level3": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level4": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
-        "zone_shift_level5": {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        },
+        # --- Per-breakpoint storage-zone boundary shifts ---
+        # (specs built by _zone_breakpoint_specs above: an additive vertical
+        # offset (zone_vshift_*, fraction of capacity) and a temporal shift
+        # (zone_tshift_*, days) per breakpoint, _BREAKPOINT_COUNT per curve;
+        # the daily curve is rebuilt piecewise-linear through the moved,
+        # offset breakpoints at apply time)
+        **_zone_breakpoint_specs(
+            ["level1b", "level1c", "level2", "level3", "level4", "level5"],
+            _ZONE_VSHIFT_UPPER,
+        ),
 
-        # --- Flood release maximums (CFS) ---
-        "flood_max_cannonsville": {
-            "baseline": 4200.0,
-            "bounds": [2000.0, 8000.0],
-            "units": "CFS",
-        },
-        "flood_max_pepacton": {
-            "baseline": 2400.0,
-            "bounds": [1200.0, 5000.0],
-            "units": "CFS",
-        },
-        "flood_max_neversink": {
-            "baseline": 3400.0,
-            "bounds": [1500.0, 7000.0],
-            "units": "CFS",
-        },
+        # --- Flood-zone (L1a/L1b) spill-mitigation release scaling ---
+        # (specs defined once in FLOOD_RELEASE_SCALE_SPECS above)
+        **FLOOD_RELEASE_SCALE_SPECS,
 
         # --- MRF seasonal profile scaling (4 seasons) ---
+        # FAW-like scaling of the conservation-release schedules. Bounds
+        # match the FFMP's own Table 4a-4g FAW envelope (~1.0-2.6x base for
+        # the FAW-varying zones); the 0.8 floor keeps releases near the
+        # negotiated Table 4a base rates, the only protection for the
+        # tailwater fishery interest (no habitat objective is active).
         "mrf_profile_scale_winter": {
             "baseline": 1.0,
-            "bounds": [0.5, 2.0],
+            "bounds": [0.8, 2.6],
             "units": "multiplier",
         },
         "mrf_profile_scale_spring": {
             "baseline": 1.0,
-            "bounds": [0.5, 2.0],
+            "bounds": [0.8, 2.6],
             "units": "multiplier",
         },
         "mrf_profile_scale_summer": {
             "baseline": 1.0,
-            "bounds": [0.5, 2.0],
+            "bounds": [0.8, 2.6],
             "units": "multiplier",
         },
         "mrf_profile_scale_fall": {
             "baseline": 1.0,
-            "bounds": [0.5, 2.0],
+            "bounds": [0.8, 2.6],
             "units": "multiplier",
         },
     }),
 }
+
+# --- Downstream flow-target factor scaling (per drought level) ---
+# Exposed only for levels whose FFMP factors deviate from 1.0 (L3/L4/L5 at
+# both locations) => 2 locations x 3 levels = 6 DVs. Non-seasonal: one
+# multiplier scales the level's full monthly factor row.
+_STANDARD_LEVELS = ["level1a", "level1b", "level1c", "level2",
+                    "level3", "level4", "level5"]
+for _loc in ("montague", "trenton"):
+    _add_flow_target_scale_dvs(
+        FFMP_FORMULATION["decision_variables"], _loc,
+        _STANDARD_LEVELS, _DEFAULT_FLOW_TARGET_FACTORS[_loc],
+    )
 
 ###############################################################################
 # Formulation factory
@@ -247,7 +367,7 @@ FFMP_FORMULATION = {
 def generate_ffmp_formulation(n_zones=None):
     """Generate an FFMP formulation, optionally with variable zone resolution.
 
-    With n_zones=None (default), returns the standard 24-DV formulation
+    With n_zones=None (default), returns the standard 69-DV formulation
     matching the 2017 FFMP's 7 drought levels (level1a..level5).
 
     With n_zones=N, generates an N-zone variant where:
@@ -279,23 +399,18 @@ def generate_ffmp_formulation(n_zones=None):
 
     dvs = OrderedDict()
 
-    # MRF baselines (same across all N-zone variants)
-    dvs["mrf_cannonsville"] = {"baseline": 122.8, "bounds": [60.0, 250.0], "units": "MGD"}
-    dvs["mrf_pepacton"] = {"baseline": 64.63, "bounds": [30.0, 130.0], "units": "MGD"}
-    dvs["mrf_neversink"] = {"baseline": 48.47, "bounds": [20.0, 100.0], "units": "MGD"}
-    dvs["mrf_montague"] = {"baseline": 1131.05, "bounds": [800.0, 1500.0], "units": "MGD"}
-    dvs["mrf_trenton"] = {"baseline": 1938.95, "bounds": [1400.0, 2500.0], "units": "MGD"}
+    # MRF baselines are fixed (as in the base formulation); Montague/Trenton
+    # baseline targets and the NYC diversion cap are Decree-fixed (not DVs).
 
-    # Max NYC delivery
-    dvs["max_nyc_delivery"] = {"baseline": 800.0, "bounds": [500.0, 900.0], "units": "MGD"}
-
-    # Zone shifts (N curves)
-    for level in storage_levels:
-        dvs[f"zone_shift_{level}"] = {
-            "baseline": 0.0,
-            "bounds": [-0.10, 0.10],
-            "units": "fraction",
-        }
+    # Zone breakpoint shifts (N curves): an additive vertical offset and a
+    # temporal shift per breakpoint (_BREAKPOINT_COUNT per curve). The top
+    # two curves (flood-zone boundaries, near full storage) get trimmed
+    # vertical upper bounds, mirroring the base formulation's level1b/level1c
+    # headroom.
+    _shift_upper = {storage_levels[0]: 0.025}
+    if len(storage_levels) > 1:
+        _shift_upper[storage_levels[1]] = 0.05
+    dvs.update(_zone_breakpoint_specs(storage_levels, _shift_upper))
 
     # NYC delivery factors: only for levels where baseline < unconstrained threshold
     for i, level in enumerate(drought_levels):
@@ -306,27 +421,43 @@ def generate_ffmp_formulation(n_zones=None):
                 "units": "fraction",
             }
 
-    # NJ delivery factors: only for levels where baseline < 1.0
+    # NJ delivery factors: only for levels where baseline < 1.0. Floor
+    # mirrors the base formulation (no NJ objective — bounds guard the
+    # Decree-party interest).
     for i, level in enumerate(drought_levels):
         if interp_nj[i] < 1.0:
             dvs[f"nj_drought_factor_{level}"] = {
-                "baseline": float(np.clip(interp_nj[i], 0.50, 1.0)),
-                "bounds": [0.50, 1.0],
+                "baseline": float(np.clip(interp_nj[i], 0.65, 1.0)),
+                "bounds": [0.65, 1.0],
                 "units": "fraction",
             }
 
-    # Flood limits (same across all N-zone variants)
-    dvs["flood_max_cannonsville"] = {"baseline": 4200.0, "bounds": [2000.0, 8000.0], "units": "CFS"}
-    dvs["flood_max_pepacton"] = {"baseline": 2400.0, "bounds": [1200.0, 5000.0], "units": "CFS"}
-    dvs["flood_max_neversink"] = {"baseline": 3400.0, "bounds": [1500.0, 7000.0], "units": "CFS"}
+    # Flood-zone spill-mitigation release scaling (same DV names across all
+    # N-zone variants; mapped to the two flood levels — indices below
+    # flood_conservation_boundary=2 — at apply time).
+    dvs.update(FLOOD_RELEASE_SCALE_SPECS)
 
-    # MRF seasonal profile scaling
+    # MRF seasonal profile scaling (FAW-envelope bounds, as in the base
+    # formulation)
     for season in ["winter", "spring", "summer", "fall"]:
         dvs[f"mrf_profile_scale_{season}"] = {
             "baseline": 1.0,
-            "bounds": [0.5, 2.0],
+            "bounds": [0.8, 2.6],
             "units": "multiplier",
         }
+
+    # Downstream flow-target factor scaling: interpolate the default 7-level
+    # monthly factor tables to N+1 levels (per month, matching pywrdrb's
+    # from_n_zones interpolation) and expose scale DVs for the
+    # drought-affected zones (any month's factor < 1.0).
+    x_def = np.linspace(0, 1, 7)
+    x_tgt = np.linspace(0, 1, n_zones + 1)
+    for loc in ("montague", "trenton"):
+        default_matrix = _DEFAULT_FLOW_TARGET_FACTORS[loc]  # (7, 12)
+        interp_matrix = np.column_stack([
+            np.interp(x_tgt, x_def, default_matrix[:, m]) for m in range(12)
+        ])  # (n_zones + 1, 12)
+        _add_flow_target_scale_dvs(dvs, loc, drought_levels, interp_matrix)
 
     # Merge salt-front DVs (no-op when SALT_FRONT_PARAM_MODE == "fixed").
     # Safe to call here because generate_ffmp_formulation runs after module
