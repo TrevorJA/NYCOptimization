@@ -33,8 +33,11 @@ scoring is in `src/robustness.py`.
 
 ## 0. Conventions
 
-- Metrics are computed on the **post-warmup** daily series (drop the first
-  `WARMUP_DAYS = 365` days).
+- Metrics are computed on the **metric window** of each scenario: the daily
+  series from six calendar months after its start (`METRIC_EXCLUSION_MONTHS = 6`),
+  cut by date, never by a fixed day count. Six months is the SSI-6 accumulation
+  requirement, so the hazard-selection metrics exclude the same interval and
+  selection and evaluation score the identical window.
 - `resample("W")` = weekly resampling: reliability resamples by **sum**;
   flow/deficit metrics by **mean** (the weekly-accounting basis of the Decree).
 - **CVaR₉₀(x)** = Conditional Value-at-Risk at the 90% level = the mean of the
@@ -139,8 +142,10 @@ aggregation is not a novelty focus of this study).
 
 **Structure (Hamilton et al. 2022's two-layer vocabulary: within-record time
 aggregation + across-record noise filtering).** Each realization is simulated
-continuously; the first 365 days are warm-up and excluded; the post-warm-up series is
-split into **water-year units**. Stage (i): compute each objective's **annual metric**
+continuously; the first six months are outside the metric window and excluded; the
+remainder is split into **water-year units**. Scenario windows are October-aligned, so
+the remainder begins April 1 of the first water year and the first WHOLE water-year
+unit is WY2. Stage (i): compute each objective's **annual metric**
 on every (realization × year) unit. Stage (ii): aggregate across the pooled **NL
 unit-years** with the objective's **unit operator**:
 
@@ -168,7 +173,7 @@ unit-years** with the objective's **unit operator**:
   al. (2018), who slice one continuous 1000-yr record into 1-yr units "so that the
   distribution of initial conditions … is representative." Every design therefore has
   the **identical unit denominator NL** (short: N × (L−1) metric-bearing unit-years;
-  long: N′ × (L′−1); warm-up years excluded).
+  long: N′ × (L′−1); partial units at either end excluded).
 - *Granularity/ε:* frequency objectives have granularity 1/NL (≈10⁻³ at NL ≈ 1000+);
   mean/percentile objectives are continuous with **ε in native metric units**.
 - *Precedent floor:* percentile operators are precedented only over ≳50–1000 units

@@ -81,10 +81,10 @@ def main() -> int:
     # --- 3. How close do weekly means sit to their thresholds? ---
     # A reliability objective is only knife-edge if weeks pile up ON the target.
     print("\n--- Distance of weekly Montague flows from the Decree threshold ---")
-    from src.objectives import _post_warmup  # noqa: PLC0415
+    from src.objectives import _metric_window  # noqa: PLC0415
     from config import MONTAGUE_DECREE_TARGET_MGD as TGT  # noqa: PLC0415
 
-    wk = _post_warmup(d1[0]["major_flow"]["delMontague"]).resample("W").mean()
+    wk = _metric_window(d1[0]["major_flow"]["delMontague"]).resample("W").mean()
     gap = (wk - TGT).abs()
     for tol in (1e-9, 1e-6, 1e-3, 1e-1, 1.0):
         n = int((gap < tol).sum())

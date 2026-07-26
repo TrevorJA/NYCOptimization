@@ -10,12 +10,14 @@ Two-layer scheme (Hamilton et al. 2022 vocabulary)
 --------------------------------------------------
 Stage (i) — **annual metric** per (realization × water-year) unit. Every
 realization starts on a water-year boundary (config ``START_DATE``, Oct 1) and
-spans L whole water years. The first ``WARMUP_DAYS`` (365) days are model
-warm-up and are dropped; the remainder is split into whole water-year units
-(Oct 1 – Sep 30). Any leading partial year — the single stray day left when
-the warm-up year is a 366-day leap water year — and any trailing partial year
-are discarded, so an L-year realization yields exactly **L − 1 metric-bearing
-unit-years** (see :func:`water_year_unit_slices`).
+spans L whole water years. The first ``METRIC_EXCLUSION_MONTHS`` (6) calendar
+months are outside the metric window — the SSI-6 accumulation spin-up the
+hazard-selection metrics also exclude — and are dropped by date; the remainder,
+which begins Apr 1 of WY1, is split into whole water-year units (Oct 1 –
+Sep 30). The leading partial year (Apr 1 – Sep 30 of WY1) and any trailing
+partial year are discarded, so an L-year realization yields exactly **L − 1
+metric-bearing unit-years**, the first of which is WY2 (see
+:func:`water_year_unit_slices`).
 
 Stage (ii) — **unit operator** over the POOLED unit-years of the whole
 ensemble (all realizations' units concatenated):
@@ -80,11 +82,11 @@ import numpy as np
 import pandas as pd
 
 from config import (
+    METRIC_EXCLUSION_MONTHS,
     MONTAGUE_DECREE_TARGET_MGD,
     NJ_DELIVERY_CAP_MGD,
     NYC_DECREE_DIVERSION_CAP_MGD,
     TRENTON_DECREE_TARGET_MGD,
-    WARMUP_DAYS,
 )
 from src.objectives import (
     OBJECTIVES,
@@ -110,13 +112,15 @@ def water_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
     """Positional slices of the metric-bearing water-year units of a trace.
 
     Unit rule (objective_definitions.md §2): realizations start on a
-    water-year boundary (Oct 1) and are daily-contiguous. The first
-    ``WARMUP_DAYS`` (365) days are warm-up and are dropped; the remaining days
-    are grouped by water year (a date with month >= 10 belongs to water year
-    ``year + 1``), and only COMPLETE water years — first day Oct 1, last day
-    Sep 30 — are kept. This discards the single stray day left after warm-up
-    when the first water year is a 366-day leap year, and any trailing partial
-    year, so an L-water-year realization yields exactly L − 1 unit-years.
+    water-year boundary (Oct 1) and are daily-contiguous. Days earlier than
+    ``METRIC_EXCLUSION_MONTHS`` (6) calendar months after the first timestamp
+    lie outside the metric window (the SSI-6 accumulation spin-up) and are
+    dropped by date; the remaining days are grouped by water year (a date with
+    month >= 10 belongs to water year ``year + 1``), and only COMPLETE water
+    years — first day Oct 1, last day Sep 30 — are kept. On an October-aligned
+    window the remainder starts Apr 1, so the leading partial year (Apr 1 –
+    Sep 30 of WY1) is discarded along with any trailing partial year, and an
+    L-water-year realization yields exactly L − 1 unit-years starting at WY2.
 
     Args:
         index: Daily DatetimeIndex of the realization's full window.
@@ -126,9 +130,13 @@ def water_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
         ``.iloc``), one per metric-bearing water-year unit, in time order.
     """
     idx = pd.DatetimeIndex(index)
-    if len(idx) <= WARMUP_DAYS:
+    if len(idx) == 0:
         return []
-    sub = idx[WARMUP_DAYS:]
+    cutoff = idx[0] + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
+    offset = int((idx < cutoff).sum())
+    if offset >= len(idx):
+        return []
+    sub = idx[offset:]
     wy = np.asarray(sub.year) + (np.asarray(sub.month) >= 10).astype(int)
     change = np.flatnonzero(np.diff(wy)) + 1
     starts = np.concatenate(([0], change))
@@ -137,7 +145,7 @@ def water_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
     for s, e in zip(starts, stops):
         first, last = sub[s], sub[e - 1]
         if (first.month, first.day) == (10, 1) and (last.month, last.day) == (9, 30):
-            slices.append(slice(WARMUP_DAYS + int(s), WARMUP_DAYS + int(e)))
+            slices.append(slice(offset + int(s), offset + int(e)))
     return slices
 
 

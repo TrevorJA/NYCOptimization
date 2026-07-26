@@ -61,8 +61,8 @@ def plot_parallel_coordinates(
     render_parallel_coordinates(
         raw, obj_names, directions,
         title=f"Pareto Approximate Set ({formulation}, {obj_data.shape[0]} solutions)",
-        output_file=output_file, baseline_raw=baseline_raw, figsize=figsize,
-        line_color="steelblue", line_alpha=0.15,
+        output_file=output_file, baseline_raw=baseline_raw, keep_mask=keep_mask,
+        figsize=figsize, line_color="steelblue", line_alpha=0.15,
     )
 
 
@@ -73,6 +73,7 @@ def render_parallel_coordinates(
     title: str = "",
     output_file: Path = None,
     baseline_raw: np.ndarray = None,
+    keep_mask: np.ndarray = None,
     figsize: tuple = (12, 5),
     line_color: str = "steelblue",
     line_alpha: float = 0.15,
@@ -93,6 +94,10 @@ def render_parallel_coordinates(
         title: Figure title.
         output_file: Path to save (PNG); if None, ``plt.show()``.
         baseline_raw: Optional ``(n_objs,)`` raw baseline vector, drawn bold.
+        keep_mask: Optional boolean array aligned to ``raw`` rows. When given,
+            screened-out rows (``~keep_mask``) are faint grey underneath and
+            accepted rows are blue on top; when ``None`` all rows are drawn
+            uniformly.
         figsize: Figure size.
         line_color, line_alpha: Style for the sample polylines.
         baseline_label: Legend label for the baseline line.
@@ -164,11 +169,10 @@ def render_parallel_coordinates(
     ax.set_xticks(x)
     ax.set_xticklabels(obj_names, rotation=25, ha="right", fontsize=9)
     ax.set_ylabel("Preference Direction  (↑ better)")
-    _title_n = (f"{obj_data.shape[0]} solutions" if keep_mask is None
-                else f"{int(keep_mask.sum())} acceptable of {obj_data.shape[0]}")
-    ax.set_title(
-        f"Pareto Approximate Set ({formulation}, {_title_n})"
-    )
+    if keep_mask is not None:
+        ax.set_title(f"{title}  ({int(keep_mask.sum())} acceptable of {len(raw)})")
+    else:
+        ax.set_title(title)
     ax.set_ylim(-0.12, 1.12)
     ax.grid(True, alpha=0.3, axis="x")
 

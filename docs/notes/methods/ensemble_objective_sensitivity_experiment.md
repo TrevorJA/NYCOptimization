@@ -90,11 +90,13 @@ realization yields 9 metric-bearing unit-years; an L′ = 50 record yields 49.
 All unit operators (frequency / P99 / mean), the realization-level comparison,
 and the SI operator panel are post-hoc reductions of this one matrix.
 
-Unit-to-realization mapping and warm-up:
+Unit-to-realization mapping and the metric window:
 
 - Units are consecutive water-years of each realization.
-- The first 365 days of each **realization** are warm-up and excluded from
-  metric computation. No re-warm-up between units.
+- The first six months of each **realization** lie outside the metric window
+  (the SSI-6 accumulation interval the hazard metrics also exclude) and are cut
+  by date. Realizations are October-aligned, so the first whole water-year unit
+  is WY2. Unit boundaries are scoring windows, not restarts.
 - Units after the first **inherit state** — the simulation is continuous; unit
   boundaries are scoring windows, not restarts (Quinn et al. 2018: consecutive
   units give representative initial-condition distributions). Within-record
@@ -112,7 +114,7 @@ Unit-to-realization mapping and warm-up:
 | `objective_names` | (N_obj,) | base-objective registry names, matrix-column order |
 | `realization_ids` | (N_real,) | integer realization indices into the master |
 | `block_years` | (N_blocks, 2) | start/end simulation-year of each block |
-| attrs | — | `set_name` (armP/armH/long), `inflow_type`, `master_slug`, `n_realizations`, `realization_years`, `block_years_L0`, `warmup_days=365`, `formulation`, `dv_seed`, selector provenance for arm H |
+| attrs | — | `set_name` (armP/armH/long), `inflow_type`, `master_slug`, `n_realizations`, `realization_years`, `block_years_L0`, `metric_exclusion_months=6`, `formulation`, `dv_seed`, selector provenance for arm H |
 
 ## Failure-criterion saturation screen (frequency objectives)
 

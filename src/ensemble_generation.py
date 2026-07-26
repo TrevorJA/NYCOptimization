@@ -35,6 +35,7 @@ from pywrdrb.pywr_drb_node_data import (
     downstream_node_lags,
 )
 
+from config import METRIC_EXCLUSION_MONTHS
 from src.load.historical_flows import load_historical_flows
 
 
@@ -594,6 +595,14 @@ def _hazard_block(
 
     Aggregates the NYC-inflow catchments to a single series per scenario and calls
     :func:`scengen.hazard_metrics.compute_candidate_hazard_image` once for the block.
+
+    The wet (POT) axes are computed on the same metric window the objectives use:
+    the leading ``config.METRIC_EXCLUSION_MONTHS`` (6) calendar months of each
+    scenario are cut from the daily series, by date, from the block's own
+    DatetimeIndex. The monthly series keeps its FULL length — those first months
+    are the SSI-6 accumulation input, and SSI-6 is undefined over them, so a
+    drought event cannot start there and the dry axes exclude the same window
+    implicitly.
     """
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import compute_candidate_hazard_image
@@ -603,8 +612,11 @@ def _hazard_block(
         agg = inflow_by_real[k].loc[:, list(nyc_nodes)].sum(axis=1)  # daily pd.Series
         daily_rows.append(agg.to_numpy(dtype=float))
         monthly_rows.append(daily_to_monthly(agg, agg="mean"))
+    idx = pd.DatetimeIndex(inflow_by_real[ordered_ids[0]].index)
+    cutoff = idx[0] + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
     H_block, axes = compute_candidate_hazard_image(
-        np.vstack(monthly_rows), np.vstack(daily_rows), reference_monthly, reference_daily
+        np.vstack(monthly_rows), np.vstack(daily_rows), reference_monthly, reference_daily,
+        wet_exclusion_days=int((idx < cutoff).sum()),
     )
     return H_block, list(axes)
 

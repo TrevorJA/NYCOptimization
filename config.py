@@ -267,8 +267,13 @@ RESULTS_SETS = [
     "flood_stage",
 ]
 
-# Warmup period (days) to exclude from metric calculations
-WARMUP_DAYS = 365
+# Metrics (objectives AND hazard-selection metrics) exclude the first 6 months
+# of each scenario window — the SSI-6 accumulation spin-up, before which the
+# drought index has no defined value — so selection and evaluation see the same
+# effective window. Simulations still start from fixed initial storage
+# (INITIAL_VOLUME_FRAC); the exclusion is applied BY DATE from each window's
+# DatetimeIndex, never as a fixed day count.
+METRIC_EXCLUSION_MONTHS = 6
 
 
 ###############################################################################
@@ -395,7 +400,7 @@ ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
 # frontier experiment. Each value maps to formulation "ffmp_{N}".
 #
 # NOTE on baseline equivalence: generate_ffmp_formulation(n_zones=6) reproduces
-# the standard FFMP's 7-level zone count and the same 69-DV layout, so
+# the standard FFMP's 7-level zone count and the same 39-DV layout, so
 # `ffmp_6` is operationally identical to `ffmp` and is omitted from the sweep
 # to avoid a redundant 10-seed slot. The sweep starts at N=8 (one resolution
 # step above baseline). Re-include 6 via NYCOPT_FFMP_VR_N if intentionally

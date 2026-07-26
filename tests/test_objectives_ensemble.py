@@ -3,8 +3,9 @@ tests/test_objectives_ensemble.py - Unit tests for the annual-unit ensemble
 objective framework in src.objectives_ensemble (objective_definitions.md §2).
 
 Covers:
-  1. Water-year unit splitting: warm-up drop, leap-year stray day, trailing
-     partial years, and the L-1 metric-bearing-unit rule.
+  1. Water-year unit splitting: the date-based 6-month metric-exclusion cut,
+     leap-year windows, trailing partial years, and the L-1
+     metric-bearing-unit rule.
   2. Stage-(ii) unit operators on synthetic pools: failure frequency (with k),
      pooled P99 / P01 percentiles, pooled mean — including the non-finite
      policy (failure-year for frequency; worst-value sentinel otherwise).
@@ -34,9 +35,9 @@ PROJECT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 from config import (
+    METRIC_EXCLUSION_MONTHS,
     NYC_RESERVOIRS,
     NYC_TOTAL_CAPACITY,
-    WARMUP_DAYS,
 )
 from src.objectives import OBJECTIVES, ObjectiveSet
 import src.objectives_ensemble as obj_ens
@@ -63,6 +64,11 @@ def _wy_index(start_year: int, n_years: int) -> pd.DatetimeIndex:
 # 1. Water-year unit splitting
 # ---------------------------------------------------------------------------
 
+def _exclusion_cutoff(idx: pd.DatetimeIndex) -> pd.Timestamp:
+    """First timestamp inside the metric window of a realization index."""
+    return idx[0] + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
+
+
 def test_unit_slices_yield_L_minus_1_whole_water_years():
     """A 5-water-year realization yields 4 unit-years, each Oct 1 - Sep 30."""
     idx = _wy_index(1945, 5)
@@ -73,24 +79,25 @@ def test_unit_slices_yield_L_minus_1_whole_water_years():
         assert (unit[0].month, unit[0].day) == (10, 1)
         assert (unit[-1].month, unit[-1].day) == (9, 30)
         assert len(unit) in (365, 366)
-    # WY1946 (Oct 1945 - Sep 1946) has 365 days, so the warm-up consumes it
-    # exactly and the first unit starts at position 365 (1946-10-01).
-    assert slices[0].start == WARMUP_DAYS
+    # The metric window opens Apr 1 of WY1, mid-year, so the first WHOLE
+    # water-year unit is still WY2 (1946-10-01).
+    assert _exclusion_cutoff(idx) == pd.Timestamp("1946-04-01")
     assert idx[slices[0].start] == pd.Timestamp("1946-10-01")
     # Units are contiguous.
     for a, b in zip(slices, slices[1:]):
         assert a.stop == b.start
 
 
-def test_unit_slices_drop_leap_year_stray_day():
-    """When the warm-up water year has 366 days (leap), dropping exactly 365
-    days leaves one stray day of that year; it is not a whole water year and
-    must be discarded, so L=3 still yields 2 units."""
+def test_unit_slices_are_date_based_across_a_leap_water_year():
+    """A leap WY1 needs no special case: the cut is by date, so the first unit
+    is still WY2 and L=3 yields 2 units."""
     idx = _wy_index(1947, 3)  # WY1948 contains 1948-02-29 -> 366 days
     slices = water_year_unit_slices(idx)
     assert len(slices) == 2
-    # The stray day (1948-09-30) at position 365 is skipped.
-    assert slices[0].start == WARMUP_DAYS + 1
+    assert _exclusion_cutoff(idx) == pd.Timestamp("1948-04-01")
+    # 366-day WY1 => the first unit starts one position later than a 365-day
+    # WY1 would put it, and still lands exactly on Oct 1 of WY2.
+    assert slices[0].start == 366
     assert idx[slices[0].start] == pd.Timestamp("1948-10-01")
 
 
@@ -101,8 +108,10 @@ def test_unit_slices_drop_trailing_partial_year():
     assert idx[slices[-1].stop - 1] == pd.Timestamp("1950-09-30")
 
 
-def test_unit_slices_empty_for_warmup_only_trace():
-    idx = pd.date_range("1945-10-01", periods=WARMUP_DAYS, freq="D")
+def test_unit_slices_empty_for_exclusion_window_only_trace():
+    """A trace no longer than the 6-month exclusion window has no units."""
+    idx = pd.date_range("1945-10-01", "1946-03-31", freq="D")
+    assert idx[-1] < _exclusion_cutoff(idx)
     assert water_year_unit_slices(idx) == []
 
 
@@ -181,7 +190,7 @@ def _delivery_data(idx: pd.DatetimeIndex, demand: pd.Series,
 
 
 def test_delivery_failure_weeks_annual_counts_shortfall_block():
-    idx = _wy_index(1945, 3)  # warm-up WY1946 + units WY1947, WY1948
+    idx = _wy_index(1945, 3)  # partial WY1946 + units WY1947, WY1948
     demand = pd.Series(500.0, index=idx)
     delivery = pd.Series(500.0, index=idx)
     # 14-day full shortfall inside the SECOND unit-year (WY1948).

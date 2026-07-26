@@ -102,12 +102,9 @@ _SEASON_DOY_RANGES = {
     "fall": list(range(245, 336)),
 }
 
-# Corner detection for the per-breakpoint zone-boundary shifts: number of
-# major breakpoints retained per curve and their minimum circular separation
-# (days). _ZONE_CORNER_COUNT MUST equal formulations.ffmp._BREAKPOINT_COUNT
-# so the zone_vshift/zone_tshift DV indices align with the detected corners.
-_ZONE_CORNER_COUNT = 4
-_ZONE_CORNER_MIN_SEP = 25
+# Below this baseline peak-to-trough span a storage curve is treated as flat
+# (no plateaus to remap); the two vertical shifts collapse to one offset.
+_ZONE_FLAT_EPS = 1e-9
 
 # Evaluation counter for progress reporting
 _EVAL_COUNT = 0
@@ -500,19 +497,16 @@ def _apply_ffmp_params(config, params: dict):
         drought_factors_nj=nj_factors,
     )
 
-    # Storage zone shifts (per-breakpoint vertical offset + temporal shift)
+    # Storage zone shifts (low-plateau + high-plateau vertical shifts and one
+    # temporal shift per curve)
     zone_levels = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
-    vshifts = {
-        level: [params.get(f"zone_vshift_{level}_c{k}", 0.0)
-                for k in range(_ZONE_CORNER_COUNT)]
-        for level in zone_levels
-    }
-    tshifts = {
-        level: [params.get(f"zone_tshift_{level}_c{k}", 0.0)
-                for k in range(_ZONE_CORNER_COUNT)]
-        for level in zone_levels
-    }
-    _apply_zone_shifts(config, vshifts, tshifts)
+    vshifts_lower = {level: params.get(f"zone_vshift_{level}_lower", 0.0)
+                     for level in zone_levels}
+    vshifts_upper = {level: params.get(f"zone_vshift_{level}_upper", 0.0)
+                     for level in zone_levels}
+    tshifts = {level: params.get(f"zone_tshift_{level}", 0.0)
+               for level in zone_levels}
+    _apply_zone_shifts(config, vshifts_lower, vshifts_upper, tshifts)
 
     # MRF seasonal profile scaling (conservation zones only), then
     # flood-zone (L1a/L1b) release scaling on the still-pristine flood rows.
@@ -559,18 +553,15 @@ def _apply_nzone_ffmp_params(config, params: dict):
         drought_factors_nj=nj_factors,
     )
 
-    # Zone shifts (per-breakpoint vertical offset + temporal shift)
-    vshifts = {
-        level: [params.get(f"zone_vshift_{level}_c{k}", 0.0)
-                for k in range(_ZONE_CORNER_COUNT)]
-        for level in storage_levels_nz
-    }
-    tshifts = {
-        level: [params.get(f"zone_tshift_{level}_c{k}", 0.0)
-                for k in range(_ZONE_CORNER_COUNT)]
-        for level in storage_levels_nz
-    }
-    _apply_zone_shifts(config, vshifts, tshifts)
+    # Zone shifts (low-plateau + high-plateau vertical shifts and one temporal
+    # shift per curve)
+    vshifts_lower = {level: params.get(f"zone_vshift_{level}_lower", 0.0)
+                     for level in storage_levels_nz}
+    vshifts_upper = {level: params.get(f"zone_vshift_{level}_upper", 0.0)
+                     for level in storage_levels_nz}
+    tshifts = {level: params.get(f"zone_tshift_{level}", 0.0)
+               for level in storage_levels_nz}
+    _apply_zone_shifts(config, vshifts_lower, vshifts_upper, tshifts)
 
     # MRF seasonal scaling (conservation zones only), then flood-zone
     # release scaling. Table 5 flood caps stay at their constants.
@@ -584,84 +575,38 @@ def _apply_nzone_ffmp_params(config, params: dict):
     _stash_salt_front_options(config, params)
 
 
-def _zone_curve_corners(row: np.ndarray) -> np.ndarray:
-    """Detect a curve's major corner positions (0-based day indices).
+def _apply_zone_shifts(config, vshifts_lower: dict,
+                       vshifts_upper: dict = None, tshifts: dict = None):
+    """Apply two vertical (per-plateau) and one temporal shift per curve.
 
-    The stored FFMP curves are digitized daily and carry many tiny slope
-    changes; the major corners are the _ZONE_CORNER_COUNT points of
-    largest circular second difference (curvature), kept at least
-    _ZONE_CORNER_MIN_SEP days apart. Deterministic for a given curve.
-
-    Args:
-        row: Daily curve values (length 365/366).
-
-    Returns:
-        Sorted array of corner indices.
-    """
-    n = row.size
-    curvature = np.abs(np.diff(np.concatenate([[row[-1]], row, [row[0]]]), 2))
-    chosen = []
-    for i in np.argsort(curvature, kind="stable")[::-1]:
-        if all(min((i - j) % n, (j - i) % n) >= _ZONE_CORNER_MIN_SEP
-               for j in chosen):
-            chosen.append(int(i))
-        if len(chosen) == _ZONE_CORNER_COUNT:
-            break
-    return np.array(sorted(chosen))
-
-
-def _reconstruct_breakpoint_curve(x_nodes: np.ndarray, y_nodes: np.ndarray,
-                                  n_days: int) -> np.ndarray:
-    """Circular piecewise-linear curve through breakpoint control points.
-
-    Given breakpoint day positions ``x_nodes`` (0-based, within [0, n_days))
-    and their values ``y_nodes``, returns the length-``n_days`` daily curve
-    formed by linear interpolation between consecutive breakpoints, wrapping
-    the year end. Nodes need not be pre-sorted.
-
-    Args:
-        x_nodes: Breakpoint day positions.
-        y_nodes: Breakpoint values.
-        n_days: Profile length (365/366).
-
-    Returns:
-        Daily curve array of length ``n_days``.
-    """
-    x = np.asarray(x_nodes, dtype=float)
-    y = np.asarray(y_nodes, dtype=float)
-    order = np.argsort(x, kind="stable")
-    x = x[order]
-    y = y[order]
-    # Wrap: replicate the last node one period before the first and the first
-    # node one period after the last so np.interp covers the whole year.
-    xp = np.concatenate([[x[-1] - n_days], x, [x[0] + n_days]])
-    fp = np.concatenate([[y[-1]], y, [y[0]]])
-    return np.interp(np.arange(n_days, dtype=float), xp, fp)
-
-
-def _apply_zone_shifts(config, vshifts: dict, tshifts: dict = None):
-    """Apply per-breakpoint vertical and temporal shifts to storage curves.
-
-    Each curve's ``_ZONE_CORNER_COUNT`` major breakpoints are detected on the
-    baseline curve (_zone_curve_corners). Each breakpoint is moved along the
-    day-of-year axis by its temporal-shift DV and offset vertically by its
-    additive vertical-shift DV, and the daily curve is rebuilt as a circular
-    piecewise-linear curve through the moved, offset breakpoints
-    (_reconstruct_breakpoint_curve). Finally the curves are clipped to [0, 1]
-    and the cross-curve monotonicity clamp is applied (each more severe
-    level's curve is capped at the less severe one's). Temporal shifts are
-    rounded to whole days.
+    Each storage curve is a trapezoid with a low plateau (its baseline minimum,
+    the fall/winter void) and a high plateau (its baseline maximum, the
+    spring/summer refill target). The two plateau levels are moved independently
+    — the low plateau by ``vshifts_lower`` and the high plateau by
+    ``vshifts_upper`` — and the daily values are affinely remapped between the
+    new plateau levels, so the two ramps re-interpolate to connect and the
+    trapezoidal shape is preserved (no new kinks). This decouples void depth
+    from refill target. A within-curve clamp keeps the low plateau at or below
+    the high plateau (void <= refill); if a shift would invert them the curve
+    flattens to the high-plateau level. Each curve is then slid along the
+    day-of-year axis by its temporal-shift DV (a circular roll, rounded to whole
+    days), clipped to [0, 1], and cross-curve monotonicity-clamped (each more
+    severe level's curve is capped at the less severe one's).
 
     Args:
         config: NYCOperationsConfig to mutate.
-        vshifts: Mapping level -> list of per-breakpoint additive vertical
-            offsets (zone_vshift_{level}_c{k} DVs).
-        tshifts: Mapping level -> list of per-breakpoint temporal shifts in
-            days (zone_tshift_{level}_c{k} DVs).
+        vshifts_lower: Mapping level -> additive low-plateau shift
+            (zone_vshift_{level}_lower DV, fraction of capacity).
+        vshifts_upper: Mapping level -> additive high-plateau shift
+            (zone_vshift_{level}_upper DV, fraction of capacity).
+        tshifts: Mapping level -> temporal shift in days
+            (zone_tshift_{level} DV). Positive shifts move the curve to
+            later days of the year.
 
     Operates on config.storage_zones_df (rows=levels, 366 daily columns).
     Works for both default level1b..level5 and N-zone zone_1..zone_N naming.
     """
+    vshifts_upper = vshifts_upper or {}
     tshifts = tshifts or {}
     _, zone_order = _config_levels(config)
     zones = config.storage_zones_df.copy()
@@ -671,21 +616,19 @@ def _apply_zone_shifts(config, vshifts: dict, tshifts: dict = None):
         if level not in zones.index:
             continue
         baseline_row = zones.loc[level, date_cols].values.astype(float)
-        n = baseline_row.size
-        corners = _zone_curve_corners(baseline_row)
-        v = vshifts.get(level, [])
-        t = tshifts.get(level, [])
-        x_nodes = np.array([
-            (corners[k] + int(round(float(t[k])))) if k < len(t) else corners[k]
-            for k in range(len(corners))
-        ], dtype=float) % n
-        y_nodes = np.array([
-            baseline_row[corners[k]] + (float(v[k]) if k < len(v) else 0.0)
-            for k in range(len(corners))
-        ], dtype=float)
-        zones.loc[level, date_cols] = _reconstruct_breakpoint_curve(
-            x_nodes, y_nodes, n
-        )
+        lo, hi = baseline_row.min(), baseline_row.max()
+        vlow = float(vshifts_lower.get(level, 0.0))
+        vup = float(vshifts_upper.get(level, 0.0))
+        tshift = int(round(float(tshifts.get(level, 0.0))))
+        hi_new = hi + vup
+        # Within-curve clamp: the void level may not exceed the refill target.
+        lo_new = min(lo + vlow, hi_new)
+        span = hi - lo
+        if span > _ZONE_FLAT_EPS:
+            remapped = lo_new + (baseline_row - lo) / span * (hi_new - lo_new)
+        else:
+            remapped = np.full_like(baseline_row, lo_new)
+        zones.loc[level, date_cols] = np.roll(remapped, tshift)
 
     zones[date_cols] = zones[date_cols].clip(lower=0.0, upper=1.0)
 
@@ -962,9 +905,9 @@ def compute_constraint_violations(dv_vector,
     policy is operationally valid regardless; these functions give Borg a
     direct feasibility signal so infeasible vectors can skip simulation.
 
-    Zone-curve crossings are deliberately NOT a constraint: the per-breakpoint
-    shift DV bounds make crossings ubiquitous under random sampling, and
-    the cross-curve monotonicity clamp resolves them cleanly at apply
+    Zone-curve crossings are deliberately NOT a constraint: the zone-shift
+    DV bounds make crossings common under random sampling, and the
+    cross-curve monotonicity clamp resolves them cleanly at apply
     time — the clamped geometry is the intended policy, not a defect.
 
     Args:

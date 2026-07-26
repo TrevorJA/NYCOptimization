@@ -19,7 +19,7 @@ The contribution is `hazard_filling`, an MOEA evaluation ensemble whose members 
 
 1. `historic` — the observed record (N = 1, ~77 yr); prevailing-practice reference, deliberately unmatched (Giuliani et al. 2016; Herman et al. 2020).
 2. `fixed_probabilistic` — N × L drawn i.i.d. from the stationary generator, frozen across the search; the random-sampling control (Quinn et al. 2017; Zatarain Salazar et al. 2017).
-3. `hazard_filling` **(novel)** — LHS anchors in absolute, range-scaled hazard space + nearest-neighbor snap onto an i.i.d. stationary candidate pool.
+3. `hazard_filling` **(novel)** — LHS anchors in absolute, robust range-scaled hazard space (p1/p99 bounds) + nearest-neighbor snap onto an i.i.d. stationary candidate pool.
 
 Designs 2 and 3 both use N = 100 and L = 10 yr (1,000 scenario-years per evaluation, equal NFE); `historic` is deliberately unmatched. A common (N, L) is required or the selection rule is confounded with record length, and N is bounded below by the fill requirement (at m = 4 hazard axes, N = 100 gives ~3.2 points per dimension). Per-design precedents and the declared deviations from them are tabulated in [scenario_design_tables.md](scenario_design_tables.md), Table 3.
 

@@ -1,6 +1,6 @@
 # Decision variables (FFMP formulation)
 
-The decision vector parameterizes the 2017 FFMP rule structure with **69
+The decision vector parameterizes the 2017 FFMP rule structure with **39
 variables** (`src/formulations/ffmp.py`; applied to the model in
 `src/simulation.py`). Variable-resolution variants `ffmp_N` share the same
 group structure with zone-indexed names.
@@ -9,16 +9,20 @@ group structure with zone-indexed names.
 |---|---|---|---|---|---|
 | NYC drought delivery factors (L3–L5) | 3 | `nyc_drought_factor_L{3,4,5}` | 0.85 / 0.70 / 0.65 | [0.6,1.0] / [0.4,0.95] / [0.3,0.9] | fraction |
 | NJ drought delivery factors (L4–L5) | 2 | `nj_drought_factor_L{4,5}` | 0.90 / 0.80 | [0.8,1.0] / [0.65,1.0] | fraction |
-| Per-breakpoint storage-zone vertical offsets | 24 | `zone_vshift_{level}_c{0..3}` | 0.0 | L1b [-0.10,0.025]; L1c [-0.10,0.05]; L2–L5 [-0.10,0.10] | fraction of capacity |
-| Per-breakpoint storage-zone temporal shifts | 24 | `zone_tshift_{level}_c{0..3}` | 0.0 | [-30, 30] | days |
+| Storage-zone low-plateau (void) shifts | 6 | `zone_vshift_{level}_lower` | 0.0 | L1b [-0.10,0.025]; L1c–L5 [-0.10,0.10] | fraction of capacity |
+| Storage-zone high-plateau (refill) shifts | 6 | `zone_vshift_{level}_upper` | 0.0 | L1b/L1c/L2 [-0.10,0.0]; L3–L5 [-0.10,0.10] | fraction of capacity |
+| Storage-zone temporal shifts (one per curve) | 6 | `zone_tshift_{level}` | 0.0 | [-30, 30] | days |
 | Flood-zone spill-mitigation release scales | 6 | `flood_release_scale_{l1a,l1b}_{res}` | 1.0 | L1a: [0.5, 1.35/1.20/1.55] per reservoir; L1b: [0.5, 2.0] | multiplier |
 | MRF seasonal profile scales (conservation zones) | 4 | `mrf_profile_scale_{season}` | 1.0 | [0.8, 2.6] | multiplier |
-| Downstream flow-target factor scales | 6 | `mrf_target_scale_{montague,trenton}_{level}` | 1.0 | [0.5, 1.15] | multiplier |
+| Downstream flow-target factor scales | 6 | `mrf_target_scale_{montague,trenton}_{level}` | 1.0 | [0.65, 1.15] | multiplier |
 
-The six storage-zone boundary curves (`level1b`…`level5`) are each
-represented by their four major breakpoints (the largest-curvature corners
-of the baseline curve); every breakpoint carries one vertical-offset DV and
-one temporal-shift DV (6 curves × 4 breakpoints = 24 each).
+The six storage-zone boundary curves (`level1b`…`level5`) are trapezoids: a low
+plateau (fall/winter void), a rising ramp, a high plateau (spring/summer refill
+target), and a falling ramp. Each curve gets three DVs — an independent shift of
+its low plateau and of its high plateau, plus one temporal shift (6 curves × 3 =
+18). Splitting the vertical shift by plateau decouples void depth from the
+refill target while preserving the trapezoidal shape; each knob maps to a
+visible flat segment, so the change stays stakeholder-legible.
 
 Fixed (never decision variables): the reservoir MRF baselines (122.8 /
 64.63 / 48.47 MGD — the FFMP Table 4a base rates; operational variation is
@@ -43,16 +47,28 @@ and spillway.
   observed 2000–2021 (2,062 / 842 / 303 cfs — demonstrated release-works
   capacity) divided by the L1a schedule rates (1,500 / 700 / 190 cfs).
   2.0 × L1b stays within that demonstrated range for all three reservoirs.
-  All uppers sit below the Table 5 combined caps.
-- **Zone vertical-offset uppers (L1b 0.025, L1c 0.05)**: the L1b curve sits
-  at 0.975–1.0 and L1c at 0.85–1.0 of capacity; larger upward offsets clip
-  to 1.0 (dead range). The per-curve upper cap applies to all four
-  breakpoints; the lower bound is -0.10 throughout.
+  All uppers sit below the Table 5 combined caps. Note the *effective* L1b
+  range is narrower than [0.5, 2.0] in the Apr 16 – Jun 15 window, where the
+  L1a schedule drops to the L1b rate (the L1a-absent window): the
+  flood-ordering clamp (L1b ≤ L1a) holds L1b at ≤ 1.0× there, so scales
+  above 1.0 are realizable only outside that ~2-month window.
+- **Zone plateau-shift up-caps**: derived from baseline geometry — a plateau
+  cannot be raised above capacity, so its up-cap = min(0.10, 1.0 − plateau
+  level). The high plateaus of L1b/L1c/L2 sit at full capacity (1.0), so their
+  `zone_vshift_*_upper` up-cap is 0.0 (down-only); L1b's low plateau sits at
+  0.975, so its `zone_vshift_*_lower` up-cap is 0.025. All other plateau
+  up-caps are 0.10, and the lower bound is -0.10 throughout.
 - **Flood scales season-invariant (6)**: the FFMP holds the L1a/L1b rows
   season-constant; seasonal flood freedom is reallocated to the zone-boundary
-  breakpoint shifts, where the FFMP's own seasonality lives.
-- **Flow-target scale upper 1.15**: the 1.0 cap on the effective factor
-  binds at scale ≈ 1.06–1.13 per row; larger uppers are entirely flat.
+  geometry, where the FFMP's own seasonality lives — specifically the
+  low-plateau (void) shift, which sets the autumn/winter void depth
+  independently of the spring refill target.
+- **Flow-target scales [0.65, 1.15]**: the 1.0 cap on the effective factor
+  binds at scale ≈ 1.06–1.13 per row, so the 1.15 upper leaves every row just
+  enough headroom to reach the cap. The 0.65 floor caps the reduction of the
+  FFMP's own negotiated drought-stage flow-target factors at ~35%, keeping
+  exploration conservative — no searched policy halves a Decree-adjacent
+  downstream flow obligation.
 
 ## Feasibility clamps and Borg constraints
 
@@ -84,8 +100,8 @@ below 1e-9 floor to exact 0 so float noise cannot flag infeasibility):
    window it reduces to the schedule factor × (L1b scale − L1a scale)⁺.
 
 Zone-curve crossings are deliberately **clamp-only**, not a constraint:
-the per-breakpoint shift bounds make crossings ubiquitous under random
-sampling, and the monotonicity clamp resolves them cleanly at apply time —
+the zone-shift bounds make crossings common under random sampling, and
+the monotonicity clamp resolves them cleanly at apply time —
 the clamped geometry is the intended policy, not a defect to search away from.
 
 Borg applies constraint-dominance ahead of Pareto/epsilon dominance: any
@@ -122,34 +138,36 @@ schedule per (zone × reservoir), **season-invariant** — matching the FFMP,
 which holds these rows constant across its seven tables and (except
 Neversink's L1b step) across seasons. The profile-multiplier form preserves
 the within-year shape (the L1a-absent window Apr 16–Jun 15 and Neversink's
-seasonal L1b step). Seasonal flood policy is carried by the per-breakpoint
-zone-boundary shifts (below): the FFMP's own seasonal flood instrument is
-the CSSO / zone-boundary geometry (the ~15% Nov 1 – Feb 1 void), not the
-release rates.
+seasonal L1b step). Seasonal flood policy is carried by the zone-boundary
+shifts (below): the FFMP's own seasonal flood instrument is the CSSO /
+zone-boundary geometry (the ~15% Nov 1 – Feb 1 void), not the release rates.
 
-## Per-breakpoint storage-zone boundary shifts
+## Storage-zone boundary shifts
 
-Each storage-zone threshold curve is represented by its four major
-breakpoints — the `_ZONE_CORNER_COUNT` = 4 largest-curvature corners of the
-baseline curve (min 25 days apart, detected deterministically per curve by
-`_zone_curve_corners` in `src/simulation.py`). Each breakpoint carries two
-DVs: an additive vertical offset (`zone_vshift_{level}_c{k}`, fraction of
-capacity) and a temporal shift (`zone_tshift_{level}_c{k}`, days). At apply
-time (`_apply_zone_shifts`) each breakpoint is moved to
-`(corner_day + temporal_shift) mod year` and offset to
-`(baseline_value + vertical_offset)`, and the daily curve is rebuilt as a
-circular piecewise-linear curve through the four moved, offset breakpoints
-(`_reconstruct_breakpoint_curve`). Temporal shifts are rounded to whole days.
-Properties:
+Each storage-zone threshold curve is a trapezoid over the year: a **low
+plateau** (its baseline minimum — the fall/winter void), a rising ramp, a
+**high plateau** (its baseline maximum — the spring/summer refill target), and
+a falling ramp. Each curve carries three DVs: an additive shift of the low
+plateau (`zone_vshift_{level}_lower`, fraction of capacity), an additive shift
+of the high plateau (`zone_vshift_{level}_upper`), and a temporal shift
+(`zone_tshift_{level}`, days). At apply time (`_apply_zone_shifts`) the two
+plateau levels are moved independently to `lo_new = lo + shift_lower` and
+`hi_new = hi + shift_upper`, the daily values are affinely remapped between
+them — `value → lo_new + (value − lo)/(hi − lo) · (hi_new − lo_new)` — so the
+two ramps re-interpolate to connect, then the curve is circularly rolled by
+the temporal shift (rounded to whole days). Properties:
 
-- Adjusted boundaries are **piecewise-linear** through the four breakpoints —
-  no new kink dates; operator-readable rule curves.
-- All-zero DVs reproduce the default curves: the stored FFMP curves are
-  themselves piecewise-linear through their four corners, so the
-  reconstruction is exact at baseline.
-- Seasonal depth control is retained — e.g., lowering the autumn/winter
-  breakpoints deepens the flood void without lowering the June 1 refill
-  target (the CSSO lever).
+- **Void depth and refill target are decoupled** — e.g., a negative
+  `zone_vshift_{level}_lower` deepens the autumn/winter void without lowering
+  the spring refill target (the FFMP's own CSSO seasonal-void lever), which a
+  single whole-curve shift could not represent.
+- The **trapezoidal shape is preserved** — only the two plateau levels move and
+  the ramps re-interpolate; no new kink dates. Each knob maps to a visible flat
+  segment, keeping the change stakeholder-legible.
+- **Within-curve clamp**: the low plateau may not exceed the high plateau
+  (`lo_new ≤ hi_new`); a shift pair that would invert them flattens the curve
+  to the high-plateau level (void = refill).
+- All-zero DVs reproduce the default curves exactly.
 
 Applied before the [0, 1] clip and the cross-curve monotonicity clamp.
 

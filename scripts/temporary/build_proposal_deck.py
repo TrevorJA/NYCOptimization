@@ -671,7 +671,7 @@ add_body(s, [
     ("b", "**Forcing space:** CMIP6-anchored hypercube over harmonic amplitudes of monthly streamflow change factors — annual volume, seasonal amplitude, shoulder shape — bounded by the empirical 90% CMIP6 envelope (fixed seasonal phases)."),
     ("b", "**Two pools, one per hazard-filling design:** stationary (Kirsch–Nowak at the historic fit) and DU-forced (θ from the hypercube) → ~10⁵–10⁶ sequences each. Each design owns its pool; the pool is re-drawn on every ensemble draw."),
     ("b", "**Pools are sampled i.i.d., never by LHS** — a random subset of an LHS design is not i.i.d., which would silently void the exact control. Only input_stratified uses LHS, and it uses it to *generate*, never to build a pool."),
-    ("b", "**Windows:** disjoint 10-yr scenarios — long enough to contain the 1960s drought of record plus onset and recovery; fixed initial storage with a 1-yr warm-up."),
+    ("b", "**Windows:** disjoint 10-yr scenarios — long enough to contain the 1960s drought of record plus onset and recovery; fixed initial storage, with the first 6 months excluded from metrics."),
     ("b", "**Storage:** only hazard coordinates + seeds persist; any realization regenerates deterministically on demand (verified) — avoids ~440 GB of traces. Seed domains are disjoint across designs, draws, and the test ensemble."),
     ("b", "**Scope:** historical interannual persistence retained; claims scoped accordingly."),
     ("gap", 2),
@@ -709,7 +709,7 @@ add_body(s, [
 s = add_slide(notes=(
     "The credibility slide. The budget control is a CONSEQUENCE of the sizing choice, not something "
     "imposed: because N = 100 and L = 10 yr are common to every matched design, per-evaluation "
-    "cost, warm-up, scenario-years and wall-clock are identical, so equal-NFE and equal-"
+    "cost, scenario-years and wall-clock are identical, so equal-NFE and equal-"
     "scenario-years coincide. ONE budget condition, no arms, no composition-vs-search-effort "
     "confound. A common (N, L) is REQUIRED, not convenient: with different L the selection rule "
     "would be confounded with record length. Replication: a draw re-rolls EVERYTHING random about "
@@ -718,7 +718,7 @@ s = add_slide(notes=(
     "would look more stable by construction rather than as a finding."))
 add_title(s, "Controls for a fair comparison")
 add_body(s, [
-    ("b", "**Budget:** every matched design runs at **N = 100, L = 10 yr** → 1,000 scenario-years per evaluation, at **equal NFE**. Because N and L are common, per-evaluation cost, warm-up, scenario-years and wall-clock are *identical* — equal-NFE and equal-scenario-years **coincide**. One budget condition, no arms, no confound between composition and search effort."),
+    ("b", "**Budget:** every matched design runs at **N = 100, L = 10 yr** → 1,000 scenario-years per evaluation, at **equal NFE**. Because N and L are common, per-evaluation cost, scenario-years and wall-clock are *identical* — equal-NFE and equal-scenario-years **coincide**. One budget condition, no arms, no confound between composition and search effort."),
     ("b", "The common (N, L) is **required, not convenient**: if L differed across designs, the selection rule would be confounded with record length. N is bounded below by the fill requirement (~3.2 points per dimension at m = 4)."),
     ("b", "**Replication:** K ≈ 10 independent ensemble draws × S = 2–3 MOEA seeds per design; a **draw** is the design's construction re-run from scratch with a fresh seed, **including its pool**. The draw is the **unit of analysis** (effective n ≈ K, not K·S)."),
     ("b", "**Seed-stream disjointness:** every design, every draw, and the test ensemble generate from a namespaced seed domain, so no two ever share a realization."),
@@ -815,7 +815,7 @@ add_body(s, [
 add_body(s, [
     ("b", "Flows and demands in MGD (million gallons per day); storage in MG."),
     ("b", "Decree goalposts (fixed): NYC diversion cap 800 MGD; Montague 1,131.05 MGD (= 1,750 cfs); Trenton 1,938.95 MGD. NYC system capacity = 270,837 MG (Cannonsville + Pepacton + Neversink)."),
-    ("b", "Objectives are computed on the daily series after dropping the first 365 days (model warm-up)."),
+    ("b", "Objectives are computed on each scenario's metric window — the daily series from 6 months after its start, the SSI-6 accumulation interval the hazard metrics also exclude."),
 ], top=4.35, size=19)
 
 # ---- Objective detail slides ----

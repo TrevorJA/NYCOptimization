@@ -93,8 +93,8 @@ from src.ensembles import (
 SCENARIO_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
 
 # Ensemble size N, common to every matched design (methods §6). N x L = 1000
-# scenario-years per evaluation, at equal NFE, so per-evaluation cost, warm-up
-# and wall-clock are identical across designs. A common (N, L) is REQUIRED: if L
+# scenario-years per evaluation, at equal NFE, so per-evaluation cost and
+# wall-clock are identical across designs. A common (N, L) is REQUIRED: if L
 # differed across designs the selection rule would be confounded with record
 # length.
 SEARCH_ENSEMBLE_N: int = int(os.environ.get("NYCOPT_SEARCH_N", "100"))
@@ -115,10 +115,11 @@ RESAMPLE_POOL_SIZE: int = int(os.environ.get("NYCOPT_RESAMPLE_POOL_N", "1000"))
 INPUT_STRAT_N_THETA: int = int(os.environ.get("NYCOPT_INPUT_STRAT_N_THETA", "20"))
 INPUT_STRAT_R: int = int(os.environ.get("NYCOPT_INPUT_STRAT_R", "5"))
 
-# Independent ensemble draws K per design (the unit of analysis). Draws are now
+# Independent ensemble draws K per design (the unit of analysis). Draws are
 # independent GENERATIONS, not re-indexings of shared data, so K must be fixed
-# before workflow step 02 runs. Target 10 (methods §6).
-N_ENSEMBLE_DRAWS: int = int(os.environ.get("NYCOPT_N_ENSEMBLE_DRAWS", "10"))
+# before workflow step 02 runs. Target K = 3 (experimental_design.md,
+# Replication), revisable from the pilot minimum-detectable-effect calculation.
+N_ENSEMBLE_DRAWS: int = int(os.environ.get("NYCOPT_N_ENSEMBLE_DRAWS", "3"))
 
 # Root seed for the whole campaign. Every generated artifact derives its seed as
 # ``design_seed(SEED_ROOT, seed_domain, draw)``, so seed domains are disjoint by
@@ -184,9 +185,12 @@ class ScenarioDesign:
             seed; K draws vary the anchor plan and therefore measure
             anchor-placement variance. There is no simulated annealing.
         selector_space: For ``hazard_fill``: the space the anchors fill.
-            ``"cdf"`` = empirical-CDF/rank space (the campaign designs);
-            ``"abs"`` = absolute magnitude space (non-campaign sensitivity,
-            deliberately over-representing hazard extremes).
+            ``"abs"`` = absolute, range-scaled magnitude space -- the CAMPAIGN
+            selector, which deliberately over-represents the severe hazard
+            corners relative to their pool frequency; ``"cdf"`` =
+            empirical-CDF/rank space, the non-campaign sensitivity, which
+            preserves the pool marginals and distorts only the joint dependence
+            among axes.
         needs_hazard_image: Whether step 02 must stream a hazard image while
             generating this design's pool. True only for ``hazard_fill``; the
             SSI-6 fit and POT pass are pure waste otherwise.
@@ -457,7 +461,8 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "Zatarain Salazar et al. (2017) -- which subsamples a stationary "
               "Kirsch-Nowak pool by a realized-flow metric, in search -- from 1-D to "
               "m-D, and from probability-preserving to coverage. Selection is in "
-              "ABSOLUTE, range-scaled hazard space (selector_space='abs'), which "
+              "ABSOLUTE, robust range-scaled hazard space (selector_space='abs'; "
+              "per-axis p1/p99 bounds — see scengen.subsample.ROBUST_LO_PCT), which "
               "deliberately over-represents the severe (rare) hazard corners relative "
               "to their pool frequency -- the deliberate distribution shift the study "
               "tests. Controlled by fixed_probabilistic (same generator, same "

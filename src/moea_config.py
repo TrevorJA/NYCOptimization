@@ -163,8 +163,9 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         n_seeds=10,               # recorded replicate count; submitted as
                                   # `sbatch --array=1-10 workflow/06_run_mmborg.sh`
         max_time_hours=None,
-        notes="MM-Borg production run: 50k NFE, 165 ranks (4x40+5), "
-              "historic single-trace 7-objective baseline.",
+        notes="MM-Borg production run: 50k NFE, 165 ranks (4x40+5). Scenario "
+              "design and objective set are the other run axes and are not fixed "
+              "by this config.",
     ),
     # Moderate first full-workflow run. Same 165-rank layout as mm_pilot/mm_full
     # (4 islands x 40 workers + 4 island-masters + 1 controller = 165 ranks =

@@ -72,7 +72,12 @@ _DEFAULT_FLOW_TARGET_FACTORS = {
 #: targets never exceed the Decree-fixed baseline target. The cap binds at
 #: scale ~1.06-1.13 depending on the row, so 1.15 leaves every row just
 #: enough headroom to reach the cap without a long flat region above it.
-FLOW_TARGET_SCALE_BOUNDS = [0.5, 1.15]
+#: The 0.65 floor keeps exploration conservative: it caps the reduction of
+#: the FFMP's own negotiated drought-stage flow-target factors at ~35%, so
+#: no searched policy proposes halving a Decree-adjacent downstream flow
+#: obligation (a 0.5 floor did, which downstream states / the river master
+#: would scrutinize on optics).
+FLOW_TARGET_SCALE_BOUNDS = [0.65, 1.15]
 
 
 def _add_flow_target_scale_dvs(dvs, loc, level_names, factor_matrix):
@@ -156,7 +161,7 @@ def _merge_salt_front_dvs(dvs: OrderedDict, n_drought_levels: int = None) -> Ord
 
 
 ###############################################################################
-# Standard FFMP formulation (69 DVs base, optionally extended via salt_front)
+# Standard FFMP formulation (39 DVs base, optionally extended via salt_front)
 ###############################################################################
 
 # --- Flood-zone (L1a/L1b) spill-mitigation release scaling ---
@@ -165,7 +170,7 @@ def _merge_salt_front_dvs(dvs: OrderedDict, n_drought_levels: int = None) -> Ord
 # simulation._apply_flood_release_scaling. Season-invariant — matching the
 # FFMP, which holds these rows constant across its tables and seasons;
 # seasonal flood policy (void scheduling, CSSO shape) is carried by the
-# per-breakpoint zone-boundary shift DVs (zone_vshift_*) instead. The
+# zone-boundary shift DVs (zone_vshift_*) instead. The
 # multiplier form preserves the within-year shape (L1a-absent window
 # Apr 16-Jun 15, Neversink L1b step).
 # The Table 5 combined-discharge caps (flood_max_release_{res}_cfs =
@@ -198,61 +203,80 @@ FLOOD_RELEASE_SCALE_SPECS = OrderedDict(
     for res in _FLOOD_RESERVOIRS
 )
 
-# --- Per-breakpoint storage-zone boundary shifts ---
-# Each storage-zone threshold curve is represented by its _BREAKPOINT_COUNT
-# major breakpoints (the largest-curvature corners of the baseline curve,
-# detected once by simulation._zone_curve_corners). Each breakpoint gets two
-# DVs: an additive vertical offset (fraction of capacity, zone_vshift_*) and
-# a temporal shift (days, zone_tshift_*). At apply time the breakpoints are
-# offset/moved and the daily curve is rebuilt as a circular piecewise-linear
-# curve through them (simulation._apply_zone_shifts), then clipped to [0, 1]
-# and monotonicity-clamped. All-zero DVs reproduce the piecewise-linear form
-# of the default curves through their breakpoints. This is where the
-# formulation's seasonal flood policy lives — the FFMP's own seasonal flood
-# instrument is the CSSO / zone boundary geometry (15% Nov-Feb void), not the
-# release rates. Vertical upper bounds are trimmed for the top two curves,
-# which sit near full storage (level1b 0.975-1.0, level1c 0.85-1.0 of
-# capacity — larger upward offsets clip to 1.0).
+# --- Storage-zone boundary shifts (two vertical + one temporal per curve) ---
+# Each storage-zone threshold curve is a trapezoid over the year: a low plateau
+# (fall/winter void), a rising ramp, a high plateau (spring/summer refill
+# target), and a falling ramp. Each curve gets three DVs: an additive shift of
+# the LOW plateau (zone_vshift_{level}_lower, fraction of capacity), an additive
+# shift of the HIGH plateau (zone_vshift_{level}_upper), and a temporal shift
+# (zone_tshift_{level}, days) that slides the whole curve along the day-of-year
+# axis. At apply time (simulation._apply_zone_shifts) the two plateau levels are
+# moved independently and the curve values are affinely remapped between them
+# (the two ramps re-interpolate to connect), then rolled, clipped to [0, 1], and
+# cross-curve monotonicity-clamped. All-zero DVs reproduce the default curves
+# exactly. Splitting the vertical shift by plateau decouples void DEPTH from the
+# refill target — the FFMP's own CSSO seasonal-void lever — while preserving the
+# trapezoidal shape (no new kinks); each knob maps to a visible flat segment, so
+# the change stays stakeholder-legible.
 #
-# _BREAKPOINT_COUNT MUST equal simulation._ZONE_CORNER_COUNT so the DV indices
-# c0..c{n-1} align one-to-one with the detected baseline corners.
-_BREAKPOINT_COUNT = 4
-_ZONE_VSHIFT_UPPER = {"level1b": 0.025, "level1c": 0.05}
+# Vertical UPPER-bound caps are set from baseline geometry: a plateau cannot be
+# raised above capacity, so the up-cap = min(_ZONE_VSHIFT_BOUND, 1.0 - plateau).
+# Curves whose HIGH plateau sits at full capacity (level1b/1c/2 refill to 1.0)
+# get a 0.0 up-cap on zone_vshift_*_upper (down-only); level1b's LOW plateau sits
+# at 0.975, so its zone_vshift_*_lower up-cap is 0.025. The lower bound on every
+# vertical shift is -_ZONE_VSHIFT_BOUND.
 _ZONE_VSHIFT_BOUND = 0.10
 _ZONE_TSHIFT_BOUND = 30.0
+#: Per-curve up-cap on the HIGH-plateau shift (zone_vshift_*_upper) for the
+#: fixed formulation; 0.0 for the three curves that refill to full capacity.
+_ZONE_VSHIFT_UPPER_CAP = {
+    "level1b": 0.0, "level1c": 0.0, "level2": 0.0,
+    "level3": _ZONE_VSHIFT_BOUND, "level4": _ZONE_VSHIFT_BOUND,
+    "level5": _ZONE_VSHIFT_BOUND,
+}
+#: Per-curve up-cap on the LOW-plateau shift (zone_vshift_*_lower); trimmed only
+#: for level1b, whose low plateau (0.975) has 0.025 of headroom to capacity.
+_ZONE_VSHIFT_LOWER_CAP = {"level1b": 0.025}
 
 
-def _zone_breakpoint_specs(levels, vshift_upper_by_level):
-    """Build the per-breakpoint zone-shift DV specs for the given curves.
+def _zone_shift_specs(levels, lower_cap_by_level, upper_cap_by_level):
+    """Build the zone-shift DV specs (two vertical + one temporal per curve).
 
-    For each curve and each of the _BREAKPOINT_COUNT breakpoints, adds an
-    additive vertical-offset DV (``zone_vshift_{level}_c{k}``, fraction of
-    capacity) and a temporal-shift DV (``zone_tshift_{level}_c{k}``, days).
-    Baselines are 0.0 so the curve is unperturbed at the baseline vector.
+    For each curve, adds an additive LOW-plateau shift DV
+    (``zone_vshift_{level}_lower``, fraction of capacity), an additive
+    HIGH-plateau shift DV (``zone_vshift_{level}_upper``), and a temporal-shift
+    DV (``zone_tshift_{level}``, days). Baselines are 0.0 so the curve is
+    unperturbed at the baseline vector.
 
     Args:
         levels: Storage-zone curve names.
-        vshift_upper_by_level: Per-curve upper-bound override for the
-            vertical offset (defaults to ``_ZONE_VSHIFT_BOUND``).
+        lower_cap_by_level: Per-curve upper-bound override for the LOW-plateau
+            shift (defaults to ``_ZONE_VSHIFT_BOUND``).
+        upper_cap_by_level: Per-curve upper-bound override for the HIGH-plateau
+            shift (defaults to ``_ZONE_VSHIFT_BOUND``).
 
     Returns:
-        OrderedDict of DV specs (all vertical then all temporal per curve).
+        OrderedDict of DV specs (lower, upper, temporal per curve).
     """
     specs = OrderedDict()
     for level in levels:
-        upper = vshift_upper_by_level.get(level, _ZONE_VSHIFT_BOUND)
-        for k in range(_BREAKPOINT_COUNT):
-            specs[f"zone_vshift_{level}_c{k}"] = {
-                "baseline": 0.0,
-                "bounds": [-_ZONE_VSHIFT_BOUND, upper],
-                "units": "fraction",
-            }
-        for k in range(_BREAKPOINT_COUNT):
-            specs[f"zone_tshift_{level}_c{k}"] = {
-                "baseline": 0.0,
-                "bounds": [-_ZONE_TSHIFT_BOUND, _ZONE_TSHIFT_BOUND],
-                "units": "days",
-            }
+        specs[f"zone_vshift_{level}_lower"] = {
+            "baseline": 0.0,
+            "bounds": [-_ZONE_VSHIFT_BOUND,
+                       lower_cap_by_level.get(level, _ZONE_VSHIFT_BOUND)],
+            "units": "fraction",
+        }
+        specs[f"zone_vshift_{level}_upper"] = {
+            "baseline": 0.0,
+            "bounds": [-_ZONE_VSHIFT_BOUND,
+                       upper_cap_by_level.get(level, _ZONE_VSHIFT_BOUND)],
+            "units": "fraction",
+        }
+        specs[f"zone_tshift_{level}"] = {
+            "baseline": 0.0,
+            "bounds": [-_ZONE_TSHIFT_BOUND, _ZONE_TSHIFT_BOUND],
+            "units": "days",
+        }
     return specs
 
 # FFMP decision variable specification.
@@ -304,15 +328,16 @@ FFMP_FORMULATION = {
             "units": "fraction",
         },
 
-        # --- Per-breakpoint storage-zone boundary shifts ---
-        # (specs built by _zone_breakpoint_specs above: an additive vertical
-        # offset (zone_vshift_*, fraction of capacity) and a temporal shift
-        # (zone_tshift_*, days) per breakpoint, _BREAKPOINT_COUNT per curve;
-        # the daily curve is rebuilt piecewise-linear through the moved,
-        # offset breakpoints at apply time)
-        **_zone_breakpoint_specs(
+        # --- Storage-zone boundary shifts ---
+        # (specs built by _zone_shift_specs above: a LOW-plateau shift
+        # (zone_vshift_*_lower), a HIGH-plateau shift (zone_vshift_*_upper),
+        # both fraction of capacity, and one temporal shift (zone_tshift_*,
+        # days) per curve; the two plateaus move independently and the curve is
+        # affinely remapped between them at apply time)
+        **_zone_shift_specs(
             ["level1b", "level1c", "level2", "level3", "level4", "level5"],
-            _ZONE_VSHIFT_UPPER,
+            _ZONE_VSHIFT_LOWER_CAP,
+            _ZONE_VSHIFT_UPPER_CAP,
         ),
 
         # --- Flood-zone (L1a/L1b) spill-mitigation release scaling ---
@@ -367,7 +392,7 @@ for _loc in ("montague", "trenton"):
 def generate_ffmp_formulation(n_zones=None):
     """Generate an FFMP formulation, optionally with variable zone resolution.
 
-    With n_zones=None (default), returns the standard 69-DV formulation
+    With n_zones=None (default), returns the standard 39-DV formulation
     matching the 2017 FFMP's 7 drought levels (level1a..level5).
 
     With n_zones=N, generates an N-zone variant where:
@@ -402,15 +427,14 @@ def generate_ffmp_formulation(n_zones=None):
     # MRF baselines are fixed (as in the base formulation); Montague/Trenton
     # baseline targets and the NYC diversion cap are Decree-fixed (not DVs).
 
-    # Zone breakpoint shifts (N curves): an additive vertical offset and a
-    # temporal shift per breakpoint (_BREAKPOINT_COUNT per curve). The top
-    # two curves (flood-zone boundaries, near full storage) get trimmed
-    # vertical upper bounds, mirroring the base formulation's level1b/level1c
-    # headroom.
-    _shift_upper = {storage_levels[0]: 0.025}
-    if len(storage_levels) > 1:
-        _shift_upper[storage_levels[1]] = 0.05
-    dvs.update(_zone_breakpoint_specs(storage_levels, _shift_upper))
+    # Zone shifts (N curves): a LOW-plateau shift, a HIGH-plateau shift, and one
+    # temporal shift per curve. The top storage curves (flood-zone boundaries,
+    # near full capacity) refill to ~1.0, so their HIGH-plateau up-cap is 0.0
+    # (down-only) and the topmost curve's LOW-plateau up-cap is trimmed to
+    # 0.025, mirroring the base formulation's level1b/level1c/level2 headroom.
+    _lower_cap = {storage_levels[0]: 0.025}
+    _upper_cap = {lvl: 0.0 for lvl in storage_levels[:3]}
+    dvs.update(_zone_shift_specs(storage_levels, _lower_cap, _upper_cap))
 
     # NYC delivery factors: only for levels where baseline < unconstrained threshold
     for i, level in enumerate(drought_levels):

@@ -1,11 +1,12 @@
-"""Tests for storage-zone shift DVs (per-breakpoint vertical + temporal) and clamping.
+"""Tests for storage-zone shift DVs (two vertical plateaus + one temporal).
 
-Covers the `_apply_zone_shifts` pipeline via `dvs_to_config`: each curve's
-_ZONE_CORNER_COUNT major breakpoints (detected on the baseline curve) are
-offset vertically (additive `zone_vshift_*`) and moved along the day-of-year
-axis (`zone_tshift_*`); the daily curve is rebuilt as a circular
-piecewise-linear curve through the moved, offset breakpoints, then clipped to
-[0, 1] and monotonicity-clamped.
+Covers the `_apply_zone_shifts` pipeline via `dvs_to_config`: each curve is a
+trapezoid whose low plateau (baseline min, the void) and high plateau
+(baseline max, the refill target) are shifted independently by
+`zone_vshift_{level}_lower` / `zone_vshift_{level}_upper`, the values affinely
+remapped between the new plateau levels, then slid by `zone_tshift_{level}`,
+clipped to [0, 1], and cross-curve monotonicity-clamped. A within-curve clamp
+keeps the void at or below the refill target.
 """
 
 import sys
@@ -17,17 +18,9 @@ PROJECT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 from src.formulations import get_baseline_values, get_n_vars, get_var_names
-from src.formulations.ffmp import _BREAKPOINT_COUNT
-from src.simulation import (
-    _ZONE_CORNER_COUNT,
-    _reconstruct_breakpoint_curve,
-    _zone_curve_corners,
-    dvs_to_config,
-    _get_cached_defaults,
-)
+from src.simulation import dvs_to_config, _get_cached_defaults
 
 ZONE_LEVELS = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
-BP = _ZONE_CORNER_COUNT
 
 
 def _dv(**overrides):
@@ -44,115 +37,100 @@ def _zones(cfg):
             for lvl in ZONE_LEVELS}
 
 
-def test_breakpoint_count_agrees():
-    # The registry index count and the apply-side corner count must match.
-    assert _BREAKPOINT_COUNT == _ZONE_CORNER_COUNT == 4
+def _affine(ref, vlow, vup):
+    """Expected per-curve remap (pre-roll, pre-clip, pre-cross-clamp)."""
+    lo, hi = ref.min(), ref.max()
+    hi_new = hi + vup
+    lo_new = min(lo + vlow, hi_new)
+    return lo_new + (ref - lo) / (hi - lo) * (hi_new - lo_new)
 
 
 def test_dv_registry():
     names = get_var_names("ffmp")
-    assert get_n_vars("ffmp") == 69
+    assert get_n_vars("ffmp") == 39
     vshift = [n for n in names if n.startswith("zone_vshift_")]
-    assert vshift == [f"zone_vshift_{lvl}_c{k}"
-                      for lvl in ZONE_LEVELS for k in range(BP)]
+    assert vshift == [f"zone_vshift_{lvl}_{end}"
+                      for lvl in ZONE_LEVELS for end in ("lower", "upper")]
     tshift = [n for n in names if n.startswith("zone_tshift_")]
-    assert tshift == [f"zone_tshift_{lvl}_c{k}"
-                      for lvl in ZONE_LEVELS for k in range(BP)]
-
-
-def test_each_curve_has_four_corners():
-    ref = _zones(_get_cached_defaults())
-    for lvl in ZONE_LEVELS:
-        assert len(_zone_curve_corners(ref[lvl])) == _ZONE_CORNER_COUNT, lvl
+    assert tshift == [f"zone_tshift_{lvl}" for lvl in ZONE_LEVELS]
 
 
 def test_baseline_reproduces_defaults():
-    # The default FFMP curves are piecewise-linear through their 4 corners,
-    # so the breakpoint reconstruction reproduces them exactly at baseline.
+    # All-zero shifts reproduce the default curves exactly.
     base = _zones(dvs_to_config(get_baseline_values("ffmp"), "ffmp"))
     ref = _zones(_get_cached_defaults())
     for lvl in ZONE_LEVELS:
         assert np.allclose(base[lvl], ref[lvl], atol=1e-9), lvl
 
 
-def test_reconstruct_helper_hits_nodes_and_wraps():
-    x = np.array([10.0, 100.0, 200.0, 300.0])
-    y = np.array([0.2, 0.5, 0.4, 0.3])
-    curve = _reconstruct_breakpoint_curve(x, y, 366)
-    assert curve.shape == (366,)
-    for xi, yi in zip(x, y):
-        assert np.isclose(curve[int(xi)], yi)
-    # Linear between nodes: midpoint of [10, 100] equals the value average.
-    assert np.isclose(curve[55], (0.2 + 0.5) / 2, atol=1e-6)
-    # Wrap: day 0 interpolates between the last node (300) and the first (10).
-    frac = (366 - 300) / ((366 - 300) + 10)
-    assert np.isclose(curve[0], 0.3 + frac * (0.2 - 0.3), atol=1e-6)
-    # Node order should not matter.
-    shuffled = _reconstruct_breakpoint_curve(x[::-1], y[::-1], 366)
-    assert np.allclose(curve, shuffled)
-
-
-def test_vertical_offset_is_local_and_additive():
-    """A single breakpoint's additive vertical offset moves only that node
-    (and its two adjacent segments), leaving other curves untouched."""
-    ref = _zones(_get_cached_defaults())["level5"]
-    corners = _zone_curve_corners(ref)
-    cfg = dvs_to_config(_dv(zone_vshift_level5_c1=-0.05), "ffmp")
+def test_lower_plateau_shift_deepens_void_without_lowering_refill():
+    """The signature behavior: lowering the low plateau deepens the void while
+    the high plateau (refill target) is untouched; other curves untouched."""
+    ref = _zones(_get_cached_defaults())
+    cfg = dvs_to_config(_dv(zone_vshift_level5_lower=-0.05), "ffmp")
     zones = _zones(cfg)
-    offset = zones["level5"] - ref
-    # Offset is exactly the DV at its own breakpoint, zero at the others.
-    assert np.isclose(offset[corners[1]], -0.05)
-    for k in (0, 2, 3):
-        assert np.isclose(offset[corners[k]], 0.0, atol=1e-9)
-    # Piecewise-linear offset: second difference vanishes off the corners.
-    n = ref.size
-    interior = np.setdiff1d(
-        np.arange(1, n - 1),
-        np.concatenate([corners, corners - 1, corners + 1]),
-    )
-    # atol tolerant of the ~1e-9 non-PL float noise in the stored curves.
-    assert np.allclose(np.diff(offset, 2)[interior - 1], 0.0, atol=1e-6)
-    # Lowering the deepest curve triggers no clamp on the others.
-    other = _zones(_get_cached_defaults())
+    # level5 is most-severe: lowering keeps it below level4, so no cross-clamp.
+    assert np.allclose(zones["level5"], _affine(ref["level5"], -0.05, 0.0))
+    assert np.isclose(zones["level5"].max(), ref["level5"].max())        # refill held
+    assert np.isclose(zones["level5"].min(), ref["level5"].min() - 0.05)  # void deepened
     for lvl in ["level1b", "level1c", "level2", "level3", "level4"]:
-        assert np.allclose(zones[lvl], other[lvl], atol=1e-9), lvl
+        assert np.allclose(zones[lvl], ref[lvl], atol=1e-9), lvl
 
 
-def test_temporal_shift_moves_only_that_breakpoint():
-    """Shifting one breakpoint's day carries its value to the new position
-    while the other breakpoints stay pinned; other curves are untouched."""
-    ref = _zones(_get_cached_defaults())["level5"]
-    corners = _zone_curve_corners(ref)
+def test_upper_plateau_shift_lowers_refill_without_raising_void():
+    """Lowering the high plateau lowers the refill target while the low plateau
+    (void) is untouched."""
+    ref = _zones(_get_cached_defaults())
+    cfg = dvs_to_config(_dv(zone_vshift_level5_upper=-0.05), "ffmp")
+    zones = _zones(cfg)
+    assert np.allclose(zones["level5"], _affine(ref["level5"], 0.0, -0.05))
+    assert np.isclose(zones["level5"].max(), ref["level5"].max() - 0.05)  # refill lowered
+    assert np.isclose(zones["level5"].min(), ref["level5"].min())         # void held
+
+
+def test_temporal_shift_rolls_whole_curve():
+    ref = _zones(_get_cached_defaults())
     days = 20
-    cfg = dvs_to_config(_dv(zone_tshift_level5_c1=float(days)), "ffmp")
+    cfg = dvs_to_config(_dv(zone_tshift_level5=float(days)), "ffmp")
     zones = _zones(cfg)
-    n = ref.size
-    # The moved breakpoint carries its value to corner+days.
-    assert np.isclose(zones["level5"][(corners[1] + days) % n], ref[corners[1]])
-    # The other breakpoints remain pinned at their original day/value.
-    for k in (0, 2, 3):
-        assert np.isclose(zones["level5"][corners[k]], ref[corners[k]])
-    other = _zones(_get_cached_defaults())
+    expected = np.minimum(
+        np.clip(np.roll(ref["level5"], days), 0.0, 1.0), ref["level4"]
+    )
+    assert np.allclose(zones["level5"], expected)
     for lvl in ["level1b", "level1c", "level2", "level3", "level4"]:
-        assert np.allclose(zones[lvl], other[lvl], atol=1e-9), lvl
+        assert np.allclose(zones[lvl], ref[lvl], atol=1e-9), lvl
 
 
 def test_temporal_shift_rounds_to_whole_days():
-    ref = _zones(_get_cached_defaults())["level5"]
-    corners = _zone_curve_corners(ref)
-    a = _zones(dvs_to_config(_dv(zone_tshift_level5_c0=14.6), "ffmp"))["level5"]
-    b = _zones(dvs_to_config(_dv(zone_tshift_level5_c0=15.0), "ffmp"))["level5"]
+    a = _zones(dvs_to_config(_dv(zone_tshift_level5=14.6), "ffmp"))["level5"]
+    b = _zones(dvs_to_config(_dv(zone_tshift_level5=15.0), "ffmp"))["level5"]
     assert np.allclose(a, b)
 
 
+def test_within_curve_clamp_prevents_void_above_refill():
+    """Raising the void past a lowered refill target flattens the curve at the
+    refill level rather than inverting it."""
+    # level1c: baseline 0.85 -> 1.0. Push void +0.10 (0.95) and refill -0.10
+    # (0.90): the void would exceed the refill, so the curve flattens at 0.90.
+    cfg = dvs_to_config(
+        _dv(zone_vshift_level1c_lower=0.10, zone_vshift_level1c_upper=-0.10),
+        "ffmp",
+    )
+    z = _zones(cfg)["level1c"]
+    assert np.isclose(z.max(), z.min(), atol=1e-9)  # flat
+    assert np.allclose(z, 0.90, atol=1e-9)
+
+
 def test_clamp_enforces_monotonicity_under_extreme_shifts():
-    uppers = {"level1b": 0.025, "level1c": 0.05}
+    lower_cap = {"level1b": 0.025}
+    upper_cap = {"level1b": 0.0, "level1c": 0.0, "level2": 0.0}
     overrides = {}
     for i, lvl in enumerate(ZONE_LEVELS):
-        hi = uppers.get(lvl, 0.10)
-        for k in range(BP):
-            overrides[f"zone_vshift_{lvl}_c{k}"] = hi if i % 2 else -0.10
-            overrides[f"zone_tshift_{lvl}_c{k}"] = -30.0 if i % 2 else 30.0
+        overrides[f"zone_vshift_{lvl}_lower"] = (
+            lower_cap.get(lvl, 0.10) if i % 2 else -0.10)
+        overrides[f"zone_vshift_{lvl}_upper"] = (
+            upper_cap.get(lvl, 0.10) if i % 2 else -0.10)
+        overrides[f"zone_tshift_{lvl}"] = -30.0 if i % 2 else 30.0
     zones = _zones(dvs_to_config(_dv(**overrides), "ffmp"))
     stacked = np.vstack([zones[lvl] for lvl in ZONE_LEVELS])
     assert (np.diff(stacked, axis=0) <= 1e-12).all()
@@ -162,15 +140,16 @@ def test_clamp_enforces_monotonicity_under_extreme_shifts():
 def test_nzone_shifts():
     names = get_var_names("ffmp_8")
     assert [n for n in names if n.startswith("zone_vshift_")] == [
-        f"zone_vshift_zone_{i}_c{k}" for i in range(1, 9) for k in range(BP)
+        f"zone_vshift_zone_{i}_{end}"
+        for i in range(1, 9) for end in ("lower", "upper")
     ]
     assert [n for n in names if n.startswith("zone_tshift_")] == [
-        f"zone_tshift_zone_{i}_c{k}" for i in range(1, 9) for k in range(BP)
+        f"zone_tshift_zone_{i}" for i in range(1, 9)
     ]
-    # Offset the deepest curve (zone_8): lowering it triggers no clamp
-    # cascade onto the less-severe curves, so zone_1 stays untouched.
+    # Deepening the deepest curve's void (zone_8) triggers no clamp cascade
+    # onto the less-severe curves, so zone_1 stays untouched.
     dv = get_baseline_values("ffmp_8").copy()
-    dv[names.index("zone_vshift_zone_8_c0")] = -0.05
+    dv[names.index("zone_vshift_zone_8_lower")] = -0.05
     cfg = dvs_to_config(dv, "ffmp_8")
     from src.simulation import _get_cached_nzone_defaults
     ref = _get_cached_nzone_defaults(8)

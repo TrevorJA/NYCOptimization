@@ -73,7 +73,7 @@ from pywrdrb.flood_thresholds import flood_stage_thresholds
 from config import (
     NYC_RESERVOIRS,
     NYC_TOTAL_CAPACITY,
-    WARMUP_DAYS,
+    METRIC_EXCLUSION_MONTHS,
     NYC_DECREE_DIVERSION_CAP_MGD,
     NJ_DELIVERY_CAP_MGD,
     MONTAGUE_DECREE_TARGET_MGD,
@@ -222,22 +222,33 @@ class ObjectiveSet:
 # operate on identical underlying series.
 #
 # The `_weekly_*` / `_flood_over_*` / `_nyc_storage_pct_daily` cores operate on
-# ALREADY-WINDOWED daily series (no warm-up handling inside): the §1 metrics
-# below apply `_post_warmup` before calling them, and the annual-unit ensemble
+# ALREADY-WINDOWED daily series (no exclusion handling inside): the §1 metrics
+# below apply `_metric_window` before calling them, and the annual-unit ensemble
 # metrics in `src.objectives_ensemble` apply water-year unit slicing instead —
 # guaranteeing the two paths share one weekly-accounting formula.
 
 
-def _post_warmup(obj):
-    """Drop the first WARMUP_DAYS daily steps (model spin-up).
+def _metric_window(obj):
+    """Restrict a daily series to the metric window of its scenario.
+
+    The metric window starts ``METRIC_EXCLUSION_MONTHS`` (6) calendar months
+    after the first timestamp: the SSI-6 accumulation spin-up, which the
+    hazard-selection metrics exclude implicitly, so selection and evaluation
+    score the same effective window. The cut is BY DATE, so leap years need no
+    special case (6 months from Oct 1 is 182 or 183 days).
 
     Args:
         obj: Daily-indexed pandas Series or DataFrame.
 
     Returns:
-        The same type, with the first WARMUP_DAYS rows removed.
+        The same type, with the pre-window rows removed. An empty input is
+        returned unchanged.
     """
-    return obj.iloc[WARMUP_DAYS:]
+    idx = pd.DatetimeIndex(obj.index)
+    if len(idx) == 0:
+        return obj
+    cutoff = idx[0] + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
+    return obj.loc[idx >= cutoff]
 
 
 def _cvar_worst_mean(values, frac: float = _CVAR_TAIL_FRAC) -> float:
@@ -286,8 +297,8 @@ def _running_avg_budget(delivery: pd.Series, cap: float,
 
     Args:
         delivery: Daily delivery series (MGD) over the FULL realization window
-            (the bank is path-dependent, so it must be built before any warm-up
-            or water-year slicing).
+            (the bank is path-dependent, so it must be built before any metric-
+            window or water-year slicing).
         cap: Static running-average allowance (MGD); the daily accrual rate.
         reset: Budget-period reset — ``"annual"`` (NYC: the model resets on
             May 31, so the allowance is ``cap`` again on Jun 1) or ``"monthly"``
@@ -372,14 +383,14 @@ def _weekly_delivery_deficit_pct(target: pd.Series, delivery: pd.Series,
 
 
 def _nyc_weekly_delivery_deficit_pct(data: dict) -> pd.Series:
-    """Post-warmup weekly NYC delivery deficit, as % of the 800 MGD Decree cap."""
+    """Post-exclusion weekly NYC delivery deficit, as % of the 800 MGD Decree cap."""
     delivery = data["ibt_diversions"]["delivery_nyc"]
     target = _delivery_entitlement(
         data["ibt_demands"]["demand_nyc"], delivery,
         NYC_DECREE_DIVERSION_CAP_MGD, reset="annual",
     )
     return _weekly_delivery_deficit_pct(
-        _post_warmup(target), _post_warmup(delivery),
+        _metric_window(target), _metric_window(delivery),
         NYC_DECREE_DIVERSION_CAP_MGD,
     )
 
@@ -401,8 +412,8 @@ def _weekly_flow_ok(flow: pd.Series, target: float) -> pd.Series:
 
 
 def _flow_reliability_weekly(flow: pd.Series, target: float) -> float:
-    """Fraction of post-warmup weeks weekly-mean flow meets a Decree target."""
-    ok = _weekly_flow_ok(_post_warmup(flow), target)
+    """Fraction of metric-window weeks weekly-mean flow meets a Decree target."""
+    ok = _weekly_flow_ok(_metric_window(flow), target)
     total = len(ok)
     if total == 0:
         return 0.0
@@ -424,14 +435,14 @@ def _weekly_delivery_ok(target: pd.Series, delivery: pd.Series) -> pd.Series:
 
 def _delivery_reliability_weekly(demand: pd.Series, delivery: pd.Series,
                                  cap: float, reset: str = "annual") -> float:
-    """Fraction of post-warmup weeks weekly delivery >= 99% of the entitlement.
+    """Fraction of metric-window weeks weekly delivery >= 99% of the entitlement.
 
     The entitlement is the running-average Decree right
-    (:func:`_delivery_entitlement`), reconstructed on the full series before
-    warm-up is dropped so the allowance bank carries the correct initial state.
+    (:func:`_delivery_entitlement`), reconstructed on the FULL series before the
+    metric window is taken, so the allowance bank carries the correct state.
     """
     target = _delivery_entitlement(demand, delivery, cap, reset)
-    ok = _weekly_delivery_ok(_post_warmup(target), _post_warmup(delivery))
+    ok = _weekly_delivery_ok(_metric_window(target), _metric_window(delivery))
     total = len(ok)
     if total == 0:
         return 0.0
@@ -452,8 +463,8 @@ def _flood_over_stage_daily(stage: pd.DataFrame, level: str) -> pd.Series:
 
 
 def _flood_days_anygauge(data: dict, level: str) -> float:
-    """Count of post-warmup days any tail gauge is at/above the named NWS stage."""
-    stage = _post_warmup(data["flood_stage"][_DOWNSTREAM_GAUGES])
+    """Count of metric-window days any tail gauge is at/above the named NWS stage."""
+    stage = _metric_window(data["flood_stage"][_DOWNSTREAM_GAUGES])
     return float(_flood_over_stage_daily(stage, level).sum())
 
 
@@ -464,8 +475,8 @@ def _nyc_storage_pct_daily(data: dict) -> pd.Series:
 
 
 def _nyc_combined_storage_pct(data: dict) -> pd.Series:
-    """Post-warmup daily combined NYC storage as % of total system capacity."""
-    return _post_warmup(_nyc_storage_pct_daily(data))
+    """Metric-window daily combined NYC storage as % of total system capacity."""
+    return _metric_window(_nyc_storage_pct_daily(data))
 
 
 ###############################################################################
@@ -538,7 +549,7 @@ def _montague_flow_deficit_cvar90_pct(data: dict) -> float:
     """
     return _cvar_worst_mean(
         _weekly_flow_deficit_pct(
-            _post_warmup(data["major_flow"]["delMontague"]),
+            _metric_window(data["major_flow"]["delMontague"]),
             MONTAGUE_DECREE_TARGET_MGD,
         ).values
     )
@@ -547,7 +558,7 @@ def _montague_flow_deficit_cvar90_pct(data: dict) -> float:
 def _montague_flow_deficit_max_pct(data: dict) -> float:
     """DIAGNOSTIC: worst single-week Montague flow deficit, % of Decree target. [0, 100]."""
     s = _weekly_flow_deficit_pct(
-        _post_warmup(data["major_flow"]["delMontague"]), MONTAGUE_DECREE_TARGET_MGD,
+        _metric_window(data["major_flow"]["delMontague"]), MONTAGUE_DECREE_TARGET_MGD,
     )
     return float(s.max()) if len(s) > 0 else 0.0
 
@@ -570,7 +581,7 @@ def _trenton_flow_deficit_cvar90_pct(data: dict) -> float:
     """DIAGNOSTIC: CVaR90 of weekly Trenton flow deficit, % of Decree target. [0, 100]."""
     return _cvar_worst_mean(
         _weekly_flow_deficit_pct(
-            _post_warmup(data["major_flow"]["delTrenton"]),
+            _metric_window(data["major_flow"]["delTrenton"]),
             TRENTON_DECREE_TARGET_MGD,
         ).values
     )
@@ -640,7 +651,7 @@ def _salt_front_intrusion_max_rm(data: dict) -> float:
     sf = data["salinity"].get("salt_front_location_mu")
     if sf is None:
         return float("nan")
-    sf = sf.iloc[WARMUP_DAYS:].dropna()
+    sf = _metric_window(sf).dropna()
     if sf.empty:
         return float("nan")
     return float(sf.max())
@@ -665,7 +676,7 @@ def _lordville_temp_exceedance_days(data: dict) -> float:
     temp = data["temperature"].get("temperature_after_thermal_release_mu")
     if temp is None:
         return float("nan")
-    temp = temp.iloc[WARMUP_DAYS:].dropna()
+    temp = _metric_window(temp).dropna()
     return float((temp > LORDVILLE_THERMAL_THRESHOLD_C).sum())
 
 

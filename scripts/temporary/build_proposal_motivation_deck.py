@@ -880,7 +880,7 @@ add_body(s, [
 # =====================================================================
 s = add_slide(notes=(
     "The budget control is a CONSEQUENCE of the sizing choice, not something imposed. Because N and "
-    "L are common to every matched design, per-evaluation cost, warm-up, scenario-years and "
+    "L are common to every matched design, per-evaluation cost, scenario-years and "
     "wall-clock are identical, so equal-NFE and equal-scenario-years coincide: ONE budget "
     "condition, no arms, no composition-vs-search-effort confound. A common (N, L) is REQUIRED, not "
     "convenient: with different L the selection rule would be confounded with record length. N is "
@@ -891,7 +891,7 @@ s = add_slide(notes=(
 add_title(s, "Controls for a fair comparison")
 claim(s, "N = 100 and L = 10 yr for every matched design → 1,000 scenario-years per evaluation, at equal NFE.")
 add_body(s, [
-    ("b", "because N and L are common, per-evaluation cost, warm-up, scenario-years and wall-clock are **identical** — equal-NFE and equal-scenario-years **coincide**. One budget condition, no arms, no confound between composition and search effort"),
+    ("b", "because N and L are common, per-evaluation cost, scenario-years and wall-clock are **identical** — equal-NFE and equal-scenario-years **coincide**. One budget condition, no arms, no confound between composition and search effort"),
     ("b", "the common (N, L) is **required, not convenient**: if L differed across designs, the selection rule would be confounded with record length"),
     ("b", "N is bounded below by the **fill requirement** — at m = 4 hazard axes, N = 100 gives ~3.2 points per dimension (~4.6 at m = 3), the smallest defensible fill. This is why long records are not viable: at a fixed per-evaluation budget L = 50 forces N ≈ 20, and space-filling in 4-D with 20 points is noise"),
     ("b", "**NFE = 500,000 per search is a target** (revisable once initial searches reveal convergence; the runtime archive keeps intermediate NFE so a lower budget can be justified after the fact)"),
@@ -1108,7 +1108,7 @@ add_body(s, [
     ("f", "P₉₉ / P₀₁(units) = worst / 1st-percentile unit-year"),
 ], top=1.5, size=20, space_after=8)
 add_body(s, [
-    ("b", "flows / demands in MGD; storage in MG; first 365 days (warm-up) dropped"),
+    ("b", "flows / demands in MGD; storage in MG; first 6 months of each window dropped"),
     ("b", "Decree goalposts: NYC 800 MGD; Montague 1,131.05 MGD (1,750 cfs); Trenton 1,938.95 MGD; NYC capacity 270,837 MG"),
     ("b", "every objective is two-layer — an annual metric per unit-year, then a unit operator over the pooled unit-years. The SAME function for every design (historic = 1 record × 76 unit-years; ensembles = N × (L−1)), so only the scenario set varies"),
 ], top=3.9, size=19)

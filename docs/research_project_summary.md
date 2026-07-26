@@ -11,7 +11,7 @@ is the record of what exists and the note is a proposal.*
 ## The study in one paragraph
 
 We re-optimize the operating rules of the four NYC reservoirs in the Delaware River
-Basin (the FFMP rule structure, 69 decision variables) with the multi-master Borg MOEA
+Basin (the FFMP rule structure, 39 decision variables) with the multi-master Borg MOEA
 coupled to the Pywr-DRB simulation model. The methodological contribution is not the
 re-optimization itself but a controlled test of how the streamflow scenario ensemble
 used to evaluate candidate policies *during search* is constructed. The proposed design
@@ -47,7 +47,7 @@ historic record, no climate perturbation). Registry: `src/scenario_designs.py`.
 |---|---|---|
 | `historic` | The observed record, one continuous ~77-yr trace | Prevailing-practice reference (Giuliani 2016; Herman 2020); unmatched, K = 1 |
 | `fixed_probabilistic` | N × L realizations drawn i.i.d. from the stationary generator; frozen across the search | The random-sampling control (Quinn 2017; Zatarain Salazar 2017) |
-| `hazard_filling` | LHS anchors in absolute, range-scaled hazard space, snapped to the nearest member of its own i.i.d. candidate pool | **Proposed method** |
+| `hazard_filling` | LHS anchors in absolute, robust range-scaled hazard space (p1/p99 bounds), snapped to the nearest member of its own i.i.d. candidate pool | **Proposed method** |
 
 **The controlled contrast.** `fixed_probabilistic` → `hazard_filling` holds the
 generator, population law, N, and L fixed and varies *only the selection rule*: does
@@ -59,7 +59,9 @@ random selection) raised to hazard space, on a real system, with a replication s
 that separates ensemble-construction variance from search variance.
 
 **Why absolute hazard space.** The selector fills the hazard space in absolute,
-range-scaled magnitude units rather than empirical-CDF/rank units. Because the hazard
+robust range-scaled magnitude units (per-axis p1/p99 bounds; sample extremes are
+non-convergent order statistics, so full-range bounds would tie the geometry to the
+pool size and its outliers) rather than empirical-CDF/rank units. Because the hazard
 marginals of a stochastic generator are strongly right-skewed, filling the range
 uniformly draws selected members from the sparse severe corners far more often than
 their pool frequency, so severe drought and flood conditions are over-represented in the
@@ -82,8 +84,8 @@ probability-preserving flow stratification).
    deterministically on demand (chunked storage for large pools).
 2. **Hazard metrics + screening** — drought/low-flow/high-flow indices per sequence; a
    redundancy screen selects 3–4 low-collinearity axes.
-3. **Selection (hazard filling only)** — Latin hypercube anchors in absolute, range-scaled
-   hazard space, snapped to the nearest unused pool member. The snap is intrinsic: hazard
+3. **Selection (hazard filling only)** — Latin hypercube anchors in absolute, robust
+   range-scaled hazard space, snapped to the nearest unused pool member. The snap is intrinsic: hazard
    coordinates are emergent properties of a realized sequence, so a hazard-space design
    must *select from* a pool, whereas an i.i.d. design *generates* directly.
 4. **Search** — MM Borg over FFMP decision variables; objectives evaluated on the
@@ -109,7 +111,7 @@ sensitivity experiments.
 ## Comparison controls
 
 - **Budget**: both matched designs run at N = 100, L = 10 yr — 1,000 scenario-years per
-  evaluation — at equal NFE, so per-evaluation cost, warm-up, scenario-years, and
+  evaluation — at equal NFE, so per-evaluation cost, scenario-years, and
   wall-clock are identical and equal-NFE coincides with equal-scenario-years. The common
   (N, L) is required: if L differed, the selection rule would be confounded with record
   length.

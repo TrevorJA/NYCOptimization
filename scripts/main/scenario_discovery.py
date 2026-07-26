@@ -781,6 +781,11 @@ def _historic_hazard_points(n_years: int) -> dict:
     contains, so the record is imaged as its water-year-aligned rolling windows
     (1-year step; windows truncated to a common length so the POT/SSI operators
     see rectangular input). This is a modeling choice and is reported as one.
+
+    Each window's daily series is cut by date at
+    ``config.METRIC_EXCLUSION_MONTHS``, so the wet axes score the same metric
+    window the objectives do; the monthly series keeps its full length as the
+    SSI accumulation input.
     """
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import (
@@ -801,8 +806,13 @@ def _historic_hazard_points(n_years: int) -> dict:
     if not windows:
         return {}
     n_days = min(len(w) for w in windows)
-    daily = np.vstack([w.to_numpy(dtype=float)[:n_days] for w in windows])
     monthly = np.vstack([daily_to_monthly(w.iloc[:n_days], agg="mean") for w in windows])
+    cuts = [
+        int((w.index < w.index[0] + pd.DateOffset(months=config.METRIC_EXCLUSION_MONTHS)).sum())
+        for w in windows
+    ]
+    n_wet = min(n_days - c for c in cuts)
+    daily = np.vstack([w.to_numpy(dtype=float)[c:c + n_wet] for w, c in zip(windows, cuts)])
     ref_daily = agg.to_numpy(dtype=float)
     H, axes = compute_candidate_hazard_image(
         monthly, daily, daily_to_monthly(agg, agg="mean"), ref_daily,

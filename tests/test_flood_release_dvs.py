@@ -51,13 +51,13 @@ def _factor_row(cfg, level, res):
 
 def test_dv_registry():
     names = get_var_names("ffmp")
-    assert get_n_vars("ffmp") == 69
+    assert get_n_vars("ffmp") == 39
     expected = [
         f"flood_release_scale_{zone}_{res}"
         for zone in ("l1a", "l1b")
         for res in RESERVOIRS
     ]
-    start = names.index("zone_tshift_level5_c3") + 1
+    start = names.index("zone_tshift_level5") + 1
     assert names[start:start + 6] == expected
     assert names[start + 6] == "mrf_profile_scale_winter"
     assert not any("flood_max" in n for n in names)
@@ -82,16 +82,20 @@ def test_recommended_bounds():
         assert dvs[f"flood_release_scale_l1b_{res}"]["bounds"] == [0.5, 2.0]
     for season in SEASONS:
         assert dvs[f"mrf_profile_scale_{season}"]["bounds"] == [0.8, 2.6]
-    # Per-breakpoint vertical offsets: per-curve upper caps applied to every
-    # breakpoint; temporal shifts +/- 30 days per breakpoint.
-    for k in range(4):
-        assert dvs[f"zone_vshift_level1b_c{k}"]["bounds"] == [-0.10, 0.025]
-        assert dvs[f"zone_vshift_level1c_c{k}"]["bounds"] == [-0.10, 0.05]
-        assert dvs[f"zone_vshift_level5_c{k}"]["bounds"] == [-0.10, 0.10]
-        assert dvs[f"zone_tshift_level5_c{k}"]["bounds"] == [-30.0, 30.0]
+    # Two vertical (per-plateau) offsets + one temporal shift per curve.
+    # HIGH-plateau up-cap is 0.0 for the curves that refill to full capacity
+    # (level1b/1c/2); level1b's LOW-plateau up-cap is 0.025 (0.975 baseline).
+    assert dvs["zone_vshift_level1b_lower"]["bounds"] == [-0.10, 0.025]
+    assert dvs["zone_vshift_level1b_upper"]["bounds"] == [-0.10, 0.0]
+    assert dvs["zone_vshift_level1c_lower"]["bounds"] == [-0.10, 0.10]
+    assert dvs["zone_vshift_level1c_upper"]["bounds"] == [-0.10, 0.0]
+    assert dvs["zone_vshift_level2_upper"]["bounds"] == [-0.10, 0.0]
+    assert dvs["zone_vshift_level5_lower"]["bounds"] == [-0.10, 0.10]
+    assert dvs["zone_vshift_level5_upper"]["bounds"] == [-0.10, 0.10]
+    assert dvs["zone_tshift_level5"]["bounds"] == [-30.0, 30.0]
     assert dvs["nj_drought_factor_L4"]["bounds"] == [0.80, 1.0]
     assert dvs["nj_drought_factor_L5"]["bounds"] == [0.65, 1.0]
-    assert dvs["mrf_target_scale_montague_level3"]["bounds"] == [0.5, 1.15]
+    assert dvs["mrf_target_scale_montague_level3"]["bounds"] == [0.65, 1.15]
 
 
 def test_delivery_factor_monotonicity_clamp():
