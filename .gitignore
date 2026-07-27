@@ -16,17 +16,8 @@ outputs/figures/
 outputs/run_manifests/
 outputs/supplemental/*/*.png
 outputs/synthetic_ensembles/
-
-# Slug-aware figure tree (regenerable PNGs; .py scripts at the figures/
-# root are tracked).
-figures/convergence/
-figures/pareto/
-figures/parallel_coords/
-figures/policy_inspection/
-figures/robustness/
-figures/_exploratory/
-figures/*
-!figures/README.md
+# Slug-aware figure tree (regenerable PNGs) now lives under outputs/figures/,
+# covered by the outputs/figures/ entry above.
 
 # Borg MOEA (licensed, not distributed)
 lib/borg/
