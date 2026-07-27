@@ -56,7 +56,7 @@ uses neither).
 | Set | Construction | Role |
 |---|---|---|
 | **Arm P** — fixed probabilistic | uniform random index-draw of N from the master | benign-composition saturation + convergence |
-| **Arm H** — hazard-filled | space-filling selection of N in hazard space from the same master (`scripts/main/subsample_hazard_filling.py`, scengen selector) | stress-enriched composition saturation + convergence |
+| **Arm H** — hazard-filled | space-filling selection of N in hazard space from the same master (`scripts/main/select_hazard_filling.py`, scengen selector) | stress-enriched composition saturation + convergence |
 | **Long set** — few long records | N′ records of L′ = 50 yr (L′ unresolved, 25–50) | D2(a): realization- vs block- vs pooled-year satisficing |
 
 **Provisional sizes** (TODO — final numbers await the Anvil scaling results;

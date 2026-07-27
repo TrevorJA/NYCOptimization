@@ -42,7 +42,20 @@ Per (rule, seed), on the screened pool sub-image (`selection_metrics`):
 3. **Sub-pool draw stability**: the pool is randomly partitioned into disjoint halves — independent i.i.d. pools, since the pool is i.i.d. — and block 1 re-runs per half. Between-half spread is a zero-generation-cost stand-in for pool-re-roll (construction) variance, and doubles as the ensemble-stability-across-generation-seeds SI diagnostic.
 4. **Figures** (SI): F1 selected members on the (dry, wet) magnitude plane per rule; F2 coverage vs the random null in both geometries; F3 tail enrichment + atom treatment; F4 snap distances + minimum separation; F5 the bounds sweep.
 
-## 5. Sizing
+## 5. Findings at laptop scale (P = 2,000, L = 10, N = 100; 10 seeds + 50-seed null)
+
+Results in `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n2000_d0/`.
+
+- **Campaign selector confirmed (`lhs_nn`).** Best coverage of the campaign geometry (L2-star 0.035 vs 0.292 random) and strongest tail enrichment (mean share above pool P90 = 0.355 vs the 0.10 of an unbiased rule — the intended ~3.5× shift). `lhs_assign` is statistically indistinguishable from it on every metric, so the greedy snap's order-dependence is immaterial at campaign (N, P). No near-duplicate pathology (minimum separation 0.064 vs 0.030 random).
+- **Robust bounds confirmed (p1/p99).** Full-range (0, 100) bounds degrade realized coverage ~3× for every selector (`lhs_nn` L2-star 0.049 → 0.139 between (0.5, 99.5) and (0, 100)) — the measured outlier-fixation failure mode — while tail enrichment moves smoothly across (2, 98)–(0.5, 99.5) with no sensitivity cliff at the campaign default.
+- **No dry zero-event atom.** Only 0.7% of 10-yr stationary windows lack an SSI-6 ≤ −1 event; no two-part selection is needed.
+- **Screen outcome**: m = 4 — `drought_deficit_volume`, `drought_onset_rate`, `flood_peak_magnitude`, `flood_pulse_duration`.
+- **Alternatives characterized.** `eps_cell` is more seed-stable (across-seed Jaccard 0.56 vs 0.32) with a one-per-cell separation guarantee; `maximin` concentrates on the hull and over-selects the sparse zero-event corner. Caveat for reading the tables: box-based L2-star structurally favors anchor/box-filling rules over manifold-support-filling rules, so F1 (the selection scatter) is the fair visual comparison.
+- **Sub-pool stability**: between-half dispersion of tail share and coverage is comparable across all designed rules (the seed/construction-stability SI evidence).
+
+The production-pool rerun (same driver, production `hazard_image.npz`) produces the final SI figures.
+
+## 6. Sizing
 
 | Scale | Pool | Use |
 |---|---|---|
