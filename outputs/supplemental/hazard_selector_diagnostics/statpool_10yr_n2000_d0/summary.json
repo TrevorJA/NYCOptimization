@@ -1,0 +1,141 @@
+{
+  "pool_slug": "statpool_10yr_n2000_d0",
+  "P": 2000,
+  "n_select": 100,
+  "seeds": 10,
+  "null_seeds": 50,
+  "screened_axes": [
+    "drought_deficit_volume",
+    "drought_onset_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration"
+  ],
+  "clusters": [
+    [
+      "flood_peak_magnitude"
+    ],
+    [
+      "flood_rise_rate"
+    ],
+    [
+      "flood_pulse_duration"
+    ],
+    [
+      "drought_deficit_volume",
+      "drought_duration"
+    ],
+    [
+      "drought_peak_depth"
+    ],
+    [
+      "drought_onset_rate"
+    ],
+    [
+      "drought_recovery_rate"
+    ]
+  ],
+  "zero_event_share_pool": 0.007,
+  "jaccard_across_seeds": {
+    "lhs_nn": 0.32300619081602355,
+    "lhs_assign": 0.3160607093393155,
+    "maximin": 1.0,
+    "eps_cell": 0.5601286670405045,
+    "random": 0.025654318454280782
+  },
+  "eps_cell": {
+    "grid_resolution": 4,
+    "n_occupied_cells": 140
+  },
+  "selector_means_at_campaign_bounds": {
+    "random": {
+      "seed": 24.5,
+      "n": 100.0,
+      "lo_pct": 1.0,
+      "hi_pct": 99.0,
+      "L2_star_abs": 0.2920128984335936,
+      "L2_star_cdf": 0.024627681732709045,
+      "nn_min_abs": 0.030263856458360695,
+      "nn_cv_abs": 0.5952430729427011,
+      "tail_share_p90": 0.10100000000000002,
+      "corner_share_p90": 0.347,
+      "ks_mean_vs_pool": 0.077965,
+      "mst_edge_mean": 0.15211863781667517,
+      "mst_edge_min": 0.030263856458360695,
+      "mst_edge_cv": 0.5444173933138676,
+      "zero_event_share_selected": 0.0062,
+      "zero_event_share_pool": 0.007000000000000001
+    },
+    "lhs_nn": {
+      "seed": 4.5,
+      "n": 100.0,
+      "lo_pct": 1.0,
+      "hi_pct": 99.0,
+      "L2_star_abs": 0.034726191387777584,
+      "L2_star_cdf": 0.10111928491857924,
+      "nn_min_abs": 0.0638674036492173,
+      "nn_cv_abs": 0.3865872353055759,
+      "tail_share_p90": 0.35450000000000004,
+      "corner_share_p90": 0.906,
+      "ks_mean_vs_pool": 0.3279625,
+      "mst_edge_mean": 0.20843372025610774,
+      "mst_edge_min": 0.0638674036492173,
+      "mst_edge_cv": 0.33357073497330847,
+      "zero_event_share_selected": 0.001,
+      "zero_event_share_pool": 0.007000000000000001
+    },
+    "lhs_assign": {
+      "seed": 4.5,
+      "n": 100.0,
+      "lo_pct": 1.0,
+      "hi_pct": 99.0,
+      "L2_star_abs": 0.03706887533452378,
+      "L2_star_cdf": 0.1010739648947961,
+      "nn_min_abs": 0.06349659731220414,
+      "nn_cv_abs": 0.3835416370954902,
+      "tail_share_p90": 0.35075000000000006,
+      "corner_share_p90": 0.9000000000000001,
+      "ks_mean_vs_pool": 0.3266875,
+      "mst_edge_mean": 0.2095876823427055,
+      "mst_edge_min": 0.06349659731220414,
+      "mst_edge_cv": 0.3302241376380921,
+      "zero_event_share_selected": 0.001,
+      "zero_event_share_pool": 0.007000000000000001
+    },
+    "maximin": {
+      "seed": 4.5,
+      "n": 100.0,
+      "lo_pct": 1.0,
+      "hi_pct": 99.0,
+      "L2_star_abs": 0.07977652388166535,
+      "L2_star_cdf": 0.08206111453898246,
+      "nn_min_abs": 0.24841133461681458,
+      "nn_cv_abs": 0.11518947971685503,
+      "tail_share_p90": 0.29000000000000004,
+      "corner_share_p90": 0.79,
+      "ks_mean_vs_pool": 0.24225,
+      "mst_edge_mean": 0.2848045091823014,
+      "mst_edge_min": 0.24841133461681458,
+      "mst_edge_cv": 0.11036286033533198,
+      "zero_event_share_selected": 0.019999999999999997,
+      "zero_event_share_pool": 0.007000000000000001
+    },
+    "eps_cell": {
+      "seed": 4.5,
+      "n": 100.0,
+      "lo_pct": 1.0,
+      "hi_pct": 99.0,
+      "L2_star_abs": 0.07387207346903392,
+      "L2_star_cdf": 0.09437935285754494,
+      "nn_min_abs": 0.09890279696629992,
+      "nn_cv_abs": 0.25965071531372025,
+      "tail_share_p90": 0.30050000000000004,
+      "corner_share_p90": 0.842,
+      "ks_mean_vs_pool": 0.28165000000000007,
+      "mst_edge_mean": 0.22662878820019605,
+      "mst_edge_min": 0.09890279696629992,
+      "mst_edge_cv": 0.23545281239918853,
+      "zero_event_share_selected": 0.0,
+      "zero_event_share_pool": 0.007000000000000001
+    }
+  }
+}
