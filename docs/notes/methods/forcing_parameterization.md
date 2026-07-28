@@ -33,8 +33,10 @@ CMIP6 ensemble-mean change profile (`canonical_phases`) — and only the **ampli
 (the Quinn et al. 2018 structure: hold baseline phases fixed, perturb amplitudes):
 
 ```
-ln a(t) = m  +  r₁·cos(ω(t − τ₁*))  +  r₂·cos(2ω(t − τ₂*))      # τ₁*, τ₂* FIXED (canonical)
-ln v(t) = m_v +  r_v·cos(ω(t − τ₁*))                            # independent CV (variance) axis
+ln a(t) = m   +  r₁·cos(ω(t − τ₁*))      +  r₂·cos(2ω(t − τ₂*))       # τ₁*, τ₂* FIXED (canonical)
+ln v(t) = m_v +  r_v1·cos(ω(t − τ₁ᵥ*))   +  r_v2·cos(2ω(t − τ₂ᵥ*))    # optional CV axis (same order-2
+                                                                      #  machinery, phases canonical
+                                                                      #  to the CV envelope)
 ```
 
 Sampled (magnitude) parameters — CMIP6-fitted ranges, [p5, p50, p95] across the 54 future runs:
@@ -52,7 +54,9 @@ the phases independently *scrambles* the seasonal shape (only ~39% of independen
 peak in winter, vs ~96% of CMIP6). Fixing them at the canonical shape makes **every** profile peak in
 the correct month with the correct rise/shoulder asymmetry, scaled (100% peak in winter; ~½ the
 median-profile shape error — see "Improving shape fidelity" below). Net: **3 magnitude axes** (`m, r₁,
-r₂`) + ≤2 variance axes — *fewer* parameters than the all-free form, with strictly better shape fidelity.
+r₂`) + 3 optional CV axes (`m_v, r_{v,1}, r_{v,2}`, the same order-2 machinery on the CV envelope;
+off for the campaign — see "Variance axis" below) — *fewer* parameters than the all-free form, with
+strictly better shape fidelity.
 
 **Why this parameterization.** It is interpretable (every axis is a named hydrologic quantity),
 low-dimensional, and a faithful description of the CMIP6 change: a 2-harmonic fit explains a **median
@@ -106,9 +110,20 @@ load-bearing free axis. A deliberate earlier-melt ±1-month perturbation (Stewar
 al. 2020; 1 month = 30°) — a *single shared* phase-shift on both harmonics — belongs in a separately
 labeled supplementary sensitivity, not the primary design.
 
-**Variance axis.** `v_j` is derived from the CMIP6 monthly-std change (`derive_variance_envelope`,
-sibling-matched CV change) and sampled with the same harmonic-hypercube machinery; `c = a·v` decouples
-the real-space mean and SD effects through the Kirsch transform.
+**Variance axis — OFF for the campaign (decided 2026-07-28).** `v_j` is derived from the CMIP6
+monthly-std change (`derive_variance_envelope`, sibling-matched CV change) and sampled with the same
+harmonic-hypercube machinery; `c = a·v` decouples the real-space mean and SD effects through the
+Kirsch transform, and `variance_axis=False` is exactly the `v = 1` (CV-preserving, `c = a`) slice.
+The injection is verified end-to-end: the generated log-space monthly SD matches the eqs. 10–11
+target at machine precision (the realized *real-space* CV tracks `v_j` only approximately, because
+the normal-score transform departs from exact lognormality — largest in the winter boundary months).
+The campaign runs with the axis **off** (3-D box `[m, r₁, r₂]`): the paired hazard-footprint
+diagnostic (`scripts/supplemental/diagnose_cv_axis_footprint.py`, N=48 paired realizations over the
+E_test box) measured that adding the CV axis does not widen tail stress — the dry-axis spans are
+essentially unchanged (0.88–1.20×) and all three flood-axis spans *contract* (0.72–0.83×, p95 down
+~0.2 control-spans), because the CMIP6 envelope reduces CV in the winter/spring flood season. Three
+extra DU dimensions would therefore dilute LHS stratification without adding stress coverage. The
+axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitivity.
 
 ## Validation and limitations
 
@@ -119,8 +134,9 @@ the real-space mean and SD effects through the Kirsch transform.
   is under-covered, add the 3rd harmonic (shape-R² → 0.93) or a bounded per-month residual.
 - **Scope.** The forcing perturbs only the monthly mean/CV of the Kirsch marginals; it does not perturb
   interannual **persistence** (which dominates multi-year drought) or **daily-extreme** structure (Nowak
-  tail → flood metrics). These are the higher-leverage forcing enrichments and are deferred (see the
-  input-vs-hazard diagnostic note).
+  tail → flood metrics). A candidate persistence axis (latent-annual-state tilted bootstrap, CMIP6
+  ρ₁-anchored) is prototyped and measured in `persistence_axis_diagnostics.md`; daily-extreme
+  enrichment remains deferred (see the input-vs-hazard diagnostic note).
 
 ## Implementation (`scengen.forcing_space`)
 

@@ -9,7 +9,8 @@ control.
 Construction (and why it is not what a search ensemble is)
 ---------------------------------------------------------
 * **LHS over the FULL range of the deeply-uncertain factors** — the intrinsic harmonic forcing
-  coordinates ``[m, r1, r2]`` (+3 CV axes when the variance axis is on). The envelope is
+  coordinates ``[m, r1, r2]`` (the CV axis is off for the campaign; +3 ``cv_*`` axes when it is
+  enabled as a sensitivity). The envelope is
   deliberately WIDER than the search-side forcing box (:data:`E_TEST_BOUND_PCT` /
   :data:`E_TEST_MARGIN` vs ``config.ENSEMBLE_FORCING_BOUND_PCT`` / ``..._MARGIN``), so E_test is
   not a subset of the space any design searched in. A measuring stick contained in the search box

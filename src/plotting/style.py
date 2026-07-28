@@ -86,12 +86,12 @@ OBJECTIVE_LABELS: dict[str, str] = {
     "trenton_flow_reliability_weekly":  "Trenton Flow Reliability (weekly)",
     "trenton_flow_reliability_annual":  "Trenton Flow Reliability (annual)",
     "trenton_flow_deficit_cvar90_pct":  "Trenton Flow Deficit (weekly CVaR90, %)",
-    # Downstream flooding: count of days over the NWS minor-flood stage
-    "downstream_flood_days_minor":      "Flood Days (NWS minor, whole record)",
+    # Downstream flooding: days over the NWS minor-flood stage (days/yr)
+    "downstream_flood_days_minor":      "Flood Days (NWS minor, days/yr)",
     "downstream_flood_days_annual":     "Flood Days (NWS minor, annual mean)",
     "downstream_flood_days_annual_p99": "Flood Days (NWS minor, annual P99)",
-    "downstream_flood_days_action":     "Flood Days (NWS action, whole record)",
-    "downstream_flood_days_major":      "Flood Days (NWS major, whole record)",
+    "downstream_flood_days_action":     "Flood Days (NWS action, days/yr)",
+    "downstream_flood_days_major":      "Flood Days (NWS major, days/yr)",
     # NYC storage: low-percentile storage (vulnerability proxy)
     "nyc_storage_p5_pct":               "NYC Storage (daily 5th pctile, %)",
     "nyc_storage_min_p01_pct":          "NYC Storage (annual-min 1st pctile, %)",
@@ -120,7 +120,7 @@ OBJ_AXIS_LABELS: dict[str, str] = {
     "montague_flow_deficit_p99_pct":     "Montague Flow Deficit\nannual CVaR90 %\n(min)",
     "trenton_flow_reliability_weekly":   "Trenton Flow\nReliability (weekly)\n(max)",
     "trenton_flow_reliability_annual":   "Trenton Flow\nReliability (annual)\n(max)",
-    "downstream_flood_days_minor":       "Flood Days\nNWS minor, whole record\n(min)",
+    "downstream_flood_days_minor":       "Flood Days\nNWS minor, days/yr\n(min)",
     "downstream_flood_days_annual":      "Flood Days\nNWS minor, annual mean\n(min)",
     "nyc_storage_p5_pct":                "NYC Storage\ndaily 5th pctile %\n(max)",
     "nyc_storage_min_p01_pct":           "NYC Storage\nannual-min 1st pctile %\n(max)",

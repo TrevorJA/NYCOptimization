@@ -44,7 +44,10 @@ screened under both compositions before the campaign. Gating outputs:
 
 Secondary (SI diagnostics, not gating): operator-agreement panel (robustness
 check of the decided choice, below), Spearman redundancy screen, θ-multiplier
-sensitivity.
+sensitivity. Further framing-convention diagnostics (k sweep on the shipped
+defaults, weekly satisfaction factor, criterion OAT tightening, flood-days
+controllability) reuse this experiment's stored matrix and are specified in
+`framing_convention_diagnostics.md`.
 
 ## Ensembles: two arms + long-record set
 
@@ -119,8 +122,10 @@ Unit-to-realization mapping and the metric window:
 ## Failure-criterion saturation screen (frequency objectives)
 
 1. **Candidates.** For each frequency objective (#1/3/5/8), a small grid of
-   annual failure definitions: ≥k failing weeks per unit-year, k ∈ {1, 2, 4}
-   (k = 1 is the Zeff/Gold any-failure form and the default), against the fixed
+   annual failure definitions: ≥k failing weeks per unit-year, k ∈ {1, 2, 3, 4}
+   (k = 1 is the Zeff/Gold any-failure form; the shipped defaults are k = 3 for
+   NYC delivery and Montague and k = 1 for Trenton and NJ,
+   `objectives_ensemble.py::_DEFAULT_FAILURE_K`), against the fixed
    Decree goalposts (§0 of `objective_definitions.md` — the goalposts themselves
    are not tuned).
 2. **Screen.** For each objective × arm × candidate k: compute every DV's

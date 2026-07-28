@@ -38,17 +38,19 @@ scoring is in `src/robustness.py`.
   cut by date, never by a fixed day count. Six months is the SSI-6 accumulation
   requirement, so the hazard-selection metrics exclude the same interval and
   selection and evaluation score the identical window.
-- `resample("W")` = weekly resampling: reliability resamples by **sum**;
-  flow/deficit metrics by **mean** (the weekly-accounting basis of the Decree).
+- `resample("W")` = weekly resampling: the delivery metrics resample by **sum**
+  (weekly volumes of delivery and entitlement); the flow metrics resample by
+  **mean** (the weekly-accounting basis of the Decree).
 - **CVaR₉₀(x)** = Conditional Value-at-Risk at the 90% level = the mean of the
   worst (largest-deficit) 10% of weekly values. Coherent and far less variable
   across realizations than the single maximum (Rockafellar & Uryasev 2000;
   applied in Fairbrother et al. 2022; Löhndorf 2016).
-- Decree goalposts are the **static** 1954-Decree quantities — NYC 800 MGD,
-  Montague 1131.05 MGD (= 1750 cfs), Trenton 1938.95 MGD, NJ diversion 100 MGD
-  baseline — never the time-varying live FFMP `mrf_target` (scoring against the
-  live target would let a policy "succeed" by triggering drought step-downs that
-  lower its own goalpost).
+- Goalposts are **static**: the 1954-Decree quantities — NYC 800 MGD, Montague
+  1131.05 MGD (= 1750 cfs), NJ diversion 100 MGD baseline — plus the **Trenton
+  equivalent-flow objective** 1938.95 MGD (= 3000 cfs), an FFMP / Good-Faith
+  target rather than a Decree quantity. Never the time-varying live FFMP
+  `mrf_target` (scoring against the live target would let a policy "succeed" by
+  triggering drought step-downs that lower its own goalpost).
 - **NYC/NJ delivery is a running-*average* right, not a daily cap.** pywr-drb's
   `FfmpNyc/NjRunningAvgParameter` let daily diversion exceed the flat baseline by
   drawing down banked allowance, so daily demand is **not** clipped at the static
@@ -72,9 +74,10 @@ scoring is in `src/robustness.py`.
 
 ## 1. The objective set (single-realization / historic temporal metrics)
 
-For the historic design there is no realization axis (R = 1), so the objective
-**is** the temporal metric below. These same metrics are the per-realization
-quantities scored at re-evaluation (§3). The recommended active set is
+These metrics are the per-realization quantities scored at re-evaluation (§3).
+During search, every design — including historic — is scored through the §2
+annual-unit scheme; the historic trace enters it as N = 1 over its 76
+water-year units. The recommended active set is
 **7 objectives** (an optional 8th, NJ delivery, is pending the redundancy
 screen). Worst-case extremes were replaced with stable tail/percentile/count
 forms (Quinn et al. 2017; Bonham et al. 2024); the salt-front objective was
@@ -89,15 +92,17 @@ drought).
 | 3 | `montague_flow_reliability_weekly` | `major_flow.delMontague` | frac of weeks `mean_w(flow) ≥ 1131.05` | MAX | frac | 0.02 |
 | 4 | `montague_flow_deficit_cvar90_pct` | `delMontague` | CVaR₉₀ of `100·max(0, 1131.05 − mean_w(flow))/1131.05` | MIN | % | 1.5 |
 | 5 | `trenton_flow_reliability_weekly` | `major_flow.delTrenton` | frac of weeks `mean_w(flow) ≥ 1938.95` | MAX | frac | 0.0003 |
-| 6 | `downstream_flood_days_minor` | `flood_stage` (Hale Eddy, Fishs Eddy, Bridgeville) | count of days any gauge `≥` its NWS **minor** flood stage | MIN | days | 1.0 |
+| 6 | `downstream_flood_days_minor` | `flood_stage` (Hale Eddy, Fishs Eddy, Bridgeville) | mean annual count of days any gauge `≥` its NWS **minor** flood stage | MIN | days/yr | 0.02 |
 | 7 | `nyc_storage_p5_pct` | `res_storage[NYC]` | 5th percentile of daily `100·Σ_res storage / 270,837` | MAX | % | 1.5 |
 | 8 | `nj_delivery_reliability_weekly` *(optional)* | `delivery_nj`, `demand_nj` (right 100) | frac of weeks `Σ_w delivery_nj ≥ 0.99·Σ_w E_nj` (entitlement `E_nj = min(demand_nj,A_t)`, monthly reset) | MAX | frac | 0.007 |
 
 Epsilons are the calibrated values in `src/objectives.py`: ε ≈ IQR/10 of each
 objective's spread across N = 500 random-DV policies on the historic reference
 trace (Reed et al. 2013), rounded to clean steps. The §2 annual-unit registry
-(`src/objectives_ensemble.py`) carries its **own, separate** epsilons, still
-placeholders pending the ensemble sensitivity experiment.
+(`src/objectives_ensemble.py`) carries its **own, separate** epsilons,
+calibrated the same way on the historic trace scored as annual units; only the
+NJ and flood-P99 entries remain placeholders pending the ensemble sensitivity
+experiment.
 
 **Why these aggregations.**
 - *Reliability frequencies (1, 3, 5, 8)* — Hashimoto reliability / multivariate
@@ -110,8 +115,9 @@ placeholders pending the ensemble sensitivity experiment.
   tail-risk focus but averages the worst decile → reproducible, smooth Borg
   gradient. Montague flow is storm-dominated, so its single worst week is mostly
   exogenous noise — CVaR matters most there.
-- *Flood days at minor stage (6)* — count-over-threshold, the stable form that
-  avoids the expectation-of-damage trap (Quinn et al. 2017). The NWS **minor**
+- *Flood days at minor stage (6)* — count-over-threshold, normalized per
+  metric-window year so the metric is invariant to record length; the stable
+  form that avoids the expectation-of-damage trap (Quinn et al. 2017). The NWS **minor**
   (flood-onset) stage marks actual flooding, a more meaningful goalpost than the
   FFMP action cutoff; `major` and `action` variants are registered for swapping.
 - *Storage p5 (7)* — a low percentile is a stable vulnerability proxy; the
@@ -151,23 +157,25 @@ unit-years** with the objective's **unit operator**:
 
 | # | Objective (registry) | Annual metric (per unit-year) | Unit operator (across pooled unit-years) | Dir | Anchor |
 |---|---|---|---|---|---|
-| 1 | `nyc_delivery_reliability_annual` | failure-year indicator: ≥1 week with `Σ_w delivery < 0.99·Σ_w E` (entitlement `E_t = min(demand,A_t)`) | **frequency of non-failure years** | MAX | Zeff et al. 2014 Eq. 2; Trindade et al. 2017 Eq. 16; Gold et al. 2023 |
+| 1 | `nyc_delivery_reliability_annual` | failure-year indicator: ≥ k = 3 failing weeks (`Σ_w delivery < 0.99·Σ_w E`; entitlement `E_t = min(demand,A_t)`) | **frequency of non-failure years** | MAX | Zeff et al. 2014 Eq. 2; Trindade et al. 2017 Eq. 16; Gold et al. 2023 |
 | 2 | `nyc_delivery_deficit_p99_pct` | CVaR₉₀ of weekly deficit % within the year | **worst-1st-percentile unit-year** (P99) | MIN | Quinn et al. 2017 (WP1), 2018; Trindade/Gold worst-1%-cost |
-| 3 | `montague_flow_reliability_annual` | failure-year indicator: ≥1 week with `mean_w(flow) < 1131.05` | frequency of non-failure years | MAX | as #1 |
+| 3 | `montague_flow_reliability_annual` | failure-year indicator: ≥ k = 3 failing weeks (`mean_w(flow) < 1131.05`) | frequency of non-failure years | MAX | as #1 |
 | 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | as #2 |
-| 5 | `trenton_flow_reliability_annual` | failure-year indicator vs 1938.95 MGD | frequency of non-failure years | MAX | as #1 |
+| 5 | `trenton_flow_reliability_annual` | failure-year indicator: ≥ k = 1 failing week vs 1938.95 MGD | frequency of non-failure years | MAX | as #1 |
 | 6 | `downstream_flood_days_annual` | count of minor-flood days in the year | **mean across unit-years** (expected annual flood days); P99 variant registered pending the sensitivity experiment (expectation can mask floods — Quinn et al. 2017) | MIN | Trindade expected-cost form; Quinn 2017 caution |
 | 7 | `nyc_storage_min_p01_pct` | annual minimum of daily aggregate NYC storage % | **1st-percentile unit-year** | MAX | WP1 pattern (Quinn 2017/2018); Hamilton 2022 Q-of-max |
-| 8 | `nj_delivery_reliability_annual` *(optional)* | failure-year indicator vs NJ delivery criterion | frequency of non-failure years | MAX | as #1; pending redundancy screen |
+| 8 | `nj_delivery_reliability_annual` *(optional)* | failure-year indicator (k = 1) vs NJ delivery criterion | frequency of non-failure years | MAX | as #1; pending redundancy screen |
 
 **Why this scheme.**
 - *Reliability objectives keep the threshold form where the literature keeps it* —
   fraction-of-units frequency is the citable satisficing-in-search operator (the only
   one used in search in the WaterPaths lineage); magnitude/tail objectives use
   mean/percentile forms, so no analyst-chosen satisficing level θ_i exists for them.
-  The only thresholds are the **Decree-anchored annual failure criteria** (§0
-  goalposts), screened for saturation per design composition
-  (`ensemble_objective_sensitivity_experiment.md`).
+  Each annual failure criterion combines a **static goalpost** (§0) with a
+  **failure-week count k** (k = 3 for NYC delivery and Montague flow; k = 1 for
+  Trenton and NJ; `_DEFAULT_FAILURE_K`). The goalposts are anchored; k is a
+  convention, screened for saturation per design composition with the shipped
+  values inside the screen grid (`ensemble_objective_sensitivity_experiment.md`).
 - *The long-record design needs no special case:* its records are scored as
   consecutive annual units with inherited state — exactly the treatment of Quinn et
   al. (2018), who slice one continuous 1000-yr record into 1-yr units "so that the
@@ -183,16 +191,14 @@ unit-years** with the objective's **unit operator**:
 **Caveats carried explicitly.** Unit-years within a realization are dependent
 (multi-year droughts appear as consecutive failure-years — this is how the
 WaterPaths-lineage frequency objectives express persistence); effective sample size
-is below NL and differs by design (disclosed with the ESS/clustered-SE machinery of
-`scenario_design_methods.md` §3.2). An annual window cannot hold a whole multi-year
+is below NL and differs by design; this is disclosed rather than corrected. An annual window cannot hold a whole multi-year
 drought as a single unit; event-scale severity enters through the hazard axes and the
 re-evaluation metrics, not the search objectives.
 
-**Design mapping.** Both ensemble designs (`fixed_probabilistic` and
-`hazard_filling`) use this same two-layer scheme — one scheme fits both naturally,
-even though commensurability is no longer *required*. The
-**historic design** keeps the §1 temporal metrics on its single continuous trace
-(R = 1; prevailing-practice reference, Giuliani & Castelletti 2016). In McPhail
+**Design mapping.** All three designs use this same two-layer scheme. The
+**historic design** enters it as N = 1 over the consecutive water-year units of
+its single continuous trace (76 metric-bearing units; prevailing-practice
+reference, Giuliani & Castelletti 2016). In McPhail
 terms: stage (i) is T1-threshold (reliability) or T1-absolute (magnitude/tail);
 stage (ii) is T3 = frequency/expectation for #1/3/5/6 and T2 = tail percentile for
 #2/4/7.
@@ -329,8 +335,8 @@ would *grow* with exactly the coverage this study advocates. Brodeur's own cavea
 is the citation: they restrict all claims to *relative* rankings within each
 period and never interpret the absolute train-vs-test difference, precisely
 because their two ensembles are not drawn from the same distribution.
-(`src/robustness.py` retains an in-sample-minus-re-eval helper as a diagnostic
-only; it is not a comparison metric and is not reported as one.)
+(`src/robustness.py` deliberately contains no such helper;
+`tests/test_robustness.py` asserts its absence.)
 
 ### 3.4 Attainability screen (free)
 
@@ -346,8 +352,8 @@ pool**, not a per-scenario oracle (an oracle would require the perfect-foresight
 optimization rejected in §3.3).
 
 The codebase separates `SEARCH_ENSEMBLE_SPEC` (per design) from the common test
-ensemble, with a selection-bias guard (Bonham et al. 2024) warning if they
-coincide.
+ensemble, with a selection-bias guard (Bonham et al. 2024) that raises a hard
+error if they coincide.
 
 ---
 
@@ -378,30 +384,28 @@ the question being whether the **design ranking** — not the robustness value �
 invariant. Threshold-margin diagnostic: the CDF of each objective across E_test
 with the criterion drawn as a vertical dashed line (Gold et al. 2023, Fig. 5).
 Sweeping thresholds for *design-ranking* stability has not been done in this
-lineage; it is a contribution, not a robustness check. (Implementation:
-`threshold_spectrum` in `src/robustness.py`; `NYCOPT_SAT_THRESHOLDS` re-scores
-the cube without re-simulating.)
+lineage; it is a contribution, not a robustness check. (Implementation: the
+design-ranking stringency sweep in `scripts/main/compare_designs.py`, driven by
+`NYCOPT_COMPARE_STRINGENCY` — an offline re-scoring of the persisted cube;
+`threshold_spectrum` in `src/robustness.py` supplies the per-run univariate
+spectrum.)
 
-### 4.2 Scenario discovery in hazard space — optional supporting analysis
+### 4.2 Scenario discovery in the DU factor space — optional supporting analysis
 
 This is a supporting analysis, not the primary comparison and not a falsification
 device. The primary comparison is the re-evaluated robustness of the resulting
 solutions (§3). Where it is run, boosted trees (Gold et al. 2022/2023
 hyperparameters) are fit to each design's E_test failure realizations — labelled
 by the **conjunction** of the satisficing criteria, i.e. the §3.1 primary — **in
-the hazard space of E_test**, not only in its forcing-parameter (input) space.
+the DU factor (forcing-parameter) space of E_test**, after re-evaluation. No
+scenario discovery is performed in hazard space.
 
-Its role is to characterize *where* policies fail and, if a robustness difference
-is observed, to offer supporting evidence for the coverage → robustness mechanism
-(the expectation being that a design's policies fail in the hazard region it
-under-covered). It is reported as support for a difference found on the primary
-metric, never as the basis of the comparison, because a coverage-vs-failure
-association alone cannot separate the claimed mechanism from intrinsic scenario
-difficulty.
-
-Caveat: correlated hazard axes destabilize factor-importance rankings (Quinn et
-al. 2020 report Sobol first-order sums going negative under correlated factors),
-so the hazard axes are redundancy-screened before this analysis is run.
+Its role is to characterize *which deeply uncertain conditions* drive failure and
+whether the two designs' policies fail under different regions of the forcing
+envelope. It is reported as support for a difference found on the primary metric,
+never as the basis of the comparison. Because the forcing factors are sampled
+independently by LHS, the correlated-factor instability of factor-importance
+rankings (Quinn et al. 2020) does not arise by construction.
 
 ### 4.3 Cross-design comparison rule: no pooled-reference-set hypervolume
 
@@ -453,9 +457,9 @@ Three compounding reasons a pooled reference set is biased across designs:
   `fixed_probabilistic` → `hazard_filling` contrast **is** that
   benchmark. Our differentiators: their diversity is in *outcome* space on a
   benchmark problem (the Lake Problem) with little scenario→outcome leverage, ours
-  is in *hazard* space on a real system; and our comparison statistic has far more
-  power (K ensemble draws × S seeds, with the draw as the unit of analysis, versus
-  their counting of solutions above a group median).
+  is in *hazard* space on a real system; and our comparison rests on replicated
+  ensemble draws with the draw as the unit of analysis, versus their counting of
+  solutions above a group median from a single draw.
 - **Search-measure mismatch is a systematic penalty, not a wash (Giuliani &
   Castelletti 2016, Fig. 4b–f).** Policies designed under across-scenario
   aggregation Φ_j and scored under Φ_k are **dominated** by policies correctly
@@ -501,7 +505,7 @@ Three compounding reasons a pooled reference set is biased across designs:
 | Satisficing thresholds are elicited conventions | §4.1 | Zeff et al. 2014; Trindade et al. 2017; Gold et al. 2023 |
 | Design-ranking agreement degrades with stringency (→ sweep) | §4.1 | Quinn et al. 2020 |
 | Threshold-margin CDF diagnostic | §4.1 | Gold et al. 2023 (Fig. 5) |
-| Boosted-tree scenario discovery; correlated-factor caveat | §4.2 | Gold et al. 2022, 2023; Quinn et al. 2020 |
+| Boosted-tree scenario discovery (DU factor space) | §4.2 | Gold et al. 2022, 2023; Quinn et al. 2020 |
 | Per-level reference sets; compare only on a common verification ensemble | §4.3 | Zatarain Salazar et al. 2017 |
 | Contribution share is a merit diagnostic, not a yardstick | §4.3 | Reed et al. 2013; Zatarain Salazar et al. 2016 |
 | Cardinality asymmetry / noise-induced spurious dominance | §4.3 | Bartholomew & Kwakkel 2020; Shavazipour et al. 2021 |
@@ -517,17 +521,17 @@ Three compounding reasons a pooled reference set is biased across designs:
 1. Finalize the optional 8th objective (`nj_delivery_reliability_weekly`) after
    the redundancy screen (`objective_sensitivity_experiment.md`).
 2. From the two-design ensemble sensitivity experiment
-   (`ensemble_objective_sensitivity_experiment.md`): (a) confirm the Decree-anchored
-   annual failure criteria (#1/3/5/8) do not saturate under either a probabilistic
-   or a hazard-filled composition (adjust the failure definition — e.g., ≥k failing
-   weeks — if they do); (b) pick the flood-days unit operator (mean vs P99, #6);
+   (`ensemble_objective_sensitivity_experiment.md`): (a) confirm the annual
+   failure criteria (#1/3/5/8; k = 3 NYC/Montague, k = 1 Trenton/NJ) do not
+   saturate under either a probabilistic or a hazard-filled composition (adjust
+   k if they do); (b) pick the flood-days unit operator (mean vs P99, #6);
    (c) set native-unit epsilons for the §2 mean/percentile objectives and confirm P99
    stability at the campaign NL; (d) validate the annual-unit choice against
    realization-level rankings.
 3. Set the **centre** of the §4.1 threshold grid (Decree/FFMP anchors where they
    exist; elicited-convention defaults elsewhere) and the grid's span.
-4. Fix the E_test hazard-axis set (redundancy screen) before the §4.2 scenario
-   discovery is run.
+4. Fix the retained hazard-descriptor set and the ensemble size N from the
+   selector diagnostics on the production pool.
 5. The salt-front (`salt_front_intrusion_max_rm`) and Lordville thermal metrics
    remain registered diagnostics; both are out of the active search set.
 </content>

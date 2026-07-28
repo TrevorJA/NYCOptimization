@@ -19,9 +19,9 @@ formulation, objectives, physics toggles (LSTM, salt-front mode), and epsilons.
 Epsilons come from the active objective set via ``config.get_epsilons()``.
 
 Status: ``smoke`` is a concrete, intentionally tiny dev-only config so the full
-pipeline is runnable end-to-end. ``production`` carries the schema with every
-campaign number left ``None``/TBD pending the compute-budget discussion (open
-decision #5 in ``docs/notes/methods/experimental_design.md``).
+pipeline is runnable end-to-end. ``production`` is the campaign config, sized
+against the measured Anvil cost surface and the 750,000-SU allocation
+(``docs/notes/methods/scenario_design_methods.md`` §6).
 """
 
 from __future__ import annotations
@@ -270,19 +270,40 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
               "(320 NFE/island is a short Borg trajectory — overhead "
               "measurement only).",
     ),
-    # Production: schema only. Every campaign number is an open decision tied to
-    # the total-simulated-scenario-years budget (experimental_design.md #5).
+    # Campaign production config, sized against the measured Anvil cost surface
+    # (outputs/supplemental/ensemble_cost_experiment) and the 750,000-SU
+    # allocation; derivation in scenario_design_methods.md §6 / SI §S8.5.
+    #
+    # Geometry: 8 Anvil wholenode nodes = 1,024 cores. 4 islands x 254 workers
+    # + 4 island-masters + 1 controller = 1 + 4*(254+1) = 1,021 ranks (3 idle
+    # cores). Island partitioning is throughput-free at fixed slot count
+    # (measured), so 4 islands is a search-reliability choice that keeps
+    # per-island trajectories long (125k NFE/island).
+    #
+    # Budget: 500,000 total NFE x 1,000 scenario-years/eval (N=100, L=10).
+    # At the measured 173.8 s/eval and 0.729 scaling efficiency: ~32.6 h wall,
+    # ~33,400 SU per matched-design search; ~6 h / ~6,100 SU for the historic
+    # single-trace reference at the same NFE. SU is nearly flat in node count,
+    # so 8 nodes (vs 4) is a wall-time choice with no cost penalty.
+    #
+    # NFE-bounded (max_time_hours=None): a Borg maxTime cap could truncate NFE
+    # unequally across designs, breaking the equal-NFE validity condition. The
+    # SLURM --time wall (sized ~40 h) plus 2,500-NFE/island runtime snapshots
+    # (50 per island, one per ~40 min) are the safety net; a killed run resumes
+    # from the last snapshot. n_seeds=2 (S=2), submitted via `sbatch --array`;
+    # the array index supplies the Borg RNG seed.
     "production": MOEAConfig(
         name="production",
-        n_islands=None,
-        n_workers_per_island=None,
-        max_evaluations=None,
-        budget_scenario_years=None,
-        runtime_frequency=None,
-        n_seeds=None,
-        max_time_hours=None,
-        notes="TBD — fixed against the compute-budget discussion "
-              "(experimental_design.md open decision #5).",
+        n_islands=4,
+        n_workers_per_island=254,
+        max_evaluations=125_000,          # per island -> 500,000 total NFE
+        budget_scenario_years=500_000_000,  # 500k NFE x 1,000 sc-yr/eval
+        runtime_frequency=2_500,
+        n_seeds=2,
+        max_time_hours=None,              # NFE-bounded; SLURM --time is the wall
+        notes="Campaign config: 500k NFE, 1,021 ranks (4x254+5) on 8 Anvil "
+              "nodes, ~32.6 h / ~33,400 SU per matched search. Sized against "
+              "the 750k-SU allocation (scenario_design_methods.md §6).",
     ),
 }
 

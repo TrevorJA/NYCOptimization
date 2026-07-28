@@ -413,11 +413,27 @@ def test_smoke_is_fully_specified():
     assert c.total_ntasks_mpi == 1 + c.n_islands * (c.n_workers_per_island + 1)
 
 
-def test_production_numbers_are_tbd():
+def test_production_config_is_the_campaign_geometry():
+    """The campaign numbers derived in scenario_design_methods.md §6.
+
+    500,000 total NFE (equal-NFE is the budget condition), on 1,021 ranks
+    fitting 8 Anvil wholenode nodes (1,024 cores). If any of these change,
+    the SU budget in §6 / SI §S8.5 must be re-derived, not just this test.
+    """
     c = get_moea_config("production")
-    assert c.max_evaluations is None
-    assert c.n_islands is None
-    assert c.total_ntasks_mpi is None  # unset workers/islands -> None
+    assert c.n_islands == 4
+    assert c.n_workers_per_island == 254
+    assert c.n_islands * c.max_evaluations == 500_000  # total NFE
+    assert c.total_ntasks_mpi == 1021
+    assert c.total_ntasks_mpi <= 8 * 128  # fits the 8-node allocation
+    assert c.n_seeds == 2  # S=2, seeds via sbatch --array
+    # Equal-scenario-years coincides with equal-NFE at N=100, L=10.
+    assert c.budget_scenario_years == 500_000 * SEARCH_ENSEMBLE_N * SCENARIO_YEARS
+    # NFE-bounded: a Borg maxTime cap could truncate NFE unequally across
+    # designs, so the wall cap lives in SLURM --time, not in the config.
+    assert c.max_time_hours is None
+    # Snapshot cadence divides the per-island budget evenly (50 snapshots).
+    assert c.max_evaluations % c.runtime_frequency == 0
 
 
 def test_max_time_seconds_conversion():

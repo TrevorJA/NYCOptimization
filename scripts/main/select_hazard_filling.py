@@ -96,7 +96,10 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
             "selector_seed": seed,
             "chosen_axes": result["chosen_axes"],
             "candidate_axes": list(candidate_axes),
-            "redundancy_clusters": result["screen"]["clusters"],
+            # Full axis-screen QC: retained/dropped axes with reasons
+            # (degenerate vs near-duplicate + surviving member), the Spearman
+            # matrix over the non-degenerate axes, and the dedupe threshold.
+            "axis_screen": result["screen"],
             "coverage": result["coverage"],
             # Absolute-space robust bounds (p1/p99) actually used, plus per-axis
             # clipped fractions — the face atoms are measured, not assumed.

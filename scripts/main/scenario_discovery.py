@@ -193,11 +193,13 @@ def screen_hazard_axes(H: np.ndarray, axes: list[str],
                        threshold: float = REDUNDANCY_THRESHOLD) -> dict:
     """Drop degenerate axes and keep one representative per redundant cluster.
 
-    Reuses the screen the hazard-filling selector itself uses
-    (``scengen.hazard_filling.select_from_candidate_image``), so discovery is run
-    on the same low-redundancy axis basis the design was built in. Importances
-    reported over correlated axes are not interpretable (Quinn et al. 2020), which
-    is why this runs BEFORE the fit rather than as a footnote after it.
+    A discovery-side reduction, deliberately STRONGER than the selection-side
+    axis screen (``scengen.hazard_filling.screen_hazard_axes``, which prunes
+    only near-duplicates at |rho_S| >= 0.95 and retains every other axis):
+    importances reported over correlated axes are not interpretable (Quinn et
+    al. 2020), so discovery clusters at the lower redundancy cut and keeps one
+    representative per cluster. That is why this runs BEFORE the fit rather
+    than as a footnote after it.
 
     Args:
         H: ``(R, m)`` hazard image (raw metric values).

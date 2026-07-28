@@ -64,8 +64,7 @@ def run_mmborg(
         restore_checkpoint: Path to existing checkpoint file to restore from.
 
     Raises:
-        ValueError: If ``moea_config`` leaves a required algorithm setting unset
-            (e.g. the ``production`` config before its numbers are decided).
+        ValueError: If ``moea_config`` leaves a required algorithm setting unset.
     """
     n_islands = moea_config.n_islands
     max_evaluations = moea_config.max_evaluations

@@ -497,10 +497,12 @@ def _generate_profile_monthly(
     R = config.realizations_per_profile
     if setup.a_wy is not None:
         a_cal = fs.water_year_to_calendar(setup.a_wy[profile_idx])
-        if setup.v_wy is not None:
-            c_cal = a_cal * fs.water_year_to_calendar(setup.v_wy[profile_idx])
-        else:
-            c_cal = np.ones(12)
+        # Without the CV axis, c defaults to the CV-preserving baseline c = a (v = 1), so
+        # variance_axis=False is exactly the v = 1 slice of the mean+CV forcing space.
+        c_cal = (
+            a_cal * fs.water_year_to_calendar(setup.v_wy[profile_idx])
+            if setup.v_wy is not None else None
+        )
         mean_new, std_new = fs.apply_climate_adjustment(
             np.asarray(setup.base_mean, dtype=float), np.asarray(setup.base_std, dtype=float),
             a_cal, c_profile=c_cal,

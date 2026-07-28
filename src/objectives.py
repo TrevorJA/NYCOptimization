@@ -15,7 +15,7 @@ name alone states *what is measured* and *how it is aggregated over time*:
     nyc_delivery_reliability_weekly   -> NYC delivery, weekly reliability frequency
     nyc_delivery_deficit_cvar90_pct   -> NYC delivery, CVaR90 of weekly deficit, in %
     montague_flow_deficit_max_pct     -> Montague flow, worst-week deficit, in %
-    downstream_flood_days_minor       -> tail-gauge flooding, days >= NWS minor stage
+    downstream_flood_days_minor       -> tail-gauge flooding, days/yr >= NWS minor stage
     nyc_storage_p5_pct                -> NYC storage, 5th-percentile, in % of capacity
 
 Temporal-aggregation design
@@ -29,10 +29,12 @@ Temporal-aggregation design
   focus but is far more reproducible across realizations (Rockafellar & Uryasev
   2000; Fairbrother et al. 2022). The active set uses CVaR90; the max variants
   remain registered as diagnostics.
-- **Flood days**: count of days any reservoir-tail gauge is at/above a named NWS
-  stage. Count-over-threshold avoids the expectation-of-damage trap (Quinn et al.
-  2017). Active objective uses the `minor` (NWS flood-onset) stage; `major` and
-  `action` variants are registered for swapping.
+- **Flood days**: mean annual count (days/yr) of days any reservoir-tail gauge
+  is at/above a named NWS stage — the metric-window day count divided by the
+  window length in years, so values are comparable across windows of different
+  lengths. Count-over-threshold avoids the expectation-of-damage trap (Quinn et
+  al. 2017). Active objective uses the `minor` (NWS flood-onset) stage; `major`
+  and `action` variants are registered for swapping.
 - **Storage p5** (recommended) vs **storage min** (diagnostic): a low percentile
   is a stable vulnerability proxy; the single-day minimum is dominated by one
   drought event (Quinn et al. 2017).
@@ -463,9 +465,19 @@ def _flood_over_stage_daily(stage: pd.DataFrame, level: str) -> pd.Series:
 
 
 def _flood_days_anygauge(data: dict, level: str) -> float:
-    """Count of metric-window days any tail gauge is at/above the named NWS stage."""
+    """Mean annual days (days/yr) any tail gauge is at/above the named NWS stage.
+
+    The metric-window day count is divided by the window length in years
+    (days / 365.25), so the value is comparable across metric windows of
+    different lengths (e.g. the ~76-yr historic trace vs 10-yr ensemble
+    realizations). An empty metric window returns 0.0.
+    """
     stage = _metric_window(data["flood_stage"][_DOWNSTREAM_GAUGES])
-    return float(_flood_over_stage_daily(stage, level).sum())
+    n_days = len(stage)
+    if n_days == 0:
+        return 0.0
+    count = float(_flood_over_stage_daily(stage, level).sum())
+    return count / (n_days / 365.25)
 
 
 def _nyc_storage_pct_daily(data: dict) -> pd.Series:
@@ -593,17 +605,17 @@ def _trenton_flow_deficit_cvar90_pct(data: dict) -> float:
 
 
 def _downstream_flood_days_minor(data: dict) -> float:
-    """Days any tail gauge >= NWS minor flood stage (flood onset). [0, n_days]."""
+    """Mean annual days any tail gauge >= NWS minor flood stage (flood onset). [days/yr]."""
     return _flood_days_anygauge(data, "minor")
 
 
 def _downstream_flood_days_major(data: dict) -> float:
-    """DIAGNOSTIC: days any tail gauge >= NWS major flood stage (severe). [0, n_days]."""
+    """DIAGNOSTIC: mean annual days any tail gauge >= NWS major flood stage (severe). [days/yr]."""
     return _flood_days_anygauge(data, "major")
 
 
 def _downstream_flood_days_action(data: dict) -> float:
-    """DIAGNOSTIC: days any tail gauge >= FFMP L1 action stage. [0, n_days]."""
+    """DIAGNOSTIC: mean annual days any tail gauge >= FFMP L1 action stage. [days/yr]."""
     return _flood_days_anygauge(data, "action")
 
 
@@ -745,14 +757,21 @@ _register("trenton_flow_deficit_cvar90_pct", "minimize", 0.03,
           _trenton_flow_deficit_cvar90_pct)
 
 # --- Downstream flood exposure (any of Hale Eddy / Fishs Eddy / Bridgeville) ---
-_register("downstream_flood_days_minor", "minimize", 1.0,
-          "Days any tail gauge >= NWS minor flood stage (flood onset)",
+# Flood-days epsilons rescaled with the days/yr normalization: the whole-trace
+# values (1.0 minor, 2.0 major/action) were calibrated on the ~76-year historic
+# metric window, so 1.0/76 ~= 0.013 -> 0.02 and 2.0/76 ~= 0.026 -> 0.03,
+# rounded to clean steps.
+_register("downstream_flood_days_minor", "minimize", 0.02,
+          "Mean annual days any tail gauge >= NWS minor flood stage "
+          "(flood onset) [days/yr]",
           _downstream_flood_days_minor)
-_register("downstream_flood_days_major", "minimize", 2.0,
-          "DIAGNOSTIC: days any tail gauge >= NWS major flood stage (severe)",
+_register("downstream_flood_days_major", "minimize", 0.03,
+          "DIAGNOSTIC: mean annual days any tail gauge >= NWS major flood "
+          "stage (severe) [days/yr]",
           _downstream_flood_days_major)
-_register("downstream_flood_days_action", "minimize", 2.0,
-          "DIAGNOSTIC: days any tail gauge >= FFMP L1 action stage",
+_register("downstream_flood_days_action", "minimize", 0.03,
+          "DIAGNOSTIC: mean annual days any tail gauge >= FFMP L1 action "
+          "stage [days/yr]",
           _downstream_flood_days_action)
 
 # --- NYC storage resilience ---

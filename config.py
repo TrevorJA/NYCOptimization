@@ -320,6 +320,13 @@ ENSEMBLE_FORCING_STD_CSV = _parse_path_env(
     "NYCOPT_ENSEMBLE_FORCING_STD_CSV",
     _CMIP6_STATS_DIR / "datasets_nyc_inflow_monthly_stds.csv",
 )
+# DECIDED (2026-07-28) OFF for the campaign: the 3-D mean box [m, r1, r2] with the
+# CV-preserving c = a. The paired footprint diagnostic
+# (scripts/supplemental/diagnose_cv_axis_footprint.py) measured that the CMIP6 CV axis
+# does not widen drought/flood tail stress in hazard space (dry spans ~unchanged, all
+# three flood-axis spans CONTRACT ~0.72-0.83x: CMIP6 reduces winter/spring CV), so it
+# adds 3 DU dimensions without adding stress coverage. Stays wired as an opt-in
+# sensitivity via the env var.
 ENSEMBLE_FORCING_VARIANCE_AXIS = _parse_bool_env("NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS", False)
 ENSEMBLE_FORCING_BOUND_PCT = (
     _parse_float_env("NYCOPT_ENSEMBLE_FORCING_BOUND_LO", 5.0),

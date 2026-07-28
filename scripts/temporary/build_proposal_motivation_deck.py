@@ -780,7 +780,7 @@ s = add_slide(notes=(
 add_title(s, "Hazard axes & the hazard-filling selector")
 add_body(s, [
     ("b", "candidate axes: SSI-6 drought-event metrics (deficit volume, duration, peak depth, onset and recovery rate) and peaks-over-threshold flood metrics (peak magnitude, pulse duration, rise rate), computed per sequence"),
-    ("b", "redundancy screen retains **3–4** low-collinearity axes, balanced across the dry and wet concepts (|ρ| ≥ 0.7 clustering, Olden & Poff 2003)"),
+    ("b", "axis screen keeps **all non-degenerate descriptors**, pruning only near-duplicates (|ρ_S| ≥ 0.95) to one member; the Spearman correlation structure (Olden & Poff 2003) is reported as a diagnostic, never used to reduce further"),
     ("b", "selector: **range-scale each axis to [0,1] by its pool min-max (ABSOLUTE space)**, draw **N Latin-hypercube anchors**, snap each to the **nearest unused pool member**. Deterministic given the anchor seed; **no annealing, no tuning**"),
     ("b", "absolute-space filling **deliberately over-represents the severe corners** relative to their pool frequency — the distribution shift RQ1 tests (a rank-space ECDF variant is a non-campaign sensitivity only)"),
     ("b", "coverage stats (L2-star discrepancy, MST, snap distance) are **build-QC / method verification** that the intervention was administered at strength, reported against a random design at the same (N, m) — **not a comparison result**"),
@@ -893,8 +893,8 @@ claim(s, "N = 100 and L = 10 yr for every matched design → 1,000 scenario-year
 add_body(s, [
     ("b", "because N and L are common, per-evaluation cost, scenario-years and wall-clock are **identical** — equal-NFE and equal-scenario-years **coincide**. One budget condition, no arms, no confound between composition and search effort"),
     ("b", "the common (N, L) is **required, not convenient**: if L differed across designs, the selection rule would be confounded with record length"),
-    ("b", "N is bounded below by the **fill requirement** — at m = 4 hazard axes, N = 100 gives ~3.2 points per dimension (~4.6 at m = 3), the smallest defensible fill. This is why long records are not viable: at a fixed per-evaluation budget L = 50 forces N ≈ 20, and space-filling in 4-D with 20 points is noise"),
-    ("b", "**NFE = 500,000 per search is a target** (revisable once initial searches reveal convergence; the runtime archive keeps intermediate NFE so a lower budget can be justified after the fact)"),
+    ("b", "N is bounded below by the **coverage requirement** — the LHS anchors stratify every retained axis into N bins (the guarantee is per-axis marginal, not joint), so marginal coverage and tail resolution sharpen with N. This is why long records are not viable: at a fixed per-evaluation budget L = 50 forces N ≈ 20, leaving too few anchors for meaningful stratification"),
+    ("b", "**NFE = 500,000 per search** (the runtime archive keeps intermediate NFE, so the attained budget is justified against observed convergence and the comparison is recomputable at earlier budgets)"),
     ("b", "**replication (targets)**: K = 3 ensemble draws × S = 2 seeds per matched design (historic K = 1); revisable from a pilot minimum-detectable-effect calc. A **draw** = the construction re-run from scratch with a fresh seed, **including its pool**, and is the unit of analysis (effective n ≈ K)"),
     ("b", "search-time objective values are **never compared across designs**; convergence is a per-design diagnostic only"),
 ], top=2.15, size=19, space_after=9)
@@ -1223,7 +1223,7 @@ pic(s, "image19.png", 0.9, 1.7, w=11.6)
 s = add_slide(notes=(
     "Scaling experiment run on Anvil; sets production parallel geometry and the SU budget that gates "
     "campaign scope. Measured cost surface: 173.8 s/eval at N=100, L=10 on the trimmed model; full "
-    "model 1.16x; ~33,300 SU per 500k-NFE search; full campaign ~415,000 of the 750,000-SU "
+    "model 1.16x; ~33,400 SU per 500k-NFE search; full campaign ~448,000 of the 750,000-SU "
     "allocation; re-evaluation nearly free."))
 add_title(s, "Supplemental: Anvil scaling & measured cost surface")
 add_body(s, [
@@ -1232,7 +1232,7 @@ add_body(s, [
     ("gap", 6),
     ("h", "Measured cost (Anvil)"),
     ("b", "**173.8 s per evaluation** (N = 100, L = 10, trimmed model); full model **1.16×**"),
-    ("b", "**~33,300 SU per 500k-NFE search**; full campaign **~415,000 of the 750,000-SU allocation**; re-evaluation nearly free"),
+    ("b", "**~33,400 SU per 500k-NFE search**; full campaign **~448,000 of the 750,000-SU allocation**; re-evaluation nearly free"),
     ("b", "packing sweep + Borg strong scaling set the production parallel geometry"),
 ], top=1.7, size=20)
 

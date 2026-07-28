@@ -3,8 +3,11 @@ objectives_ensemble.py - Ensemble (multi-realization) objective framework.
 
 Implements the **two-layer annual-unit scheme** of
 `docs/notes/methods/objective_definitions.md` §2 for all ensemble
-(multi-realization) evaluations. The single-trace historic path is untouched:
-it keeps the §1 temporal metrics in `src.objectives` on the full trace.
+(multi-realization) evaluations. Every scenario design is scored through this
+annual-unit registry — including `historic`, which is simply the N=1 case over
+its 76 water-year units (see `src/formulations/__init__.py`); the §1 temporal
+metrics in `src.objectives` supply the shared windowed-series cores and the
+per-realization base metrics of the re-evaluation layer.
 
 Two-layer scheme (Hamilton et al. 2022 vocabulary)
 --------------------------------------------------
@@ -46,7 +49,10 @@ running-average delivery entitlement via ``_delivery_entitlement``, CVaR90 via
 so §1 and §2 share one formula per quantity. Deficit-% and storage-% metrics
 are 0-100 scales matching §1; frequency objectives are 0-1 fractions.
 
-Epsilons are PLACEHOLDERS in native metric units, pending the ensemble
+The active set's epsilons are CALIBRATED in native metric units (~IQR/10 on
+the historic reference trace, 2026-07-15; see the `_ANNUAL_REGISTRY_SPEC`
+comment). Only `nj_delivery_reliability_annual` and
+`downstream_flood_days_annual_p99` remain placeholders, pending the ensemble
 objective-sensitivity experiment
 (`docs/notes/methods/ensemble_objective_sensitivity_experiment.md`).
 
@@ -272,8 +278,8 @@ class AnnualUnitObjective:
     Attributes:
         name: Registry name of the annual objective.
         direction: "maximize" or "minimize" (of the unit-operator output).
-        epsilon: Borg epsilon in native metric units (PLACEHOLDER pending the
-            ensemble objective-sensitivity experiment).
+        epsilon: Borg epsilon in native metric units (calibrated for the
+            active set; see the `_ANNUAL_REGISTRY_SPEC` comment).
         description: Human-readable description.
         annual_metric: Callable ``data -> np.ndarray`` returning one annual
             value per metric-bearing water-year unit of the realization
@@ -431,7 +437,12 @@ def _montague_deficit_cvar90_annual(data: dict) -> np.ndarray:
 
 
 def _flood_days_minor_annual(data: dict) -> np.ndarray:
-    """Days per unit-year any tail gauge >= its NWS minor flood stage."""
+    """Days per unit-year any tail gauge >= its NWS minor flood stage.
+
+    Plain UNNORMALIZED within-year day count (a unit-year is already an annual
+    window) — deliberately not the §1 base metric, which reports mean annual
+    days/yr over its whole metric window.
+    """
     over = _flood_over_stage_daily(
         data["flood_stage"][_DOWNSTREAM_GAUGES], "minor",
     )
@@ -508,7 +519,9 @@ _DEFAULT_THRESHOLDS: dict[str, float] = {
     "montague_flow_deficit_cvar90_pct__sat25":    25.0,
     "trenton_flow_reliability_weekly__sat85":     0.85,
     "nj_delivery_reliability_weekly__sat95":      0.95,
-    "downstream_flood_days_minor__sat10":         10.0,
+    # Flood threshold in days/yr (the base metric is mean annual flood days);
+    # placeholder pending the ensemble objective-sensitivity experiment.
+    "downstream_flood_days_minor__sat1":          1.0,
     "nyc_storage_p5_pct__sat25":                  25.0,
 }
 
@@ -550,7 +563,7 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"], float]] = [
     ("nj_delivery_reliability_weekly",
      "nj_delivery_reliability_weekly__sat95",    "ge", 0.02),
     ("downstream_flood_days_minor",
-     "downstream_flood_days_minor__sat10",       "le", 0.02),
+     "downstream_flood_days_minor__sat1",        "le", 0.02),
     ("nyc_storage_p5_pct",
      "nyc_storage_p5_pct__sat25",                "ge", 0.02),
 ]
@@ -579,7 +592,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "nyc_delivery_reliability_weekly", "maximize", 0.01,
      _nyc_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NYC delivery "
-     "< 99% of capped demand (800 MGD Decree cap)"),
+     "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
      "nyc_delivery_deficit_cvar90_pct", "minimize", 1.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
@@ -619,7 +632,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "nj_delivery_reliability_weekly", "maximize", 0.01,
      _nj_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NJ diversion "
-     "< 99% of capped demand (100 MGD baseline); pending redundancy screen"),
+     "< 99% of the running-average entitlement; pending redundancy screen"),
 ]
 
 # Base-objective-name -> annual-objective-name, so config.ACTIVE_OBJECTIVES

@@ -82,8 +82,10 @@ probability-preserving flow stratification).
    ensemble directly and the `hazard_filling` candidate pool. The pool is sampled i.i.d.,
    and only its hazard image plus seeds are stored; realizations regenerate
    deterministically on demand (chunked storage for large pools).
-2. **Hazard metrics + screening** — drought/low-flow/high-flow indices per sequence; a
-   redundancy screen selects 3–4 low-collinearity axes.
+2. **Hazard metrics + redundancy handling** — drought/low-flow/high-flow indices per
+   sequence; all non-degenerate descriptors are retained as selection axes (near-duplicates
+   at |ρ_S| ≥ 0.95 pruned to one member; expected 6–8 axes), with rank-correlation
+   structure reported as a diagnostic, not used to reduce further.
 3. **Selection (hazard filling only)** — Latin hypercube anchors in absolute, robust
    range-scaled hazard space, snapped to the nearest unused pool member. The snap is intrinsic: hazard
    coordinates are emergent properties of a realized sequence, so a hazard-space design
@@ -121,11 +123,12 @@ sensitivity experiments.
   control. Enforced by an invariant test.
 - **Seed-stream disjointness**: the candidate pool and the test ensemble generate from
   namespaced seed domains, so no design and the test ensemble ever share realizations.
-- **Replication**: K = 3 ensemble draws × S = 2 MOEA seeds per matched design (targets,
-  revisable from a pilot). A draw is the design's construction re-run from scratch with a
-  fresh seed, and is the unit of analysis (mixed-effects framing). `historic` has K = 1.
+- **Replication**: K = 3 ensemble draws × S = 2 MOEA seeds per matched design, set
+  against the compute allocation. A draw is the design's construction re-run from scratch
+  with a fresh seed, and is the unit of analysis; draw- and seed-level results are
+  reported transparently. `historic` has K = 1.
 - **Single comparison point**: cross-design metrics computed only on held-out
-  re-evaluation, with pooled and leave-one-out reference sets.
+  re-evaluation.
 
 See `notes/methods/experimental_design.md`.
 
@@ -161,8 +164,8 @@ re-simulating.
 
 The primary endpoint is the re-evaluated **multivariate Starr satisficing fraction** of
 the policies a design produces; the run-level scalar is the maximum satisficing fraction
-attained in the run's re-evaluated set (with leave-one-out reference-set correction and
-robustness-space hypervolume as bounding co-reports). Secondary metrics are univariate
+attained in the run's re-evaluated set, reported with its per-objective satisficing
+decomposition (the maximum-over-a-set bias is disclosed). Secondary metrics are univariate
 satisficing, the coverage-weighted mean (Laplace), maximin, and signed
 improvement-over-status-quo (a fixed-reference, design-independent quantity, and the only
 regret-type metric used — **no set-relative or perfect-foresight regret is computed**).
@@ -177,19 +180,22 @@ at strength, never as a comparison result.
 **Working now:** end-to-end smoke runs; the stationary designs' generation and single-
 realization regeneration verified; chunked-pool machinery implemented; the Anvil
 packing/scaling experiment and the ensemble cost-surface experiment complete (measured
-campaign cost: 173.8 s/eval trimmed, full model 1.16×, ~33,300 SU per 500k-NFE search).
+campaign cost: 173.8 s/eval trimmed, full model 1.16×, ~33,400 SU per 500k-NFE search).
 
 **Decided:** the three designs above; a single stationary search population with deep
-uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE target
-(revisable once initial runs reveal convergence); K = 3 draws × S = 2 seeds; absolute
+uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE per search
+(attained budget justified post hoc from the runtime archive, and the comparison
+recomputable at earlier budgets); the production MM Borg geometry (8 Anvil nodes,
+4 islands × 254 workers, 1,021 ranks, ~32.6 h/search); K = 3 draws × S = 2 seeds; absolute
 range-scaled hazard-space selection; comparison metrics = multivariate Starr satisficing
 (primary) with Laplace, maximin, and signed improvement-over-status-quo as anchors, **no
 set-relative or perfect-foresight regret**; search aggregation = two-layer annual-unit
 scheme; forcing space retains historical persistence (claims scoped accordingly).
 
 **Total Anvil allocation = 750,000 SU.** The full campaign (two matched designs × K = 3 ×
-S = 2 at 500k NFE, plus the cheap `historic` reference and re-evaluation) is on the order
-of 415,000 SU, leaving reserve for the RQ3 variable-resolution sweep, any additional
+S = 2 at 500k NFE, plus the cheap `historic` reference, generation, and re-evaluation
+allowances) is approximately 448,000 SU (60%), leaving a ~300,000-SU reserve for the RQ3
+variable-resolution sweep (~200k at one draw × two seeds × three N values), any additional
 draws a power calculation indicates, and the optional second E_test.
 
 **Not yet in place (gates the RQ1 campaign):** the production-scale candidate pool; the
@@ -198,8 +204,8 @@ final satisficing thresholds and epsilons; the pilot minimum-detectable-effect
 calculation that fixes K.
 
 **Open decisions:** E_test sizing (N_theta × R × L_test, against the SU allocation) and
-whether to stand up the optional second E_test construction; the hazard-axis set (from
-the redundancy screen on the production pool); the pool size P; the flood unit operator
+whether to stand up the optional second E_test construction; the retained hazard-descriptor
+set and the ensemble size N (from the selector diagnostics); the pool size P; the flood unit operator
 (mean vs P99) and failure-criterion values (from the sensitivity experiment); the
 scenario design under which the RQ3 variable-resolution sweep is run. See
 `notes/methods/experimental_design.md` for the open-questions list.
