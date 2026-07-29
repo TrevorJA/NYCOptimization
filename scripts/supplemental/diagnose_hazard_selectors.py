@@ -36,6 +36,21 @@ All configuration is via environment variables (no CLI value flags):
     NYCOPT_SELDIAG_N           ensemble size N    (default 100)
     NYCOPT_SELDIAG_SEEDS       selector seeds     (default 10)
     NYCOPT_SELDIAG_NULL_SEEDS  random-null seeds  (default 50)
+    NYCOPT_SELDIAG_PREFIX_P    truncate the loaded image to its first P' rows
+                               (default 0 = full image). Because realizations are
+                               keyed to a GLOBAL index with per-realization child
+                               streams, the first P' rows of a staged pool image
+                               are bit-identical to a standalone i.i.d. pool of
+                               size P' from the same seed domain — so each prefix
+                               is an honest pool of its size. Used by the
+                               nested-P saturation diagnostic; outputs go to
+                               ``{pool_slug}_prefix{P'}`` so rungs don't clobber.
+    NYCOPT_SELDIAG_SATURATION  1 = lean saturation mode: run only the axis
+                               screen, per-axis coverage (lhs_nn + random null),
+                               and the snap/concentration block (lhs_nn only —
+                               the comparator selectors get memory-heavy at
+                               large P), each at the nested axis sets. Skips
+                               blocks 1-3, D, E and all figures. Default off.
 
 Run after staging the pool hazard image (workflow step 02 with
 ``NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary``; locally use
@@ -75,6 +90,20 @@ N_SELECT = int(os.environ.get("NYCOPT_SELDIAG_N", "100"))
 N_SEEDS = int(os.environ.get("NYCOPT_SELDIAG_SEEDS", "10"))
 N_NULL_SEEDS = int(os.environ.get("NYCOPT_SELDIAG_NULL_SEEDS", "50"))
 
+#: Truncate the staged image to its first P' rows (0 = full image). A prefix is
+#: an honest i.i.d. pool of its size (global-index child streams), so the
+#: nested-P ladder scores every rung exactly as a standalone pool would be.
+PREFIX_P = int(os.environ.get("NYCOPT_SELDIAG_PREFIX_P", "0"))
+
+#: Lean saturation mode: axis screen + per-axis coverage + snap/concentration
+#: only (no comparator selectors, no bounds/N sweeps, no figures).
+SATURATION = os.environ.get("NYCOPT_SELDIAG_SATURATION", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
+#: Output slug: prefix rungs get their own directory so rungs don't clobber.
+OUT_SLUG = f"{POOL_SLUG}_prefix{PREFIX_P}" if PREFIX_P else POOL_SLUG
+
 #: Designed (non-null) selectors, in presentation order.
 DESIGNED = ("lhs_nn", "lhs_assign", "maximin", "eps_cell")
 
@@ -110,13 +139,19 @@ _MSET_COLORS = {"m4": "#c9a227", "m6": "#2c8c5a", "full": "#1f6fb4"}
 
 
 def _out_dir() -> Path:
-    out = config.OUTPUTS_DIR / "supplemental" / "hazard_selector_diagnostics" / POOL_SLUG
+    out = config.OUTPUTS_DIR / "supplemental" / "hazard_selector_diagnostics" / OUT_SLUG
     (out / "figures").mkdir(parents=True, exist_ok=True)
     return out
 
 
 def _load_pool() -> tuple[np.ndarray, list[str], dict]:
-    """Load the staged pool hazard image and run the axis screen on it."""
+    """Load the staged pool hazard image (optionally a prefix) and screen it.
+
+    With ``NYCOPT_SELDIAG_PREFIX_P`` set, only the first P' rows are analyzed;
+    the screen and every downstream bound (robust p1/p99, pool P90s) are then
+    computed on the prefix alone, so the rung is scored exactly as a standalone
+    pool of size P' would be.
+    """
     path = config.STAGED_ENSEMBLE_DIR / POOL_SLUG / "hazard_image.npz"
     if not path.exists():
         raise SystemExit(
@@ -126,6 +161,13 @@ def _load_pool() -> tuple[np.ndarray, list[str], dict]:
         )
     img = load_hazard_image(path)
     H_full, candidate_axes = img["H"], list(img["hazard_axes"])
+    if PREFIX_P:
+        if PREFIX_P > len(H_full):
+            raise SystemExit(
+                f"[seldiag] NYCOPT_SELDIAG_PREFIX_P={PREFIX_P} exceeds the staged "
+                f"image size P={len(H_full)} ({path})."
+            )
+        H_full = H_full[:PREFIX_P]
     screen = screen_hazard_axes(H_full, candidate_axes)
     return H_full, candidate_axes, screen
 
@@ -206,19 +248,28 @@ def _per_axis_coverage(H: np.ndarray, axes: list[str]) -> pd.DataFrame:
 
 
 def _dimension_sweep(
-    H_full: np.ndarray, candidate_axes: list[str], axis_sets: dict[str, list[str]]
+    H_full: np.ndarray, candidate_axes: list[str], axis_sets: dict[str, list[str]],
+    *, include_assign: bool = True,
 ) -> pd.DataFrame:
-    """Block C: snap behavior at nested axis sets, incl. order-dependence at full m."""
+    """Block C: snap behavior at nested axis sets, incl. order-dependence at full m.
+
+    ``include_assign=False`` (saturation mode) skips the Hungarian comparator,
+    whose anchor-by-pool cost matrix is memory-heavy at large P and contributes
+    nothing to the adequacy gate.
+    """
     records = []
     for mset, axes in axis_sets.items():
         H = _sub(H_full, candidate_axes, axes)
         X = ss.minmax_normalize(H)
         for seed in _seeds(N_SEEDS):
             res_nn = sd.select_lhs_nn(X, N_SELECT, seed=seed)
-            res_as = sd.select_lhs_assign(X, N_SELECT, seed=seed)
             conc = sd.distance_concentration(X, res_nn.info["snap_distances"], seed=seed)
             lb, ub = np.zeros(X.shape[1]), np.ones(X.shape[1])
             cov = ss.coverage_metrics(X[res_nn.rows], lb, ub)
+            jac = np.nan
+            if include_assign:
+                res_as = sd.select_lhs_assign(X, N_SELECT, seed=seed)
+                jac = sd.jaccard(res_nn.rows, res_as.rows)
             records.append({
                 "m_set": mset, "m": len(axes), "seed": seed,
                 "snap_mean": float(np.mean(res_nn.info["snap_distances"])),
@@ -226,7 +277,7 @@ def _dimension_sweep(
                 "nn_min_abs": float(cov.get("nn_min", 0.0)),
                 "L2_star_abs": float(cov["L2_star_discrepancy"]),
                 **conc,
-                "jaccard_nn_vs_assign": sd.jaccard(res_nn.rows, res_as.rows),
+                "jaccard_nn_vs_assign": jac,
             })
     return pd.DataFrame.from_records(records)
 
@@ -622,6 +673,60 @@ def _fig_invariance(inv, contributions, out) -> None:
 # Driver
 ###############################################################################
 
+def _run_saturation(
+    out: Path, H_full: np.ndarray, candidate_axes: list[str], screen: dict,
+    axis_sets: dict[str, list[str]],
+) -> None:
+    """Lean saturation mode: only the metrics the nested-P adequacy gate needs.
+
+    Per axis set (m4 / m6 / full): per-axis marginal coverage + tail enrichment
+    (lhs_nn seeds vs the random null) and the snap/concentration block (lhs_nn
+    only). The gate statistic follows the block-D convention: within-seed
+    minimum per-axis tail share, averaged over selector seeds.
+    """
+    frames = []
+    for mset, axes in axis_sets.items():
+        t = _per_axis_coverage(_sub(H_full, candidate_axes, axes), axes)
+        t.insert(0, "m_set", mset)
+        frames.append(t)
+    per_axis = pd.concat(frames, ignore_index=True)
+    dim = _dimension_sweep(H_full, candidate_axes, axis_sets, include_assign=False)
+
+    per_axis.to_csv(out / "per_axis_coverage.csv", index=False)
+    dim.to_csv(out / "dimension_sweep.csv", index=False)
+
+    adequacy = {}
+    for mset, axes in axis_sets.items():
+        sel = per_axis.loc[(per_axis.m_set == mset) & (per_axis.selector == "lhs_nn")]
+        by_seed = sel.groupby("seed")["tail_share_p90"]
+        axis_means = sel.groupby("axis")["tail_share_p90"].mean()
+        conc = dim.loc[dim.m_set == mset, "concentration_ratio"]
+        adequacy[mset] = {
+            "m": len(axes),
+            "tail_share_min": float(by_seed.min().mean()),
+            "tail_share_mean": float(by_seed.mean().mean()),
+            "worst_axis": str(axis_means.idxmin()),
+            "worst_axis_seed_mean": float(axis_means.min()),
+            "per_axis_seed_mean": {str(a): float(v) for a, v in axis_means.items()},
+            "concentration_ratio": float(conc.mean()),
+            "snap_mean": float(dim.loc[dim.m_set == mset, "snap_mean"].mean()),
+            "gate_pass": bool(by_seed.min().mean() >= TAIL_CRITERION),
+        }
+
+    summary = {
+        "pool_slug": POOL_SLUG, "prefix_p": PREFIX_P or None, "out_slug": OUT_SLUG,
+        "P": int(len(H_full)), "n_select": N_SELECT,
+        "seeds": N_SEEDS, "null_seeds": N_NULL_SEEDS,
+        "saturation_mode": True,
+        "axis_screen": {k: v for k, v in screen.items() if k != "spread"},
+        "axis_sets": {k: list(v) for k, v in axis_sets.items()},
+        "tail_criterion": TAIL_CRITERION,
+        "adequacy": adequacy,
+    }
+    (out / "summary.json").write_text(json.dumps(summary, indent=2))
+    print(f"[seldiag] saturation mode: wrote 2 tables + summary.json -> {out}")
+
+
 def main() -> None:
     """Run all analysis blocks and write tables, summary, and SI figures."""
     apply_style()
@@ -630,9 +735,16 @@ def main() -> None:
     retained = screen["retained"]
     H_ret = _sub(H_full, candidate_axes, retained)
     axis_sets = _axis_sets(retained)
-    print(f"[seldiag] pool '{POOL_SLUG}': P={len(H_full)}, retained axes (m="
-          f"{len(retained)})={retained}, dropped={list(screen['dropped'])}, "
-          f"N={N_SELECT}, seeds={N_SEEDS} (+{N_NULL_SEEDS} null)")
+    print(f"[seldiag] pool '{POOL_SLUG}': P={len(H_full)}"
+          + (f" (prefix of first {PREFIX_P} rows)" if PREFIX_P else "")
+          + f", retained axes (m={len(retained)})={retained}, "
+          f"dropped={list(screen['dropped'])}, "
+          f"N={N_SELECT}, seeds={N_SEEDS} (+{N_NULL_SEEDS} null)"
+          + (", saturation mode" if SATURATION else ""))
+
+    if SATURATION:
+        _run_saturation(out, H_full, candidate_axes, screen, axis_sets)
+        return
 
     table, details = _main_comparison(H_ret, retained)
     sweep = _bounds_sweep(H_ret, retained)
@@ -662,7 +774,8 @@ def main() -> None:
         }
 
     summary = {
-        "pool_slug": POOL_SLUG, "P": int(len(H_full)), "n_select": N_SELECT,
+        "pool_slug": POOL_SLUG, "prefix_p": PREFIX_P or None, "out_slug": OUT_SLUG,
+        "P": int(len(H_full)), "n_select": N_SELECT,
         "seeds": N_SEEDS, "null_seeds": N_NULL_SEEDS,
         "axis_screen": {k: v for k, v in screen.items() if k != "spread"},
         "axis_sets": {k: list(v) for k, v in axis_sets.items()},

@@ -684,6 +684,65 @@ def _write_chunk_meta(
     (chunk_dir / "_meta.json").write_text(json.dumps(meta, indent=2))
 
 
+def shard_profile_range(n_profiles: int, shard_count: int, shard_index: int) -> tuple[int, int]:
+    """Contiguous profile range ``[lo, hi)`` owned by shard ``shard_index`` of ``shard_count``.
+
+    Shards tile ``[0, n_profiles)`` exactly, in index order, with sizes differing by
+    at most one (the first ``n_profiles % shard_count`` shards carry the remainder).
+    Because realizations are keyed to the GLOBAL index (§3.4), the union of all
+    shards' outputs is bit-identical to a single serial generation.
+
+    Args:
+        n_profiles: Total number of forcing profiles N_forcing.
+        shard_count: Number of shards the range is split into.
+        shard_index: This shard's index in ``[0, shard_count)``.
+
+    Returns:
+        The half-open profile range ``(lo, hi)`` of this shard.
+    """
+    if shard_count < 1 or not 0 <= shard_index < shard_count:
+        raise ValueError(
+            f"shard_index must be in [0, shard_count); got {shard_index}/{shard_count}."
+        )
+    base, rem = divmod(n_profiles, shard_count)
+    lo = shard_index * base + min(shard_index, rem)
+    hi = lo + base + (1 if shard_index < rem else 0)
+    return lo, hi
+
+
+def _load_hazard_shards(
+    out_dir: Path, n_expected: int
+) -> tuple[np.ndarray, list[str], list[str], list[Path]]:
+    """Load and order every hazard-image shard in ``out_dir``; assert they tile ``[0, N)``.
+
+    Returns:
+        ``(H, hazard_axes, sites, shard_files)`` with ``H`` rows in global-index order.
+    """
+    shard_files = sorted(out_dir.glob("hazard_image_shard_*.npz"))
+    if not shard_files:
+        raise FileNotFoundError(f"no hazard-image shards found in {out_dir}")
+    H_parts, id_parts, axes_ref, sites = [], [], None, []
+    for f in shard_files:
+        d = np.load(f, allow_pickle=True)
+        axes = [str(a) for a in d["hazard_axes"]]
+        if axes_ref is None:
+            axes_ref, sites = axes, [str(s) for s in d["sites"]]
+        elif axes != axes_ref:
+            raise ValueError(f"shard {f.name} axes {axes} != {axes_ref}")
+        H_parts.append(np.asarray(d["H"], dtype=float))
+        id_parts.append(np.asarray(d["realization_ids"], dtype=int))
+    ids = np.concatenate(id_parts)
+    H = np.vstack(H_parts)
+    order = np.argsort(ids)
+    ids, H = ids[order], H[order]
+    if not np.array_equal(ids, np.arange(n_expected, dtype=int)):
+        raise ValueError(
+            f"shards in {out_dir} do not tile [0, {n_expected}): got {len(ids)} rows, "
+            f"first/last ids {ids[0]}/{ids[-1]} — regenerate the missing shard(s)."
+        )
+    return H, axes_ref, sites, shard_files
+
+
 def _validate_config(config) -> None:
     """Fail fast on an inconsistent :class:`scengen.forcing_ensemble.ForcingEnsembleConfig`."""
     if config.output_dir is None:
@@ -713,7 +772,7 @@ def _validate_config(config) -> None:
         )
 
 
-def generate_forcing_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (scengen contract)
+def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F821 (scengen contract)
     """Generate one design's realizations (or its candidate pool) and persist them (methods §3.2).
 
     Generates ``n_forcing_profiles x realizations_per_profile`` realizations keyed by the global index
@@ -730,17 +789,22 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (scen
     for a ``du_forced`` population; ``hazard_image.npz`` when the hazard image is computed; and the two
     daily HDF5s (per chunk) when ``store_daily``.
 
+    Sharded generation (``config.extra["profile_shard"] = (index, count)``) computes
+    only that contiguous global-index slice of a stationary stream-only pool and
+    writes a ``hazard_image_shard_*.npz`` intermediate instead of the canonical
+    artifacts; ``config.extra["merge_shards"]`` concatenates the staged shards and
+    writes the canonical artifacts through the same finalizer the serial path uses.
+
     Args:
         config: A ``scengen.forcing_ensemble.ForcingEnsembleConfig``.
 
     Returns:
-        The ``scengen.manifest.EnsembleManifest`` describing the generated ensemble.
+        The ``scengen.manifest.EnsembleManifest`` describing the generated ensemble,
+        or ``None`` for a shard run (shards persist no manifest).
     """
     from scengen import forcing_space as fs
-    from scengen import diagnostics as dg
     from scengen.hazard_metrics import DEFAULT_NYC_INFLOW_NODES
     from scengen.hazard_filling import daily_to_monthly
-    from scengen.manifest import EnsembleManifest
 
     _validate_config(config)
     forced = config.population == "du_forced"
@@ -748,7 +812,47 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (scen
     out_dir = Path(config.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     N_forcing, R = config.n_forcing_profiles, config.realizations_per_profile
-    N, L = N_forcing * R, config.realization_years
+    N = N_forcing * R
+
+    # Sharded generation / shard merge (``config.extra`` keys ``profile_shard`` =
+    # (index, count) and ``merge_shards``). Restricted to stationary stream-only
+    # candidate pools, where the only artifact is the hazard image and every row
+    # is keyed to the GLOBAL realization index (§3.4 partition invariance), so
+    # the shard union is bit-identical to a serial generation.
+    shard = config.extra.get("profile_shard")
+    merge_shards = bool(config.extra.get("merge_shards"))
+    if (shard is not None or merge_shards) and (
+        config.store_daily or not config.compute_hazard_image
+        or config.population != "stationary"
+    ):
+        raise ValueError(
+            "profile_shard/merge_shards support only stationary stream-only candidate "
+            "pools (population='stationary', store_daily=False, compute_hazard_image=True)."
+        )
+
+    if merge_shards:
+        H_merged, hazard_axes, sites, shard_files = _load_hazard_shards(out_dir, N)
+        print(f"[gen] Merged {len(shard_files)} hazard-image shards for "
+              f"'{out_dir.name}' (N={N}).")
+        manifest = _finalize_pool_artifacts(
+            config, out_dir, H_blocks=[H_merged], hazard_axes=hazard_axes,
+            sites=sites, chunk_index=[], forcing_hash="", setup=None,
+        )
+        for f in shard_files:
+            f.unlink()
+        print(f"[gen] Removed {len(shard_files)} shard files after canonical merge.")
+        return manifest
+
+    pf_lo, pf_hi = (0, N_forcing) if shard is None else shard_profile_range(
+        N_forcing, shard[1], shard[0]
+    )
+    shard_path = None
+    if shard is not None:
+        shard_path = out_dir / f"hazard_image_shard_{pf_lo * R:08d}_{pf_hi * R:08d}.npz"
+        if shard_path.exists():
+            print(f"[gen] shard already staged: {shard_path.name}; delete the file "
+                  f"to regenerate.")
+            return None
 
     print(f"[gen] Fitting generators (generator={getattr(config, 'generator', 'kn')}, "
           f"population={config.population}, full {config.full_period})"
@@ -787,8 +891,8 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (scen
     sites: list[str] = []
     chunk_index: list[dict] = []
 
-    for chunk_idx, pf0 in enumerate(range(0, N_forcing, chunk_profiles)):
-        pf1 = min(pf0 + chunk_profiles, N_forcing)
+    for chunk_idx, pf0 in enumerate(range(pf_lo, pf_hi, chunk_profiles)):
+        pf1 = min(pf0 + chunk_profiles, pf_hi)
         chunk_gage: dict[int, pd.DataFrame] = {}
         chunk_inflow: dict[int, pd.DataFrame] = {}
         for b0 in range(pf0, pf1, block):
@@ -831,10 +935,55 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest":  # noqa: F821 (scen
         print(f"[gen]   chunk {chunk_idx}: profiles [{pf0},{pf1}) -> "
               f"realizations [{pf0 * R},{pf1 * R}) of {N}")
 
+    if shard is not None:
+        np.savez(
+            shard_path,
+            H=np.vstack(H_blocks),
+            hazard_axes=np.array(hazard_axes),
+            realization_ids=np.arange(pf_lo * R, pf_hi * R, dtype=int),
+            sites=np.array(sites),
+        )
+        print(f"[gen] Shard {shard[0] + 1}/{shard[1]} done: realizations "
+              f"[{pf_lo * R},{pf_hi * R}) of {N} -> {shard_path.name}")
+        return None
+
+    return _finalize_pool_artifacts(
+        config, out_dir, H_blocks=H_blocks, hazard_axes=hazard_axes, sites=sites,
+        chunk_index=chunk_index, forcing_hash=forcing_hash, setup=setup,
+    )
+
+
+def _finalize_pool_artifacts(
+    config,
+    out_dir: Path,
+    *,
+    H_blocks: list[np.ndarray],
+    hazard_axes: list[str],
+    sites: list[str],
+    chunk_index: list[dict],
+    forcing_hash: str,
+    setup: "_GeneratorSetup | None",
+) -> "EnsembleManifest":  # noqa: F821 (scengen contract)
+    """Persist the canonical staged-ensemble artifacts for one slug.
+
+    The single tail shared by the serial generation path and the shard-merge
+    path, so both always write identical ``hazard_image.npz`` / ``_meta.json`` /
+    ``chunk_index.json`` / ``manifest.json`` (and ``forcing_profiles.npz`` for a
+    forced population, which requires ``setup``).
+    """
+    from scengen import forcing_space as fs
+    from scengen import diagnostics as dg
+    from scengen.manifest import EnsembleManifest
+
+    forced = config.population == "du_forced"
+    N_forcing, R = config.n_forcing_profiles, config.realizations_per_profile
+    N, L = N_forcing * R, config.realization_years
     realization_ids = np.arange(N, dtype=int)
 
     # Per-realization theta (repeat each profile's coordinates R times) aligned with the HDF5 keys.
     if forced:
+        if setup is None:
+            raise ValueError("a forced population requires the generator setup to persist theta")
         profiles_payload = {
             "realization_ids": realization_ids,
             "mean_factor_a": np.repeat(setup.a_wy, R, axis=0).astype(float),

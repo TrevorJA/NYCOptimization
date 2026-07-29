@@ -66,6 +66,32 @@ _FORCE = os.environ.get("NYCOPT_ENSEMBLE_FORCE", "").strip().lower() in (
     "1", "true", "yes", "on",
 )
 
+# Sharded candidate-pool generation (stationary stream-only pools only): each
+# shard job generates one contiguous global-index slice and writes a shard npz;
+# a merge invocation concatenates them into the canonical artifacts. Rows are
+# keyed to the GLOBAL realization index (methods §3.4), so the shard union is
+# bit-identical to a serial generation. Set SHARD_COUNT + SHARD_INDEX per array
+# task, then run once with MERGE_SHARDS=1.
+_SHARD_COUNT = int(os.environ.get("NYCOPT_ENSEMBLE_SHARD_COUNT", "0"))
+_SHARD_INDEX = os.environ.get("NYCOPT_ENSEMBLE_SHARD_INDEX", "")
+_MERGE_SHARDS = os.environ.get("NYCOPT_ENSEMBLE_MERGE_SHARDS", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
+
+def _shard_extra() -> dict:
+    """Resolve the shard/merge ``ForcingEnsembleConfig.extra`` payload from the env."""
+    if _MERGE_SHARDS:
+        return {"merge_shards": True}
+    if _SHARD_COUNT > 0:
+        if _SHARD_INDEX == "":
+            raise ValueError(
+                "NYCOPT_ENSEMBLE_SHARD_COUNT is set but NYCOPT_ENSEMBLE_SHARD_INDEX "
+                "is not (expected the SLURM array task id)."
+            )
+        return {"profile_shard": (int(_SHARD_INDEX), _SHARD_COUNT)}
+    return {}
+
 
 def _already_staged(out: Path) -> bool:
     """Return True if ``out`` holds a staged ensemble and regeneration was not forced.
@@ -97,6 +123,7 @@ def _generate_forcing(
     population: str,
     theta_sampler: str,
     compute_hazard_image: bool,
+    extra: dict | None = None,
 ) -> None:
     """Run the shared forcing->realization generator for one staged slug.
 
@@ -115,11 +142,15 @@ def _generate_forcing(
         compute_hazard_image: Stream the hazard image while generating. True only
             for a hazard-filling candidate pool -- the SSI-6 fit and POT pass are
             pure waste otherwise.
+        extra: Optional ``ForcingEnsembleConfig.extra`` payload (shard/merge modes;
+            see :func:`_shard_extra`). Shard and merge runs bypass the staged-slug
+            guard: the slug directory legitimately fills with shard files first,
+            and per-shard idempotency is handled at the shard-file level.
     """
     from scengen.forcing_ensemble import ForcingEnsembleConfig, generate_forcing_ensemble
 
     out = STAGED_ENSEMBLE_DIR / slug
-    if _already_staged(out):
+    if not extra and _already_staged(out):
         return
     out.mkdir(parents=True, exist_ok=True)
 
@@ -146,6 +177,7 @@ def _generate_forcing(
         store_daily=not ENSEMBLE_MASTER_STREAM_ONLY,
         hazard_block_size=ENSEMBLE_MASTER_HAZARD_BLOCK,
         chunk_size=ENSEMBLE_MASTER_CHUNK_SIZE,
+        extra=extra or {},
     )
     print(f"[gen] Building '{slug}' for design '{design.name}': "
           f"population={population}, theta={theta_sampler}, "
@@ -264,6 +296,7 @@ def _build_candidate_pool(design: ScenarioDesign, draw: int) -> None:
         population=design.population,
         theta_sampler="iid",
         compute_hazard_image=True,
+        extra=_shard_extra(),
     )
 
 
@@ -322,6 +355,16 @@ def main() -> None:
     """Build the active scenario design's realizations for the requested draw(s)."""
     args = _parse_args()
     design = ACTIVE_SCENARIO_DESIGN
+
+    if (_SHARD_COUNT > 0 or _MERGE_SHARDS) and (
+        design.construction != "hazard_fill" or args.all_draws
+    ):
+        raise ValueError(
+            "NYCOPT_ENSEMBLE_SHARD_* / NYCOPT_ENSEMBLE_MERGE_SHARDS apply only to a "
+            "single draw of a hazard-filling candidate pool (construction "
+            f"'hazard_fill'); got construction '{design.construction}', "
+            f"all_draws={args.all_draws}."
+        )
 
     if design.construction == "preset":
         print(f"[gen] Design '{design.name}' resolves to the static preset "
