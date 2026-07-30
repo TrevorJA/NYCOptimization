@@ -140,7 +140,8 @@ _MSET_COLORS = {"m4": "#c9a227", "m6": "#2c8c5a", "campaign": "#7d3f9b", "full":
 
 def _out_dir() -> Path:
     out = config.OUTPUTS_DIR / "supplemental" / "hazard_selector_diagnostics" / OUT_SLUG
-    (out / "figures").mkdir(parents=True, exist_ok=True)
+    # Saturation mode writes tables only, so don't leave an empty figures/ dir.
+    (out / "figures" if not SATURATION else out).mkdir(parents=True, exist_ok=True)
     return out
 
 
