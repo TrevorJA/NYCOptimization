@@ -606,7 +606,8 @@ def borg_timing_csv_path(config_name: str, seed: int, job_id: str) -> Path:
 # The Anvil packing sweep measured ONE ensemble shape (kn_20yr_n20) across
 # ranks-per-node. It says nothing about how a Borg evaluation's cost moves with
 # the ensemble's SHAPE, and the campaign is sized in that shape: N realizations
-# x L years, trimmed model for search, full model for re-evaluation. pywrdrb
+# x L years, trimmed model for search AND re-evaluation (full model only for
+# presim passes + the historic baseline). pywrdrb
 # runs realizations as pywr SCENARIOS inside one model, so per-eval cost is
 # sub-linear in N (vectorized per-timestep work) but ~linear in L (timesteps);
 # a cost per scenario-year taken from one (N, L) point therefore misprices every
@@ -929,11 +930,13 @@ ENSEMBLE_COST_PROJ_EFFICIENCY: float = 0.729
 
 #: Re-evaluation side: n_policies archived policies re-simulated on the held-out
 #: test ensemble E_test (N_theta forcing draws x R realizations each, L_test yr)
-#: on the FULL model. 600 = ~100 policies per design after archive filtering.
-ENSEMBLE_COST_REEVAL_POLICIES: int = 600
-ENSEMBLE_COST_ETEST_NTHETA: "tuple[int, ...]" = (200, 500, 1000)
-ENSEMBLE_COST_ETEST_R: "tuple[int, ...]" = (10, 20)
-ENSEMBLE_COST_ETEST_LTEST: "tuple[int, ...]" = (10, 30)
+#: on the TRIMMED model (decided 2026-07-30). 1,200 = ~400 policies per design
+#: at the calibrated epsilons, merged across seeds. The decided E_test cell is
+#: (N_theta, R, L_test) = (1000, 25, 50); the grid brackets it.
+ENSEMBLE_COST_REEVAL_POLICIES: int = 1200
+ENSEMBLE_COST_ETEST_NTHETA: "tuple[int, ...]" = (500, 1000, 1500)
+ENSEMBLE_COST_ETEST_R: "tuple[int, ...]" = (10, 25)
+ENSEMBLE_COST_ETEST_LTEST: "tuple[int, ...]" = (10, 50)
 
 #: Re-evaluation is an embarrassingly parallel task farm, not a Borg search: no
 #: island coordination, no synchronizing generations. Its only loss is a master
@@ -1048,8 +1051,8 @@ DETERMINISM_ENSEMBLE_SLUG: str = os.environ.get(
     "NYCOPT_DETERMINISM_ENSEMBLE", "kn_50yr_n5")
 
 #: Simulation paths measured, each for determinism against ITSELF (trimmed and
-#: full need not agree with each other): the search path (historic + ensemble,
-#: trimmed) and the baseline/re-eval path (full model).
+#: full need not agree with each other): the search/re-eval path (historic +
+#: ensemble, trimmed) and the presim/baseline path (full model).
 DETERMINISM_PATHS: "tuple[str, ...]" = tuple(
     p.strip() for p in os.environ.get(
         "NYCOPT_DETERMINISM_PATHS",

@@ -125,12 +125,12 @@ sets, and it also persists the baseline re-evaluation matrix on the common
 held-out ensemble so step `08` can compute regret-from-baseline:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_5yr_n200 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
        workflow/05_run_baseline.sh
 ```
 
 The second (re-eval) pass of this job requires the held-out ensemble
-(`kn_5yr_n200`) to be staged first — see §2.1. To run the baseline before
+(`etest_kn_50yr_n25000`) to be staged first — see §2.1. To run the baseline before
 staging it, add `NYCOPT_BASELINE_SKIP_REEVAL=1` to the `--export` list and
 rerun step `05` later.
 
@@ -194,7 +194,7 @@ staged. A full reproducibility manifest is written to
 bash workflow/07_run_diagnostics.sh
 
 # Re-evaluate the Pareto policies on the common held-out ensemble + robustness scoring
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_5yr_n200,NYCOPT_REEVAL_SCORE=1 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
        workflow/08_reevaluate.sh
 ```
 

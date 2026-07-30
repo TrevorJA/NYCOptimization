@@ -70,7 +70,7 @@ The unit of analysis for the between-design comparison is the draw, and seeds wi
 
 ## Evaluation
 
-All Pareto-approximate sets are re-evaluated, with the full untrimmed model, on one large held-out test ensemble E_test, never used during any search and never the source of any search ensemble.
+All Pareto-approximate sets are re-evaluated, with the trimmed model used in search (the policy-independent non-NYC releases are presimulated once per E_test realization and reused for every Pareto set), on one large held-out test ensemble E_test (N_θ = 1,000 LHS SOWs × R = 25 realizations × L_test = 50 yr; sizing derivation in `scenario_design_methods.md` §5.4), never used during any search and never the source of any search ensemble.
 
 **E_test is the sole carrier of deep uncertainty and the measuring stick.** It is the largest ensemble in the study by a wide margin and is built to encompass a deeply uncertain climate-forcing envelope rather than to represent a probability distribution: a Latin hypercube over the full range of the CMIP6 harmonic forcing factors, with an envelope deliberately wider than any variation the search ensembles contain, crossed with many stochastic realizations per LHS point. Each LHS point is a state of the world, and its realizations sample natural variability within it. E_test is sampled by LHS, not i.i.d.; the i.i.d. rule applies only to the candidate pool, where it underwrites the distributional-equivalence control. E_test is never subsampled and is never a control, so it covers the deeply uncertain space rather than sampling it in proportion to a measure. Construction and sizing: `scenario_design_methods.md` §5.
 
@@ -96,8 +96,9 @@ The two matched designs depart differently from the scenario probabilities of th
 
 ## Open questions
 
-1. **Test-ensemble design** — which deeply uncertain factors it spans, its size, and how realizations are allocated across them. Size matters doubly because nondominated sets are recomputed from re-evaluated values.
-2. **Hazard-metric axes and *N*** — measured at laptop scale (`hazard_selector_diagnostics.md` §5): the screen retains all eight descriptors (no near-duplicates at |ρ_S| ≥ 0.95; max 0.88) and the recommendation is (m = 8, N = 100) — every axis is stratified and tail-enriched vs the null at N = 100, and raising N at fixed pool size *lowers* enrichment. Awaiting confirmation on the production pool against the adequacy gate (min per-axis tail share ≥ ~0.30 on every axis).
-3. **Sizing not yet fixed** — the candidate pool size *P* (now the binding lever on full-set tail enrichment; same adequacy gate) and the draw and seed counts *K*, *S* against the compute budget.
-4. **The flood-days unit operator** (mean vs P99) and the frequency objectives' annual failure criteria, set by the ensemble objective-sensitivity experiment.
-5. **Figure plan** for the results — not yet drafted.
+1. **The flood-days unit operator** (mean vs P99) and the frequency objectives' annual failure criteria, set by the ensemble objective-sensitivity experiment.
+2. **Satisficing criterion values** — the centre of the threshold grid (Decree/FFMP anchors where they exist; elicited-convention defaults elsewhere) and the grid's span.
+3. **The optional 8th objective** (NJ delivery reliability) — activate or drop from the redundancy screen.
+4. **Figure plan** for the results — not yet drafted.
+
+Sizing is fixed (2026-07-30): E_test = 1,000 LHS SOWs × R = 25 × L_test = 50 yr; selection axes m = 6 with N = 100 and P = 10⁶ (`scenario_design_methods.md` §3.3/§5.4/§6; `hazard_selector_diagnostics.md` §5b); K = 3 draws × S = 2 seeds per matched design.

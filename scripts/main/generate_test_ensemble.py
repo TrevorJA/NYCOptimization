@@ -21,7 +21,7 @@ Reuses the one generation path (``src.ensemble_generation.generate_forcing_ensem
     chunk_size > 0             E_test is the largest ensemble in the study; the chunked re-eval path
                                (src/chunk_reeval.py, workflow step 09) exists for exactly this.
 
-Sizing lives in ``src/etest.py`` (provisional, env-overridable). No CLI value flags: ``--variant``
+Sizing lives in ``src/etest.py`` (decided 2026-07-30, env-overridable). No CLI value flags: ``--variant``
 is an identifier.
 
     python3 -m scripts.main.generate_test_ensemble                  # the campaign E_test (kn)

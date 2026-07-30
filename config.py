@@ -235,10 +235,13 @@ END_DATE = "2022-09-30"     # Water-year end matching presimulated release data
 # Data() loader. See local_notes/decisions/2026-04-30_inflow_and_du_search.md.
 # Override per-experiment via NYCOPT_INFLOW_TYPE in workflow/envs/*.env.
 INFLOW_TYPE = os.environ.get("NYCOPT_INFLOW_TYPE", "pub_nhmv10_BC_withObsScaled")
-# Trimmed model (presimulated lower-basin releases) is the search path; the
-# full model (all reservoirs simulated live) is the re-evaluation path. The
-# env knob exists so benchmarks and re-eval jobs can select the full model
-# through the production evaluate() path without editing this file.
+# Trimmed model (presimulated lower-basin releases) is BOTH the search and the
+# re-evaluation path (decided 2026-07-30): the non-NYC STARFIT releases are
+# policy-independent, so step 04 presimulates them once per staged realization
+# and every policy evaluation reuses them. The full model (all reservoirs
+# simulated live) is used only for the presim pass (step 01/04) and the
+# single-trace historic baseline (step 05); the env knob exists so benchmarks
+# and those jobs can select it without editing this file.
 USE_TRIMMED_MODEL = _parse_bool_env("NYCOPT_USE_TRIMMED_MODEL", True)
 INITIAL_VOLUME_FRAC = 0.80
 

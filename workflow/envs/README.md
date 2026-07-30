@@ -35,7 +35,7 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=f
        --array=1-10 workflow/06_run_mmborg.sh
 
 # Re-evaluate on the common held-out ensemble:
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_5yr_n200 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
        workflow/08_reevaluate.sh
 ```
 

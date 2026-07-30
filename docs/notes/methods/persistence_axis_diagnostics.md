@@ -233,7 +233,8 @@ are scoped.** Basis:
   (simulation-free) quantifies how much multi-year-dry stress E_test actually expresses,
   completing the disclosure.
 
-Consequences: E_test stays 3-axis with L_test = 10 yr (the §2 sizing gate resolves to
-the no-axis branch). Mechanism A remains prototyped and validated in `scengen.persistence`
+Consequences: E_test stays 3-axis (the §2 sizing gate resolves to the no-axis branch);
+its size was subsequently locked at N_θ = 1,000 × R = 25 × L_test = 50 yr
+(`scenario_design_methods.md` §5.4). Mechanism A remains prototyped and validated in `scengen.persistence`
 as future-work material (a persistence-stressed test ensemble is the natural follow-on
 study); Mechanism B is rejected outright.

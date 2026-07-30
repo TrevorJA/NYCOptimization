@@ -1,6 +1,10 @@
 """
-reevaluate.py - Re-simulate Pareto-optimal solutions with the full Pywr-DRB
-model and save per-solution HDF5 outputs + objective summary CSV.
+reevaluate.py - Re-simulate Pareto-optimal solutions on the re-evaluation
+ensemble and save per-solution HDF5 outputs + objective summary CSV.
+
+Runs the TRIMMED model, like search (``config.USE_TRIMMED_MODEL``): the
+non-NYC STARFIT releases are policy-independent, presimulated once per staged
+realization by step 04 and reused for every Pareto set.
 
 Runs independent solutions in parallel via multiprocessing.Pool (spawn
 context, so each worker builds its own model instance). On HPC this should

@@ -49,12 +49,13 @@ running-average delivery entitlement via ``_delivery_entitlement``, CVaR90 via
 so §1 and §2 share one formula per quantity. Deficit-% and storage-% metrics
 are 0-100 scales matching §1; frequency objectives are 0-1 fractions.
 
-The active set's epsilons are CALIBRATED in native metric units (~IQR/10 on
-the historic reference trace, 2026-07-15; see the `_ANNUAL_REGISTRY_SPEC`
-comment). Only `nj_delivery_reliability_annual` and
-`downstream_flood_days_annual_p99` remain placeholders, pending the ensemble
-objective-sensitivity experiment
-(`docs/notes/methods/ensemble_objective_sensitivity_experiment.md`).
+The active set's epsilons are FINAL: calibrated in native metric units by the
+epsilon-calibration experiment (2026-07-30; 512 constraint-feasible policies +
+baseline per design, max over the ensemble campaign designs — see the
+`_ANNUAL_REGISTRY_SPEC` comment and
+`docs/notes/methods/epsilon_calibration_experiment.md`). The inactive-registry
+entries (`nj_delivery_reliability_annual`, `downstream_flood_days_annual_p99`)
+carry calibrated values from the same experiment.
 
 Re-evaluation satisficing layer (retained)
 ------------------------------------------

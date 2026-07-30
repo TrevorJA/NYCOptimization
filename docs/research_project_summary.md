@@ -1,6 +1,6 @@
 # NYC Reservoir Re-Optimization: Project Summary
 
-*Entry point for new readers. Last updated 2026-07-15. Details live in `docs/notes/`;
+*Entry point for new readers. Last updated 2026-07-30. Details live in `docs/notes/`;
 this page states what the study is, what is decided, and what is still open. The
 manuscript at `docs/manuscript/Amestoy_NYC_reoptimization_manuscript_draft.md` is the
 authoritative description of the method. Where a note and the code disagree, the code
@@ -82,10 +82,13 @@ probability-preserving flow stratification).
    ensemble directly and the `hazard_filling` candidate pool. The pool is sampled i.i.d.,
    and only its hazard image plus seeds are stored; realizations regenerate
    deterministically on demand (chunked storage for large pools).
-2. **Hazard metrics + redundancy handling** — drought/low-flow/high-flow indices per
-   sequence; all non-degenerate descriptors are retained as selection axes (near-duplicates
-   at |ρ_S| ≥ 0.95 pruned to one member; expected 6–8 axes), with rank-correlation
-   structure reported as a diagnostic, not used to reduce further.
+2. **Hazard metrics + redundancy handling** — drought and flood descriptors per
+   sequence; the screen (degenerate drop + near-duplicate prune at |ρ_S| ≥ 0.95)
+   retains all eight candidates, with rank-correlation structure reported as a
+   diagnostic. The campaign **selection axes** are a fixed six-descriptor subset
+   (deficit volume, peak depth, onset rate, recovery rate; peak magnitude, pulse
+   duration — `config.HAZARD_SELECTION_AXES`); duration and rise rate stay
+   computed and reported but do not enter the snap distance.
 3. **Selection (hazard filling only)** — Latin hypercube anchors in absolute, robust
    range-scaled hazard space, snapped to the nearest unused pool member. The snap is intrinsic: hazard
    coordinates are emergent properties of a realized sequence, so a hazard-space design
@@ -107,8 +110,10 @@ percentile), defined in `src/objectives.py` and documented in
 `notes/methods/objective_definitions.md`. During search, each objective's per-realization
 temporal metric is collapsed across realizations by a two-layer annual-unit scheme
 (annual metric per realization × water-year unit; a per-objective unit operator over the
-pooled unit-years). Thresholds and the annual-unit epsilons are placeholders pending the
-sensitivity experiments.
+pooled unit-years). The annual-unit epsilons were calibrated and adopted 2026-07-30
+(512 constraint-feasible policies per design; max over the two ensemble designs, the
+historic arm excluded and disclosed); satisficing thresholds remain placeholders pending
+the sensitivity experiments.
 
 ## Comparison controls
 
@@ -135,10 +140,14 @@ See `notes/methods/experimental_design.md`.
 ## The test ensemble (E_test)
 
 E_test is the **only carrier of deep uncertainty** in the study and the **largest
-ensemble by a wide margin**. It is a **Latin hypercube over the full range of the
-deeply-uncertain climate-forcing factors** (the CMIP6 harmonic hypercube), with **many
-realizations per LHS point** — each LHS point is a state of the world, and its
-realizations sample natural variability within it. Because the search ensembles are drawn
+ensemble by a wide margin**: N_θ = 1,000 LHS points over the full range of the
+deeply-uncertain climate-forcing factors (the CMIP6 harmonic hypercube) × R = 25
+realizations × L_test = 50 yr — 25,000 realizations, 1.25M scenario-years. Each LHS
+point is a state of the world, and its realizations sample natural variability within
+it; the 50-yr records (vs L = 10 in search) test sustained operation — storage
+carryover across consecutive droughts and matured entitlement banking. Re-evaluation
+runs the **trimmed model**, like search: the policy-independent non-NYC releases are
+presimulated once per realization and reused for every Pareto set. Because the search ensembles are drawn
 from the unperturbed stationary generator while E_test spans a forced climate envelope,
 the re-evaluation is a **generalization test**: does hazard coverage of the
 natural-variability manifold produce policies that generalize to conditions never
@@ -154,8 +163,9 @@ satisficing fraction over E_test is a coverage-weighted count over a designed
 exploration, and the comparison is commensurable because E_test is *identical across
 designs*, not because it is probability-faithful. The campaign uses one construction
 (Kirsch–Nowak over the wide DU box); rankings are conditional on it, a declared
-limitation, and a structurally different second construction (multi-site HMM) is
-registered as an optional sensitivity. **The full (solution × realization × objective)
+limitation; a structurally different second construction (multi-site HMM) is registered
+but parked outside the campaign — the DRB-fitted HMM is near-memoryless, so it would
+vary the generator family without adding a persistence stress. **The full (solution × realization × objective)
 matrix is persisted** in natural units with each realization's SOW id, so any robustness
 metric — at the SOW unit or the realization unit — is scored offline without
 re-simulating.
@@ -187,27 +197,30 @@ uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE pe
 (attained budget justified post hoc from the runtime archive, and the comparison
 recomputable at earlier budgets); the production MM Borg geometry (8 Anvil nodes,
 4 islands × 254 workers, 1,021 ranks, ~32.6 h/search); K = 3 draws × S = 2 seeds; absolute
-range-scaled hazard-space selection; comparison metrics = multivariate Starr satisficing
-(primary) with Laplace, maximin, and signed improvement-over-status-quo as anchors, **no
-set-relative or perfect-foresight regret**; search aggregation = two-layer annual-unit
-scheme; forcing space retains historical persistence (claims scoped accordingly).
+range-scaled hazard-space selection on the six campaign selection axes from a P = 10⁶
+candidate pool; E_test locked at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr (trimmed-model
+re-evaluation); the calibrated annual-unit epsilon vector (adopted 2026-07-30); comparison
+metrics = multivariate Starr satisficing (primary) with Laplace, maximin, and signed
+improvement-over-status-quo as anchors, **no set-relative or perfect-foresight regret**;
+search aggregation = two-layer annual-unit scheme; forcing space retains historical
+persistence (claims scoped accordingly).
 
 **Total Anvil allocation = 750,000 SU.** The full campaign (two matched designs × K = 3 ×
-S = 2 at 500k NFE, plus the cheap `historic` reference, generation, and re-evaluation
-allowances) is approximately 448,000 SU (60%), leaving a ~300,000-SU reserve for the RQ3
-variable-resolution sweep (~200k at one draw × two seeds × three N values), any additional
-draws a power calculation indicates, and the optional second E_test.
+S = 2 at 500k NFE, plus the cheap `historic` reference, generation, and the E_test
+re-evaluation at ~80,000 SU) is approximately 503,000 SU (67%), leaving a ~247,000-SU
+reserve. First call on the reserve is an additional draw for both matched designs
+(~134k); the RQ3 variable-resolution sweep (~200k) is deprioritized and runs only on
+whatever SU remains at the end of the campaign.
 
-**Not yet in place (gates the RQ1 campaign):** the production-scale candidate pool; the
-held-out test ensemble E_test at production size; the multi-draw (K > 1) generation; the
-final satisficing thresholds and epsilons; the pilot minimum-detectable-effect
-calculation that fixes K.
+**Not yet in place (gates the RQ1 campaign):** the multi-draw (K > 1) pool generation
+(the P = 10⁶ draw-0 pool is staged); E_test staged at production size (plus its one-time
+presim pass); the final satisficing thresholds adopted into the registry; step-00 JAR
+regeneration under the adopted epsilons.
 
-**Open decisions:** E_test sizing (N_theta × R × L_test, against the SU allocation) and
-whether to stand up the optional second E_test construction; the retained hazard-descriptor
-set and the ensemble size N (from the selector diagnostics); the pool size P; the flood unit operator
-(mean vs P99) and failure-criterion values (from the sensitivity experiment); the
-scenario design under which the RQ3 variable-resolution sweep is run. See
+**Open decisions:** the flood unit operator (mean vs P99) and failure-criterion values
+(from the sensitivity experiment); the satisficing criterion values and sweep-grid
+centre; the optional 8th objective (redundancy screen); the scenario design under which
+the RQ3 variable-resolution sweep is run, if the leftover SU permits it. See
 `notes/methods/experimental_design.md` for the open-questions list.
 
 ## Document index

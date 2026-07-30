@@ -412,14 +412,15 @@ def project_campaign(surf: pd.DataFrame, ratio: pd.DataFrame) -> pd.DataFrame:
     evaluations, so this over-estimates search wall time and the search SU here
     is a conservative upper bound.
 
-    Re-evaluation: ``n_policies x N_theta`` full-model simulations of an R x
-    L_test test ensemble. This is a task farm, not a search: no islands, no
-    generations, no coordination — so it is priced at a utilization factor, not
-    at the Borg efficiency. Its per-eval cost is the measured FULL-model cost at
-    the (R, L_test) shape when that cell was measured, and otherwise the
-    measured trimmed cost at that shape scaled by the measured full/trimmed
-    ratio (recorded per row in ``cost_basis``, so no projected number's
-    provenance is ambiguous).
+    Re-evaluation: ``n_policies x N_theta`` TRIMMED-model simulations of an R x
+    L_test test ensemble (decided 2026-07-30: re-eval runs the trimmed model,
+    like search; the full model appears only in the one-time presim pass). This
+    is a task farm, not a search: no islands, no generations, no coordination —
+    so it is priced at a utilization factor, not at the Borg efficiency. Its
+    per-eval cost is the measured TRIMMED cost at the (R, L_test) shape when
+    that cell was measured, and otherwise the measured full cost at that shape
+    divided by the measured full/trimmed ratio (recorded per row in
+    ``cost_basis``, so no projected number's provenance is ambiguous).
     """
     design_pt = surf[
         (surf["n_realizations"] == N_STAR)
@@ -447,20 +448,20 @@ def project_campaign(surf: pd.DataFrame, ratio: pd.DataFrame) -> pd.DataFrame:
     fallback_ratio = float(ratio["time_ratio"].median()) if not ratio.empty else np.nan
 
     def _reeval_cost(r: int, l_test: int) -> tuple[float, int, str]:
-        """(seconds, ranks_per_node, provenance) for one full-model E_test sim."""
-        cell = surf[(surf["n_realizations"] == r)
-                    & (surf["realization_years"] == l_test)
-                    & (surf["model_variant"] == "full")]
-        if not cell.empty:
-            return (float(cell["warm_median_s"].iloc[0]),
-                    int(cell["k_concurrent"].iloc[0]), "measured_full")
+        """(seconds, ranks_per_node, provenance) for one trimmed-model E_test sim."""
         cell = surf[(surf["n_realizations"] == r)
                     & (surf["realization_years"] == l_test)
                     & (surf["model_variant"] == "trimmed")]
+        if not cell.empty:
+            return (float(cell["warm_median_s"].iloc[0]),
+                    int(cell["k_concurrent"].iloc[0]), "measured_trimmed")
+        cell = surf[(surf["n_realizations"] == r)
+                    & (surf["realization_years"] == l_test)
+                    & (surf["model_variant"] == "full")]
         if not cell.empty and np.isfinite(fallback_ratio):
-            return (float(cell["warm_median_s"].iloc[0]) * fallback_ratio,
+            return (float(cell["warm_median_s"].iloc[0]) / fallback_ratio,
                     int(cell["k_concurrent"].iloc[0]),
-                    "trimmed x median_full_trimmed_ratio")
+                    "full / median_full_trimmed_ratio")
         return np.nan, 0, "unmeasured"
 
     n_pol = scfg.ENSEMBLE_COST_REEVAL_POLICIES
@@ -665,9 +666,9 @@ def fig_model_ratio(ratio: pd.DataFrame, out) -> None:
     ax.set_xscale("log")
     ax.set_xlabel("Realizations per evaluation, N")
     ax.set_ylabel("Full ÷ trimmed warm evaluation time")
-    ax.set_title("A re-evaluation costs this many search evaluations\n"
-                 "(full model simulates the lower-basin reservoirs the trimmed "
-                 "model reads from presimulated releases)", fontsize=10)
+    ax.set_title("Full-vs-trimmed cost ratio (prices the presim passes;\n"
+                 "the full model simulates the lower-basin reservoirs the "
+                 "trimmed model reads from presimulated releases)", fontsize=10)
     ax.grid(alpha=0.25, which="both")
     save_figure(fig, out)
     plt.close(fig)
@@ -705,7 +706,7 @@ def fig_campaign_su(proj: pd.DataFrame, out) -> None:
         reeval = np.nan_to_num(sub["reeval_su"].to_numpy(float), nan=0.0)
         ax.bar(idx, search, color=C_TRIMMED, label="search (Borg, trimmed)")
         ax.bar(idx, reeval, bottom=search, color=C_FULL,
-               label="re-evaluation (full model)")
+               label="re-evaluation (trimmed model)")
         ax.axhline(alloc, color=C_LIMIT, lw=1.5)
         ax.set_xticks(idx)
         ax.set_xticklabels(labels, fontsize=6.5, rotation=90)
@@ -723,7 +724,7 @@ def fig_campaign_su(proj: pd.DataFrame, out) -> None:
         f"Campaign cost vs test-ensemble size: "
         f"{scfg.ENSEMBLE_COST_PROJ_DESIGNS} designs x {draws} draws x {seeds} "
         f"seeds of MM-Borg search, plus {scfg.ENSEMBLE_COST_REEVAL_POLICIES} "
-        f"policies re-evaluated on the full model.",
+        f"policies re-evaluated on the trimmed model.",
         fontsize=9,
     )
     save_figure(fig, out)

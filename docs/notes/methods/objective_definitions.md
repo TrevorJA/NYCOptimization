@@ -533,8 +533,10 @@ Three compounding reasons a pooled reference set is biased across designs:
    realization-level rankings.
 3. Set the **centre** of the §4.1 threshold grid (Decree/FFMP anchors where they
    exist; elicited-convention defaults elsewhere) and the grid's span.
-4. Fix the retained hazard-descriptor set and the ensemble size N from the
-   selector diagnostics on the production pool.
+4. ~~Fix the retained hazard-descriptor set and the ensemble size N from the
+   selector diagnostics on the production pool~~ — done 2026-07-30: selection
+   axes m = 6 (`config.HAZARD_SELECTION_AXES`), N = 100, P = 10⁶ via the
+   nested-P diagnostic (`hazard_selector_diagnostics.md` §5b).
 5. The salt-front (`salt_front_intrusion_max_rm`) and Lordville thermal metrics
    remain registered diagnostics; both are out of the active search set.
 </content>

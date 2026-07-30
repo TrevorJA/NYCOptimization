@@ -44,11 +44,29 @@ Precedent for the construction: Trindade et al. (2017) (10,000 LHS DU samples x 
 realizations); Gold et al. (2022) (1e6 SOWs); Kasprzyk et al. (2013) and Bartholomew & Kwakkel
 (2020) (10,000 LHS SOWs); Quinn et al. (2020) (LHS over generator parameters).
 
-SIZING IS PROVISIONAL
----------------------
-``N_theta_test``, ``R_test`` and ``L_test`` are being set against the SU budget. They live HERE, as
-single-source-of-truth env-overridable constants with clearly-flagged provisional defaults, and are
-hardcoded nowhere else.
+SIZING (decided 2026-07-30)
+---------------------------
+``N_theta_test = 1000``, ``R_test = 25``, ``L_test = 50`` — 25,000 realizations, 1.25M
+scenario-years, ~80k SU at the measured trimmed-model cost. The reasoning, priced against the
+allocation ledger (``scenario_design_methods.md`` §5.4/§6):
+
+* **N_theta governs cross-SOW precision** (worst-case Monte Carlo SE of a satisficing fraction
+  is 0.5/sqrt(N_theta) = +/-1.6 pp at 1,000), and lands E_test in the 10^3-10^4-SOW class of the
+  MORDM precedents (Kasprzyk et al. 2013; Herman et al. 2014; Bartholomew & Kwakkel 2020).
+* **R x (L-1) = 1,225 annual units per SOW** meets the same ~900-1,000 unit-year sample the
+  search side argues stabilizes this lineage's tail operators — the within-SOW (stage-1)
+  estimate is resolved as well as an entire search evaluation. Closest structural precedent:
+  Quinn et al. (2020), ~1,050 realization-years per parameterization.
+* **L_test = 50 >> L = 10** tests sustained operation — storage carryover across consecutive
+  droughts and matured entitlement banking, which terminating 10-yr search windows reset away.
+  It adds system-state continuity, NOT hydrologic persistence (the generator's interannual
+  sequencing is near-i.i.d.; see ``persistence_axis_diagnostics.md``) — claims stay scoped.
+* **Re-evaluation runs the TRIMMED model** (like search): the non-NYC STARFIT releases are
+  policy-independent, so the step-04 presim pass over E_test is computed ONCE per realization
+  and reused for every Pareto set. Adequacy of both sample sizes is verified post hoc by
+  theta- and R-subsample ranking stability, scored offline from the persisted re-eval matrix.
+
+The constants live HERE, env-overridable, and are hardcoded nowhere else.
 
 E_test needs no ``src.ensembles.PRESETS`` entry: ``_spec_from_staged_dir`` resolves any staged slug
 carrying a ``_meta.json``. Point ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` at the slug.
@@ -66,22 +84,21 @@ from scengen.seeds import design_seed
 from src.scenario_designs import SCENARIO_YEARS, SEED_ROOT
 
 ###############################################################################
-# Sizing (PROVISIONAL - being set against the SU budget)
+# Sizing (LOCKED 2026-07-30; derivation in scenario_design_methods.md section 5.4)
 ###############################################################################
 
 #: Number of LHS design points (deeply-uncertain states of the world) in E_test.
-#: PROVISIONAL. Precision of the SOW-unit robustness metric is governed by THIS number, not by
+#: Precision of the SOW-unit robustness metric is governed by THIS number, not by
 #: N_test — see ``src.robustness.satisficing_multivariate_sow``.
-E_TEST_N_THETA: int = int(os.environ.get("NYCOPT_ETEST_N_THETA", "200"))
+E_TEST_N_THETA: int = int(os.environ.get("NYCOPT_ETEST_N_THETA", "1000"))
 
 #: Realizations generated per LHS point (R_test). MUST be > 1: with R = 1 there is no within-SOW
 #: sample, so the SOW unit collapses onto the realization unit and the two metrics coincide.
-#: PROVISIONAL.
-E_TEST_R: int = int(os.environ.get("NYCOPT_ETEST_R", "10"))
+E_TEST_R: int = int(os.environ.get("NYCOPT_ETEST_R", "25"))
 
 #: Realization length L_test (years). Must be >= the search-side L (``SCENARIO_YEARS``), enforced
-#: below. PROVISIONAL.
-E_TEST_YEARS: int = int(os.environ.get("NYCOPT_ETEST_YEARS", str(SCENARIO_YEARS)))
+#: below. Deliberately >> L: sustained-operation testing (see module docstring).
+E_TEST_YEARS: int = int(os.environ.get("NYCOPT_ETEST_YEARS", "50"))
 
 #: Realizations per staged daily chunk. E_test is the largest ensemble in the study, so it is
 #: chunked by default; the chunked re-eval path (``src.chunk_reeval``) exists for exactly this.
@@ -96,7 +113,7 @@ E_TEST_BOUND_PCT: tuple[float, float] = (
     float(os.environ.get("NYCOPT_ETEST_BOUND_HI", "100.0")),
 )
 
-#: Fractional widening of each harmonic-parameter range beyond the full CMIP6 span. PROVISIONAL.
+#: Fractional widening of each harmonic-parameter range beyond the full CMIP6 span (campaign value).
 E_TEST_MARGIN: float = float(os.environ.get("NYCOPT_ETEST_MARGIN", "0.25"))
 
 #: The default E_test construction. ``"kn"`` is THE test ensemble of the campaign; every other
@@ -154,7 +171,7 @@ class ETestVariant:
 
     @property
     def slug(self) -> str:
-        """Staged-ensemble slug, e.g. ``etest_kn_10yr_n2000``."""
+        """Staged-ensemble slug, e.g. ``etest_kn_50yr_n25000``."""
         return f"etest_{self.generator}_{self.realization_years}yr_n{self.n_realizations}"
 
     @property

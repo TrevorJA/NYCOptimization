@@ -3,7 +3,7 @@
 # baseline objective values — the comparison anchor for optimized Pareto sets.
 #
 # Usage (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_5yr_n200 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
 #          workflow/05_run_baseline.sh
 #   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env bash workflow/05_run_baseline.sh
 #

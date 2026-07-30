@@ -37,7 +37,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy + persist its re-eval matrix for regret-from-baseline |
 | 06 | `06_run_mmborg.sh` | `wholenode`, 5×33, 96 h | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array=1-10` = seed replicates; config-derived pre-flight |
 | 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | — | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); positional slug identifiers select targets |
-| 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the full model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
+| 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the trimmed model (step-04 presim reused across all Pareto sets); opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
 | 09 | `09_simulate_test_chunks.sh` | `wholenode`, 4×16, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked test ensemble, metrics-only (MPI chunk-and-aggregate) |
 | 12 | `12_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build the held-out test ensemble E_test: LHS over the FULL DU box × R>1 realizations per SOW, chunked, hazard image streamed. `--variant kn` is the campaign's E_test; `hmm` is an opt-in generator sensitivity |
 

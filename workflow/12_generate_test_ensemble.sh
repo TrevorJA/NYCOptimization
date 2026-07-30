@@ -24,9 +24,9 @@
 #                   a multi-site Gaussian-mixture HMM on annual flows, as a
 #                   generator-structure sensitivity.           (seed domain etest:hmm)
 #
-# Sizing (N_theta_test, R_test, L_test, chunk) is PROVISIONAL and lives in
-# src/etest.py — env-overridable (NYCOPT_ETEST_*), hardcoded nowhere else. No
-# value flags here; --variant is an identifier.
+# Sizing (N_theta_test=1000, R_test=25, L_test=50, chunk=500; decided
+# 2026-07-30) lives in src/etest.py — env-overridable (NYCOPT_ETEST_*),
+# hardcoded nowhere else. No value flags here; --variant is an identifier.
 #
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_ETEST_VARIANT=kn \
 #          workflow/12_generate_test_ensemble.sh

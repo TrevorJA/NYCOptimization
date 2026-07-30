@@ -102,8 +102,9 @@ SEARCH_ENSEMBLE_N: int = int(os.environ.get("NYCOPT_SEARCH_N", "100"))
 # Candidate-pool cardinality P for the hazard-filling designs, and the
 # resampling-pool cardinality for ``resampled_probabilistic``. P >> N so that
 # LHS anchors snap to near neighbours; the snap-distance distribution is a
-# reported build diagnostic. PROVISIONAL test-scale defaults -- production
-# targets 1e5-1e6 (methods §6, open parameters).
+# reported build diagnostic. The default is the laptop test scale; the decided
+# production pool size is P = 1e6 (2026-07-30, methods §6), supplied at
+# generation time via NYCOPT_CANDIDATE_POOL_N (workflow/supplemental/gen_pool_*.sh).
 CANDIDATE_POOL_SIZE: int = int(os.environ.get("NYCOPT_CANDIDATE_POOL_N", "2000"))
 RESAMPLE_POOL_SIZE: int = int(os.environ.get("NYCOPT_RESAMPLE_POOL_N", "1000"))
 

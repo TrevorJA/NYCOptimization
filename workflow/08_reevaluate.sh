@@ -1,12 +1,15 @@
 #!/bin/bash
 # Step 8: Re-evaluate Pareto-optimal policies on the COMMON held-out ensemble
-# with the full Pywr-DRB model, so scores are comparable across scenario
-# designs. Merges the former per-arm and common-ensemble re-eval launchers.
+# so scores are comparable across scenario designs. Runs the TRIMMED model,
+# like search: the non-NYC STARFIT releases are policy-independent and are
+# presimulated once per realization by step 04 (the staged ensemble must carry
+# presimulated_releases_mgd.hdf5), then reused for every Pareto set.
+# Merges the former per-arm and common-ensemble re-eval launchers.
 #
 # Everything comes from env vars / the env file — no positional args:
 #   NYCOPT_ENV_FILE                required — the arm being re-evaluated
 #   NYCOPT_REEVAL_ENSEMBLE_PRESET  required — the common held-out ensemble
-#                                  (e.g. kn_5yr_n200). Required explicitly so
+#                                  (e.g. etest_kn_50yr_n25000). Required explicitly so
 #                                  cross-arm comparability is a recorded
 #                                  choice, never a silent default.
 #   NYCOPT_REEVAL_MODE             single | mpi (from env file; default single)
@@ -17,12 +20,12 @@
 #   NYCOPT_REEVAL_BASELINE_DIR     optional, for regret-from-baseline
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_5yr_n200,NYCOPT_REEVAL_SCORE=1 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
 #          workflow/08_reevaluate.sh
 #
 # Local / single-node (no SLURM allocation needed):
 #   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env \
-#   NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_5yr_n200 NYCOPT_REEVAL_MODE=single \
+#   NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 NYCOPT_REEVAL_MODE=single \
 #   bash workflow/08_reevaluate.sh
 #
 # The SBATCH geometry below is sized for the MPI path (4 nodes x 16 ranks = 64,
@@ -47,7 +50,7 @@ nycopt_setup_env
 nycopt_source_env_file required
 nycopt_pin_threads
 
-: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the common held-out re-eval ensemble explicitly, e.g. kn_5yr_n200}"
+: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the common held-out re-eval ensemble explicitly, e.g. etest_kn_50yr_n25000}"
 FORMULATION="${FORMULATION:-ffmp}"
 MAX_SOLUTIONS="${MAX_SOLUTIONS:-0}"
 SEED="${SEED:-}"
