@@ -311,6 +311,128 @@ def ensemble_figure_path(name: str, ext: str) -> Path:
 
 
 ###############################################################################
+# Epsilon-calibration experiment
+# (docs/notes/methods/epsilon_calibration_experiment.md;
+#  workflow/supplemental/epsilon_calibration.sh)
+#
+# Recalibrates the ANNUAL-UNIT (§2) search epsilons — the values Borg's
+# ε-dominance archive actually uses — on the CAMPAIGN search measures, replacing
+# the 24-policy historic-trace provenance. One sbatch job per scenario design
+# (design selected by the sourced NYCOPT_ENV_FILE, exactly as the MM-Borg
+# launcher does): sample EPS_N_POLICIES constraint-FEASIBLE random DV vectors
+# (uniform-on-feasible via rejection; random vectors are ~1% feasible),
+# evaluate each on that design's search ensemble through the same batched path
+# Borg workers run, and persist the full per-unit annual-metric cube
+# (n_dv x n_real x n_obj x n_units). The figures script then derives, per
+# objective and per design: the signal scale (IQR/10 across feasible policies),
+# the estimator noise floor (bootstrap over realizations; over unit-years for
+# the single-trace historic design), the frequency-granularity floor, an
+# ε-nondominated archive-size sweep, and a clean-rounded recommendation
+# eps = ceil_clean(max(signal, noise, granularity)) — combined across designs
+# into the single campaign vector (JARs and the Borg problem share one set).
+###############################################################################
+
+# ---------------------------------------------------------------------------
+# Mode switch (independent of SMOKE / ENS_SMOKE above)
+# ---------------------------------------------------------------------------
+#: EPS_SMOKE=True is a tiny dry-run (few policies, cheap bootstrap) to prove
+#: the code path and output structure; flip to False for the HPC run.
+EPS_SMOKE: bool = False
+
+
+def configure_epsilon_env() -> None:
+    """Apply env knobs for the epsilon-calibration run.
+
+    Salinity and temperature LSTMs off (the annual-unit registry uses
+    neither). No scenario-design default is set here: the design IS the run
+    identity and must come from the sourced ``NYCOPT_ENV_FILE``
+    (``NYCOPT_SCENARIO_DESIGN``), mirroring the MM-Borg launcher. No
+    simulation-window override — the ensemble window self-derives from the
+    realization length, and the historic design uses the full record.
+    """
+    _apply_env(salinity="0", temperature="0")
+
+
+# ---------------------------------------------------------------------------
+# Feasible-DV sample
+# ---------------------------------------------------------------------------
+#: RNG seed for the feasible-DV rejection sample (kept distinct from the
+#: ensemble-generation seeds; every rank regenerates the identical sample).
+EPS_SEED: int = 42
+
+#: Formulation whose DV bounds + constraints define the feasible region.
+EPS_FORMULATION: str = "ffmp"
+
+#: Number of FEASIBLE random policies (the FFMP baseline is added as an extra
+#: reference row, id -1). 512 sits in the doc's 200-500+ stable-IQR range and
+#: clears one 128-rank wholenode in ~4-5 eval waves (~15 min at 173.8 s/eval).
+EPS_N_POLICIES: int = 8 if EPS_SMOKE else 512
+
+#: Hard cap on rejection draws (at ~1% acceptance, 512 feasible needs ~5e4).
+EPS_MAX_DRAWS: int = 200_000 if EPS_SMOKE else 20_000_000
+
+#: Realizations per simulation batch. 0 = all realizations as one pywr
+#: scenario block — the CAMPAIGN default (config.SEARCH_REALIZATION_BATCH),
+#: kept so the calibration measures exactly what Borg workers run.
+EPS_REALIZATION_BATCH: int = 0
+
+# ---------------------------------------------------------------------------
+# Analysis grids (figures script only; no re-simulation)
+# ---------------------------------------------------------------------------
+#: Bootstrap resamples for the estimator-noise floor (resampling realizations
+#: with replacement; unit-years for the single-trace historic design).
+EPS_BOOTSTRAP_B: int = 50 if EPS_SMOKE else 1000
+
+#: RNG seed for the bootstrap index draw (one shared draw per design, so every
+#: objective/policy sees the same resampled realizations).
+EPS_BOOTSTRAP_SEED: int = 7
+
+#: Multipliers applied to the recommended epsilon vector for the archive-size
+#: sweep (how strongly does epsilon resolution control Pareto-set cardinality).
+EPS_SCALE_GRID: tuple = (0.25, 0.5, 1.0, 2.0, 4.0)
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+EPS_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "epsilon_calibration"
+EPS_CUBE_DIR: Path = EPS_OUTPUT_ROOT / "cube"
+EPS_TABLES_DIR: Path = EPS_OUTPUT_ROOT / "tables"
+EPS_FIGURES_DIR: Path = EPS_OUTPUT_ROOT / "figures"
+
+
+def _eps_stem(design: str) -> str:
+    """Run-identifying filename stem for one design's calibration artifacts."""
+    return f"{EPS_FORMULATION}_{design}_seed{EPS_SEED}_n{EPS_N_POLICIES}"
+
+
+def epsilon_cube_path(design: str) -> Path:
+    """Path to one design's per-unit annual-metric cube HDF5 (run output)."""
+    return EPS_CUBE_DIR / f"unit_cube_{_eps_stem(design)}.h5"
+
+
+def epsilon_cube_glob() -> str:
+    """Glob (relative to EPS_CUBE_DIR) matching every design's cube at the
+    current sample settings — the figures script analyzes all it finds."""
+    return f"unit_cube_{EPS_FORMULATION}_*_seed{EPS_SEED}_n{EPS_N_POLICIES}.h5"
+
+
+def epsilon_table_path(name: str, design: "str | None" = None) -> Path:
+    """Path for a named table CSV; per-design when ``design`` is given, else a
+    cross-design combined artifact (e.g. the final recommendation table)."""
+    stem = _eps_stem(design) if design else \
+        f"{EPS_FORMULATION}_combined_seed{EPS_SEED}_n{EPS_N_POLICIES}"
+    return EPS_TABLES_DIR / f"{name}_{stem}.csv"
+
+
+def epsilon_figure_path(name: str, design: "str | None" = None,
+                        ext: str = "png") -> Path:
+    """Path for a named figure artifact (per-design or combined)."""
+    stem = _eps_stem(design) if design else \
+        f"{EPS_FORMULATION}_combined_seed{EPS_SEED}_n{EPS_N_POLICIES}"
+    return EPS_FIGURES_DIR / f"{name}_{stem}.{ext}"
+
+
+###############################################################################
 # Anvil parallel-scaling experiment
 # (workflow/supplemental/anvil_scaling_*.sh; manuscript supplement)
 #

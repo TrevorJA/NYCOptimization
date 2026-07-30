@@ -1,13 +1,15 @@
 """sensitivity_common.py - Shared helpers for the objective-sensitivity experiments.
 
-Both supplemental experiments live in ``scripts/supplemental/``:
+The supplemental experiments live in ``scripts/supplemental/``:
 
 * the **historic** (single-trace) random-DV diagnostic
-  (``objective_sensitivity_{run,figures}.py``), and
+  (``objective_sensitivity_{run,figures}.py``),
 * the **ensemble** counterpart
-  (``ensemble_objective_sensitivity_{run,figures}.py``).
+  (``ensemble_objective_sensitivity_{run,figures}.py``), and
+* the **epsilon-calibration** experiment
+  (``epsilon_calibration_{run,figures}.py``).
 
-They share four kinds of logic, factored here so neither copies the other
+They share six kinds of logic, factored here so no script copies another
 (per the no-duplication / refactor-all-callers project convention):
 
 1. **MPI plumbing** — ``get_mpi_context``, ``assign_rank_slots``, and the
@@ -16,10 +18,16 @@ They share four kinds of logic, factored here so neither copies the other
    which are flaky on the cluster's OpenMPI build; ranks coordinate through
    ``.done`` marker files instead. The combine step itself stays in each script
    because the shard payload differs (flat CSV rows vs. a 3-D HDF5 matrix).
-2. **DV sampling** — ``sample_lhs_dvs`` (Latin-hypercube within ``get_bounds``).
+2. **DV sampling** — ``sample_lhs_dvs`` (Latin-hypercube within ``get_bounds``)
+   and ``sample_feasible_dvs`` (uniform on the feasible region via rejection
+   against the formal Borg constraints).
 3. **Objective-set resolution** — ``resolve_objective_names``.
 4. **Rank-correlation diagnostics** — ``kendall_tau_b`` and
    ``spearman_and_flagged`` (the Olden & Poff redundancy screen).
+5. **Unit-operator vectorization** — ``apply_operator_rows`` (row-wise annual-
+   unit operators for the bootstrap noise estimate).
+6. **Epsilon-dominance utilities** — ``epsilon_nondominated`` (Borg-convention
+   ε-box archive filter) and ``ceil_to_clean_step`` (epsilon rounding).
 
 To preserve the import-order contract (``supplemental_config`` must set the
 ``NYCOPT_*`` env knobs before ``config`` is imported), this module imports
@@ -139,6 +147,70 @@ def sample_lhs_dvs(formulation: str, seed: int, n_samples: int) -> np.ndarray:
     sampler = qmc.LatinHypercube(d=len(lows), seed=seed)
     unit = sampler.random(n=n_samples)
     return qmc.scale(unit, lows, highs)
+
+
+def sample_feasible_dvs(formulation: str, seed: int, n_samples: int, *,
+                        chunk: int = 8192,
+                        max_draws: int = 5_000_000) -> tuple:
+    """Uniform sample of the constraint-feasible DV region, via rejection.
+
+    Draws i.i.d. uniform vectors within ``get_bounds(formulation)`` and keeps
+    only those with zero violation on both formal Borg constraints
+    (``src.simulation.compute_constraint_violations`` — pure DV arithmetic, no
+    simulation). Rejection from i.i.d. uniform draws yields an *exactly*
+    uniform distribution on the feasible region, which is the population the
+    Borg archive lives in (constraint-dominance keeps infeasible vectors out
+    of the archive). Random 39-DV vectors are ~1% feasible (the flood-ordering
+    constraint dominates), so expect ~100x oversampling; the constraint check
+    costs microseconds per vector after the one-time defaults load.
+
+    A plain LHS is deliberately NOT used here: conditioning an LHS on
+    feasibility destroys its stratification guarantee while leaving an
+    ill-characterized measure, whereas uniform + rejection has a clean one.
+
+    Args:
+        formulation: Formulation name whose bounds define the sampling box.
+        seed: RNG seed (reproducibility; ranks regenerating with the same seed
+            obtain the identical sample).
+        n_samples: Number of feasible DV vectors to return.
+        chunk: Uniform draws generated per rejection round.
+        max_draws: Hard cap on total draws before giving up.
+
+    Returns:
+        ``(dvs, info)`` where ``dvs`` has shape ``(n_samples, n_vars)`` and
+        ``info`` is ``{"n_draws": int, "acceptance_rate": float}`` (QC — a
+        collapsing acceptance rate signals a constraint or bounds change).
+
+    Raises:
+        RuntimeError: If ``max_draws`` draws yield fewer than ``n_samples``
+            feasible vectors.
+    """
+    from src.formulations import get_bounds
+    from src.simulation import compute_constraint_violations
+
+    lows, highs = get_bounds(formulation)
+    rng = np.random.default_rng(seed)
+    accepted: list = []
+    n_draws = 0
+    while len(accepted) < n_samples:
+        if n_draws >= max_draws:
+            raise RuntimeError(
+                f"sample_feasible_dvs: {n_draws} draws yielded only "
+                f"{len(accepted)}/{n_samples} feasible vectors "
+                f"(acceptance {len(accepted) / max(n_draws, 1):.2e}); "
+                "check the constraint functions / bounds."
+            )
+        block = rng.uniform(lows, highs, size=(chunk, len(lows)))
+        for dv in block:
+            n_draws += 1
+            cons = compute_constraint_violations(dv, formulation)
+            if all(c == 0.0 for c in cons):
+                accepted.append(np.asarray(dv, dtype=float))
+                if len(accepted) == n_samples:
+                    break
+    info = {"n_draws": int(n_draws),
+            "acceptance_rate": float(n_samples) / float(n_draws)}
+    return np.asarray(accepted, dtype=float), info
 
 
 ###############################################################################
@@ -275,3 +347,137 @@ def spearman_and_flagged(samples: pd.DataFrame, obj_names: list,
         flagged, columns=["obj_a", "obj_b", "rho", "keep", "consider_dropping"]
     ).sort_values("rho", key=lambda s: s.abs(), ascending=False)
     return spearman, flagged_df, excluded
+
+
+###############################################################################
+# Unit-operator vectorization (epsilon-calibration bootstrap)
+###############################################################################
+
+def apply_operator_rows(op, arr: np.ndarray) -> np.ndarray:
+    """Apply an annual-unit operator to each row of a 2-D pooled-unit array.
+
+    Vectorized re-implementations of the three §2 unit operators
+    (``FailureFrequencyOp`` / ``PooledPercentileOp`` / ``PooledMeanOp``),
+    reproducing their non-finite sentinel semantics exactly; any other callable
+    falls back to a row loop. Used by the epsilon-calibration bootstrap, where
+    the operator is evaluated on thousands of realization-resampled unit pools
+    per objective.
+
+    Args:
+        op: A unit operator (callable ``units -> float``).
+        arr: Array of shape ``(n_rows, n_pooled_units)``; each row is one
+            pooled unit-year sample.
+
+    Returns:
+        Array of shape ``(n_rows,)`` with ``float(op(row))`` per row.
+    """
+    from src.objectives_ensemble import (
+        FailureFrequencyOp,
+        PooledMeanOp,
+        PooledPercentileOp,
+    )
+
+    a = np.asarray(arr, dtype=float)
+    if a.ndim != 2:
+        raise ValueError(f"expected a 2-D array, got shape {a.shape}")
+    if isinstance(op, FailureFrequencyOp):
+        ok = np.isfinite(a) & (a < op.k)
+        return ok.sum(axis=1) / float(a.shape[1])
+    if isinstance(op, PooledPercentileOp):
+        filled = np.where(np.isfinite(a), a, op.worst_value)
+        return np.percentile(filled, op.q, axis=1)
+    if isinstance(op, PooledMeanOp):
+        filled = np.where(np.isfinite(a), a, op.worst_value)
+        return filled.mean(axis=1)
+    return np.array([float(op(row)) for row in a], dtype=float)
+
+
+###############################################################################
+# Epsilon-dominance utilities (epsilon-calibration analysis)
+###############################################################################
+
+def epsilon_nondominated(objs: np.ndarray, epsilons: Sequence[float]) -> np.ndarray:
+    """Indices of the ε-box nondominated subset (Borg archive convention).
+
+    All objectives MINIMIZED (Borg sign convention — negate maximize values
+    before calling). Each solution maps to the ε-box ``floor(f / ε)``; a box
+    dominates another when it is weakly smaller in every coordinate and
+    strictly smaller in at least one; within a box the solution closest
+    (Euclidean, in ε units) to the box's lower corner represents it
+    (Laumanns et al. 2002; Hadka & Reed 2013). Rows with any non-finite
+    objective are excluded — they cannot enter a Borg archive.
+
+    Args:
+        objs: Array of shape ``(n_solutions, n_objectives)``, minimized.
+        epsilons: Positive per-objective epsilon values.
+
+    Returns:
+        Sorted integer indices (into ``objs`` rows) of the archive members.
+
+    Raises:
+        ValueError: On a non-positive epsilon or a shape mismatch.
+    """
+    F = np.asarray(objs, dtype=float)
+    eps = np.asarray(epsilons, dtype=float)
+    if F.ndim != 2 or F.shape[1] != eps.size:
+        raise ValueError(f"shape mismatch: objs {F.shape} vs {eps.size} epsilons")
+    if not np.all(eps > 0.0):
+        raise ValueError(f"epsilons must be positive, got {eps}")
+
+    valid = np.flatnonzero(np.isfinite(F).all(axis=1))
+    if valid.size == 0:
+        return np.array([], dtype=int)
+    scaled = F[valid] / eps
+    boxes = np.floor(scaled)
+    corner_dist = ((scaled - boxes) ** 2).sum(axis=1)
+
+    # One representative per occupied box: closest to the box lower corner
+    # (stable tie-break on original order).
+    rep_for_box: dict = {}
+    for local, box in enumerate(map(tuple, boxes)):
+        best = rep_for_box.get(box)
+        if best is None or corner_dist[local] < corner_dist[best]:
+            rep_for_box[box] = local
+
+    box_arr = np.array(list(rep_for_box.keys()), dtype=float)
+    reps = np.array(list(rep_for_box.values()), dtype=int)
+    keep = np.ones(len(reps), dtype=bool)
+    for i in range(len(reps)):
+        if not keep[i]:
+            continue
+        dominated = (
+            (box_arr <= box_arr[i]).all(axis=1)
+            & (box_arr < box_arr[i]).any(axis=1)
+        )
+        if dominated.any():
+            keep[i] = False
+    return np.sort(valid[reps[keep]])
+
+
+def ceil_to_clean_step(x: float,
+                       mantissas: Sequence[float] = (1.0, 1.5, 2.0, 2.5, 5.0)
+                       ) -> float:
+    """Smallest 'clean' value >= ``x``: a mantissa from ``mantissas`` x 10^k.
+
+    Used to round a raw epsilon requirement (max of signal scale, noise floor,
+    and metric granularity) UP to an interpretable step in native units, so
+    the published epsilon never under-resolves any of its floors. Returns
+    ``nan`` for non-finite or non-positive input (a degenerate objective —
+    flag upstream rather than fabricate an epsilon).
+
+    Args:
+        x: Raw positive requirement.
+        mantissas: Ascending clean mantissas in ``[1, 10)``.
+
+    Returns:
+        The clean step, e.g. ``0.0117 -> 0.015``, ``0.9 -> 1.0``, ``1.34 -> 1.5``.
+    """
+    if not np.isfinite(x) or x <= 0.0:
+        return float("nan")
+    exp = np.floor(np.log10(x))
+    rel_tol = 1.0 + 1e-12
+    for m in sorted(mantissas):
+        candidate = m * 10.0 ** exp
+        if candidate * rel_tol >= x:
+            return float(candidate)
+    return float(10.0 ** (exp + 1))
