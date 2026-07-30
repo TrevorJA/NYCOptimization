@@ -576,30 +576,39 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"], float]] = [
 #   (name, base_name, direction, epsilon, annual_metric, operator, description)
 # `operator` is either the string "frequency" (built with the resolved
 # per-objective k) or a stage-(ii) operator instance whose `worst_value` is
-# the metric's orientation-aware non-finite sentinel. The ACTIVE/default
-# objectives' epsilons are in native units, calibrated as ~IQR/10 (Reed et al.
-# 2013) of each objective's spread across 24 random-DV policies on the historic
-# reference trace scored as N=1 over its 76 water-year units
-# (objective_sensitivity_run.py, seed 42, 2026-07-15), rounded to clean steps
-# and floored at the 1/76 frequency granularity; to be reconciled against the
-# larger-NL ensemble sensitivity experiment
-# (ensemble_objective_sensitivity_experiment.md). The optional NJ objective and
-# the diagnostic P99 flood variant (both absent from the default set) keep
-# PLACEHOLDER epsilons pending their own inclusion/calibration.
+# the metric's orientation-aware non-finite sentinel. Epsilons are the CAMPAIGN
+# vector from the epsilon-calibration experiment, adopted 2026-07-30
+# (docs/notes/methods/epsilon_calibration_experiment.md; combined table
+# epsilon_recommendation_ffmp_combined_seed42_n512.csv): 512 constraint-
+# feasible random policies + the FFMP baseline evaluated per design on its
+# own search ensemble, with eps = clean-ceil of the max over the ENSEMBLE
+# campaign designs (fixed_probabilistic + hazard_filling_stationary, N=100 x
+# 10-yr, draw 0; supplemental_config.EPS_CAMPAIGN_DESIGNS) of max(signal
+# IQR/10 [Reed et al. 2013], bootstrap noise floor [Kasprzyk et al. 2013],
+# frequency granularity). The historic reference arm is measured and reported
+# but EXCLUDED from the max (2026-07-30 decision): its 76-unit estimator's
+# noise floor would coarsen the shared vector ~3-4x (reliability eps 0.10
+# instead of 0.02 on the 0-1 scale), so the historic arm's archive is allowed
+# to resolve below its own noise floor (disclosed). Signal (IQR/10) binds the
+# NYC reliability, both deficit-P99, and NJ axes; the noise floor binds
+# Montague/Trenton reliability, both flood axes, and storage P01. Max spread
+# of the raw requirement across the two ensemble designs is 2.5x (< 4x
+# review threshold). The optional NJ objective and the diagnostic P99 flood
+# variant remain outside the default set but carry calibrated values.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
-     "nyc_delivery_reliability_weekly", "maximize", 0.01,
+     "nyc_delivery_reliability_weekly", "maximize", 0.02,
      _nyc_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NYC delivery "
      "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
-     "nyc_delivery_deficit_cvar90_pct", "minimize", 1.0,
+     "nyc_delivery_deficit_cvar90_pct", "minimize", 2.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
      "delivery deficit, % of Decree cap [0-100]"),
     ("montague_flow_reliability_annual",
-     "montague_flow_reliability_weekly", "maximize", 0.05,
+     "montague_flow_reliability_weekly", "maximize", 0.02,
      _montague_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of weekly-mean Montague "
      "flow < 1131.05 MGD Decree target"),
@@ -609,27 +618,27 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
      "flow deficit, % of Decree target [0-100]"),
     ("trenton_flow_reliability_annual",
-     "trenton_flow_reliability_weekly", "maximize", 0.01,
+     "trenton_flow_reliability_weekly", "maximize", 0.015,
      _trenton_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of weekly-mean Trenton "
      "flow < 1938.95 MGD Decree target"),
     ("downstream_flood_days_annual",
-     "downstream_flood_days_minor", "minimize", 0.005,
+     "downstream_flood_days_minor", "minimize", 0.05,
      _flood_days_minor_annual, PooledMeanOp(worst_value=366.0),
      "Mean across pooled unit-years of days any tail gauge >= NWS minor "
      "flood stage (expected annual flood days)"),
     ("downstream_flood_days_annual_p99",
-     "downstream_flood_days_minor", "minimize", 3.0,
+     "downstream_flood_days_minor", "minimize", 1.5,
      _flood_days_minor_annual, PooledPercentileOp(99.0, worst_value=366.0),
      "DIAGNOSTIC: P99 across pooled unit-years of annual minor-flood days "
      "(expectation can mask floods — Quinn et al. 2017)"),
     ("nyc_storage_min_p01_pct",
-     "nyc_storage_p5_pct", "maximize", 2.0,
+     "nyc_storage_p5_pct", "maximize", 5.0,
      _nyc_storage_min_annual, PooledPercentileOp(1.0, worst_value=0.0),
      "P01 across pooled unit-years of the annual minimum daily aggregate "
      "NYC storage, % of capacity [0-100]"),
     ("nj_delivery_reliability_annual",
-     "nj_delivery_reliability_weekly", "maximize", 0.01,
+     "nj_delivery_reliability_weekly", "maximize", 0.025,
      _nj_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NJ diversion "
      "< 99% of the running-average entitlement; pending redundancy screen"),

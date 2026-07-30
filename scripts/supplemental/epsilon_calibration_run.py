@@ -277,6 +277,13 @@ def main() -> None:
     partial_dir = scfg.EPS_CUBE_DIR / f"_partial_{scfg._eps_stem(design)}"
     if is_root:
         scfg.EPS_CUBE_DIR.mkdir(parents=True, exist_ok=True)
+        # A killed prior job leaves stale shards/markers here; await_all_done
+        # would return on the stale markers and the combine would merge stale
+        # shards into the cube. Safe to clear unbarriered: this run's workers
+        # write shards only after their first evaluation completes.
+        if partial_dir.exists():
+            for stale in partial_dir.glob("rank_*"):
+                stale.unlink()
     prepare_partial_dir(partial_dir, rank)
 
     n_real = int(spec.n_realizations) if spec.is_ensemble else 1

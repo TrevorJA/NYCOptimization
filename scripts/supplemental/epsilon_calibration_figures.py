@@ -19,20 +19,31 @@ found at the current sample settings it derives, per annual-unit objective:
   4. **Recommendation** — ``eps_rec = ceil_to_clean_step(max(1, 2, 3))`` in
      native units, plus a plain-language interpretation.
   5. **Archive-size sweep** — ε-box nondominated archive size of the evaluated
-     policies for the recommended vector scaled by ``EPS_SCALE_GRID`` and for
-     the current registry vector (how strongly epsilon controls Pareto-set
-     cardinality). Random policies under-fill a converged front, so the SWEEP
+     policies for the ADOPTED CAMPAIGN vector scaled by ``EPS_SCALE_GRID`` and
+     for the previous (pre-calibration, provisional) registry vector recorded
+     in the cube. Random policies under-fill a converged front, so the SWEEP
      TREND is the signal, not the absolute sizes — disclosed in the table.
 
 The final campaign vector is the clean-rounded per-objective maximum of the
-raw requirement across all analyzed designs (the Borg problem/JARs carry one
-epsilon set for every design).
+raw requirement across the CAMPAIGN designs (``EPS_CAMPAIGN_DESIGNS``; the
+Borg problem/JARs carry one epsilon set for every design). The historic
+single-trace reference arm is analyzed and reported but excluded from the max
+(2026-07-30 decision) — its small-NL noise floor would otherwise coarsen the
+shared vector ~3-4x beyond what the ensemble search measures need.
 
 Outputs (all under ``outputs/supplemental/epsilon_calibration/``):
   tables/  : epsilon_diagnostics_{design}, archive_sweep_{design},
              epsilon_recommendation (combined)  [CSV]
-  figures/ : eps_ladder_{design} (F1), scalar_distributions_{design} (F3),
-             archive_size_vs_scale (F2, combined)  [PNG]
+  figures/ : eps_calibration_ladder (F1, combined),
+             archive_size_vs_scale (F2, combined),
+             scalar_distributions_{design} (F3, per design)  [PNG]
+
+Figure conventions (manuscript SI): Okabe-Ito colors keyed to the DESIGN
+(never to plot order) — fixed_probabilistic #0072B2, hazard_filling_stationary
+#D55E00, historic reference #B0B0B0 — with the adopted campaign epsilon in
+#009E73 and the previous provisional epsilon in black; the palette was
+validated for normal-vision and protan/deutan separation (OKLab), and every
+color distinction is doubled by marker shape.
 
 Configuration and paths come from ``supplemental_config.py`` — no CLI flags.
 
@@ -77,12 +88,15 @@ import matplotlib  # noqa: E402
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Labels (fixed, colorblind-safe Okabe-Ito assignments)
+# Labels + colors (Okabe-Ito, keyed to the DESIGN — entity-stable, never
+# assigned by plot order; validated for CVD + normal-vision separation)
 # ---------------------------------------------------------------------------
 
-#: Native-unit phrase per objective-name pattern, for the interpretation column.
+#: Native-unit phrase per objective-name pattern, for axis labels and the
+#: interpretation column.
 _UNIT_PHRASES: list[tuple[str, str]] = [
     ("reliability_annual", "fraction of unit-years"),
     ("_p99_pct", "% of target (P99 unit-year)"),
@@ -91,17 +105,38 @@ _UNIT_PHRASES: list[tuple[str, str]] = [
     ("storage_min_p01_pct", "% of NYC capacity (P1 annual minimum)"),
 ]
 
-#: Quantity colors for the epsilon-ladder figure (Okabe-Ito).
-_LADDER_COLORS = {
-    "granularity": "#999999",
-    "noise": "#E69F00",
-    "signal": "#0072B2",
-    "current": "#000000",
-    "recommended": "#009E73",
+#: Per-design plotting identity (color + SI display name + reference flag).
+_DESIGN_STYLE: dict[str, dict] = {
+    "fixed_probabilistic": {
+        "color": "#0072B2", "label": "Fixed probabilistic (i.i.d. control)",
+        "reference": False},
+    "hazard_filling_stationary": {
+        "color": "#D55E00", "label": "Hazard-filling (stationary)",
+        "reference": False},
+    "historic": {
+        "color": "#B0B0B0", "label": "Historic trace (reference)",
+        "reference": True},
+}
+#: Fallback colors for designs outside the campaign trio (assigned by sorted
+#: name so the mapping is deterministic across runs, not by plot order).
+_FALLBACK_COLORS = ["#56B4E9", "#CC79A7", "#E69F00"]
+
+_CAMPAIGN_COLOR = "#009E73"   # adopted campaign epsilon vector
+_PREVIOUS_COLOR = "#000000"   # previous provisional registry vector
+
+#: Suffix for ladder row labels of objectives outside the default active set.
+_NON_DEFAULT_NOTE = {
+    "nj_delivery_reliability_annual": " (optional)",
+    "downstream_flood_days_annual_p99": " (diagnostic)",
 }
 
-#: Design colors for the combined archive-size figure (Okabe-Ito).
-_DESIGN_COLORS = ["#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9"]
+
+def _design_style(design: str, fallback_rank: int = 0) -> dict:
+    """Entity-stable style for ``design`` (deterministic fallback if unknown)."""
+    if design in _DESIGN_STYLE:
+        return _DESIGN_STYLE[design]
+    return {"color": _FALLBACK_COLORS[fallback_rank % len(_FALLBACK_COLORS)],
+            "label": design, "reference": False}
 
 
 def _unit_phrase(name: str) -> str:
@@ -126,7 +161,8 @@ def _nondominated_mask(F: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Per-design analysis
+# Per-design analysis (tables; figures are drawn later, once the adopted
+# campaign vector is known)
 # ---------------------------------------------------------------------------
 
 def _natural_scalars(units: np.ndarray, objs: list) -> np.ndarray:
@@ -192,21 +228,26 @@ def _bootstrap_sd(units: np.ndarray, objs: list, policy_mask: np.ndarray,
 
 
 def analyze_design(cube_path: Path) -> dict:
-    """Full per-design epsilon analysis: tables + per-design figures.
+    """Per-design epsilon diagnostics: floors, per-design recommendation, QC.
+
+    Writes the per-design diagnostics CSV; figure drawing is deferred to
+    :func:`main` because the combined ladder and the archive sweep need the
+    ADOPTED campaign vector, which is only known after every design's floors
+    are on the table.
 
     Args:
         cube_path: The design's unit-cube HDF5 from the run script.
 
     Returns:
-        Dict with the design name, diagnostics DataFrame, archive-sweep
-        DataFrame, and QC counts (consumed by the combined stage).
+        Dict with the design name, diagnostics DataFrame, natural-unit scalar
+        matrix + policy masks (consumed by the figure/sweep stages), and QC.
     """
     with h5py.File(cube_path, "r") as f:
         units = f["units"][:]
         sample_ids = f["sample_ids"][:]
         obj_names = [n.decode() if isinstance(n, bytes) else str(n)
                      for n in f["objective_names"][:]]
-        eps_current = f["epsilons_current"][:]
+        eps_previous = f["epsilons_current"][:]
         design = str(f.attrs["design"])
         is_ensemble = bool(f.attrs["is_ensemble"])
         acceptance = float(f.attrs["acceptance_rate"])
@@ -255,60 +296,58 @@ def analyze_design(cube_path: Path) -> dict:
             "eps_granularity": granularity,
             "eps_floor_raw": float(floor_raw),
             "eps_recommended": eps_rec,
-            "eps_current": float(eps_current[k]),
-            "current_over_recommended": (float(eps_current[k] / eps_rec)
-                                         if np.isfinite(eps_rec) and eps_rec > 0
-                                         else float("nan")),
+            "eps_previous": float(eps_previous[k]),
+            "previous_over_recommended": (float(eps_previous[k] / eps_rec)
+                                          if np.isfinite(eps_rec) and eps_rec > 0
+                                          else float("nan")),
             "binding_floor": binding,
             "interpretation": interp,
         })
     diag = pd.DataFrame(rows).set_index("objective")
 
-    sweep = _archive_sweep(natural, valid_ok, obj_names, eps_current, diag,
-                           design)
-
     scfg.EPS_TABLES_DIR.mkdir(parents=True, exist_ok=True)
     diag.to_csv(scfg.epsilon_table_path("epsilon_diagnostics", design))
-    sweep.to_csv(scfg.epsilon_table_path("archive_sweep", design), index=False)
-
-    _fig_eps_ladder(diag, design)
-    _fig_scalar_distributions(natural, random_ok, obj_names, diag, design)
 
     print(f"[{design}] n_policies={n_dv} (failed={int(failed.sum())}), "
           f"NL={nl}, acceptance={acceptance:.2%}", flush=True)
-    return {"design": design, "diag": diag, "sweep": sweep, "nl": nl}
+    return {"design": design, "diag": diag, "nl": nl, "natural": natural,
+            "random_ok": random_ok, "valid_ok": valid_ok,
+            "obj_names": obj_names, "eps_previous": np.asarray(eps_previous)}
 
 
-def _archive_sweep(natural: np.ndarray, valid_ok: np.ndarray,
-                   obj_names: list, eps_current: np.ndarray,
-                   diag: pd.DataFrame, design: str) -> pd.DataFrame:
-    """ε-archive size of the evaluated policies for candidate epsilon vectors.
+# ---------------------------------------------------------------------------
+# Archive-size sweep (adopted campaign vector; runs after the combine stage)
+# ---------------------------------------------------------------------------
 
-    Uses the ACTIVE campaign objective subset (the set Borg optimizes) in Borg
-    sign convention. NOTE: random feasible policies under-fill a converged
-    Pareto front, so absolute sizes are a lower-fidelity proxy — the epsilon
-    SCALING TREND is the decision signal.
+def _archive_sweep(res: dict, active: list,
+                   eps_campaign_active: np.ndarray) -> pd.DataFrame:
+    """ε-archive size of one design's policies under candidate epsilon vectors.
+
+    Sweeps the ADOPTED CAMPAIGN vector (x ``EPS_SCALE_GRID``) and evaluates the
+    previous provisional registry vector once, over the ACTIVE campaign
+    objective subset in Borg sign convention. NOTE: random feasible policies
+    under-fill a converged Pareto front, so absolute sizes are a lower-fidelity
+    proxy — the epsilon SCALING TREND is the decision signal.
     """
-    active = list(build_ensemble_objective_set(config.ACTIVE_OBJECTIVES).names)
+    obj_names = res["obj_names"]
     ka = [obj_names.index(n) for n in active]
     signs = np.array([-1.0 if ENSEMBLE_OBJECTIVES[n].direction == "maximize"
                       else 1.0 for n in active])
-    F = natural[:, ka] * signs
-    rows_ok = valid_ok & np.isfinite(F).all(axis=1)
+    F = res["natural"][:, ka] * signs
+    rows_ok = res["valid_ok"] & np.isfinite(F).all(axis=1)
     F = F[rows_ok]
 
-    eps_rec = diag.loc[active, "eps_recommended"].to_numpy(dtype=float)
     n_pareto = int(_nondominated_mask(F).sum())
 
     entries = []
-    if np.isfinite(eps_rec).all() and (eps_rec > 0).all():
+    if np.isfinite(eps_campaign_active).all() and (eps_campaign_active > 0).all():
         for scale in scfg.EPS_SCALE_GRID:
-            size = len(epsilon_nondominated(F, eps_rec * scale))
-            entries.append({"design": design, "vector": "recommended",
+            size = len(epsilon_nondominated(F, eps_campaign_active * scale))
+            entries.append({"design": res["design"], "vector": "campaign",
                             "scale": float(scale), "archive_size": size})
-    cur = np.asarray(eps_current, dtype=float)[ka]
-    entries.append({"design": design, "vector": "current", "scale": 1.0,
-                    "archive_size": len(epsilon_nondominated(F, cur))})
+    prev = np.asarray(res["eps_previous"], dtype=float)[ka]
+    entries.append({"design": res["design"], "vector": "previous", "scale": 1.0,
+                    "archive_size": len(epsilon_nondominated(F, prev))})
     sweep = pd.DataFrame(entries)
     sweep["n_policies"] = int(rows_ok.sum())
     sweep["n_pareto_eps0"] = n_pareto
@@ -316,115 +355,217 @@ def _archive_sweep(natural: np.ndarray, valid_ok: np.ndarray,
 
 
 # ---------------------------------------------------------------------------
-# Figures
+# Figures (manuscript SI)
 # ---------------------------------------------------------------------------
 
-def _fig_eps_ladder(diag: pd.DataFrame, design: str) -> None:
-    """F1: per-objective epsilon ladder — floors, current, and recommendation.
+def _row_order(obj_names: list) -> list:
+    """Ladder row order: active campaign objectives first, non-default last."""
+    active = list(build_ensemble_objective_set(config.ACTIVE_OBJECTIVES).names)
+    return ([n for n in active if n in obj_names]
+            + [n for n in obj_names if n not in active])
+
+
+def _fig_eps_ladder(results: list, combined: pd.DataFrame) -> None:
+    """F1 (combined): per-objective epsilon ladder across scenario designs.
 
     One row per objective on a shared log axis (native units span decades but
-    read comparably as orders of magnitude); the recommendation is by
-    construction at or right of every floor.
+    read comparably as orders of magnitude). Per design: the bootstrap noise
+    floor (filled circle), the signal scale IQR/10 (open square), and the
+    frequency-granularity step (vertical tick). The adopted campaign epsilon
+    (filled diamond) is by construction at or right of every ensemble-design
+    floor; the previous provisional epsilon (x) shows what was replaced. The
+    historic reference design is drawn in light gray — it is excluded from
+    the campaign max. Numerically-zero floors (saturated estimators, e.g. a
+    median bootstrap SD of exactly 0 when most policies sit at a constant
+    scalar) cannot render on a log axis and are omitted — the per-design
+    diagnostics CSV records them.
     """
-    names = list(diag.index)
-    n = len(names)
-    fig, ax = plt.subplots(figsize=(8.0, 0.55 * n + 1.8))
-    specs = [
-        ("eps_granularity", "granularity floor", "|", "granularity", 90),
-        ("eps_noise_median", "noise floor (median bootstrap SD)", "o",
-         "noise", 45),
-        ("eps_signal_iqr10", "signal scale (IQR/10)", "s", "signal", 45),
-        ("eps_current", "current epsilon", "x", "current", 60),
-        ("eps_recommended", "recommended epsilon", "D", "recommended", 55),
-    ]
-    for col, lab, marker, ckey, size in specs:
-        vals = diag[col].to_numpy(dtype=float)
-        mask = np.isfinite(vals) & (vals > 0)
-        kwargs = {"s": size, "marker": marker, "label": lab, "zorder": 3,
-                  "linewidths": 1.5}
-        if marker in ("o", "s"):  # hollow so overlapping points stay legible
-            kwargs.update(facecolors="none", edgecolors=_LADDER_COLORS[ckey])
-        else:
-            kwargs.update(color=_LADDER_COLORS[ckey])
-        ax.scatter(vals[mask], (n - 1 - np.arange(n))[mask], **kwargs)
+    order = _row_order(list(combined.index))
+    n = len(order)
+    n_active = sum(1 for nm in order if nm not in _NON_DEFAULT_NOTE)
+    ys = {nm: n - 1 - i for i, nm in enumerate(order)}
+    dodge = {"historic": 0.22, "fixed_probabilistic": 0.0,
+             "hazard_filling_stationary": -0.22}
+    tiny = 1e-6  # below any attainable floor; masks exact-zero float noise
+    plotted: list = []
+
+    fig, ax = plt.subplots(figsize=(8.6, 0.62 * n + 2.3))
+    for rank, res in enumerate(sorted(results, key=lambda r: r["design"])):
+        d = res["design"]
+        st = _design_style(d, rank)
+        dg = res["diag"]
+        dy = dodge.get(d, 0.0)
+        yy = np.array([ys[nm] + dy for nm in order])
+        noise = dg.loc[order, "eps_noise_median"].to_numpy(dtype=float)
+        signal = dg.loc[order, "eps_signal_iqr10"].to_numpy(dtype=float)
+        gran = dg.loc[order, "eps_granularity"].to_numpy(dtype=float)
+        m = np.isfinite(noise) & (noise > tiny)
+        ax.scatter(noise[m], yy[m], s=30, marker="o", color=st["color"],
+                   zorder=3, linewidths=0)
+        plotted.extend(noise[m])
+        m = np.isfinite(signal) & (signal > tiny)
+        ax.scatter(signal[m], yy[m], s=58, marker="s", facecolors="none",
+                   edgecolors=st["color"], linewidths=1.5, zorder=3)
+        plotted.extend(signal[m])
+        m = np.isfinite(gran) & (gran > tiny)
+        ax.scatter(gran[m], yy[m], s=90, marker="|", color=st["color"],
+                   linewidths=1.5, zorder=2)
+        plotted.extend(gran[m])
+
+    y0 = np.array([ys[nm] for nm in order])
+    prev = combined.loc[order, "eps_previous"].to_numpy(dtype=float)
+    camp = combined.loc[order, "eps_campaign"].to_numpy(dtype=float)
+    ax.scatter(prev, y0, s=60, marker="x", color=_PREVIOUS_COLOR,
+               linewidths=1.6, zorder=4)
+    ax.scatter(camp, y0, s=80, marker="D", color=_CAMPAIGN_COLOR,
+               edgecolors="white", linewidths=0.7, zorder=5)
+    plotted.extend(prev[np.isfinite(prev) & (prev > tiny)])
+    plotted.extend(camp[np.isfinite(camp) & (camp > tiny)])
+    ax.set_xlim(min(plotted) * 0.4, max(plotted) * 2.5)
+
+    if n_active < n:  # separator between the campaign set and non-default rows
+        ax.axhline(n - n_active - 0.5, color="0.4", lw=0.8, ls=(0, (4, 3)))
+
     ax.set_xscale("log")
     ax.set_yticks(n - 1 - np.arange(n))
-    ax.set_yticklabels([label_for(nm) for nm in names])
-    ax.set_xlabel("epsilon-scale quantities (native units, log)")
-    ax.set_title(f"Epsilon calibration ladder — {design}")
+    ax.set_yticklabels([label_for(nm) + _NON_DEFAULT_NOTE.get(nm, "")
+                        for nm in order], fontsize=8.5)
+    ax.set_ylim(-0.65, n - 0.35)
+    ax.set_xlabel("epsilon-scale quantities (native objective units, log scale)")
+    ax.set_title("Search-epsilon calibration: per-design floors and the "
+                 "adopted campaign vector")
     ax.grid(axis="x", alpha=0.3)
-    ax.legend(loc="best", fontsize=8, frameon=True)
-    save_figure(fig, scfg.epsilon_figure_path("eps_ladder", design).with_suffix(""))
+
+    design_handles = [
+        Line2D([], [], marker="s", ls="", markersize=8,
+               markerfacecolor=_design_style(d, i)["color"],
+               markeredgecolor="none", label=_design_style(d, i)["label"])
+        for i, d in enumerate(sorted({r["design"] for r in results}))
+    ]
+    quantity_handles = [
+        Line2D([], [], marker="o", ls="", color="0.25", markersize=6,
+               label="noise floor (median bootstrap SD; Kasprzyk et al. 2013)"),
+        Line2D([], [], marker="s", ls="", markersize=7, markerfacecolor="none",
+               markeredgecolor="0.25",
+               label="signal scale (IQR/10; Reed et al. 2013)"),
+        Line2D([], [], marker="|", ls="", color="0.25", markersize=9,
+               label="frequency granularity (1 / pooled unit-years)"),
+        Line2D([], [], marker="D", ls="", color=_CAMPAIGN_COLOR, markersize=7,
+               label="adopted campaign epsilon (max over ensemble designs)"),
+        Line2D([], [], marker="x", ls="", color=_PREVIOUS_COLOR, markersize=7,
+               label="previous provisional epsilon"),
+    ]
+    ax.legend(handles=design_handles + quantity_handles, loc="upper center",
+              bbox_to_anchor=(0.5, -0.11), ncol=2, fontsize=7.6, frameon=True)
+    fig.tight_layout(rect=(0, 0.02, 1, 1))
+    save_figure(fig, scfg.epsilon_figure_path("eps_calibration_ladder")
+                .with_suffix(""))
     plt.close(fig)
 
 
-def _fig_scalar_distributions(natural: np.ndarray, random_ok: np.ndarray,
-                              obj_names: list, diag: pd.DataFrame,
-                              design: str) -> None:
-    """F3: search-scalar distribution per objective, with epsilon widths.
+def _fig_scalar_distributions(res: dict, combined: pd.DataFrame) -> None:
+    """F3 (per design): search-scalar distribution with epsilon widths.
 
-    A histogram per objective across the feasible random policies; the bars
-    under each axis show the current and recommended epsilon widths at the
-    same scale — the visual check that one epsilon box holds neither the whole
-    signal (too coarse) nor pure noise (too fine).
+    A histogram per objective across the design's feasible random policies;
+    the horizontal bars above each distribution show the ADOPTED campaign
+    epsilon width (green) and the previous provisional width (black) at the
+    same scale — the visual check that one epsilon box holds neither the
+    whole signal (too coarse) nor pure noise (too fine).
     """
+    st = _design_style(res["design"])
+    obj_names = _row_order(res["obj_names"])
     n = len(obj_names)
     ncols = 3
     nrows = int(np.ceil(n / ncols))
     fig, axes = plt.subplots(nrows, ncols,
-                             figsize=(3.6 * ncols, 2.6 * nrows))
+                             figsize=(3.6 * ncols, 2.7 * nrows))
     axes = np.atleast_2d(axes)
     for k, name in enumerate(obj_names):
         ax = axes[k // ncols][k % ncols]
-        col = natural[random_ok, k]
+        col = res["natural"][res["random_ok"], res["obj_names"].index(name)]
         col = col[np.isfinite(col)]
         if col.size:
-            ax.hist(col, bins=30, color="#0072B2", alpha=0.75)
+            ax.hist(col, bins=30, color=st["color"], alpha=0.8)
         x0 = float(np.min(col)) if col.size else 0.0
         y0, y1 = ax.get_ylim()
-        for offset, key, ckey in ((0.06, "eps_current", "current"),
-                                  (0.13, "eps_recommended", "recommended")):
-            width = float(diag.loc[name, key])
-            if np.isfinite(width) and width > 0:
-                ax.plot([x0, x0 + width],
-                        [y1 * (1 - offset)] * 2,
-                        color=_LADDER_COLORS[ckey], lw=3, solid_capstyle="butt")
-        ax.set_title(label_for(name), fontsize=8)
+        for offset, value, color, lw in (
+                (0.06, float(combined.loc[name, "eps_campaign"]),
+                 _CAMPAIGN_COLOR, 3.0),
+                (0.14, float(combined.loc[name, "eps_previous"]),
+                 _PREVIOUS_COLOR, 1.8)):
+            if np.isfinite(value) and value > 0:
+                ax.plot([x0, x0 + value], [y1 * (1 - offset)] * 2,
+                        color=color, lw=lw, solid_capstyle="butt", zorder=4)
+        ax.set_title(label_for(name) + _NON_DEFAULT_NOTE.get(name, ""),
+                     fontsize=8)
+        ax.set_xlabel(_unit_phrase(name), fontsize=7)
         ax.tick_params(labelsize=7)
     for k in range(n, nrows * ncols):
         axes[k // ncols][k % ncols].set_axis_off()
-    fig.suptitle(f"Search-scalar spread across feasible random policies — "
-                 f"{design}\n(bars: current [black] and recommended [green] "
-                 "epsilon widths)", fontsize=9)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+
+    handles = [
+        Line2D([], [], color=_CAMPAIGN_COLOR, lw=3,
+               label="adopted campaign epsilon width"),
+        Line2D([], [], color=_PREVIOUS_COLOR, lw=1.8,
+               label="previous provisional epsilon width"),
+    ]
+    fig.legend(handles=handles, loc="lower center", ncol=2, fontsize=8,
+               frameon=True, bbox_to_anchor=(0.5, 0.0))
+    fig.suptitle("Search-scalar spread across "
+                 f"{int(res['random_ok'].sum())} constraint-feasible random "
+                 f"policies — {st['label']}", fontsize=10)
+    fig.tight_layout(rect=(0, 0.045, 1, 0.955))
     save_figure(fig, scfg.epsilon_figure_path(
-        "scalar_distributions", design).with_suffix(""))
+        "scalar_distributions", res["design"]).with_suffix(""))
     plt.close(fig)
 
 
-def _fig_archive_sweep(results: list) -> None:
-    """F2 (combined): archive size vs epsilon scale, one line per design."""
-    fig, ax = plt.subplots(figsize=(7, 5))
-    for i, res in enumerate(results):
-        sweep = res["sweep"]
-        rec = sweep[sweep["vector"] == "recommended"]
-        color = _DESIGN_COLORS[i % len(_DESIGN_COLORS)]
+def _fig_archive_sweep(results: list, sweeps: dict) -> None:
+    """F2 (combined): archive cardinality vs scaling of the adopted vector.
+
+    One line per design: the ε-box nondominated archive size of the evaluated
+    policies as the adopted campaign vector is scaled by ``EPS_SCALE_GRID``
+    (log2 axis; the adopted vector is the x = 1 vertical line). The x marker
+    (drawn at x = 1; its abscissa is nominal) is the archive size under the
+    previous provisional vector, and the dotted line is the unconstrained
+    (ε -> 0) Pareto count.
+    """
+    fig, ax = plt.subplots(figsize=(7.2, 5))
+    for rank, res in enumerate(sorted(results, key=lambda r: r["design"])):
+        d = res["design"]
+        st = _design_style(d, rank)
+        sweep = sweeps[d]
+        rec = sweep[sweep["vector"] == "campaign"]
         if len(rec):
             ax.plot(rec["scale"], rec["archive_size"], marker="o", lw=2,
-                    color=color, label=res["design"])
-        cur = sweep[sweep["vector"] == "current"]
-        if len(cur):
-            ax.scatter([1.0], cur["archive_size"], marker="x", s=70,
-                       color=color, zorder=4)
-        ax.axhline(sweep["n_pareto_eps0"].iloc[0], color=color, ls=":",
-                   lw=1, alpha=0.6)
+                    markersize=5, color=st["color"], label=st["label"],
+                    zorder=3)
+        prv = sweep[sweep["vector"] == "previous"]
+        if len(prv):
+            ax.scatter([1.0], prv["archive_size"], marker="x", s=70,
+                       color=st["color"], linewidths=1.8, zorder=4)
+        ax.axhline(sweep["n_pareto_eps0"].iloc[0], color=st["color"], ls=":",
+                   lw=1.1, alpha=0.7, zorder=2)
+    ax.axvline(1.0, color=_CAMPAIGN_COLOR, lw=1.2, ls="--", alpha=0.9,
+               zorder=1)
+    ax.text(1.0, ax.get_ylim()[1], " adopted vector (x1)", fontsize=8,
+            color=_CAMPAIGN_COLOR, ha="left", va="top")
+
     ax.set_xscale("log", base=2)
-    ax.set_xlabel("epsilon scale factor (x recommended vector)")
-    ax.set_ylabel("epsilon-nondominated archive size")
-    ax.set_title("Archive resolution vs epsilon scale\n"
-                 "(x = current registry vector; dotted = plain Pareto count)")
+    ax.set_xlabel("scale factor applied to the adopted campaign epsilon vector")
+    ax.set_ylabel("epsilon-nondominated archive size "
+                  f"(of {int(list(sweeps.values())[0]['n_policies'].iloc[0])} "
+                  "evaluated policies)")
+    ax.set_title("Archive cardinality vs epsilon resolution")
     ax.grid(alpha=0.3)
-    ax.legend(fontsize=8)
+    extra = [
+        Line2D([], [], color="0.35", ls=":", lw=1.1,
+               label="unconstrained Pareto count (epsilon -> 0)"),
+        Line2D([], [], marker="x", ls="", color="0.35", markersize=7,
+               label="previous provisional vector (abscissa nominal)"),
+    ]
+    ax.legend(handles=(ax.get_legend_handles_labels()[0] + extra), fontsize=8,
+              frameon=True)
     save_figure(fig, scfg.epsilon_figure_path("archive_size_vs_scale")
                 .with_suffix(""))
     plt.close(fig)
@@ -439,22 +580,30 @@ def combine_recommendations(results: list) -> pd.DataFrame:
 
     The Borg problem (and the MOEAFramework JARs) carry ONE epsilon set used
     by every design, so the campaign value is the clean-rounded per-objective
-    maximum of the raw requirement across the analyzed designs — no design's
-    archive may resolve below its own noise floor.
+    maximum of the raw requirement across the CAMPAIGN designs
+    (``scfg.EPS_CAMPAIGN_DESIGNS``) — no campaign design's archive may resolve
+    below its own noise floor. Reference designs (the historic single trace)
+    keep their per-design columns in the table for context but do NOT enter
+    the max: the historic 76-unit estimator's noise floor would otherwise
+    coarsen the shared vector ~3-4x beyond what the ensemble measures need,
+    so the historic arm's archive is allowed to resolve below its own noise
+    floor (disclosed).
     """
     designs = [r["design"] for r in results]
+    campaign = [d for d in designs if d in scfg.EPS_CAMPAIGN_DESIGNS] or designs
     obj_names = list(results[0]["diag"].index)
     table = pd.DataFrame(index=pd.Index(obj_names, name="objective"))
     for r in results:
         table[f"eps_raw__{r['design']}"] = r["diag"]["eps_floor_raw"]
         table[f"eps_rec__{r['design']}"] = r["diag"]["eps_recommended"]
-    raw_cols = [f"eps_raw__{d}" for d in designs]
+    raw_cols = [f"eps_raw__{d}" for d in campaign]
     table["eps_campaign"] = [
         ceil_to_clean_step(v) for v in table[raw_cols].max(axis=1)]
     table["binding_design"] = table[raw_cols].idxmax(axis=1).str.replace(
         "eps_raw__", "", regex=False)
-    table["eps_current"] = results[0]["diag"]["eps_current"]
-    table["current_over_campaign"] = table["eps_current"] / table["eps_campaign"]
+    table["eps_previous"] = results[0]["diag"]["eps_previous"]
+    table["previous_over_campaign"] = (table["eps_previous"]
+                                       / table["eps_campaign"])
     table["interpretation"] = [
         f"{table.loc[n, 'eps_campaign']:g} {_unit_phrase(n)}"
         for n in obj_names]
@@ -473,24 +622,44 @@ def main() -> None:
 
     results = [analyze_design(p) for p in cube_paths]
 
-    _fig_archive_sweep(results)
     combined = combine_recommendations(results)
     out = scfg.epsilon_table_path("epsilon_recommendation")
     combined.to_csv(out)
 
-    print(f"\n=== Campaign epsilon recommendation ({len(results)} designs) ===",
-          flush=True)
-    cols = ["eps_campaign", "eps_current", "current_over_campaign",
+    # Archive sweeps + figures need the adopted campaign vector, so they run
+    # after the combine stage.
+    active = [n for n in
+              build_ensemble_objective_set(config.ACTIVE_OBJECTIVES).names
+              if n in combined.index]
+    eps_campaign_active = combined.loc[active, "eps_campaign"].to_numpy(float)
+    sweeps: dict[str, pd.DataFrame] = {}
+    for res in results:
+        sweep = _archive_sweep(res, active, eps_campaign_active)
+        sweeps[res["design"]] = sweep
+        sweep.to_csv(scfg.epsilon_table_path("archive_sweep", res["design"]),
+                     index=False)
+
+    _fig_eps_ladder(results, combined)
+    for res in results:
+        _fig_scalar_distributions(res, combined)
+    _fig_archive_sweep(results, sweeps)
+
+    designs = [r["design"] for r in results]
+    campaign = [d for d in designs if d in scfg.EPS_CAMPAIGN_DESIGNS] or designs
+    reference = [d for d in designs if d not in campaign]
+    print(f"\n=== Campaign epsilon recommendation "
+          f"(max over {campaign}; reference-only: {reference}) ===", flush=True)
+    cols = ["eps_campaign", "eps_previous", "previous_over_campaign",
             "binding_design"]
     print(combined[cols].to_string(), flush=True)
-    spread = combined[[c for c in combined.columns
-                       if c.startswith("eps_raw__")]]
+    spread = combined[[f"eps_raw__{d}" for d in campaign]]
     hetero = (spread.max(axis=1) / spread.min(axis=1)).replace(np.inf, np.nan)
     worst = hetero.max()
     if np.isfinite(worst) and worst > 4.0:
         print(f"\nWARN: raw epsilon requirement differs {worst:.1f}x across "
-              "designs for at least one objective — review the per-design "
-              "diagnostics before adopting the combined vector.", flush=True)
+              "campaign designs for at least one objective — review the "
+              "per-design diagnostics before adopting the combined vector.",
+              flush=True)
     print(f"\nSaved {out}", flush=True)
 
 

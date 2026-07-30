@@ -67,9 +67,17 @@ settings in `supplemental_config.py` (`EPS_*`). Outputs under
 
 The Borg problem and the MOEAFramework JARs carry ONE epsilon set for all
 designs, so the campaign value per objective is the clean-rounded maximum of
-the raw requirement across designs (no design's archive may resolve below its
-own noise floor); the binding design is recorded, and a >4× cross-design
-spread in the raw requirement triggers a review warning. Adopt the combined
+the raw requirement across the **ensemble campaign designs**
+(`EPS_CAMPAIGN_DESIGNS` = fixed_probabilistic + hazard_filling_stationary; no
+campaign design's archive may resolve below its own noise floor); the binding
+design is recorded, and a >4× spread in the raw requirement across the
+campaign designs triggers a review warning. The historic single-trace arm is
+analyzed and reported alongside but EXCLUDED from the max (decision
+2026-07-30): it is a reference for prevailing practice, outside the matched
+contrast, and its 76-unit estimator's noise floor would coarsen the shared
+vector ~3-4× beyond what the ensemble measures need (reliability ε 0.10
+instead of 0.02 on the 0-1 scale). Consequence, disclosed: the historic arm's
+archive resolves below its own noise floor on those axes. Adopt the combined
 table (`tables/epsilon_recommendation_*.csv`) into `_ANNUAL_REGISTRY_SPEC`
 **before** JAR generation (step 00), updating the provenance comment there.
 
@@ -78,7 +86,10 @@ table (`tables/epsilon_recommendation_*.csv`) into `_ANNUAL_REGISTRY_SPEC`
 - `cube/unit_cube_{formulation}_{design}_seed{S}_n{N}.h5` — per-unit metric
   cube + DV vectors + acceptance-rate QC.
 - `tables/epsilon_diagnostics_{…}.csv` (per design), `archive_sweep_{…}.csv`
-  (per design), `epsilon_recommendation_{…}.csv` (combined).
-- `figures/eps_ladder_{design}` (F1: floors vs current vs recommended, log
-  axis), `scalar_distributions_{design}` (F3: signal spread with epsilon
-  widths), `archive_size_vs_scale` (F2, combined).
+  (per design; the campaign vector × `EPS_SCALE_GRID` plus the previous
+  provisional vector), `epsilon_recommendation_{…}.csv` (combined).
+- `figures/eps_calibration_ladder` (F1, combined: per-design floors vs the
+  previous and adopted epsilons, log axis; designs color-keyed, historic in
+  reference gray), `scalar_distributions_{design}` (F3: signal spread with
+  the adopted and previous epsilon widths), `archive_size_vs_scale` (F2,
+  combined: archive cardinality vs scaling of the adopted vector).

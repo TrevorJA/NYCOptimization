@@ -4,8 +4,10 @@
 # EPS_N_POLICIES constraint-feasible random DV vectors) on the design's search
 # ensemble through the same batched path Borg workers run, persisting the
 # per-unit annual-metric cube; the figures script then derives the per-objective
-# signal/noise/granularity floors, the archive-size sweep, and the combined
-# campaign epsilon recommendation from every design cube present.
+# signal/noise/granularity floors, the archive-size sweep, and the campaign
+# epsilon recommendation — the max over the ENSEMBLE campaign designs
+# (supplemental_config.EPS_CAMPAIGN_DESIGNS); the historic cube is analyzed
+# and reported as a reference arm but excluded from the max.
 #
 # REQUIRES NYCOPT_ENV_FILE (the design is the run identity — same contract as
 # workflow/06_run_mmborg.sh). Submit once per campaign design:

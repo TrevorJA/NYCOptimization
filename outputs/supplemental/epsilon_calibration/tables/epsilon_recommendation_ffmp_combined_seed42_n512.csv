@@ -1,0 +1,10 @@
+objective,eps_raw__fixed_probabilistic,eps_rec__fixed_probabilistic,eps_raw__hazard_filling_stationary,eps_rec__hazard_filling_stationary,eps_raw__historic,eps_rec__historic,eps_campaign,binding_design,eps_previous,previous_over_campaign,interpretation
+nyc_delivery_reliability_annual,0.015083333333333334,0.02,0.014936567624409256,0.015,0.0573760476799363,0.1,0.02,fixed_probabilistic,0.01,0.5,0.02 fraction of unit-years
+nyc_delivery_deficit_p99_pct,1.9368405226838035,2.0,1.5571025498113655,2.0,1.144613398982024,1.5,2.0,fixed_probabilistic,1.0,0.5,2 % of target (P99 unit-year)
+montague_flow_reliability_annual,0.016557880757809125,0.02,0.016360200606694082,0.02,0.05810764329014774,0.1,0.02,fixed_probabilistic,0.05,2.5,0.02 fraction of unit-years
+montague_flow_deficit_p99_pct,1.307806005457667,1.5,1.1516512903405591,1.5,2.8461325792781835,5.0,1.5,fixed_probabilistic,1.5,1.0,1.5 % of target (P99 unit-year)
+trenton_flow_reliability_annual,0.014529048373138075,0.015,0.014760514096685245,0.015,0.03760707923718941,0.05,0.015,hazard_filling_stationary,0.01,0.6666666666666667,0.015 fraction of unit-years
+downstream_flood_days_annual,0.03706970284899525,0.05,0.03828311446181077,0.05,0.03693508854548498,0.05,0.05,hazard_filling_stationary,0.005,0.09999999999999999,0.05 days/yr (mean unit-year)
+downstream_flood_days_annual_p99,0.47027688627239306,0.5,1.1870267123059919,1.5,0.3238878522588349,0.5,1.5,hazard_filling_stationary,3.0,2.0,1.5 days/yr (P99 unit-year)
+nyc_storage_min_p01_pct,2.870867449767941,5.0,2.911313301676224,5.0,4.827684471023232,5.0,5.0,hazard_filling_stationary,2.0,0.4,5 % of NYC capacity (P1 annual minimum)
+nj_delivery_reliability_annual,0.023416666666666662,0.025,0.02122222222222222,0.025,0.056788574462752095,0.1,0.025,fixed_probabilistic,0.01,0.39999999999999997,0.025 fraction of unit-years

@@ -68,7 +68,7 @@ whether step 03 applies at all — follows from the design alone:
 | `preset` | `historic` | nothing (static preset) | — | — |
 | `direct_iid` | `fixed_probabilistic` | one N×L ensemble **per draw** | — | `0-(K-1)` |
 | `lhs_theta` | `input_stratified` | LHS over forcing params, realizations generated at each design point, **per draw** | — | `0-(K-1)` |
-| `pool_resample` | `resampled_probabilistic` | one draw-invariant pool (redrawn per evaluation in-search) | — | `0` |
+| `pool_resample` | `resampled_probabilistic` — **dropped from the plan; do not run** | one draw-invariant pool (redrawn per evaluation in-search) | — | `0` |
 | `hazard_fill` | `hazard_filling_{stationary,du,absolute}` | one draw-invariant candidate pool + its hazard image | **yes** — all K draws in one job | `0-(K-1)` |
 | `stationary_kn` | `scaling_stationary` | direct Kirsch-Nowak stand-in (supplemental) | — | `0` |
 

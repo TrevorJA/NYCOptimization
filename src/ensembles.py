@@ -409,6 +409,17 @@ def materialize_subset(
     import json
     from synhydro.core.ensemble import Ensemble
 
+    meta_path = staged_ensemble_dir(pool_slug) / "_meta.json"
+    pool_meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    if pool_meta.get("store_daily") is False:
+        # Stream-only pool (campaign-scale candidate pools store the hazard
+        # image, not the daily traces): the selected members cannot be read
+        # back, so regenerate them bit-for-bit from their global indices.
+        return _materialize_subset_regenerated(
+            pool_slug, pool_meta, [int(g) for g in global_indices], out_slug,
+            files=files, extra_meta=extra_meta,
+        )
+
     chunks = pool_chunk_specs(pool_slug)
     loc: dict[int, tuple[str, int]] = {}
     years = None
@@ -448,6 +459,124 @@ def materialize_subset(
         "global_realization_ids": requested,
         "source_pool": pool_slug,
         "source_kind": "synhydro_kn",
+    }
+    if extra_meta:
+        meta.update(extra_meta)
+    (out_dir / "_meta.json").write_text(json.dumps(meta, indent=2))
+    return out_slug
+
+
+def _materialize_subset_regenerated(
+    pool_slug: str, pool_meta: dict, requested: list, out_slug: str, *,
+    files, extra_meta: dict | None,
+) -> str:
+    """Stage selected members of a STREAM-ONLY pool by regenerating them.
+
+    A campaign-scale candidate pool stores only its hazard image
+    (``store_daily=False`` — the daily pool would be TB-scale), so the selected
+    realizations are regenerated from the pool's recorded generation config,
+    keyed to the same global-index RNG streams the pool generation used — the
+    ``src.ensemble_generation.regenerate_realization`` determinism contract,
+    validated by ``tests/test_master_ensemble_determinism.py``. Restricted to
+    ``stationary`` + ``kn`` pools: theta is vacuous there, so ONE batched
+    generator pass serves every index (per-index streams make the batch
+    identical to per-index regeneration); a ``du_forced`` pool needs
+    per-profile moment adjustment and an ``hmm`` pool is only block-exact.
+
+    Args:
+        pool_slug: The stream-only candidate-pool slug.
+        pool_meta: The pool's parsed ``_meta.json``.
+        requested: Pool global realization ids, in the desired output order.
+        out_slug: Slug for the staged reduced ensemble.
+        files: HDF5 basenames to write (must be within the gage/inflow pair —
+            they are the only artifacts generation produces).
+        extra_meta: Extra provenance merged into the output ``_meta.json``.
+
+    Returns:
+        ``out_slug``.
+    """
+    import json
+    from scengen.forcing_ensemble import ForcingEnsembleConfig
+    from synhydro.core.ensemble import Ensemble
+
+    from src.ensemble_generation import (
+        _disaggregate_fill_inflow,
+        _generate_profile_monthly,
+        _prepare_generators,
+    )
+
+    population = pool_meta.get("population")
+    generator = pool_meta.get("generator", "kn")
+    if population != "stationary" or generator != "kn":
+        raise NotImplementedError(
+            f"stream-only pool '{pool_slug}' has population={population!r}, "
+            f"generator={generator!r}; regeneration staging is wired for "
+            "stationary Kirsch-Nowak pools only."
+        )
+    known = {"gage_flow_mgd.hdf5", "catchment_inflow_mgd.hdf5"}
+    if set(files) - known:
+        raise ValueError(
+            f"regeneration produces only {sorted(known)}, got {list(files)}"
+        )
+    n_pool = int(pool_meta["n_realizations"])
+    bad = [g for g in requested if not 0 <= int(g) < n_pool]
+    if bad:
+        raise KeyError(
+            f"global indices out of pool '{pool_slug}' range [0, {n_pool}): "
+            f"{bad[:10]}..."
+        )
+
+    cfg = ForcingEnsembleConfig(
+        root_seed=int(pool_meta["root_seed"]),
+        n_forcing_profiles=int(pool_meta["n_forcing_profiles"]),
+        realizations_per_profile=int(pool_meta.get("realizations_per_profile", 1)),
+        realization_years=int(pool_meta["realization_years"]),
+        population="stationary",
+        generator="kn",
+        seed_domain=pool_meta.get("seed_domain"),
+        flowtype=pool_meta["flowtype"],
+        start_date=pool_meta.get("start_date", "1945-10-01"),
+        store_daily=False,
+    )
+    print(f"[materialize] pool '{pool_slug}' is stream-only: regenerating "
+          f"{len(requested)} realizations (root_seed={cfg.root_seed}, "
+          f"global-index streams)...")
+    setup = _prepare_generators(cfg)
+    # profile_idx is unused for a stationary population (no moment adjustment),
+    # and each index draws from its own global-index stream, so one batched
+    # call is exactly the per-index regeneration.
+    monthly, gen_meta = _generate_profile_monthly(
+        setup, cfg, 0, indices=[int(g) for g in requested]
+    )
+    gage_by_real, inflow_by_real, _sites = _disaggregate_fill_inflow(
+        Ensemble(monthly, metadata=gen_meta),
+        nowak=setup.nowak, kdes=setup.kdes,
+        root_seed=cfg.root_seed, start_date=cfg.start_date,
+    )
+
+    out_dir = staged_ensemble_dir(out_slug)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    by_file = {"gage_flow_mgd.hdf5": gage_by_real,
+               "catchment_inflow_mgd.hdf5": inflow_by_real}
+    for fname in files:
+        source = by_file[fname]
+        # Rekey to local 0..N-1 in `requested` order AFTER daily generation
+        # (rekeying before disaggregation would change the daily output).
+        Ensemble({i: source[int(g)] for i, g in enumerate(requested)}).to_hdf5(
+            str(out_dir / fname)
+        )
+
+    years = int(pool_meta["realization_years"])
+    meta = {
+        "slug": out_slug,
+        "n_realizations": len(requested),
+        "realization_years": years,
+        "n_years": years,
+        "global_realization_ids": [int(g) for g in requested],
+        "source_pool": pool_slug,
+        "source_kind": "synhydro_kn",
+        "regenerated_from_stream_only_pool": True,
+        "root_seed": int(pool_meta["root_seed"]),
     }
     if extra_meta:
         meta.update(extra_meta)

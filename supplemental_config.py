@@ -391,6 +391,16 @@ EPS_BOOTSTRAP_SEED: int = 7
 #: sweep (how strongly does epsilon resolution control Pareto-set cardinality).
 EPS_SCALE_GRID: tuple = (0.25, 0.5, 1.0, 2.0, 4.0)
 
+#: Designs whose raw floors enter the campaign epsilon max (figures script).
+#: The historic single-trace design is deliberately EXCLUDED (2026-07-30
+#: decision): it is a reported reference arm, not a matched-contrast arm, and
+#: its 76-unit-year estimator's noise floor would coarsen the shared vector
+#: ~3-4x beyond what the ensemble search measures need (e.g. reliability
+#: epsilon 0.10 instead of 0.02 on the 0-1 scale). Its cube and per-design
+#: diagnostics stay reported for context; the historic arm's archive
+#: consequently resolves below its own noise floor (accepted, disclosed).
+EPS_CAMPAIGN_DESIGNS: tuple = ("fixed_probabilistic", "hazard_filling_stationary")
+
 # ---------------------------------------------------------------------------
 # Output tree (gitignored, regenerable)
 # ---------------------------------------------------------------------------

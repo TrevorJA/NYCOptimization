@@ -525,8 +525,11 @@ Three compounding reasons a pooled reference set is biased across designs:
    failure criteria (#1/3/5/8; k = 3 NYC/Montague, k = 1 Trenton/NJ) do not
    saturate under either a probabilistic or a hazard-filled composition (adjust
    k if they do); (b) pick the flood-days unit operator (mean vs P99, #6);
-   (c) set native-unit epsilons for the §2 mean/percentile objectives and confirm P99
-   stability at the campaign NL; (d) validate the annual-unit choice against
+   (c) ~~set native-unit epsilons for the §2 mean/percentile objectives~~ — done
+   2026-07-30 by the dedicated epsilon-calibration experiment
+   (`epsilon_calibration_experiment.md`; ensemble-designs-only max adopted into
+   `_ANNUAL_REGISTRY_SPEC`), leaving the P99-stability confirmation at the
+   campaign NL; (d) validate the annual-unit choice against
    realization-level rankings.
 3. Set the **centre** of the §4.1 threshold grid (Decree/FFMP anchors where they
    exist; elicited-convention defaults elsewhere) and the grid's span.
