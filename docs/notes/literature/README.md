@@ -15,6 +15,7 @@ citations/DOIs synced to that collection.
 - [bottom_up_scenario_neutral.md](bottom_up_scenario_neutral.md) — exposure-space sampling, decision scaling, stress testing
 - [hydrologic_hazard_metrics.md](hydrologic_hazard_metrics.md) — hazard-axis definitions and index redundancy
 - [sampling_noise_and_overfitting.md](sampling_noise_and_overfitting.md) — finite-ensemble effects on optimizer reliability and generalization
+- [persistence_and_low_frequency_variability.md](persistence_and_low_frequency_variability.md) — NE-US interannual persistence: paleo/observed record, projections, GCM credibility (persistence-axis decision base)
 
 ## Supporting subtopics
 

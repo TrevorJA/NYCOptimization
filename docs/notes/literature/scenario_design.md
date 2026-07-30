@@ -69,6 +69,7 @@ Cited in the argument but not yet imported into `ISYGLK35`: index/metric definit
 - [Bottom-up & scenario-neutral design](bottom_up_scenario_neutral.md) — exposure-space sampling, decision scaling, stress testing
 - [Hydrologic hazard metrics](hydrologic_hazard_metrics.md) — hazard-axis definitions and index redundancy
 - [Sampling noise & overfitting](sampling_noise_and_overfitting.md) — finite-ensemble effects on optimizer reliability and generalization
+- [Persistence & low-frequency variability](persistence_and_low_frequency_variability.md) — NE-US interannual persistence evidence (paleo, projections, GCM credibility) for the persistence-axis decision
 
 **Supporting (cross-referenced)**
 - [Objective & robustness formulations](objective_and_robustness_formulations.md) — problem formulation, robustness metrics, across-scenario aggregation

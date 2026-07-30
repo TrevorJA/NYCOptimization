@@ -27,6 +27,7 @@ outputs/**/*.parquet
 # Solver scratch / large intermediate dumps (regenerable)
 outputs/**/runtime/
 outputs/**/checkpoints/
+outputs/supplemental/objective_determinism/runs/
 
 # Figures — machine-local, never shared (regenerate from tracked scripts+data)
 outputs/**/*.png

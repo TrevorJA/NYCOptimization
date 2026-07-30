@@ -842,3 +842,114 @@ def ensemble_cost_table_path(name: str) -> Path:
 def ensemble_cost_figure_path(name: str) -> Path:
     """Path stub for a named ensemble-cost figure (extension added by save_figure)."""
     return ENSEMBLE_COST_FIGURES_DIR / name
+
+
+###############################################################################
+# Objective-determinism experiment
+# (scripts/supplemental/check_objective_determinism.py)
+#
+# The Pywr-DRB LP solver is mildly nondeterministic: repeated identical
+# simulations can differ at the state-trajectory level. The campaign's working
+# assumption is that the OBJECTIVES are deterministic — the solver jitter must
+# not propagate through the metric window (6-month exclusion) and the
+# annual-unit aggregation into the objective vector. This experiment measures
+# that directly: DETERMINISM_N_REPEATS repeated evaluations of each policy on
+# each simulation path the campaign uses, every repeat in a FRESH python
+# process (fresh interpreter, fresh model build, fresh solver instance — an
+# in-process rerun could be masked by module-level caching), comparing
+# per-objective max absolute / relative deviation across repeats. One
+# state-level series (daily aggregate NYC storage) is captured per repeat to
+# document the underlying jitter the objectives are expected to absorb.
+#
+# VERDICT RULE (stated before running): an objective counts as deterministic
+# on a path iff its across-repeat deviation is exactly zero or at
+# floating-point noise scale (max relative deviation <= DETERMINISM_REL_TOL).
+# Anything larger is reported as propagation, per objective, with the worst
+# offender identified. Rerunnable after any model change; completed
+# (path, repeat) runs are skipped, so delete outputs/supplemental/
+# objective_determinism/runs/ to force a full re-measurement.
+###############################################################################
+
+
+def configure_determinism_env() -> None:
+    """Apply env knobs for the objective-determinism experiment.
+
+    Salinity and temperature LSTMs off (the active 7-objective set uses
+    neither). The scenario design defaults to ``historic`` so
+    ``get_objective_set()`` resolves the annual-unit (§2) registry — the same
+    objective function every wired design searches under. No simulation-window
+    override: the historic paths run the full trace, the ensemble paths
+    self-derive from the fixture's realization length. The per-path
+    trimmed/full switch is NOT set here — the driver exports
+    ``NYCOPT_USE_TRIMMED_MODEL`` per worker subprocess.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+#: Repeated evaluations per (policy, path); every repeat is a fresh process.
+DETERMINISM_N_REPEATS: int = int(os.environ.get("NYCOPT_DETERMINISM_REPEATS", "5"))
+
+#: Feasible non-baseline policies (the FFMP baseline is always policy 0), so
+#: the check is not baseline-specific.
+DETERMINISM_N_PERTURBED: int = int(os.environ.get("NYCOPT_DETERMINISM_PERTURBED", "3"))
+
+#: Initial per-DV perturbation, as a fraction of each DV's bound range. Random
+#: 39-DV vectors are ~1% feasible under the two formal constraints, so policies
+#: are drawn as small perturbations of the (feasible) baseline and accepted
+#: only when ``compute_constraint_violations`` is exactly [0, 0]; the fraction
+#: halves when acceptance stalls.
+DETERMINISM_PERTURB_FRAC: float = 0.05
+
+#: RNG seed for the perturbed-policy draw (reproducible policy set).
+DETERMINISM_SEED: int = 73
+
+#: Formulation under test.
+DETERMINISM_FORMULATION: str = "ffmp"
+
+#: Staged ensemble fixture for the ensemble paths. Defaults to the local
+#: 5-realization x 50-yr Kirsch-Nowak fixture (src/local_test_ensemble.py);
+#: the experiment never generates ensembles — a missing fixture is an error.
+DETERMINISM_ENSEMBLE_SLUG: str = os.environ.get(
+    "NYCOPT_DETERMINISM_ENSEMBLE", "kn_50yr_n5")
+
+#: Simulation paths measured, each for determinism against ITSELF (trimmed and
+#: full need not agree with each other): the search path (historic + ensemble,
+#: trimmed) and the baseline/re-eval path (full model).
+DETERMINISM_PATHS: "tuple[str, ...]" = tuple(
+    p.strip() for p in os.environ.get(
+        "NYCOPT_DETERMINISM_PATHS",
+        "historic_trimmed,historic_full,ensemble_trimmed,ensemble_full",
+    ).split(",") if p.strip()
+)
+
+#: Verdict threshold: max relative deviation at or below this is
+#: floating-point noise; above it is reported as propagation.
+DETERMINISM_REL_TOL: float = 1e-9
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+DETERMINISM_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "objective_determinism"
+DETERMINISM_RUNS_DIR: Path = DETERMINISM_OUTPUT_ROOT / "runs"
+DETERMINISM_FIGURES_DIR: Path = DETERMINISM_OUTPUT_ROOT / "figures"
+
+
+def determinism_policies_path() -> Path:
+    """Path to the JSON of DV vectors (baseline + perturbed) under test."""
+    return DETERMINISM_OUTPUT_ROOT / "policies.json"
+
+
+def determinism_run_path(path_name: str, repeat: int) -> Path:
+    """Per-(path, repeat) worker result JSON path."""
+    return DETERMINISM_RUNS_DIR / f"{path_name}_rep{repeat:02d}.json"
+
+
+def determinism_summary_path(ext: str) -> Path:
+    """Path to the aggregated summary table (``ext`` = 'csv' or 'json')."""
+    return DETERMINISM_OUTPUT_ROOT / f"summary.{ext}"
+
+
+def determinism_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return DETERMINISM_FIGURES_DIR / name
