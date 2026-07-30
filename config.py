@@ -343,6 +343,26 @@ ENSEMBLE_MASTER_HAZARD_BLOCK = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_HAZARD_BLO
 # avoids a monolithic multi-hundred-GB HDF5 for a large master (methods §3.2).
 ENSEMBLE_MASTER_CHUNK_SIZE = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_CHUNK_SIZE", 0)
 
+# Campaign hazard SELECTION axis set (m = 6), decided 2026-07-30 from the nested-P
+# saturation diagnostic (outputs/supplemental/hazard_selector_diagnostics/
+# nested_P_saturation.md + m6_axis_set_assessment.json): the full 8-axis set cannot
+# pass the per-axis tail-share adequacy gate (>= 0.30) at any affordable pool size —
+# the snap is dimension-limited, improvement exponent ~0.04 « P^(-1/8). Dropped:
+# drought_duration (quasi-discrete; |rho_S| = 0.87 with deficit volume, the most
+# redundant retained pair) and flood_rise_rate (flood-group-entangled, |rho_S| = 0.60
+# with peak magnitude; generator-limited daily-extreme statistic). This set passes at
+# P = 1e6 (min per-axis tail share 0.311; thin margin — re-confirm per production
+# draw). Both dropped axes remain computed in every hazard image and reportable
+# post-hoc; they simply never enter the snap distance.
+HAZARD_SELECTION_AXES = _parse_list_env("NYCOPT_HAZARD_SELECTION_AXES", [
+    "drought_deficit_volume",
+    "drought_peak_depth",
+    "drought_onset_rate",
+    "drought_recovery_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration",
+])
+
 
 ###############################################################################
 # NYC System Constants

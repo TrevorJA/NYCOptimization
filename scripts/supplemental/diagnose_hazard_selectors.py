@@ -135,7 +135,7 @@ _COLORS = {
     "random": "0.55", "lhs_nn": "#1f6fb4", "lhs_assign": "#7db3d9",
     "maximin": "#2c8c5a", "eps_cell": "#c1272d",
 }
-_MSET_COLORS = {"m4": "#c9a227", "m6": "#2c8c5a", "full": "#1f6fb4"}
+_MSET_COLORS = {"m4": "#c9a227", "m6": "#2c8c5a", "campaign": "#7d3f9b", "full": "#1f6fb4"}
 
 
 def _out_dir() -> Path:
@@ -181,12 +181,20 @@ def _seeds(k: int, offset: int = 0) -> list[int]:
 
 
 def _axis_sets(retained: list[str]) -> dict[str, list[str]]:
-    """Nested axis sets m4 ⊂ m6 ⊂ full, intersected with the retained set."""
+    """Nested diagnostic sets m4 ⊂ m6 ⊂ full plus the campaign selection set.
+
+    ``campaign`` is the committed selection axis set (config.HAZARD_SELECTION_AXES,
+    m = 6 per the nested-P verdict) — the set whose adequacy gate the production
+    pool re-check must pass. It is omitted when identical to ``full``.
+    """
     sets = {
         "m4": [a for a in M4_AXES if a in retained],
         "m6": [a for a in M6_AXES if a in retained],
+        "campaign": [a for a in config.HAZARD_SELECTION_AXES if a in retained],
         "full": list(retained),
     }
+    if sets["campaign"] == sets["full"]:
+        del sets["campaign"]
     return {k: v for k, v in sets.items() if len(v) >= 3}
 
 

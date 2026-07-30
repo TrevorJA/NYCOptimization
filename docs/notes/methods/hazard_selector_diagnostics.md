@@ -68,11 +68,15 @@ Results in `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n2000
 
 **Recommendation from this battery** (final call and any budget change are the user's): retain the **full descriptor set (m = 8)** — the screen finds no near-duplicates to prune, no axis exhibits a pathology, and the per-axis guarantee holds on all eight; keep **N = 100** — larger N is strictly worse on enrichment at fixed P and costs linearly (173.8 s/eval at N = 100; N = 150 would raise every search cost 1.5×). The open lever is the **production pool size P**: the production-pool rerun must show min per-axis tail share ≥ ~0.30 at (m = 8, N = 100) — expected, since tail supply and snap density both improve with P — before the campaign gates.
 
+## 5b. Nested-P saturation outcome (HPC, 2026-07-29/30) and the axis-set decision
+
+The pool-size saturation diagnostic ran on Anvil as prefix rungs {2k, 5k, 20k, 10⁵, 3×10⁵, 10⁶} of ONE stream-only P = 10⁶ pool (`outputs/supplemental/hazard_selector_diagnostics/nested_P_saturation.md`; prefixes are honest i.i.d. pools by the global-index seeding). **The (m = 8, N = 100) gate fails at every rung** (min per-axis tail share 0.144 → 0.256; improvement exponent ~0.04, far below the P^(−1/8) bound from the intrinsic dimension — geometry-limited, so P is not the lever), activating the pre-registered fallback ladder. A follow-on candidate-set assessment (`m6_axis_set_assessment.json`) measured the fallback options: the **campaign decision (2026-07-30) is the m = 6 set** {deficit volume, peak depth, onset rate, recovery rate, peak magnitude, pulse duration}, which passes at P = 10⁶ (min 0.311; thin margin — re-confirm per production draw); keeping duration instead of peak depth fails (0.265, pinned by duration's quasi-discrete tail), as does the m4+duration+rise-rate nesting (0.249, pinned by the flood-group-entangled rise rate). The m4 benchmark passes from P ≈ 10⁵ with margin (0.353 at 10⁶). Wired as `config.HAZARD_SELECTION_AXES`, consumed by the step-03 selection; the dropped descriptors stay computed and reportable.
+
 ## 6. Sizing
 
 | Scale | Pool | Use |
 |---|---|---|
 | Laptop (test) | P ≈ 2,000–5,000, L = 10, stream-only (hazard image only) | Selector + bounds + axis-set + N decisions for the campaign; SI draft figures |
-| HPC (production) | The production candidate pool (P = 10⁵–10⁶) | Final SI figures on the campaign pool; must confirm the per-axis adequacy criterion at (m = 8, N = 100) |
+| HPC (production) | The production candidate pool (P = 10⁶, decided §5b) | Final SI figures on the campaign pool; must confirm the per-axis adequacy criterion at the campaign selection set (m = 6, N = 100) on every draw |
 
 The experiment reads only `hazard_image.npz` (never pool timeseries), so production-scale cost is minutes. N, seed counts, and the pool slug are environment-configured in the driver.
