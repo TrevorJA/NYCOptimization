@@ -206,7 +206,10 @@ trimmed-model ensemble simulation with NYC flood operations requires under
 | `predicted_inflows_mgd.hdf5` | `PredictedInflowEnsemblePreprocessor` | `PredictionEnsemble` (Montague/Trenton) |
 
 STARFIT runs before predicted inflows because the `perfect_foresight`
-prediction mode (the model default) reads the presimulated-release HDF5.
+prediction mode (the project standard for every simulation —
+`config.PYWRDRB_FLOW_PREDICTION_MODE`, pinned explicitly at model build
+rather than relying on pywrdrb's version-dependent default) reads the
+presimulated-release HDF5.
 NJ-diversion predictions are **not** staged (`nyc_nj_demand_source=
 "constant_max"` wires constant NJ-demand parameters). The same
 `stage_pywrdrb_ensemble_inputs` is the main workflow's Step 3

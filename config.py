@@ -242,6 +242,14 @@ INFLOW_TYPE = os.environ.get("NYCOPT_INFLOW_TYPE", "pub_nhmv10_BC_withObsScaled"
 USE_TRIMMED_MODEL = _parse_bool_env("NYCOPT_USE_TRIMMED_MODEL", True)
 INITIAL_VOLUME_FRAC = 0.80
 
+# Montague/Trenton flow-forecast mode passed to pywrdrb.ModelBuilder
+# (Options.flow_prediction_mode). The project standard is perfect_foresight
+# for EVERY Pywr-DRB simulation (decision 2026-07-30). Always pinned
+# explicitly at model build — never rely on pywrdrb's default, which has
+# changed across versions (regression_disagg -> perfect_foresight, Feb 2025)
+# and would silently vary results with the installed pywrdrb.
+PYWRDRB_FLOW_PREDICTION_MODE = "perfect_foresight"
+
 # NYC and NJ interbasin diversion demand mode passed to pywrdrb.ModelBuilder.
 # Default = constant_max so every candidate policy is stressed with the same
 # decree-maximum demand profile (NYC=800 MGD, NJ=100 MGD monthly avg, defined

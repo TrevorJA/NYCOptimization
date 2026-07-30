@@ -41,6 +41,7 @@ from config import (
     USE_TRIMMED_MODEL,
     INITIAL_VOLUME_FRAC,
     NYC_NJ_DEMAND_SOURCE,
+    PYWRDRB_FLOW_PREDICTION_MODE,
     RESULTS_SETS,
     PRESIM_DIR,
     PRESIM_FILE,
@@ -958,6 +959,9 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
         "nyc_nj_demand_source": NYC_NJ_DEMAND_SOURCE,
         "use_trimmed_model": use_trimmed,
         "initial_volume_frac": INITIAL_VOLUME_FRAC,
+        # Project standard for EVERY simulation; pinned explicitly because
+        # pywrdrb's default has changed across versions (see config).
+        "flow_prediction_mode": PYWRDRB_FLOW_PREDICTION_MODE,
         # Enable downstream stage recorders at Hale Eddy / Fishs Eddy /
         # Bridgeville. Required by the action-stage flood objective.
         "enable_nyc_flood_operations": True,

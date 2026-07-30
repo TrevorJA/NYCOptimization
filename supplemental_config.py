@@ -249,9 +249,11 @@ ENS_REALIZATION_BATCH: int = 5 if ENS_SMOKE else 64
 #: off). "full_registry" or an explicit list are also accepted.
 ENS_OBJECTIVE_SET: "str | list[str]" = "active"
 
-#: Predicted-inflow modes to stage. The model's default ``flow_prediction_mode``
-#: is "perfect_foresight"; "regression_disagg" is also written so the staged
-#: file works regardless of the mode the simulation requests. perfect_foresight
+#: Predicted-inflow modes to stage. The project pins
+#: ``flow_prediction_mode="perfect_foresight"`` for every simulation
+#: (``config.PYWRDRB_FLOW_PREDICTION_MODE``); "regression_disagg" is also
+#: written so the staged file works regardless of the mode a simulation
+#: requests (e.g. a sensitivity check). perfect_foresight
 #: requires the presimulated-release HDF5, hence STARFIT prep runs first.
 ENS_PREDICTION_MODES: tuple = ("regression_disagg", "perfect_foresight")
 

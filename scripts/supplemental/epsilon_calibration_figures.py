@@ -36,7 +36,10 @@ Outputs (all under ``outputs/supplemental/epsilon_calibration/``):
              epsilon_recommendation (combined)  [CSV]
   figures/ : eps_calibration_ladder (F1, combined),
              archive_size_vs_scale (F2, combined),
-             scalar_distributions_{design} (F3, per design)  [PNG]
+             scalar_distributions_{design} (F3, per design),
+             parallel_axes_{design} (F4, per design: the evaluated policies
+             on the active objectives with the adopted-epsilon archive
+             highlighted)  [PNG]
 
 Figure conventions (manuscript SI): Okabe-Ito colors keyed to the DESIGN
 (never to plot order) — fixed_probabilistic #0072B2, hazard_filling_stationary
@@ -72,6 +75,9 @@ from src.objectives_ensemble import (  # noqa: E402
     ENSEMBLE_OBJECTIVES,
     FailureFrequencyOp,
     build_ensemble_objective_set,
+)
+from src.plotting.parallel_coordinates import (  # noqa: E402
+    render_parallel_coordinates,
 )
 from src.plotting.style import (  # noqa: E402
     apply_style,
@@ -431,7 +437,7 @@ def _fig_eps_ladder(results: list, combined: pd.DataFrame) -> None:
     ax.set_yticklabels([label_for(nm) + _NON_DEFAULT_NOTE.get(nm, "")
                         for nm in order], fontsize=8.5)
     ax.set_ylim(-0.65, n - 0.35)
-    ax.set_xlabel("epsilon-scale quantities (native objective units, log scale)")
+    ax.set_xlabel("epsilon value")
     ax.set_title("Search-epsilon calibration: per-design floors and the "
                  "adopted campaign vector")
     ax.grid(axis="x", alpha=0.3)
@@ -520,6 +526,52 @@ def _fig_scalar_distributions(res: dict, combined: pd.DataFrame) -> None:
     plt.close(fig)
 
 
+def _fig_parallel_axes(res: dict, active: list,
+                       eps_campaign_active: np.ndarray) -> None:
+    """F4 (per design): parallel-axes view of the adopted epsilon's effect.
+
+    Every constraint-feasible evaluated policy is a polyline over the ACTIVE
+    campaign objectives (axes oriented so up = preferred, native ranges
+    annotated); the subset retained by ε-box nondominance under the ADOPTED
+    campaign vector is highlighted, the merged remainder is faint grey, and
+    the FFMP baseline is bold. The visual check that the adopted resolution
+    thins the set without collapsing the span of any tradeoff axis. Rendered
+    by the shared :func:`render_parallel_coordinates` (same normalization and
+    annotation conventions as the Pareto-set viewer).
+    """
+    st = _design_style(res["design"])
+    obj_names = res["obj_names"]
+    ka = [obj_names.index(n) for n in active]
+    signs = np.array([-1.0 if ENSEMBLE_OBJECTIVES[n].direction == "maximize"
+                      else 1.0 for n in active])
+    finite = np.isfinite(res["natural"][:, ka]).all(axis=1)
+    rows_ok = res["valid_ok"] & finite
+
+    raw = res["natural"][rows_ok][:, ka]
+    keep = np.zeros(raw.shape[0], dtype=bool)
+    keep[epsilon_nondominated(raw * signs, eps_campaign_active)] = True
+
+    baseline_rows = np.flatnonzero(rows_ok & ~res["random_ok"])
+    baseline_raw = (res["natural"][baseline_rows[0], ka]
+                    if baseline_rows.size else None)
+
+    render_parallel_coordinates(
+        raw,
+        [label_for(n) for n in active],
+        [ENSEMBLE_OBJECTIVES[n].sign for n in active],
+        title=("Effect of the adopted campaign epsilons — "
+               f"{st['label']}"),
+        output_file=scfg.epsilon_figure_path("parallel_axes", res["design"]),
+        baseline_raw=baseline_raw,
+        keep_mask=keep,
+        baseline_label="FFMP baseline (status quo)",
+        keep_label="retained in the epsilon-archive",
+        drop_label="merged by epsilon-dominance",
+        legend_loc="center left",
+        legend_bbox=(1.005, 0.5),  # outside right: the cloud fills the axes
+    )
+
+
 def _fig_archive_sweep(results: list, sweeps: dict) -> None:
     """F2 (combined): archive cardinality vs scaling of the adopted vector.
 
@@ -552,6 +604,11 @@ def _fig_archive_sweep(results: list, sweeps: dict) -> None:
             color=_CAMPAIGN_COLOR, ha="left", va="top")
 
     ax.set_xscale("log", base=2)
+    scales = sorted(float(s) for s in scfg.EPS_SCALE_GRID)
+    ax.set_xticks(scales)
+    ax.set_xticklabels([f"1/{round(1 / s):d}" if s < 1 and (1 / s).is_integer()
+                        else f"{s:g}" for s in scales])
+    ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
     ax.set_xlabel("scale factor applied to the adopted campaign epsilon vector")
     ax.set_ylabel("epsilon-nondominated archive size "
                   f"(of {int(list(sweeps.values())[0]['n_policies'].iloc[0])} "
@@ -642,6 +699,7 @@ def main() -> None:
     _fig_eps_ladder(results, combined)
     for res in results:
         _fig_scalar_distributions(res, combined)
+        _fig_parallel_axes(res, active, eps_campaign_active)
     _fig_archive_sweep(results, sweeps)
 
     designs = [r["design"] for r in results]

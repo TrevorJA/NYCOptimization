@@ -78,14 +78,19 @@ def render_parallel_coordinates(
     line_color: str = "steelblue",
     line_alpha: float = 0.15,
     baseline_label: str = "FFMP Baseline",
+    keep_label: str = "acceptable",
+    drop_label: str = "screened out",
+    legend_loc: str = "lower right",
+    legend_bbox: tuple = None,
 ):
     """Render a parallel-coordinates plot from RAW (un-negated) objective values.
 
     Each axis carries its own native scale with the raw min/max annotated at the
     bottom/top, and all axes are oriented so "up" is the preferred direction — so
     the value *range* of every objective is legible while the axes stay aligned.
-    Shared by the Pareto-set viewer (:func:`plot_parallel_coordinates`) and the
-    random-DV objective-sensitivity diagnostic.
+    Shared by the Pareto-set viewer (:func:`plot_parallel_coordinates`), the
+    random-DV objective-sensitivity diagnostic, and the epsilon-calibration
+    archive figure.
 
     Args:
         raw: ``(n_rows, n_objs)`` array of raw objective values (NOT Borg-negated).
@@ -95,12 +100,18 @@ def render_parallel_coordinates(
         output_file: Path to save (PNG); if None, ``plt.show()``.
         baseline_raw: Optional ``(n_objs,)`` raw baseline vector, drawn bold.
         keep_mask: Optional boolean array aligned to ``raw`` rows. When given,
-            screened-out rows (``~keep_mask``) are faint grey underneath and
-            accepted rows are blue on top; when ``None`` all rows are drawn
-            uniformly.
+            dropped rows (``~keep_mask``) are faint grey underneath and kept
+            rows are blue on top; when ``None`` all rows are drawn uniformly.
         figsize: Figure size.
         line_color, line_alpha: Style for the sample polylines.
         baseline_label: Legend label for the baseline line.
+        keep_label, drop_label: Legend/title phrases for the kept and dropped
+            rows of ``keep_mask`` (defaults preserve the stakeholder-screen
+            wording used by the Pareto-set viewer).
+        legend_loc: Matplotlib legend location (default preserves the
+            historical lower-right placement).
+        legend_bbox: Optional ``bbox_to_anchor`` tuple, e.g. to park the
+            legend outside the axes when the data fills every corner.
     """
     raw = np.asarray(raw, dtype=float)
     n_objs = len(obj_names)
@@ -150,9 +161,9 @@ def render_parallel_coordinates(
         n_keep = int(keep_mask.sum())
         # proxy handles for the legend
         ax.plot([], [], color="steelblue", lw=2,
-                label=f"acceptable (n={n_keep})")
+                label=f"{keep_label} (n={n_keep})")
         ax.plot([], [], color="0.6", lw=2,
-                label=f"screened out (n={int((~keep_mask).sum())})")
+                label=f"{drop_label} (n={int((~keep_mask).sum())})")
     else:
         for row in normed:
             ax.plot(x, row, alpha=0.15, color="steelblue", linewidth=0.8)
@@ -164,13 +175,17 @@ def render_parallel_coordinates(
             marker="o", markersize=5, label=baseline_label, zorder=10,
         )
     if baseline_raw is not None or keep_mask is not None:
-        ax.legend(loc="lower right", fontsize=8)
+        kwargs = {"loc": legend_loc, "fontsize": 8}
+        if legend_bbox is not None:
+            kwargs["bbox_to_anchor"] = legend_bbox
+        ax.legend(**kwargs)
 
     ax.set_xticks(x)
     ax.set_xticklabels(obj_names, rotation=25, ha="right", fontsize=9)
     ax.set_ylabel("Preference Direction  (↑ better)")
     if keep_mask is not None:
-        ax.set_title(f"{title}  ({int(keep_mask.sum())} acceptable of {len(raw)})")
+        ax.set_title(f"{title}  ({int(keep_mask.sum())} {keep_label} "
+                     f"of {len(raw)})")
     else:
         ax.set_title(title)
     ax.set_ylim(-0.12, 1.12)

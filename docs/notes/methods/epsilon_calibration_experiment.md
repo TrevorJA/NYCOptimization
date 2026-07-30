@@ -92,4 +92,9 @@ table (`tables/epsilon_recommendation_*.csv`) into `_ANNUAL_REGISTRY_SPEC`
   previous and adopted epsilons, log axis; designs color-keyed, historic in
   reference gray), `scalar_distributions_{design}` (F3: signal spread with
   the adopted and previous epsilon widths), `archive_size_vs_scale` (F2,
-  combined: archive cardinality vs scaling of the adopted vector).
+  combined: archive cardinality vs scaling of the adopted vector),
+  `parallel_axes_{design}` (F4: the evaluated policies on the active
+  objectives — shared parallel-coordinates renderer — with the members
+  retained by ε-box nondominance under the adopted vector highlighted and
+  the FFMP baseline bold; shows the adopted resolution thins the set
+  without collapsing any tradeoff axis's span).
