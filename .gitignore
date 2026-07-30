@@ -46,6 +46,7 @@ outputs/baseline/
 outputs/presim/
 outputs/run_manifests/
 outputs/synthetic_ensembles/
+outputs/supplemental/hazard_selector_diagnostics/
 
 # Borg MOEA (licensed, not distributed)
 lib/borg/

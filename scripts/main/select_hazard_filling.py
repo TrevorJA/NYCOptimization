@@ -74,8 +74,12 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
     seed = design.selector_seed(draw)
     out_slug = design.search_ensemble_slug(draw)
 
+    # The campaign selection axis set (config.HAZARD_SELECTION_AXES; m = 6 per the
+    # nested-P saturation diagnostic) restricts the screen and the snap; the image
+    # keeps all candidate axes for reporting.
     result = select_from_candidate_image(
         H, candidate_axes, n, seed=seed, selector_space=design.selector_space,
+        selection_axes=config.HAZARD_SELECTION_AXES,
     )
     selected_global = [int(realization_ids[r]) for r in result["selected_rows"]]
 
@@ -94,6 +98,8 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
             "selector": design.selector,
             "selector_space": design.selector_space,
             "selector_seed": seed,
+            # Campaign restriction applied before the screen (m = 6; nested-P verdict).
+            "selection_axes": list(config.HAZARD_SELECTION_AXES),
             "chosen_axes": result["chosen_axes"],
             "candidate_axes": list(candidate_axes),
             # Full axis-screen QC: retained/dropped axes with reasons
