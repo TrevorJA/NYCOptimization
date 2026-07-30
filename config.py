@@ -350,7 +350,7 @@ ENSEMBLE_MASTER_CHUNK_SIZE = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_CHUNK_SIZE",
 # the snap is dimension-limited, improvement exponent ~0.04 « P^(-1/8). Dropped:
 # drought_duration (quasi-discrete; |rho_S| = 0.87 with deficit volume, the most
 # redundant retained pair) and flood_rise_rate (flood-group-entangled, |rho_S| = 0.60
-# with peak magnitude; generator-limited daily-extreme statistic). This set passes at
+# with peak magnitude). This set passes at
 # P = 1e6 (min per-axis tail share 0.311; thin margin — re-confirm per production
 # draw). Both dropped axes remain computed in every hazard image and reportable
 # post-hoc; they simply never enter the snap distance.

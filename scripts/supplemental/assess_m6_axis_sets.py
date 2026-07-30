@@ -14,7 +14,7 @@ Candidates (fixed here, with the reasoning in the nested-P results discussion):
     proposed   drop the two structurally hard axes — drought_duration
                (quasi-discrete; |rho_S| = 0.87 with deficit volume, the most
                redundant pair retained) and flood_rise_rate (entangled with its
-               flood-group partners; generator-limited daily-extreme statistic).
+               flood-group partners).
                Keeps every hazard concept group with its most enrichable members.
     swap_dur   as proposed but keep drought_duration instead of
                drought_peak_depth (sensitivity: values the duration concept over

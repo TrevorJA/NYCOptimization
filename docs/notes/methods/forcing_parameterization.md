@@ -133,10 +133,10 @@ axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitiv
   **hazard space** (hull volume, tail percentiles) rather than on forcing-space fit alone. If a corner
   is under-covered, add the 3rd harmonic (shape-R² → 0.93) or a bounded per-month residual.
 - **Scope.** The forcing perturbs only the monthly mean/CV of the Kirsch marginals; it does not perturb
-  interannual **persistence** (which dominates multi-year drought) or **daily-extreme** structure (Nowak
-  tail → flood metrics). A candidate persistence axis (latent-annual-state tilted bootstrap, CMIP6
-  ρ₁-anchored) is prototyped and measured in `persistence_axis_diagnostics.md`; daily-extreme
-  enrichment remains deferred (see the input-vs-hazard diagnostic note).
+  interannual **persistence** (which dominates multi-year drought; decided against as a DU axis —
+  disclosure only, `persistence_axis_diagnostics.md`). Daily structure within each month comes from the
+  Nowak fragments scaled by the stochastic (and forced) Kirsch monthly totals, so daily flood extremes
+  vary through monthly-scale variability and forcing rather than through a separate axis.
 
 ## Implementation (`scengen.forcing_space`)
 
