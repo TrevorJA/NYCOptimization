@@ -72,7 +72,8 @@ def test_dv_registry():
 
 
 def test_recommended_bounds():
-    """Lock in the audited bound set (2026-07-20/21)."""
+    """Lock in the audited bound set (2026-07-20/21; delivery factors moved
+    to the symmetric FFMP ± 0.15 rule 2026-07-31)."""
     from src.formulations import get_formulation
     dvs = get_formulation("ffmp")["decision_variables"]
     l1a_upper = {"cannonsville": 1.35, "pepacton": 1.20, "neversink": 1.55}
@@ -93,8 +94,20 @@ def test_recommended_bounds():
     assert dvs["zone_vshift_level5_lower"]["bounds"] == [-0.10, 0.10]
     assert dvs["zone_vshift_level5_upper"]["bounds"] == [-0.10, 0.10]
     assert dvs["zone_tshift_level5"]["bounds"] == [-30.0, 30.0]
-    assert dvs["nj_drought_factor_L4"]["bounds"] == [0.80, 1.0]
-    assert dvs["nj_drought_factor_L5"]["bounds"] == [0.65, 1.0]
+    # Delivery factors: one rule for both Decree parties — negotiated FFMP
+    # value ± 0.15, clipped at 1.0.
+    assert dvs["nyc_drought_factor_L3"]["bounds"] == [0.70, 1.0]
+    assert dvs["nyc_drought_factor_L4"]["bounds"] == [0.55, 0.85]
+    assert dvs["nyc_drought_factor_L5"]["bounds"] == [0.50, 0.80]
+    assert dvs["nj_drought_factor_L4"]["bounds"] == [0.75, 1.0]
+    assert dvs["nj_drought_factor_L5"]["bounds"] == [0.65, 0.95]
+    for name in ("nyc_drought_factor_L3", "nyc_drought_factor_L4",
+                 "nyc_drought_factor_L5", "nj_drought_factor_L4",
+                 "nj_drought_factor_L5"):
+        lo, hi = dvs[name]["bounds"]
+        b = dvs[name]["baseline"]
+        assert lo == round(max(b - 0.15, 0.0), 6)
+        assert hi == round(min(b + 0.15, 1.0), 6)
     assert dvs["mrf_target_scale_montague_level3"]["bounds"] == [0.65, 1.15]
 
 

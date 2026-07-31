@@ -7,8 +7,8 @@ group structure with zone-indexed names.
 
 | Group | DVs | Names | Baseline | Bounds | Units |
 |---|---|---|---|---|---|
-| NYC drought delivery factors (L3–L5) | 3 | `nyc_drought_factor_L{3,4,5}` | 0.85 / 0.70 / 0.65 | [0.6,1.0] / [0.4,0.95] / [0.3,0.9] | fraction |
-| NJ drought delivery factors (L4–L5) | 2 | `nj_drought_factor_L{4,5}` | 0.90 / 0.80 | [0.8,1.0] / [0.65,1.0] | fraction |
+| NYC drought delivery factors (L3–L5) | 3 | `nyc_drought_factor_L{3,4,5}` | 0.85 / 0.70 / 0.65 | [0.70,1.0] / [0.55,0.85] / [0.50,0.80] | fraction |
+| NJ drought delivery factors (L4–L5) | 2 | `nj_drought_factor_L{4,5}` | 0.90 / 0.80 | [0.75,1.0] / [0.65,0.95] | fraction |
 | Storage-zone low-plateau (void) shifts | 6 | `zone_vshift_{level}_lower` | 0.0 | L1b [-0.10,0.025]; L1c–L5 [-0.10,0.10] | fraction of capacity |
 | Storage-zone high-plateau (refill) shifts | 6 | `zone_vshift_{level}_upper` | 0.0 | L1b/L1c/L2 [-0.10,0.0]; L3–L5 [-0.10,0.10] | fraction of capacity |
 | Storage-zone temporal shifts (one per curve) | 6 | `zone_tshift_{level}` | 0.0 | [-30, 30] | days |
@@ -40,11 +40,14 @@ and spillway.
   0.8 floor keeps releases near the negotiated Table 4a base rates — the
   only protection for the tailwater fishery (no habitat objective is
   active).
-- **NJ factors**: lower bounds bracket the negotiated FFMP values
-  (0.90/0.80). Set as the sole guardrail on the Decree-party interest when no
-  NJ objective was active; RETAINED unchanged at NJ-objective activation
-  (2026-07-30) — the audited 39-DV scheme is locked, and the active NJ
-  reliability objective now also guards the interest inside these bounds.
+- **NYC + NJ delivery factors (one symmetric rule)**: bounds = negotiated
+  FFMP factor ± 0.15, clipped at 1.0. Both Decree parties may be curtailed —
+  or relieved — to the same depth around their negotiated values, each
+  guarded by its own reliability objective, and every searched policy stays a
+  renegotiation-scale perturbation of the FFMP (no near-total curtailment of
+  either party, no waiver of NYC curtailment in declared drought). The FFMP
+  default is the center of every factor box. `ffmp_N` applies the same rule
+  to its interpolated baselines.
 - **Flood L1a uppers (1.35 / 1.20 / 1.55)**: maximum controlled release
   observed 2000–2021 (2,062 / 842 / 303 cfs — demonstrated release-works
   capacity) divided by the L1a schedule rates (1,500 / 700 / 190 cfs).

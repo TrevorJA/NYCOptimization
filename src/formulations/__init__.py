@@ -173,9 +173,14 @@ def get_objective_set(items=None):
     # single-trace case is evaluated as N=1 over its L-1 water-year units; the
     # dispatch in src.simulation.evaluate wraps the one data dict as [data].
     # The §1 single-trace registry is returned ONLY when no design is wired
-    # (a pure diagnostic / non-optimization context); callers that specifically
-    # want the §1 whole-trace metric on one data dict build it explicitly via
-    # src.objectives.build_objective_set(ACTIVE_OBJECTIVES).
+    # (a pure diagnostic / non-optimization context). No pipeline script may
+    # build the §1 set for a wired design: a §1 vector is a DIFFERENT objective
+    # function from the one Borg optimizes, so mixing the two silently makes
+    # baseline / Pareto / re-eval vectors non-comparable. The two §1 consumers
+    # that remain are correct by construction — src.reeval_core takes the §1
+    # base metrics PER REALIZATION before its own annual/satisficing layer, and
+    # the supplemental diagnostics in scripts/supplemental deliberately report
+    # the whole-trace timescale.
     from config import SEARCH_ENSEMBLE_SPEC
     if SEARCH_ENSEMBLE_SPEC is not None:
         from src.objectives_ensemble import build_ensemble_objective_set

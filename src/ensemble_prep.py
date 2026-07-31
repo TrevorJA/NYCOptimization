@@ -19,6 +19,12 @@ trimmed model; the predicted inflows feed the Montague/Trenton release forecast
 (``PredictionEnsemble``). STARFIT runs before predicted inflows because the
 ``perfect_foresight`` prediction mode reads the presimulated-release HDF5.
 
+Exactly ONE forecast mode is staged: ``config.PYWRDRB_FLOW_PREDICTION_MODE``,
+the project standard for every Pywr-DRB simulation, which is also what
+``src/simulation.py::_build_model_builder`` pins at model build. Staging any
+other mode writes columns no model in this project reads, at full
+per-realization preprocessing cost.
+
 NJ-diversion predictions (``predicted_diversions_mgd.hdf5``) are **not** staged:
 the optimization model uses ``nyc_nj_demand_source="constant_max"``, under which
 the model builder wires constant NJ-demand parameters instead of a diversions
@@ -56,7 +62,6 @@ def stage_pywrdrb_ensemble_inputs(
     use_mpi: bool = False,
     comm=None,
     force: bool = False,
-    prediction_modes: tuple = ("regression_disagg", "perfect_foresight"),
     enable_flood: bool = True,
     initial_volume_frac: "float | None" = None,
 ) -> dict:
@@ -74,9 +79,6 @@ def stage_pywrdrb_ensemble_inputs(
         use_mpi: Distribute per-realization work across MPI ranks.
         comm: MPI communicator (defaults to ``MPI.COMM_WORLD`` when ``use_mpi``).
         force: Rebuild outputs even if they already exist.
-        prediction_modes: Predicted-inflow modes to stage. ``perfect_foresight``
-            (the model default) requires the presimulated-release HDF5, which is
-            staged first.
         enable_flood: Stage the flood-augmented inflows. Must be ``True`` for the
             optimization model, which enables NYC flood operations.
         initial_volume_frac: STARFIT initial storage fraction. Must match the
@@ -181,12 +183,12 @@ def stage_pywrdrb_ensemble_inputs(
     if predicted_out.exists() and not force:
         _log(f"predicted inflows exist, skipping ({predicted_out.name})")
     else:
-        _log(f"staging predicted inflows (modes={prediction_modes}) ...")
+        _log(f"staging predicted inflows (mode={config.PYWRDRB_FLOW_PREDICTION_MODE}) ...")
         pred_pp = PredictedInflowEnsemblePreprocessor(
             flow_type=inflow_type,
             ensemble_hdf5_file=str(base_inflow),
             realization_ids=realization_ids,
-            modes=prediction_modes,
+            modes=(config.PYWRDRB_FLOW_PREDICTION_MODE,),
             use_mpi=use_mpi,
             comm=comm,
         )

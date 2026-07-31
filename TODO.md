@@ -9,10 +9,19 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 1. Artifact regeneration
 
-The objective set is FINAL (8 objectives, NJ activated 2026-07-30) — JAR
-regeneration is UNBLOCKED.
+The objective set is FINAL (8 objectives, NJ activated 2026-07-30) and the
+delivery-factor bounds moved to the symmetric FFMP ± 0.15 rule (2026-07-31).
+Sequence: the epsilon-confirmation rerun (first item) comes BEFORE step-00
+JARs — epsilons and DV bounds are both baked into the problem definition.
 
-- [ ] **[HPC]** Regenerate everything downstream of the 39-DV scheme AND the 8-objective set: problem JARs (step 00; Anvil login node — no JDK/MOEAFramework on the laptop; nobjs is now 8) + `.set` artifacts (Borg search outputs — regenerate with the next smoke/campaign runs). Local `.set` files under `outputs/optimization/ffmp/sets/` and `outputs/historic/ffmp_obj7_smoke/sets/` (obj7-era dir names) predate the 39-DV scheme, locked epsilons, and NJ activation — stale, discard/overwrite.
+- [ ] **[HPC]** Re-run the epsilon calibration (3 designs, ~57 SU) + framing
+  figures on the NEW-bounds feasible population and adopt any ε delta into
+  `_ANNUAL_REGISTRY_SPEC` (expect NYC-axis signal IQRs to shrink and NJ's to
+  grow; the k / flood-operator / NJ verdicts are convention-level and are
+  re-confirmed by the same figures for free). Batch with the
+  satisfaction-factor sweep, which samples its population under the current
+  bounds automatically.
+- [ ] **[HPC]** Regenerate everything downstream of the 39-DV scheme, the 8-objective set, AND the ±0.15 factor bounds: problem JARs (step 00; Anvil login node — no JDK/MOEAFramework on the laptop; nobjs is now 8) + `.set` artifacts (Borg search outputs — regenerate with the next smoke/campaign runs). Local `.set` files under `outputs/optimization/ffmp/sets/` and `outputs/historic/ffmp_obj7_smoke/sets/` (obj7-era dir names) predate the 39-DV scheme, locked epsilons, and NJ activation — stale, discard/overwrite.
 - [ ] **[local]** Re-run the step-05 baseline (skip-reeval): the 2026-07-29 regeneration predates NJ activation, so its objective vector lacks the 8th column.
 - [ ] **[HPC]** Regenerate any `du_forced` ensemble staged before 2026-07-28 with the variance axis off: they carry the fixed `c = 1` convention (absolute-SD) instead of the CV-preserving `c = a` (bug fixed in `src/ensemble_generation.py`). Verified 2026-07-30: no `du_forced` ensemble is staged locally (all local stages are stationary), so this is Anvil-side only.
 - [ ] **[local→HPC]** Regenerate everything downstream of the 6-month metric window and the flood days/yr normalization; discard any objective values computed under the old 365-day warm-up or the whole-trace flood count. 2026-07-29: the step-05 baseline is regenerated locally under the current method (skip-reeval); the baseline re-eval matrix half stays open pending E_test (run step 05 with `--reeval` once E_test is staged).
@@ -48,7 +57,7 @@ ensemble design, ~26 SU each).
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test).
 - [ ] **[HPC]** Satisficing criterion values + sweep grid (`_DEFAULT_THRESHOLDS`).
-- [x] **[HPC]** Epsilons for the campaign objective set: DONE 2026-07-30 — epsilon-calibration experiment run (512 feasible policies + baseline per design; historic / fixed_probabilistic / hazard_filling_stationary, draw 0) and the combined recommendation adopted into `_ANNUAL_REGISTRY_SPEC`. The campaign vector is the max over the ENSEMBLE designs only (`EPS_CAMPAIGN_DESIGNS`); the historic reference arm is excluded from the max (its 76-unit noise floor would set reliability ε = 0.10 on the 0-1 scale) and its archive is disclosed to resolve below its own noise floor. **Step-00 JAR regeneration still required** — epsilons are baked into the archive.
+- [x] **[HPC]** Epsilons for the campaign objective set: DONE 2026-07-30 — epsilon-calibration experiment run (512 feasible policies + baseline per design; historic / fixed_probabilistic / hazard_filling_stationary, draw 0) and the combined recommendation adopted into `_ANNUAL_REGISTRY_SPEC`. The campaign vector is the max over the ENSEMBLE designs only (`EPS_CAMPAIGN_DESIGNS`); the historic reference arm is excluded from the max (its 76-unit noise floor would set reliability ε = 0.10 on the 0-1 scale) and its archive is disclosed to resolve below its own noise floor. 2026-07-31: the delivery-factor bounds change triggers the confirmation rerun in §1 (before JARs — epsilons are baked into the archive).
 - [ ] **[local]** E_test hazard-space overlay (simulation-free; **candidate main-text figure**, run as soon as E_test is staged): compute E_test's hazard image and overlay it on the candidate pool AND each realized search ensemble (E_d per design/draw) in the retained axes / p1–p99 box. Answers whether E_test's severe droughts (forced mean reduction) occupy the same hazard coordinates as the pool's natural-variability corners the selector enriches; also feeds the registered hazard-restricted E_test composition-sensitivity checks and the generalization claim. IMPLEMENTED 2026-07-30 (smoke-tested on synthetic data; blocked only on E_test staging): `scripts/main/compute_etest_hazard_image.py` (disjoint 10-yr sub-window image, shard-resumable → `hazard_image_subwindows.npz`) + `scripts/main/plot_etest_hazard_overlay.py` / `src/plotting/etest_hazard_overlay.py` (corner overlay + per-axis containment `overlap_stats.json`).
 
 ## 4. Pipeline shakeout on Anvil (before production submissions)

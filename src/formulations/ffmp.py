@@ -294,38 +294,36 @@ FFMP_FORMULATION = {
         # config.MONTAGUE_DECREE_TARGET_MGD, TRENTON_DECREE_TARGET_MGD,
         # and NYC_DECREE_DIVERSION_CAP_MGD.
 
-        # --- NYC drought factors (L3, L4, L5) ---
-        # L1a-L2 factors are effectively unconstrained (set to large values)
+        # --- NYC + NJ drought delivery factors ---
+        # One rule for both Decree parties: bounds = negotiated FFMP factor
+        # ± 0.15, clipped at 1.0 (no factor exceeds full delivery). Each
+        # party's interest is guarded by its own reliability objective; the
+        # symmetric envelope keeps every searched policy a renegotiation-scale
+        # perturbation of the FFMP. L1a-L2 factors are effectively
+        # unconstrained (set to large values).
         "nyc_drought_factor_L3": {
             "baseline": 0.85,
-            "bounds": [0.60, 1.0],
+            "bounds": [0.70, 1.0],
             "units": "fraction",
         },
         "nyc_drought_factor_L4": {
             "baseline": 0.70,
-            "bounds": [0.40, 0.95],
+            "bounds": [0.55, 0.85],
             "units": "fraction",
         },
         "nyc_drought_factor_L5": {
             "baseline": 0.65,
-            "bounds": [0.30, 0.90],
+            "bounds": [0.50, 0.80],
             "units": "fraction",
         },
-
-        # --- NJ drought factors (L4, L5) ---
-        # Bounds bracket the negotiated FFMP values (0.90/0.80). Set as the
-        # sole guardrail on the Decree-party interest when no NJ objective was
-        # active; RETAINED unchanged at NJ-objective activation (2026-07-30) —
-        # the audited 39-DV scheme is locked, and the active NJ reliability
-        # objective now also guards the interest inside these bounds.
         "nj_drought_factor_L4": {
             "baseline": 0.90,
-            "bounds": [0.80, 1.0],
+            "bounds": [0.75, 1.0],
             "units": "fraction",
         },
         "nj_drought_factor_L5": {
             "baseline": 0.80,
-            "bounds": [0.65, 1.0],
+            "bounds": [0.65, 0.95],
             "units": "fraction",
         },
 
@@ -437,25 +435,26 @@ def generate_ffmp_formulation(n_zones=None):
     _upper_cap = {lvl: 0.0 for lvl in storage_levels[:3]}
     dvs.update(_zone_shift_specs(storage_levels, _lower_cap, _upper_cap))
 
-    # NYC delivery factors: only for levels where baseline < unconstrained threshold
+    # NYC / NJ delivery factors: the base formulation's symmetric rule —
+    # bounds = interpolated FFMP factor ± 0.15, clipped at 1.0 — applied to
+    # each variant's own interpolated baselines. NYC DVs exist only for
+    # levels below the unconstrained threshold; NJ DVs only where the
+    # interpolated baseline < 1.0.
+    def _factor_spec(baseline: float) -> dict:
+        b = float(np.clip(baseline, 0.0, 1.0))
+        return {
+            "baseline": b,
+            "bounds": [round(max(b - 0.15, 0.0), 6),
+                       round(min(b + 0.15, 1.0), 6)],
+            "units": "fraction",
+        }
+
     for i, level in enumerate(drought_levels):
         if interp_nyc[i] < 100:
-            dvs[f"nyc_drought_factor_{level}"] = {
-                "baseline": float(np.clip(interp_nyc[i], 0.30, 1.0)),
-                "bounds": [0.30, 1.0],
-                "units": "fraction",
-            }
-
-    # NJ delivery factors: only for levels where baseline < 1.0. Floor
-    # mirrors the base formulation (bounds guard the Decree-party interest;
-    # the NJ reliability objective, active since 2026-07-30, guards it too).
+            dvs[f"nyc_drought_factor_{level}"] = _factor_spec(interp_nyc[i])
     for i, level in enumerate(drought_levels):
         if interp_nj[i] < 1.0:
-            dvs[f"nj_drought_factor_{level}"] = {
-                "baseline": float(np.clip(interp_nj[i], 0.65, 1.0)),
-                "bounds": [0.65, 1.0],
-                "units": "fraction",
-            }
+            dvs[f"nj_drought_factor_{level}"] = _factor_spec(interp_nj[i])
 
     # Flood-zone spill-mitigation release scaling (same DV names across all
     # N-zone variants; mapped to the two flood levels — indices below
