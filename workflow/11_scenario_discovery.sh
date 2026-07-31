@@ -30,11 +30,11 @@
 # overridable via NYCOPT_SD_* — never CLI value flags.
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_hazfill_du.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_10yr_n200 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_du.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_10yr_n200 \
 #          workflow/11_scenario_discovery.sh
 #
 # Local (no allocation needed — this is a single-core scoring job):
-#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_hazfill_du.env \
+#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_du.env \
 #   NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_10yr_n200 \
 #   bash workflow/11_scenario_discovery.sh
 #

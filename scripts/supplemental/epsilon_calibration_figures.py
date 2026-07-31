@@ -130,9 +130,9 @@ _FALLBACK_COLORS = ["#56B4E9", "#CC79A7", "#E69F00"]
 _CAMPAIGN_COLOR = "#009E73"   # adopted campaign epsilon vector
 _PREVIOUS_COLOR = "#000000"   # previous provisional registry vector
 
-#: Suffix for ladder row labels of objectives outside the default active set.
+#: Suffix for ladder row labels of objectives outside the default active set
+#: (NJ delivery left this dict at its activation, 2026-07-30).
 _NON_DEFAULT_NOTE = {
-    "nj_delivery_reliability_annual": " (optional)",
     "downstream_flood_days_annual_p99": " (diagnostic)",
 }
 

@@ -313,10 +313,11 @@ FFMP_FORMULATION = {
         },
 
         # --- NJ drought factors (L4, L5) ---
-        # No NJ delivery objective is active, so these lower bounds are the
-        # only guardrail on the Decree-party interest; they bracket the
-        # negotiated FFMP values (0.90/0.80). Widen only if the NJ
-        # reliability objective is activated.
+        # Bounds bracket the negotiated FFMP values (0.90/0.80). Set as the
+        # sole guardrail on the Decree-party interest when no NJ objective was
+        # active; RETAINED unchanged at NJ-objective activation (2026-07-30) —
+        # the audited 39-DV scheme is locked, and the active NJ reliability
+        # objective now also guards the interest inside these bounds.
         "nj_drought_factor_L4": {
             "baseline": 0.90,
             "bounds": [0.80, 1.0],
@@ -446,8 +447,8 @@ def generate_ffmp_formulation(n_zones=None):
             }
 
     # NJ delivery factors: only for levels where baseline < 1.0. Floor
-    # mirrors the base formulation (no NJ objective — bounds guard the
-    # Decree-party interest).
+    # mirrors the base formulation (bounds guard the Decree-party interest;
+    # the NJ reliability objective, active since 2026-07-30, guards it too).
     for i, level in enumerate(drought_levels):
         if interp_nj[i] < 1.0:
             dvs[f"nj_drought_factor_{level}"] = {

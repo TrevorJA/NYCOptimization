@@ -72,7 +72,7 @@ def load_arm(arm, slug, tag):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--slug", default="ffmp_obj7_pilot")
+    p.add_argument("--slug", default="ffmp_obj8_pilot")
     p.add_argument("--reeval-tag", required=True)
     p.add_argument("--arms", nargs="+", default=campaign_designs(),
                    help="Scenario designs to compare (default: the campaign "

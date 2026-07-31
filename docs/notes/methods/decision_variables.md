@@ -40,9 +40,11 @@ and spillway.
   0.8 floor keeps releases near the negotiated Table 4a base rates — the
   only protection for the tailwater fishery (no habitat objective is
   active).
-- **NJ factors**: no NJ delivery objective is active, so the lower bounds
-  bracket the negotiated FFMP values (0.90/0.80); widen only if the NJ
-  reliability objective is activated.
+- **NJ factors**: lower bounds bracket the negotiated FFMP values
+  (0.90/0.80). Set as the sole guardrail on the Decree-party interest when no
+  NJ objective was active; RETAINED unchanged at NJ-objective activation
+  (2026-07-30) — the audited 39-DV scheme is locked, and the active NJ
+  reliability objective now also guards the interest inside these bounds.
 - **Flood L1a uppers (1.35 / 1.20 / 1.55)**: maximum controlled release
   observed 2000–2021 (2,062 / 842 / 303 cfs — demonstrated release-works
   capacity) divided by the L1a schedule rates (1,500 / 700 / 190 cfs).

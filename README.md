@@ -125,7 +125,7 @@ sets, and it also persists the baseline re-evaluation matrix on the common
 held-out ensemble so step `08` can compute regret-from-baseline:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
        workflow/05_run_baseline.sh
 ```
 
@@ -173,11 +173,11 @@ they do not depend on each other:
 
 ```bash
 # Base FFMP (39 DVs)
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env               --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env               --array=1-10 workflow/06_run_mmborg.sh
 # Variable-resolution FFMP sweep (same objective set), one job per N
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_8  --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_10 --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_12 --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_8  --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_10 --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12 --array=1-10 workflow/06_run_mmborg.sh
 ```
 
 (This experiment list grows as new env files / scenario designs are added.)
@@ -194,7 +194,7 @@ staged. A full reproducibility manifest is written to
 bash workflow/07_run_diagnostics.sh
 
 # Re-evaluate the Pareto policies on the common held-out ensemble + robustness scoring
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
        workflow/08_reevaluate.sh
 ```
 

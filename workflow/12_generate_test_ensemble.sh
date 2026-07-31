@@ -28,7 +28,7 @@
 # 2026-07-30) lives in src/etest.py — env-overridable (NYCOPT_ETEST_*),
 # hardcoded nowhere else. No value flags here; --variant is an identifier.
 #
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_ETEST_VARIANT=kn \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_ETEST_VARIANT=kn \
 #          workflow/12_generate_test_ensemble.sh
 #
 # Output: outputs/synthetic_ensembles/etest_{gen}_{L}yr_n{N}[__chunkJJJ]/

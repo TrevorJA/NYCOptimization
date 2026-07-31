@@ -406,17 +406,20 @@ NJ_DELIVERY_CAP_MGD = 100.0              # NJ diversion baseline (monthly-avg D&
 # User-facing list of objective names. See src.objectives.OBJECTIVES for
 # the full registry; call src.objectives.list_available_objectives() to print.
 #
-# The default 7-objective set spans every stakeholder axis Pywr-DRB simulates:
+# The default 8-objective set spans every stakeholder axis Pywr-DRB simulates:
 #   - NYC supply: weekly delivery reliability + tail (CVaR90) delivery deficit
 #   - Montague flow Decree (NYC's downstream obligation): reliability + CVaR90 deficit
 #   - Trenton flow Decree (lower-basin / NJ obligation; also repels salinity): reliability
 #   - downstream flood exposure: days any reservoir-tail gauge >= NWS minor flood stage
 #   - storage resilience: 5th-percentile combined NYC storage
+#   - NJ supply: weekly delivery reliability (ACTIVATED 2026-07-30 — the
+#     framing-convention redundancy screen found no collinearity with any
+#     active objective, max |rho_S| = 0.38; epsilon pre-calibrated)
 # Worst-case extremes (max-deficit, min-storage, salt-front-max) were replaced
 # with stable tail/percentile/count forms (see docs/notes/methods/objective_definitions.md
 # §1-2; Quinn et al. 2017; Bonham et al. 2024). The full registry in
 # src.objectives.OBJECTIVES also exposes diagnostic variants (max-deficit,
-# min-storage, flood-major/action, salt-front, NJ delivery) for easy swapping.
+# min-storage, flood-major/action, salt-front) for easy swapping.
 
 _DEFAULT_OBJECTIVES = [
     "nyc_delivery_reliability_weekly",
@@ -426,6 +429,7 @@ _DEFAULT_OBJECTIVES = [
     "trenton_flow_reliability_weekly",
     "downstream_flood_days_minor",
     "nyc_storage_p5_pct",
+    "nj_delivery_reliability_weekly",
 ]
 
 ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
@@ -813,8 +817,8 @@ REEVAL_ENSEMBLE_SPEC = get_ensemble_spec(NYCOPT_REEVAL_ENSEMBLE_PRESET)
 # byte-identical to prior runs. A positive value bounds peak memory per
 # evaluation by simulating the ensemble in sequential batches of this size and
 # reducing each realization to its per-objective base metric before the next
-# batch (the same memory-batching the ensemble objective-sensitivity diagnostic
-# uses, so search and diagnostic handle realizations identically). Recommended
+# batch (the same memory-batching the supplemental policy-sweep diagnostics
+# use, so search and diagnostics handle realizations identically). Recommended
 # for large search ensembles (e.g. N>=128) to avoid OOM on a Borg worker.
 SEARCH_REALIZATION_BATCH = _parse_int_env("NYCOPT_SEARCH_REALIZATION_BATCH", 0)
 
@@ -891,12 +895,13 @@ assert_search_test_seed_domains_disjoint(SEARCH_ENSEMBLE_SPEC, REEVAL_ENSEMBLE_S
 # Full output path: outputs/{scenario}/{moea_slug}/{artifact}/
 #
 # Examples (moea slug only):
-#   ffmp_obj7                    — FFMP, 7 objectives, production algo config
-#   ffmp_8_obj7                  — variable-resolution N=8, 7 objectives
-#   ffmp_obj7_smoke              — dev smoke algorithm config
-#   ffmp_obj7_pilot42            — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
-#   ffmp_obj7_sal                — salinity LSTM on (dormant; only if
+#   ffmp_obj8                    — FFMP, 8 objectives, production algo config
+#   ffmp_8_obj8                  — variable-resolution N=8, 8 objectives
+#   ffmp_obj8_smoke              — dev smoke algorithm config
+#   ffmp_obj8_pilot42            — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
+#   ffmp_obj8_sal                — salinity LSTM on (dormant; only if
 #                                  NYCOPT_SALINITY_ON=1 — not used in manuscript)
+# (pre-2026-07-30 runs carry obj7 slugs — the set predated NJ activation)
 #
 # `RUN_SLUG_TAG` env appends a free-form suffix; useful for one-off variants
 # without polluting the canonical slug grammar.

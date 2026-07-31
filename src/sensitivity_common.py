@@ -4,10 +4,12 @@ The supplemental experiments live in ``scripts/supplemental/``:
 
 * the **historic** (single-trace) random-DV diagnostic
   (``objective_sensitivity_{run,figures}.py``),
-* the **ensemble** counterpart
-  (``ensemble_objective_sensitivity_{run,figures}.py``), and
 * the **epsilon-calibration** experiment
-  (``epsilon_calibration_{run,figures}.py``).
+  (``epsilon_calibration_{run,figures}.py``),
+* the **satisfaction-factor** sweep
+  (``satisfaction_factor_{run,figures}.py``), and
+* the **framing-convention** cube analysis
+  (``framing_convention_analysis.py``).
 
 They share six kinds of logic, factored here so no script copies another
 (per the no-duplication / refactor-all-callers project convention):

@@ -25,18 +25,13 @@ relevant one **between** importing this module and importing ``config``::
 
 To keep that guarantee this module never imports ``config`` (which would
 either fire too late or create a cycle). Output paths are derived from
-``__file__`` for the same reason. Importing ``src.scenario_designs`` is safe:
-it is env-neutral (sets nothing) and does not import ``config``; it supplies
-the project-wide scenario-length constant ``SCENARIO_YEARS`` so
-supplemental ensemble sizes stay in lockstep with the scenario designs.
+``__file__`` for the same reason.
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-
-from src.scenario_designs import SCENARIO_YEARS
 
 _PROJECT_DIR: Path = Path(__file__).resolve().parent
 
@@ -172,147 +167,6 @@ def figure_path(name: str, ext: str) -> Path:
 
 
 ###############################################################################
-# Ensemble objective-sensitivity experiment
-# (docs/notes/methods/ensemble_objective_sensitivity_experiment.md)
-#
-# On ONE fixed probabilistic (Kirsch-Nowak) ensemble, evaluate many random DV
-# vectors ONCE over the full ensemble, store the per-realization base-metric
-# matrix (N_DV x N_realizations x N_objectives), and derive all diagnostics
-# post-hoc: (1) ensemble-size (K) ranking convergence, (2) across-realization
-# operator agreement, plus secondary redundancy and threshold-sensitivity.
-#
-# PROVISIONAL SIZES. The manuscript ensemble-design sizes and the realization
-# length are open decisions (docs/notes/methods/experimental_design.md). The
-# full-scale numbers below are placeholders chosen so the K-grid and rank
-# correlations are estimable; revisit when those decisions are made. TODO.
-###############################################################################
-
-# ---------------------------------------------------------------------------
-# Mode switch (independent of the historic SMOKE above)
-# ---------------------------------------------------------------------------
-#: ENS_SMOKE=True is a tiny laptop dry-run: N=5 x 20-yr ensemble, 3 DVs. The
-#: full-scale HPC numbers (below, in the False branch) are ready to run
-#: unchanged — flip this one flag.
-ENS_SMOKE: bool = False
-
-
-def configure_ensemble_env() -> None:
-    """Apply env knobs for the ensemble objective-sensitivity run.
-
-    Salinity and temperature LSTMs are **off**: the active objective set uses
-    neither, and disabling them is a large speedup over the full ensemble. No
-    simulation-window override is set — the ensemble window self-derives from
-    the realization length (``src/simulation.py::_ensemble_window`` clips to
-    ``config.START_DATE + realization_years``), and the staged ensemble is
-    generated to match that same window.
-    """
-    _apply_env(salinity="0", temperature="0")
-
-
-# ---------------------------------------------------------------------------
-# Probabilistic ensemble (Kirsch-Nowak, historic reference fit)
-# ---------------------------------------------------------------------------
-#: Realizations and per-realization length. The inflow_type slug is the dynamic
-#: ``kn_{Y}yr_n{N}`` grammar resolved by ``src.ensembles.get_ensemble_spec``,
-#: so it matches exactly what the Step-1 generator stages. The full-scale
-#: realization length is pinned to the project-wide scenario length L
-#: (``SCENARIO_YEARS``) so thresholds/operators are calibrated at
-#: the campaign L; the smoke branch keeps the staged 20-yr dev fixture
-#: (``kn_20yr_n5``).
-ENS_N_REALIZATIONS: int = 5 if ENS_SMOKE else 1024
-ENS_REALIZATION_YEARS: int = 20 if ENS_SMOKE else SCENARIO_YEARS
-#: Generation seed for the Kirsch-Nowak ensemble (distinct from the DV seed).
-ENS_KN_SEED: int = 1234
-
-
-def ensemble_inflow_type() -> str:
-    """Dynamic ``kn_{Y}yr_n{N}`` inflow-type slug for the experiment ensemble."""
-    return f"kn_{ENS_REALIZATION_YEARS}yr_n{ENS_N_REALIZATIONS}"
-
-
-# ---------------------------------------------------------------------------
-# DV sweep
-# ---------------------------------------------------------------------------
-#: RNG seed for the Latin-hypercube DV sample.
-ENS_SEED: int = 42
-#: Formulation whose DV bounds define the sampling space.
-ENS_FORMULATION: str = "ffmp"
-#: Number of random DV vectors (FFMP baseline added as an extra row, id -1).
-ENS_N_DV: int = 3 if ENS_SMOKE else 199
-#: Realizations evaluated per simulation batch, to bound peak memory. Only the
-#: scalar per-realization metrics are retained; each batch's timeseries are
-#: freed before the next. <= ENS_N_REALIZATIONS.
-ENS_REALIZATION_BATCH: int = 5 if ENS_SMOKE else 64
-
-#: Base objectives whose per-realization metric is stored. "active" = the 7
-#: recommended base metrics (salinity/temperature excluded; their LSTMs are
-#: off). "full_registry" or an explicit list are also accepted.
-ENS_OBJECTIVE_SET: "str | list[str]" = "active"
-
-#: Predicted-inflow modes to stage. The project pins
-#: ``flow_prediction_mode="perfect_foresight"`` for every simulation
-#: (``config.PYWRDRB_FLOW_PREDICTION_MODE``); "regression_disagg" is also
-#: written so the staged file works regardless of the mode a simulation
-#: requests (e.g. a sensitivity check). perfect_foresight
-#: requires the presimulated-release HDF5, hence STARFIT prep runs first.
-ENS_PREDICTION_MODES: tuple = ("regression_disagg", "perfect_foresight")
-
-# ---------------------------------------------------------------------------
-# Post-hoc diagnostic grids (figure script only; no re-simulation)
-# ---------------------------------------------------------------------------
-#: Ensemble sub-sample sizes K for the ranking-convergence diagnostic. The full
-#: ensemble (ENS_N_REALIZATIONS) is the proxy-truth ranking.
-ENS_K_GRID: list = [2, 3, 5] if ENS_SMOKE else [10, 25, 50, 100, 200, 256, 512, 1024]
-#: Random sub-sample repeats per K (the tau_b(K) band).
-ENS_K_SUBSAMPLE_REPEATS: int = 3 if ENS_SMOKE else 20
-#: RNG seed for the K sub-sampling (reproducible bands).
-ENS_K_SUBSAMPLE_SEED: int = 7
-
-#: Across-realization operators compared for the operator-agreement diagnostic.
-#: "satisficing" uses the per-objective thresholds in
-#: ``src.objectives_ensemble._DEFAULT_THRESHOLDS``; the others are distribution
-#: summaries of the per-realization base metric.
-ENS_OPERATORS: tuple = ("satisficing", "mean", "p90", "cvar90")
-
-#: Multipliers applied to each objective's default satisficing threshold for the
-#: threshold-sensitivity table (tau_b of rankings vs the default-threshold
-#: ranking).
-ENS_THRESHOLD_MULTIPLIERS: tuple = (0.8, 0.9, 1.0, 1.1, 1.2)
-
-#: Olden & Poff (2003) redundancy flag for the ensemble-objective Spearman screen.
-ENS_RHO_FLAG_THRESHOLD: float = 0.8
-
-# ---------------------------------------------------------------------------
-# Output tree (gitignored, regenerable)
-# ---------------------------------------------------------------------------
-ENS_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "ensemble_objective_sensitivity"
-ENS_MATRIX_DIR: Path = ENS_OUTPUT_ROOT / "matrix"
-ENS_TABLES_DIR: Path = ENS_OUTPUT_ROOT / "tables"
-ENS_FIGURES_DIR: Path = ENS_OUTPUT_ROOT / "figures"
-
-
-def _ens_stem() -> str:
-    """Run-identifying filename stem shared by all ensemble-experiment artifacts."""
-    return (f"{ENS_FORMULATION}_{ensemble_inflow_type()}"
-            f"_seed{ENS_SEED}_dv{ENS_N_DV}")
-
-
-def ensemble_matrix_path() -> Path:
-    """Path to the per-realization base-metric matrix HDF5 (run-script output)."""
-    return ENS_MATRIX_DIR / f"per_realization_metrics_{_ens_stem()}.h5"
-
-
-def ensemble_table_path(name: str) -> Path:
-    """Path for a named diagnostic table CSV (e.g. name='operator_agreement')."""
-    return ENS_TABLES_DIR / f"{name}_{_ens_stem()}.csv"
-
-
-def ensemble_figure_path(name: str, ext: str) -> Path:
-    """Path for a named ensemble figure artifact (e.g. name='tau_vs_k')."""
-    return ENS_FIGURES_DIR / f"{name}_{_ens_stem()}.{ext}"
-
-
-###############################################################################
 # Epsilon-calibration experiment
 # (docs/notes/methods/epsilon_calibration_experiment.md;
 #  workflow/supplemental/epsilon_calibration.sh)
@@ -335,7 +189,7 @@ def ensemble_figure_path(name: str, ext: str) -> Path:
 ###############################################################################
 
 # ---------------------------------------------------------------------------
-# Mode switch (independent of SMOKE / ENS_SMOKE above)
+# Mode switch (independent of the historic SMOKE above)
 # ---------------------------------------------------------------------------
 #: EPS_SMOKE=True is a tiny dry-run (few policies, cheap bootstrap) to prove
 #: the code path and output structure; flip to False for the HPC run.
@@ -475,7 +329,7 @@ def epsilon_figure_path(name: str, design: "str | None" = None,
 def configure_anvil_scaling_env() -> None:
     """Apply env knobs for the Anvil scaling experiment (both stages).
 
-    Salinity and temperature LSTMs off (the active 7-objective set uses
+    Salinity and temperature LSTMs off (the active objective set uses
     neither). No simulation-window override: Stage A's window self-derives
     from the ensemble realization length, and Stage B's short window is set
     by ``DEBUG_SIM=true`` in the SLURM script (via ``nycopt_read_run_identity``),
@@ -639,7 +493,7 @@ def borg_timing_csv_path(config_name: str, seed: int, job_id: str) -> Path:
 def configure_ensemble_cost_env() -> None:
     """Apply env knobs for the ensemble-cost experiment.
 
-    Salinity and temperature LSTMs off (the active 7-objective set uses
+    Salinity and temperature LSTMs off (the active objective set uses
     neither). No simulation-window override: the window self-derives from each
     cell's realization length. Deliberately does NOT touch
     ``NYCOPT_USE_TRIMMED_MODEL`` — the sweep script exports it per cell, and a
@@ -1011,7 +865,7 @@ def ensemble_cost_figure_path(name: str) -> Path:
 def configure_determinism_env() -> None:
     """Apply env knobs for the objective-determinism experiment.
 
-    Salinity and temperature LSTMs off (the active 7-objective set uses
+    Salinity and temperature LSTMs off (the active objective set uses
     neither). The scenario design defaults to ``historic`` so
     ``get_objective_set()`` resolves the annual-unit (§2) registry — the same
     objective function every wired design searches under. No simulation-window
@@ -1090,3 +944,126 @@ def determinism_summary_path(ext: str) -> Path:
 def determinism_figure_path(name: str) -> Path:
     """Path stub for a named figure (extension added by ``save_figure``)."""
     return DETERMINISM_FIGURES_DIR / name
+
+
+###############################################################################
+# Framing-convention analysis (cube reductions; no simulation)
+# (docs/notes/methods/framing_convention_diagnostics.md diagnostics 1 + 4,
+#  plus the flood unit-operator comparison and the annual-unit redundancy
+#  screen for the 8th objective)
+#
+# Pure post-processing of the epsilon-calibration per-unit annual-metric cubes
+# (`epsilon_cube_glob()`): the same 512 constraint-feasible policies + FFMP
+# baseline evaluated on each campaign design's own search ensemble already
+# hold every stage-(i) annual metric these diagnostics reduce (failing-week
+# counts, annual flood-day counts). Zero simulation; seconds of runtime.
+###############################################################################
+
+#: Candidate annual failure-week counts k for the saturation / ranking screen
+#: (contains every shipped `_DEFAULT_FAILURE_K` value).
+FRAMING_K_GRID: tuple = (1, 2, 3, 4)
+
+#: Saturation band edges: a policy population is saturated at a criterion when
+#: this fraction of policies scores <= band or >= 1 - band (Bonham et al. 2024).
+FRAMING_SATURATION_BAND: float = 0.05
+
+#: Bootstrap resamples for the flood-operator noise comparison (resampling
+#: realizations with replacement; unit-years for the historic design).
+FRAMING_BOOTSTRAP_B: int = 500
+
+#: RNG seed for the bootstrap index draw.
+FRAMING_BOOTSTRAP_SEED: int = 11
+
+#: |Spearman rho| above which an objective pair is flagged collinear in the
+#: annual-unit redundancy screen (Olden & Poff 2003).
+FRAMING_RHO_FLAG_THRESHOLD: float = 0.8
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+FRAMING_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "framing_convention"
+FRAMING_TABLES_DIR: Path = FRAMING_OUTPUT_ROOT / "tables"
+FRAMING_FIGURES_DIR: Path = FRAMING_OUTPUT_ROOT / "figures"
+
+
+def framing_table_path(name: str, design: "str | None" = None) -> Path:
+    """Path for a named table CSV (per-design or combined)."""
+    stem = f"{name}_{design}" if design else name
+    return FRAMING_TABLES_DIR / f"{stem}.csv"
+
+
+def framing_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return FRAMING_FIGURES_DIR / name
+
+
+###############################################################################
+# Weekly satisfaction-factor sweep
+# (docs/notes/methods/framing_convention_diagnostics.md diagnostic 2)
+#
+# The 0.99 weekly satisfaction factor sits inside the weekly reduction
+# (src/objectives.py::_weekly_delivery_ok), UPSTREAM of the stored failing-week
+# counts, so it cannot be recovered from the epsilon cubes. This sweep
+# re-evaluates the SAME feasible-policy population (EPS_SEED / EPS_N_POLICIES,
+# so rows align with the epsilon cubes) on the active design's search ensemble
+# and stores, for the two delivery objectives (NYC, NJ), the per-unit
+# failing-week counts AND the §1 weekly reliability at each candidate factor —
+# one small extra cube axis computed inside a single simulation pass.
+# One sbatch job per design, exactly like the epsilon calibration.
+###############################################################################
+
+#: SF_SMOKE=True is a tiny laptop dry-run (few policies on the historic
+#: design) proving the code path; flip to False for the per-design HPC run.
+SF_SMOKE: bool = os.environ.get("NYCOPT_SF_SMOKE", "0") == "1"
+
+#: Candidate weekly satisfaction factors (contains the shipped 0.99).
+SF_FACTOR_GRID: tuple = (0.95, 0.98, 0.99, 1.00)
+
+#: Feasible policies: identical population to the epsilon calibration (same
+#: seed + count -> same DV rows, so cubes are row-aligned across experiments).
+SF_N_POLICIES: int = 4 if SF_SMOKE else EPS_N_POLICIES
+
+#: Realizations per simulation batch (0 = one block, the campaign default).
+SF_REALIZATION_BATCH: int = 0
+
+#: Delivery objectives swept: (annual objective name, demand key, delivery
+#: key, entitlement reset convention). Caps resolve from config at run time.
+SF_DELIVERY_OBJECTIVES: tuple = (
+    ("nyc_delivery_reliability_annual", "demand_nyc", "delivery_nyc", "annual"),
+    ("nj_delivery_reliability_annual", "demand_nj", "delivery_nj", "monthly"),
+)
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+SF_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "satisfaction_factor"
+SF_CUBE_DIR: Path = SF_OUTPUT_ROOT / "cube"
+SF_TABLES_DIR: Path = SF_OUTPUT_ROOT / "tables"
+SF_FIGURES_DIR: Path = SF_OUTPUT_ROOT / "figures"
+
+
+def _sf_stem(design: str) -> str:
+    """Run-identifying filename stem for one design's sweep artifacts."""
+    return f"{EPS_FORMULATION}_{design}_seed{EPS_SEED}_n{SF_N_POLICIES}"
+
+
+def sf_cube_path(design: str) -> Path:
+    """Path to one design's factor-sweep cube HDF5 (run output)."""
+    return SF_CUBE_DIR / f"factor_cube_{_sf_stem(design)}.h5"
+
+
+def sf_cube_glob() -> str:
+    """Glob (relative to SF_CUBE_DIR) matching every design's cube at the
+    current sample settings."""
+    return f"factor_cube_{EPS_FORMULATION}_*_seed{EPS_SEED}_n{SF_N_POLICIES}.h5"
+
+
+def sf_table_path(name: str, design: "str | None" = None) -> Path:
+    """Path for a named table CSV (per-design or combined)."""
+    stem = f"{name}_{_sf_stem(design)}" if design else name
+    return SF_TABLES_DIR / f"{stem}.csv"
+
+
+def sf_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return SF_FIGURES_DIR / name

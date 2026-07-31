@@ -21,14 +21,15 @@ Analysis blocks:
      between-half spread approximates construction variance.
   B. Per-axis marginal coverage + tail enrichment at the full retained set — the
      mechanism metric (LHS stratifies every axis regardless of dimension), vs the null.
-  C. Snap behavior vs dimension — nested axis sets m4 ⊂ m6 ⊂ full: snap distances,
-     minimum separation, distance-concentration ratio, and lhs_nn vs lhs_assign
+  C. Snap behavior vs dimension — the campaign selection set (config.
+     HAZARD_SELECTION_AXES) vs the full retained set: snap distances, minimum
+     separation, distance-concentration ratio, and lhs_nn vs lhs_assign
      order-dependence at full m.
-  D. N-sweep — N × axis-set decision surface: per-axis tail enrichment and
-     stratification + joint L2-star vs the matched random null.
+  D. N-sweep — N × axis-set decision surface (campaign vs full): per-axis tail
+     enrichment and stratification + joint L2-star vs the matched random null.
   E. Selection invariance / implicit weighting — leave-one-axis-out and
-     add-one-axis-back Jaccard overlaps vs the full-set selection, plus per-axis (and
-     dry/wet group) contributions to the snap distance.
+     add-one-axis-back (campaign base) Jaccard overlaps vs the full-set selection,
+     plus per-axis (and dry/wet group) contributions to the snap distance.
 
 All configuration is via environment variables (no CLI value flags):
 
@@ -49,8 +50,9 @@ All configuration is via environment variables (no CLI value flags):
                                screen, per-axis coverage (lhs_nn + random null),
                                and the snap/concentration block (lhs_nn only —
                                the comparator selectors get memory-heavy at
-                               large P), each at the nested axis sets. Skips
-                               blocks 1-3, D, E and all figures. Default off.
+                               large P), each at the campaign and full axis
+                               sets. Skips blocks 1-3, D, E and all figures.
+                               Default off.
 
 Run after staging the pool hazard image (workflow step 02 with
 ``NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary``; locally use
@@ -114,16 +116,6 @@ BOUNDS_SWEEP: tuple[tuple[float, float], ...] = ((0.0, 100.0), (0.5, 99.5), (1.0
 #: Sub-pool halves for the draw-stability block.
 N_SUBPOOLS = 2
 
-#: Nested axis sets for the dimension / sizing sweeps. ``m4`` is the axis set the
-#: superseded cluster-compress screen used to retain (kept as the benchmark for
-#: continuity with the earlier battery); ``m6`` adds the next canonical-priority
-#: member per tail; ``full`` is the retained set of the live screen.
-M4_AXES: tuple[str, ...] = (
-    "drought_deficit_volume", "drought_onset_rate",
-    "flood_peak_magnitude", "flood_pulse_duration",
-)
-M6_AXES: tuple[str, ...] = M4_AXES + ("drought_duration", "flood_rise_rate")
-
 #: Ensemble sizes for the sizing decision surface (block D).
 N_SWEEP: tuple[int, ...] = (100, 150, 200, 300)
 
@@ -135,7 +127,7 @@ _COLORS = {
     "random": "0.55", "lhs_nn": "#1f6fb4", "lhs_assign": "#7db3d9",
     "maximin": "#2c8c5a", "eps_cell": "#c1272d",
 }
-_MSET_COLORS = {"m4": "#c9a227", "m6": "#2c8c5a", "campaign": "#7d3f9b", "full": "#1f6fb4"}
+_MSET_COLORS = {"campaign": "#7d3f9b", "full": "#1f6fb4"}
 
 
 def _out_dir() -> Path:
@@ -182,15 +174,15 @@ def _seeds(k: int, offset: int = 0) -> list[int]:
 
 
 def _axis_sets(retained: list[str]) -> dict[str, list[str]]:
-    """Nested diagnostic sets m4 ⊂ m6 ⊂ full plus the campaign selection set.
+    """The two diagnostic axis sets: campaign selection set and full retained set.
 
     ``campaign`` is the committed selection axis set (config.HAZARD_SELECTION_AXES,
     m = 6 per the nested-P verdict) — the set whose adequacy gate the production
-    pool re-check must pass. It is omitted when identical to ``full``.
+    pool re-check must pass. ``full`` is the retained set of the live screen; its
+    role is the evidence for restricting selection (full-set enrichment is
+    geometry-limited). ``campaign`` is omitted when identical to ``full``.
     """
     sets = {
-        "m4": [a for a in M4_AXES if a in retained],
-        "m6": [a for a in M6_AXES if a in retained],
         "campaign": [a for a in config.HAZARD_SELECTION_AXES if a in retained],
         "full": list(retained),
     }
@@ -343,8 +335,8 @@ def _invariance(
                 "variant": "loo", "axis": axis, "m": len(axes), "seed": seed,
                 "jaccard_vs_full": sd.jaccard(rows, full_rows[seed]),
             })
-    base = axis_sets.get("m4")
-    if base:  # add-one-axis-back from the benchmark base set
+    base = axis_sets.get("campaign")
+    if base:  # add-one-axis-back from the campaign selection set
         for axis in [a for a in retained if a not in base]:
             axes = base + [axis]
             H = _sub(H_full, candidate_axes, axes)
@@ -652,7 +644,7 @@ def _fig_invariance(inv, contributions, out) -> None:
     for i, axis in enumerate(order):
         if axis in add.index:
             a.plot([add[axis]], [i], "d", color="#c1272d", ms=6,
-                   label="add-one-back (from m4)" if i == min(
+                   label="add-one-back (from campaign)" if i == min(
                        j for j, x in enumerate(order) if x in add.index) else None)
     a.set_yticks(range(len(order)))
     a.set_yticklabels(order, fontsize=7)
@@ -688,7 +680,7 @@ def _run_saturation(
 ) -> None:
     """Lean saturation mode: only the metrics the nested-P adequacy gate needs.
 
-    Per axis set (m4 / m6 / full): per-axis marginal coverage + tail enrichment
+    Per axis set (campaign / full): per-axis marginal coverage + tail enrichment
     (lhs_nn seeds vs the random null) and the snap/concentration block (lhs_nn
     only). The gate statistic follows the block-D convention: within-seed
     minimum per-axis tail share, averaged over selector seeds.

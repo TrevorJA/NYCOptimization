@@ -65,7 +65,10 @@ TAIL_CRITERION = 0.30
 #: nominal (8) and intrinsic (~5.1 -> 1/5 used as the round bracket edge) dimension.
 EXPONENT_BRACKET = (1.0 / 8.0, 1.0 / 5.0)
 
-_MSET_COLORS = {"m4": "#c9a227", "m6": "#2c8c5a", "full": "#1f6fb4"}
+#: Axis sets scored across rungs: the campaign selection set and the full
+#: retained set (the sets the live battery emits).
+_MSETS = ("campaign", "full")
+_MSET_COLORS = {"campaign": "#7d3f9b", "full": "#1f6fb4"}
 
 
 def _rung_dir(p: int) -> Path:
@@ -77,9 +80,10 @@ def _load_rung(p: int) -> dict:
 
     Full-battery rungs (no ``saturation_mode`` in summary.json) carry the full-set
     per-axis table in ``per_axis_coverage.csv`` (no ``m_set`` column) and the
-    m4/m6 numbers in ``n_sweep.csv`` at N = 100; saturation rungs carry every axis
-    set in ``per_axis_coverage.csv`` keyed by ``m_set``. Both are reduced with the
-    same block-D convention (within-seed min, averaged over seeds).
+    campaign-set numbers in ``n_sweep.csv`` at N = 100; saturation rungs carry
+    every axis set in ``per_axis_coverage.csv`` keyed by ``m_set``. Both are
+    reduced with the same block-D convention (within-seed min, averaged over
+    seeds).
     """
     out = _rung_dir(p)
     summary = json.loads((out / "summary.json").read_text())
@@ -184,7 +188,7 @@ def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
     P = np.array([r["P"] for r in rungs], dtype=float)
     fig, (a, a2) = plt.subplots(1, 2, figsize=(9.6, 3.8))
 
-    for mset in ("m4", "m6", "full"):
+    for mset in [m for m in _MSETS if m in rungs[0]["msets"]]:
         tail = [r["msets"][mset]["tail_min"] for r in rungs]
         m = rungs[0]["msets"][mset]["m"]
         a.plot(P, tail, "o-", color=_MSET_COLORS[mset], label=f"{mset} (m={m})")
@@ -203,7 +207,7 @@ def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
     a.set_title("Adequacy gate vs pool size (N = 100)")
     a.legend(fontsize=6.5)
 
-    for mset in ("m4", "m6", "full"):
+    for mset in [m for m in _MSETS if m in rungs[0]["msets"]]:
         conc = [r["msets"][mset]["conc_ratio"] for r in rungs]
         m = rungs[0]["msets"][mset]["m"]
         a2.plot(P, conc, "o-", color=_MSET_COLORS[mset], label=f"{mset} (m={m})")
@@ -255,19 +259,20 @@ def _markdown(rungs: list[dict], fits: dict) -> str:
             f"| {f['conc_ratio']:.3f} | {'PASS' if f['gate_pass'] else 'fail'} |"
         )
 
-    lines += [
-        "",
-        "## Gate verdict at the diagnostic axis sets (bonus)",
-        "",
-        "| P | m4 tail min | m4 gate | m6 tail min | m6 gate |",
-        "|---|---|---|---|---|",
-    ]
-    for r in rungs:
-        m4, m6 = r["msets"]["m4"], r["msets"]["m6"]
-        lines.append(
-            f"| {r['P']:,} | {m4['tail_min']:.3f} | {'PASS' if m4['gate_pass'] else 'fail'} "
-            f"| {m6['tail_min']:.3f} | {'PASS' if m6['gate_pass'] else 'fail'} |"
-        )
+    if all("campaign" in r["msets"] for r in rungs):
+        lines += [
+            "",
+            "## Gate verdict at the campaign selection set",
+            "",
+            "| P | campaign tail min | campaign gate |",
+            "|---|---|---|",
+        ]
+        for r in rungs:
+            c = r["msets"]["campaign"]
+            lines.append(
+                f"| {r['P']:,} | {c['tail_min']:.3f} "
+                f"| {'PASS' if c['gate_pass'] else 'fail'} |"
+            )
 
     lines += ["", "## Fitted scaling (full set)", ""]
     fit = fits.get("conc_full")
@@ -305,10 +310,17 @@ def _markdown(rungs: list[dict], fits: dict) -> str:
         )
     else:
         lines.append(
-            "- The (m = 8, N = 100) adequacy gate FAILS at every measured rung: the "
-            "pre-registered fallback ladder activates — (1) concept-group "
-            "representatives (m ~ 4-5), then (2) dry/wet block fill. The (m, N, P) "
-            "call is the user's; neither fallback is implemented here."
+            "- The (m = 8, N = 100) adequacy gate FAILS at every measured rung: "
+            "full-set enrichment is geometry-limited, so selection restricts to "
+            "the campaign set (config.HAZARD_SELECTION_AXES; see the campaign "
+            "gate table above). The (m, N, P) call is the user's."
+        )
+    camp_pass = [r["P"] for r in rungs
+                 if r["msets"].get("campaign", {}).get("gate_pass")]
+    if camp_pass:
+        lines.append(
+            f"- The campaign selection set passes the gate from P = "
+            f"{min(camp_pass):,} (measured)."
         )
     lines += [
         "",

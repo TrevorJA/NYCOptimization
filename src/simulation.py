@@ -1556,8 +1556,9 @@ def run_simulation_ensemble_batched(
     """Simulate an inflow ensemble in sequential realization batches.
 
     The shared realization-handling path for both Borg's ``evaluate()`` ensemble
-    branch and the ensemble objective-sensitivity diagnostic, so the two compute
-    identical per-realization results. The ensemble is split into contiguous
+    branch and the supplemental policy-sweep diagnostics (epsilon calibration,
+    satisfaction-factor sweep), so all compute identical per-realization
+    results. The ensemble is split into contiguous
     chunks of ``batch_size`` realizations; each chunk is simulated with one
     :func:`run_simulation_ensemble_inmemory` call (one Pywr model, ``batch_size``
     scenarios), each realization is reduced to a scalar/array via

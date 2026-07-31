@@ -27,15 +27,15 @@ run's identity must be stated at submission.
 
 ```bash
 # One optimization = one independent job (array index = Borg seed):
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \
        --array=1-10 workflow/06_run_mmborg.sh
 
 # Variable-resolution FFMP — same launcher, formulation as an identifier:
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_12 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12 \
        --array=1-10 workflow/06_run_mmborg.sh
 
 # Re-evaluate on the common held-out ensemble:
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
        workflow/08_reevaluate.sh
 ```
 
@@ -43,13 +43,13 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_
 
 MM-Borg run identities (consumed by steps 05, 06, 08, 09):
 
-- `ffmp_obj7_historic.env` — base FFMP, historic single trace, `mm_full`
-  (50k NFE, 10 seeds), default 7 objectives (no LSTM).
-- `ffmp_obj7_historic_pilot.env` — same, but the 5k-NFE `mm_pilot`
+- `ffmp_obj8_historic.env` — base FFMP, historic single trace, `mm_full`
+  (50k NFE, 10 seeds), default 8 objectives (no LSTM; NJ delivery activated 2026-07-30).
+- `ffmp_obj8_historic_pilot.env` — same, but the 5k-NFE `mm_pilot`
   launch-verification config.
-- `ffmp_vr_obj7.env` — variable-resolution FFMP sweep (N ∈ {8, 10, 12}), same
-  7-objective set as the base run; submit once per `FORMULATION=ffmp_N`.
-- `ffmp_obj7_hazfill_pilot.env` — `hazard_filling_du` scenario design, `pilot`
+- `ffmp_vr_obj8.env` — variable-resolution FFMP sweep (N ∈ {8, 10, 12}), same
+  8-objective set as the base run; submit once per `FORMULATION=ffmp_N`.
+- `ffmp_obj8_hazfill_pilot.env` — `hazard_filling_du` scenario design, `pilot`
   config; requires steps 02–04 staged first (pre-flight fails fast otherwise).
 - `smoke.env` — dev-only tiny-NFE smoke identity, used by
   `workflow/submit_smoke.sh`. Not for replication.
@@ -78,8 +78,8 @@ The scenario design is NOT in the slug — it is the parent directory:
 `outputs/{scenario}/{moea_slug}/`. The MOEA config name is appended unless it
 is the `production` default. Examples:
 
-- `ffmp_obj7_historic.env` (mm_full) → `outputs/historic/ffmp_obj7_mm_full/`
-- `ffmp_obj7_hazfill_pilot.env` (pilot) → `outputs/hazard_filling_du/ffmp_obj7_pilot/`
+- `ffmp_obj8_historic.env` (mm_full) → `outputs/historic/ffmp_obj8_mm_full/`
+- `ffmp_obj8_hazfill_pilot.env` (pilot) → `outputs/hazard_filling_du/ffmp_obj8_pilot/`
 
 For ad-hoc tags, set `RUN_SLUG_TAG=mytag`; the slug becomes
 `<auto-derived>_mytag`.

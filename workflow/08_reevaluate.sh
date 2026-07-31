@@ -20,11 +20,11 @@
 #   NYCOPT_REEVAL_BASELINE_DIR     optional, for regret-from-baseline
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
 #          workflow/08_reevaluate.sh
 #
 # Local / single-node (no SLURM allocation needed):
-#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env \
+#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \
 #   NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 NYCOPT_REEVAL_MODE=single \
 #   bash workflow/08_reevaluate.sh
 #

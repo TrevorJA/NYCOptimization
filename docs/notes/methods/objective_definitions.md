@@ -5,9 +5,12 @@ used in the MOEA optimization and of the held-out re-evaluation metric set;
 supersedes inline docstrings where they disagree. Terminology per
 `docs/notes/terminology.md`; citations resolve to the Zotero collection
 "Paper 3 NYC Reoptimization" (`ISYGLK35`) and the notes under
-`docs/notes/literature/`. The supporting random-DV sensitivity experiment that
-finalizes thresholds, epsilons, and the redundancy screen lives in
-`docs/notes/methods/objective_sensitivity_experiment.md`.*
+`docs/notes/literature/`. Supporting diagnostics: the historic single-trace
+random-DV experiment (`objective_sensitivity_experiment.md`), the
+epsilon-calibration experiment (`epsilon_calibration_experiment.md`; epsilons
+adopted 2026-07-30), and the framing-convention diagnostics
+(`framing_convention_diagnostics.md`; failure-week counts, flood operator,
+satisfaction factor, thresholds, redundancy screen).*
 
 This document gives the mathematical definition of every objective and the rule
 that reduces a simulated **(timesteps × realizations)** matrix to one scalar,
@@ -77,9 +80,11 @@ scoring is in `src/robustness.py`.
 These metrics are the per-realization quantities scored at re-evaluation (§3).
 During search, every design — including historic — is scored through the §2
 annual-unit scheme; the historic trace enters it as N = 1 over its 76
-water-year units. The recommended active set is
-**7 objectives** (an optional 8th, NJ delivery, is pending the redundancy
-screen). Worst-case extremes were replaced with stable tail/percentile/count
+water-year units. The active set is
+**8 objectives** (NJ delivery ACTIVATED 2026-07-30: the framing-convention
+redundancy screen found no collinearity — max |ρ_S| = 0.38 against any
+objective, ≤ 0.08 against Trenton — so the Decree party carries independent
+information). Worst-case extremes were replaced with stable tail/percentile/count
 forms (Quinn et al. 2017; Bonham et al. 2024); the salt-front objective was
 replaced by the Trenton flow Decree (physically redundant — the Trenton target
 repels salt intrusion — and the salt-front LSTM is unreliable in extreme
@@ -94,7 +99,7 @@ drought).
 | 5 | `trenton_flow_reliability_weekly` | `major_flow.delTrenton` | frac of weeks `mean_w(flow) ≥ 1938.95` | MAX | frac | 0.0003 |
 | 6 | `downstream_flood_days_minor` | `flood_stage` (Hale Eddy, Fishs Eddy, Bridgeville) | mean annual count of days any gauge `≥` its NWS **minor** flood stage | MIN | days/yr | 0.02 |
 | 7 | `nyc_storage_p5_pct` | `res_storage[NYC]` | 5th percentile of daily `100·Σ_res storage / 270,837` | MAX | % | 1.5 |
-| 8 | `nj_delivery_reliability_weekly` *(optional)* | `delivery_nj`, `demand_nj` (right 100) | frac of weeks `Σ_w delivery_nj ≥ 0.99·Σ_w E_nj` (entitlement `E_nj = min(demand_nj,A_t)`, monthly reset) | MAX | frac | 0.007 |
+| 8 | `nj_delivery_reliability_weekly` | `delivery_nj`, `demand_nj` (right 100) | frac of weeks `Σ_w delivery_nj ≥ 0.99·Σ_w E_nj` (entitlement `E_nj = min(demand_nj,A_t)`, monthly reset) | MAX | frac | 0.007 |
 
 Epsilons are the calibrated values in `src/objectives.py`: ε ≈ IQR/10 of each
 objective's spread across N = 500 random-DV policies on the historic reference
@@ -162,9 +167,9 @@ unit-years** with the objective's **unit operator**:
 | 3 | `montague_flow_reliability_annual` | failure-year indicator: ≥ k = 3 failing weeks (`mean_w(flow) < 1131.05`) | frequency of non-failure years | MAX | as #1 |
 | 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | as #2 |
 | 5 | `trenton_flow_reliability_annual` | failure-year indicator: ≥ k = 1 failing week vs 1938.95 MGD | frequency of non-failure years | MAX | as #1 |
-| 6 | `downstream_flood_days_annual` | count of minor-flood days in the year | **mean across unit-years** (expected annual flood days); P99 variant registered pending the sensitivity experiment (expectation can mask floods — Quinn et al. 2017) | MIN | Trindade expected-cost form; Quinn 2017 caution |
+| 6 | `downstream_flood_days_annual` | count of minor-flood days in the year | **mean across unit-years** (expected annual flood days; ADOPTED 2026-07-30 — the P99 variant is tie-degenerate at NL = 900, 12–30× noisier, ranking-unstable, and stays a registered diagnostic; Quinn et al. 2017 expectation-masking caution answered by the screen) | MIN | Trindade expected-cost form; Quinn 2017 caution |
 | 7 | `nyc_storage_min_p01_pct` | annual minimum of daily aggregate NYC storage % | **1st-percentile unit-year** | MAX | WP1 pattern (Quinn 2017/2018); Hamilton 2022 Q-of-max |
-| 8 | `nj_delivery_reliability_annual` *(optional)* | failure-year indicator (k = 1) vs NJ delivery criterion | frequency of non-failure years | MAX | as #1; pending redundancy screen |
+| 8 | `nj_delivery_reliability_annual` | failure-year indicator (k = 1) vs NJ delivery criterion | frequency of non-failure years | MAX | as #1; activated 2026-07-30 (clean redundancy screen) |
 
 **Why this scheme.**
 - *Reliability objectives keep the threshold form where the literature keeps it* —
@@ -174,8 +179,9 @@ unit-years** with the objective's **unit operator**:
   Each annual failure criterion combines a **static goalpost** (§0) with a
   **failure-week count k** (k = 3 for NYC delivery and Montague flow; k = 1 for
   Trenton and NJ; `_DEFAULT_FAILURE_K`). The goalposts are anchored; k is a
-  convention, screened for saturation per design composition with the shipped
-  values inside the screen grid (`ensemble_objective_sensitivity_experiment.md`).
+  convention, screened for saturation per design composition and CONFIRMED
+  2026-07-30 (`framing_convention_diagnostics.md` §1: no shipped k saturates
+  in either composition, rankings stable to k ± 1; Trenton k = 1 binding).
 - *The long-record design needs no special case:* its records are scored as
   consecutive annual units with inherited state — exactly the treatment of Quinn et
   al. (2018), who slice one continuous 1000-yr record into 1-yr units "so that the
@@ -185,8 +191,9 @@ unit-years** with the objective's **unit operator**:
 - *Granularity/ε:* frequency objectives have granularity 1/NL (≈10⁻³ at NL ≈ 1000+);
   mean/percentile objectives are continuous with **ε in native metric units**.
 - *Precedent floor:* percentile operators are precedented only over ≳50–1000 units
-  (Quinn's WP1 used 1000); NL must comfortably exceed this — verified by the
-  sensitivity experiment at the campaign NL.
+  (Quinn's WP1 used 1000); NL must comfortably exceed this — estimator noise at
+  the campaign NL is measured by the epsilon-calibration bootstrap and the
+  framing-convention operator screen.
 
 **Caveats carried explicitly.** Unit-years within a realization are dependent
 (multi-year droughts appear as consecutive failure-years — this is how the
@@ -518,19 +525,24 @@ Three compounding reasons a pooled reference set is biased across designs:
 
 ## 7. Open items
 
-1. Finalize the optional 8th objective (`nj_delivery_reliability_weekly`) after
-   the redundancy screen (`objective_sensitivity_experiment.md`).
-2. From the two-design ensemble sensitivity experiment
-   (`ensemble_objective_sensitivity_experiment.md`): (a) confirm the annual
-   failure criteria (#1/3/5/8; k = 3 NYC/Montague, k = 1 Trenton/NJ) do not
-   saturate under either a probabilistic or a hazard-filled composition (adjust
-   k if they do); (b) pick the flood-days unit operator (mean vs P99, #6);
+1. ~~Finalize the optional 8th objective~~ — ACTIVATED 2026-07-30 by the
+   framing-convention redundancy screen (no collinearity; max |ρ_S| = 0.38).
+2. From the framing-convention diagnostics
+   (`framing_convention_diagnostics.md`; reductions of the epsilon-calibration
+   cubes plus the satisfaction-factor sweep):
+   (a) ~~confirm the annual failure criteria~~ — CONFIRMED 2026-07-30 (no
+   saturation in either composition; Trenton k = 1 binding);
+   (b) ~~pick the flood-days unit operator~~ — MEAN adopted 2026-07-30 (P99
+   tie-degenerate at NL = 900, 12–30× noisier, ranking-unstable; retained as
+   a registered diagnostic);
    (c) ~~set native-unit epsilons for the §2 mean/percentile objectives~~ — done
    2026-07-30 by the dedicated epsilon-calibration experiment
    (`epsilon_calibration_experiment.md`; ensemble-designs-only max adopted into
-   `_ANNUAL_REGISTRY_SPEC`), leaving the P99-stability confirmation at the
-   campaign NL; (d) validate the annual-unit choice against
-   realization-level rankings.
+   `_ANNUAL_REGISTRY_SPEC`);
+   (d) bound the 0.99 weekly satisfaction factor — sweep machinery ready,
+   pending its Anvil run;
+   (e) validate the annual-unit choice against realization-level rankings
+   (long-record set; machinery specified only if pursued).
 3. Set the **centre** of the §4.1 threshold grid (Decree/FFMP anchors where they
    exist; elicited-convention defaults elsewhere) and the grid's span.
 4. ~~Fix the retained hazard-descriptor set and the ensemble size N from the

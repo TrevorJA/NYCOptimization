@@ -7,7 +7,7 @@ downstream figure scripts can read.
 
 Usage:
     python scripts/main/run_diagnostics.py [--formulation ffmp] [--seed 1]
-    python scripts/main/run_diagnostics.py --slug ffmp_obj7_sal   # explicit slug
+    python scripts/main/run_diagnostics.py --slug ffmp_obj8_sal   # explicit slug
 
 Scenario design + moea slug come from the active config (env file); pass
 --slug only to target a specific moea slug directly.

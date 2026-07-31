@@ -448,8 +448,8 @@ def test_max_time_seconds_conversion():
 def test_run_output_dir_layout(tmp_path, monkeypatch):
     import config
     monkeypatch.setattr(config, "OUTPUTS_DIR", tmp_path)
-    p = config.run_output_dir("hazard_filling_du", "ffmp_obj7_sal", "sets")
-    assert p == tmp_path / "hazard_filling_du" / "ffmp_obj7_sal" / "sets"
+    p = config.run_output_dir("hazard_filling_du", "ffmp_obj8_sal", "sets")
+    assert p == tmp_path / "hazard_filling_du" / "ffmp_obj8_sal" / "sets"
     assert p.is_dir()
 
 
@@ -457,7 +457,7 @@ def test_figure_dir_for_stable_vs_exploratory(tmp_path, monkeypatch):
     import config
     monkeypatch.setattr(config, "FIGURES_DIR", tmp_path)
     monkeypatch.setattr(config, "FIG_EXPLORATORY_DIR", tmp_path / "_exploratory")
-    stable = config.figure_dir_for("historic", "ffmp_obj7", "pareto")
-    assert stable == tmp_path / "historic" / "ffmp_obj7" / "pareto"
-    expl = config.figure_dir_for("historic", "ffmp_obj7", "made_up_kind")
-    assert expl == tmp_path / "_exploratory" / "historic" / "ffmp_obj7" / "made_up_kind"
+    stable = config.figure_dir_for("historic", "ffmp_obj8", "pareto")
+    assert stable == tmp_path / "historic" / "ffmp_obj8" / "pareto"
+    expl = config.figure_dir_for("historic", "ffmp_obj8", "made_up_kind")
+    assert expl == tmp_path / "_exploratory" / "historic" / "ffmp_obj8" / "made_up_kind"

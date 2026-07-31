@@ -1,39 +1,75 @@
 # Framing-Convention Diagnostics (SI)
 
-*Last updated: 2026-07-27. Specification of four light diagnostics that test the
+*Last updated: 2026-07-30. Specification of four light diagnostics that test the
 sensitivity of the study's framing conventions — the annual failure-week count
 k, the weekly satisfaction factor, the re-evaluation satisficing criteria, and
 the controllability of the flood-days objective. All four are offline
 re-scorings of artifacts that already exist or are produced once by machinery
-already specified: the stored per-unit matrix of
-`ensemble_objective_sensitivity_experiment.md`, the persisted re-evaluation
-cube (`reeval_raw.parquet`), and the workflow step-05 default-FFMP baseline.
-None launches a new simulation campaign. Terminology per
-`docs/notes/terminology.md`; the two ensemble compositions of the sensitivity
-experiment are referred to by that note's own labels, arm P (fixed
-probabilistic) and arm H (hazard-filled).*
+already specified: the epsilon-calibration per-unit annual-metric cubes
+(`epsilon_calibration_experiment.md`; 512 constraint-feasible policies + the
+FFMP baseline evaluated on each campaign design's own search ensemble), the
+satisfaction-factor sweep cube (same policy population, one extra simulation
+pass), the persisted re-evaluation cube (`reeval_raw.parquet`), and the
+workflow step-05 default-FFMP baseline. None launches a new simulation
+campaign. Terminology per `docs/notes/terminology.md`; the two ensemble
+compositions screened are the campaign designs themselves,
+`fixed_probabilistic` and `hazard_filling_stationary` (the single-trace
+`historic` design is reported alongside as reference).*
 
 ---
 
 ## 0. Scope and cost model
 
-Every diagnostic obeys the sensitivity experiment's efficiency architecture:
-**simulate once, subsample outputs**. The expensive step (an ensemble
-simulation per DV) is never repeated for a convention sweep; each diagnostic is
-a post-hoc reduction of a stored matrix or persisted cube.
+Every diagnostic obeys the simulate-once, subsample-outputs efficiency
+architecture: the expensive step (an ensemble simulation per policy) is never
+repeated for a convention sweep; each diagnostic is a post-hoc reduction of a
+stored cube.
 
 | # | Diagnostic | Input artifact | New simulation | Deliverable |
 |---|---|---|---|---|
-| 1 | Failure-week count k | sensitivity-experiment stored matrix (arms P, H) | none | SI figure + CSV; gates `_DEFAULT_FAILURE_K` |
-| 2 | Weekly satisfaction factor | same matrix (factor axis stored in the one-time DV sweep) | none | SI table/figure; gates the 0.99 constant |
+| 1 | Failure-week count k | epsilon-calibration cubes (both ensemble designs + historic) | none | SI figure + CSV; gates `_DEFAULT_FAILURE_K` |
+| 2 | Weekly satisfaction factor | satisfaction-factor sweep cube (factor axis stored in its one-time policy sweep) | one pass per design (`satisfaction_factor_run.py`) | SI table/figure; gates the 0.99 constant |
 | 3 | Satisficing-criterion diagnostics | persisted re-evaluation cube + step-05 baseline | none | SI (candidate main-text) figures; gates `_DEFAULT_THRESHOLDS` |
-| 4 | Flood-days controllability | sensitivity-experiment stored matrix + baseline row | none | one SI figure; informs the flood objective's standing |
+| 4 | Flood-days controllability | epsilon-calibration cubes + baseline row | none | one SI figure; informs the flood objective's standing |
 
-Diagnostics 1, 2, and 4 are figure-script reductions of the sensitivity
-experiment's matrix HDF5 (`outputs/supplemental/ensemble_objective_sensitivity/
-matrix/*.h5`); diagnostic 3 is a re-scoring of the re-evaluation cube via
+Diagnostics 1 and 4 (plus the flood unit-operator comparison and the
+annual-unit redundancy screen for the 8th objective) are reductions
+of the epsilon-calibration cube HDF5s
+(`outputs/supplemental/epsilon_calibration/cube/*.h5`) by
+`scripts/supplemental/framing_convention_analysis.py`; diagnostic 2 is the
+dedicated sweep `scripts/supplemental/satisfaction_factor_{run,figures}.py`
+(SLURM: `workflow/supplemental/satisfaction_factor.sh`, one job per ensemble
+design); diagnostic 3 is a re-scoring of the re-evaluation cube via
 `src/robustness.py`, extending the pooled stringency sweep of
 `scripts/main/compare_designs.py`.
+
+## 0b. Measured verdicts (2026-07-30, adopted)
+
+Run on the three epsilon cubes (tables + SI figures under
+`outputs/supplemental/framing_convention/`):
+
+- **Failure-week counts k — CONFIRMED as shipped.** No shipped k saturates in
+  either ensemble composition (worst case 0.4% of the population inside the
+  ±0.05 bands); rankings stable to k ± 1 (τ_b ≥ 0.94 for NYC/Montague/NJ).
+  Trenton k = 1 is binding: k = 3 ties 24–44% of policies at ≥ 0.95
+  reliability, k = 4 ties ~97%.
+- **Flood unit operator — MEAN adopted.** At NL = 900 pooled unit-years the
+  P99 operator collapses onto 2–3 integer day counts (population IQR 0.0 in
+  the hazard-filling composition), is 12–30× noisier under bootstrap
+  (median policy std 0.48–1.16 vs 0.038–0.040 days), and ranking-unstable
+  (bootstrap τ_b 0.35–0.60 vs 0.92–0.93). Where estimable the two operators
+  are rank-correlated ρ_S = 0.85–0.89, so Olden–Poff retention keeps the
+  stabler mean. P99 stays a registered diagnostic.
+- **Flood controllability — objective retained.** Empirical floor share of
+  the baseline's flood days 0.57 (fixed_probabilistic) / 0.61
+  (hazard_filling): controllable fraction ≥ 0.43 / 0.39 (lower bound).
+- **8th objective — NJ delivery ACTIVATED.** Max |ρ_S| vs any objective 0.38
+  (vs flood mean); vs NYC delivery ~0.15; vs Trenton ≤ 0.08. Only flagged
+  pair anywhere: flood mean ↔ flood P99 (0.85/0.89), internal to the operator
+  decision. NJ's ε (0.025) was pre-calibrated by the same experiment.
+
+Diagnostic 2 (satisfaction factor) awaits its Anvil run; diagnostic 3 waits
+on the persisted re-evaluation cube (post E_test).
 
 ---
 
@@ -45,27 +81,27 @@ per unit-year", confirming or revising the shipped values (k = 3 for NYC
 delivery and Montague, k = 1 for Trenton and NJ;
 `objectives_ensemble.py::_DEFAULT_FAILURE_K`).
 
-**Method.** The stored matrix's stage-(i) annual metric for every frequency
-objective is the unit-year's **failing-week count**, not a binary failure
-indicator, so every candidate k is a free post-hoc reduction: apply
-`FailureFrequencyOp(k)` for k ∈ {1, 2, 3, 4} — a grid that contains the shipped
-values — to the pooled unit-years of each DV × set. For each objective × arm ×
-k, report:
+**Method.** The cubes' stage-(i) annual metric for every frequency objective
+is the unit-year's **failing-week count**, not a binary failure indicator, so
+every candidate k is a free post-hoc reduction: apply `FailureFrequencyOp(k)`
+for k ∈ {1, 2, 3, 4} — a grid that contains the shipped values — to the pooled
+unit-years of each policy × design. For each objective × design × k, report:
 
-1. **Saturation** — the fraction of the random-DV population whose failure-year
-   frequency is ≤ 0.05 or ≥ 0.95 (the sensitivity experiment's saturation
-   bands; a saturated criterion ties everything, Bonham et al. 2024).
-2. **Ranking sensitivity** — Kendall τ_b between the DV ranking induced at k and
-   at the shipped k (Herman et al. 2015), per objective × arm.
+1. **Saturation** — the fraction of the feasible-policy population whose
+   failure-year frequency is ≤ 0.05 or ≥ 0.95 (a saturated criterion ties
+   everything, Bonham et al. 2024).
+2. **Ranking sensitivity** — Kendall τ_b between the policy ranking induced at
+   k and at the shipped k (Herman et al. 2015), per objective × design.
 
-Both arms are screened: a k that discriminates in arm P but saturates in arm H
-(or vice versa) is exactly the operator-composition interaction the sensitivity
-experiment exists to catch.
+Both ensemble compositions are screened: a k that discriminates under the
+i.i.d. composition but saturates under the stress-enriched one (or vice versa)
+is exactly the operator-composition interaction this screen exists to catch.
 
 **Gates / output.** Final `_DEFAULT_FAILURE_K` per objective: a shipped k that
-saturates in either arm, or whose ranking is unstable to k ± 1, is revised (via
-`NYCOPT_FAILURE_K` and a re-screen). SI: one panel figure (saturation fraction
-vs k and τ_b-vs-shipped-k, per objective × arm) plus the CSV.
+saturates in either ensemble design, or whose ranking is unstable to k ± 1, is
+revised (via `NYCOPT_FAILURE_K` and a re-screen). SI: one panel figure
+(saturation fraction vs k and τ_b-vs-shipped-k, per objective × design) plus
+the CSV.
 
 **Cost.** Zero simulation; seconds of post-processing in the figure script.
 
@@ -79,24 +115,22 @@ a convention and its influence on the weekly satisfaction fraction and the
 induced failure-years must be bounded.
 
 **Method.** The factor sits inside the weekly reduction
-(`src/objectives.py::_weekly_delivery_ok`), upstream of the stored failing-week
-counts, so it cannot be recovered from the counts alone. The sensitivity
-experiment's DV-sweep therefore stores, for the two delivery objectives (NYC,
-NJ), the per-unit failing-week counts at each factor in
-**{0.95, 0.98, 0.99, 1.00}** — one small extra matrix axis computed inside the
-single simulation pass, at no additional simulation cost. Post-hoc reductions,
-per arm:
+(`src/objectives.py::_weekly_delivery_ok`), upstream of the epsilon cubes'
+stored failing-week counts, so it cannot be recovered from those counts alone.
+The dedicated sweep (`scripts/supplemental/satisfaction_factor_run.py`)
+therefore re-evaluates the same feasible-policy population (identical
+seed/count, so cube rows align with the epsilon cubes) and stores, for the two
+delivery objectives (NYC, NJ), the per-unit failing-week counts AND the §1
+weekly reliability at each factor in **{0.95, 0.98, 0.99, 1.00}** — the factor
+axis is computed from each realization's weekly sums inside the single
+simulation pass. Post-hoc reductions
+(`scripts/supplemental/satisfaction_factor_figures.py`), per design:
 
 1. weekly satisfaction fraction (the §1 base metric) and failure-year frequency
-   at the shipped k, vs factor, across the random-DV population;
-2. τ_b of the DV ranking at each factor against the 0.99 ranking;
+   at the shipped k, vs factor, across the feasible-policy population;
+2. τ_b of the policy ranking at each factor against the 0.99 ranking;
 3. the default-FFMP baseline row (`sample_ids = -1`) anchoring the factor curves
    at current operations.
-
-Where a stored matrix predates the factor axis, the fallback is an offline
-recomputation of the weekly series from the persisted step-05 baseline outputs
-(the baseline-only factor curve, zero simulation); the full DV-population sweep
-then waits for the next matrix build.
 
 **Gates / output.** The 0.99 constant, shared by the §1 weekly-reliability
 metrics and the §2 failing-week counts. The delivery entitlement is a
@@ -105,8 +139,9 @@ expected finding is definitional insensitivity; a materially factor-dependent
 ranking would instead make the factor a calibrated quantity set from this
 curve. SI: one small figure or table.
 
-**Cost.** Negligible extra compute inside the existing one-time sweep; zero
-extra simulation.
+**Cost.** One evaluation pass of the policy population per ensemble design
+(same cost as the epsilon calibration, ~26 SU each); the factor axis itself
+adds nothing.
 
 ---
 
@@ -158,26 +193,26 @@ NWS minor stage, days/yr) is controllable by NYC release decisions versus set
 exogenously by the hydrology, pre-empting the critique that the search
 gradient on an exogenously dominated objective is too weak to be meaningful.
 
-**Method.** A post-hoc reduction of the stored matrix's
-`downstream_flood_days_annual` per-unit values, which the sensitivity
-experiment already computes for the full random-DV population **and** the
-default-FFMP baseline row on the same realizations, per arm. For each pooled
-unit-year u:
+**Method.** A post-hoc reduction of the epsilon cubes'
+`downstream_flood_days_annual` per-unit values, held for the full
+feasible-policy population **and** the default-FFMP baseline row on the same
+realizations, per design. For each pooled unit-year u:
 
 - **empirical exogenous floor** F_min(u) = the minimum annual flood-day count
-  across the DV population ∪ baseline;
-- **across-policy spread** = the distribution of F_dv(u) − F_min(u) across DVs.
+  across the policy population ∪ baseline;
+- **across-policy spread** = the distribution of F_p(u) − F_min(u) across
+  policies.
 
-Summaries, per arm:
+Summaries, per design:
 
 1. the distribution of the ensemble-mean annual flood days (days/yr, the §2
-   unit-operator scale) across the DV population, with the baseline and the
+   unit-operator scale) across the policy population, with the baseline and the
    pooled floor Σ_u F_min(u) / NL marked;
 2. the **floor share** Σ_u F_min(u) / Σ_u F_base(u) — the policy-invariant
    fraction of the baseline's flood days;
-3. its complement, the controllable fraction, contrasted between arms (the
-   wet-enriched arm H tests controllability under stress-enriched
-   composition).
+3. its complement, the controllable fraction, contrasted between the ensemble
+   designs (the wet-enriched hazard-filling composition tests controllability
+   under stress).
 
 The floor is empirical — a minimum over the evaluated policy sample, not an
 oracle — so it is an **upper bound on the exogenous component and the quoted
@@ -186,10 +221,10 @@ used. The same reduction reports the spread of the P99 unit-operator variant
 alongside the mean, feeding the flood unit-operator decision (expectation can
 mask floods; Quinn et al. 2017).
 
-**Gates / output.** One SI figure (per arm: DV-population distribution of mean
-annual flood days with the baseline and empirical-floor lines, plus the
-floor-share summary). Informs whether flood days remains in the active search
-set with the mean operator, and supplies the quantitative reply to the
+**Gates / output.** One SI figure (per design: policy-population distribution
+of mean annual flood days with the baseline and empirical-floor lines, plus
+the floor-share summary). Informs whether flood days remains in the active
+search set with the mean operator, and supplies the quantitative reply to the
 weak-gradient critique.
 
 **Cost.** Zero simulation; seconds of post-processing.

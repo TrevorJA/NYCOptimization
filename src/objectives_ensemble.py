@@ -32,8 +32,11 @@ ensemble (all realizations' units concatenated):
 - *Pooled percentile*: P99 of the annual metric for the tail-deficit
   objectives ("worst-1st-percentile unit-year", minimize) and P01 for the
   annual-minimum-storage objective (maximize).
-- *Pooled mean*: expected annual flood days (minimize); a P99 variant is
-  registered as an inactive diagnostic pending the sensitivity experiment.
+- *Pooled mean*: expected annual flood days (minimize). ADOPTED 2026-07-30 by
+  the framing-convention operator screen: the P99 variant is tie-degenerate at
+  the campaign's 900 pooled unit-years (integer day counts; population IQR ~0),
+  12-30x noisier under bootstrap, and ranking-unstable. It stays registered as
+  an inactive diagnostic.
 
 Non-finite annual metrics: a non-finite unit-year counts as a **failure-year**
 for the frequency objectives; for the mean/percentile objectives it is
@@ -53,9 +56,11 @@ The active set's epsilons are FINAL: calibrated in native metric units by the
 epsilon-calibration experiment (2026-07-30; 512 constraint-feasible policies +
 baseline per design, max over the ensemble campaign designs — see the
 `_ANNUAL_REGISTRY_SPEC` comment and
-`docs/notes/methods/epsilon_calibration_experiment.md`). The inactive-registry
-entries (`nj_delivery_reliability_annual`, `downstream_flood_days_annual_p99`)
-carry calibrated values from the same experiment.
+`docs/notes/methods/epsilon_calibration_experiment.md`). NJ delivery is the
+ACTIVE 8th objective (activated 2026-07-30; redundancy screen clean, epsilon
+pre-calibrated at 0.025). The one inactive-registry entry
+(`downstream_flood_days_annual_p99`) carries a calibrated value from the same
+experiment.
 
 Re-evaluation satisficing layer (retained)
 ------------------------------------------
@@ -241,9 +246,8 @@ class SatisficingAgg:
     the result is 0.0 rather than NaN.
 
     Used by the re-evaluation pipeline (`src.reeval_core` summary derivation +
-    robustness threshold/kind metadata) and the ensemble objective-sensitivity
-    diagnostic — NOT by the search path, which uses the annual-unit operators
-    above.
+    robustness threshold/kind metadata) — NOT by the search path, which uses
+    the annual-unit operators above.
     """
 
     def __init__(self, threshold: float, kind: Literal["ge", "le"]):
@@ -472,8 +476,11 @@ def _nyc_storage_min_annual(data: dict) -> np.ndarray:
 # weeks are graded, so k reclassifies the 1-2-week years); NYC is nearly
 # threshold-insensitive (its shortfalls are whole-season curtailments), so there
 # the choice is mainly definitional. Trenton and NJ stay at k = 1 — at k = 3
-# Trenton saturates toward 1.0, compressing the metric. Placeholder pending the
-# ensemble objective-sensitivity experiment; overridable via NYCOPT_FAILURE_K.
+# Trenton saturates toward 1.0, compressing the metric. CONFIRMED 2026-07-30
+# by the framing-convention k sweep (framing_convention_diagnostics.md §1): no
+# shipped k saturates in either ensemble composition, rankings stable to k ± 1,
+# and Trenton k = 1 is binding (k >= 3 ties 24-97% of the policy population).
+# Overridable via NYCOPT_FAILURE_K.
 _DEFAULT_FAILURE_K: dict[str, int] = {
     "nyc_delivery_reliability_annual":   3,
     "montague_flow_reliability_annual":  3,
@@ -510,8 +517,8 @@ def _resolve_failure_k() -> dict[str, int]:
 # metrics of the persisted re-eval matrix (reeval_core summary derivation and
 # robustness threshold/kind metadata). Labels keep the historical
 # `<base>__sat<thr>` form; they are threshold labels, not objective names.
-# Placeholder values pending the sensitivity experiment; override via
-# NYCOPT_SAT_THRESHOLDS.
+# Placeholder values pending the satisficing-criterion diagnostics
+# (framing_convention_diagnostics.md §3); override via NYCOPT_SAT_THRESHOLDS.
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
     "nyc_delivery_reliability_weekly__sat95":     0.95,
@@ -521,7 +528,7 @@ _DEFAULT_THRESHOLDS: dict[str, float] = {
     "trenton_flow_reliability_weekly__sat85":     0.85,
     "nj_delivery_reliability_weekly__sat95":      0.95,
     # Flood threshold in days/yr (the base metric is mean annual flood days);
-    # placeholder pending the ensemble objective-sensitivity experiment.
+    # placeholder pending the satisficing-criterion diagnostics.
     "downstream_flood_days_minor__sat1":          1.0,
     "nyc_storage_p5_pct__sat25":                  25.0,
 }
@@ -543,30 +550,26 @@ def _resolve_thresholds() -> dict[str, float]:
     return thresholds
 
 
-# (base_objective_name, threshold_label, kind, legacy_epsilon) — the re-eval
-# satisficing layer. `kind` is the satisficing direction relative to the BASE
-# objective (maximize-base -> "ge", minimize-base -> "le"). The 4th slot is
-# the legacy satisficing-fraction epsilon, retained for the ensemble
-# objective-sensitivity diagnostic
-# (scripts/supplemental/ensemble_objective_sensitivity_figures.py), which
-# consumes this spec directly.
-_REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"], float]] = [
+# (base_objective_name, threshold_label, kind) — the re-eval satisficing
+# layer. `kind` is the satisficing direction relative to the BASE objective
+# (maximize-base -> "ge", minimize-base -> "le").
+_REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
     ("nyc_delivery_reliability_weekly",
-     "nyc_delivery_reliability_weekly__sat95",   "ge", 0.02),
+     "nyc_delivery_reliability_weekly__sat95",   "ge"),
     ("nyc_delivery_deficit_cvar90_pct",
-     "nyc_delivery_deficit_cvar90_pct__sat10",   "le", 0.02),
+     "nyc_delivery_deficit_cvar90_pct__sat10",   "le"),
     ("montague_flow_reliability_weekly",
-     "montague_flow_reliability_weekly__sat85",  "ge", 0.02),
+     "montague_flow_reliability_weekly__sat85",  "ge"),
     ("montague_flow_deficit_cvar90_pct",
-     "montague_flow_deficit_cvar90_pct__sat25",  "le", 0.02),
+     "montague_flow_deficit_cvar90_pct__sat25",  "le"),
     ("trenton_flow_reliability_weekly",
-     "trenton_flow_reliability_weekly__sat85",   "ge", 0.02),
+     "trenton_flow_reliability_weekly__sat85",   "ge"),
     ("nj_delivery_reliability_weekly",
-     "nj_delivery_reliability_weekly__sat95",    "ge", 0.02),
+     "nj_delivery_reliability_weekly__sat95",    "ge"),
     ("downstream_flood_days_minor",
-     "downstream_flood_days_minor__sat1",        "le", 0.02),
+     "downstream_flood_days_minor__sat1",        "le"),
     ("nyc_storage_p5_pct",
-     "nyc_storage_p5_pct__sat25",                "ge", 0.02),
+     "nyc_storage_p5_pct__sat25",                "ge"),
 ]
 
 
@@ -594,8 +597,9 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"], float]] = [
 # NYC reliability, both deficit-P99, and NJ axes; the noise floor binds
 # Montague/Trenton reliability, both flood axes, and storage P01. Max spread
 # of the raw requirement across the two ensemble designs is 2.5x (< 4x
-# review threshold). The optional NJ objective and the diagnostic P99 flood
-# variant remain outside the default set but carry calibrated values.
+# review threshold). NJ delivery is ACTIVE (8th objective, activated
+# 2026-07-30); the diagnostic P99 flood variant remains outside the default
+# set (mean operator adopted 2026-07-30) but carries a calibrated value.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
@@ -631,8 +635,9 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("downstream_flood_days_annual_p99",
      "downstream_flood_days_minor", "minimize", 1.5,
      _flood_days_minor_annual, PooledPercentileOp(99.0, worst_value=366.0),
-     "DIAGNOSTIC: P99 across pooled unit-years of annual minor-flood days "
-     "(expectation can mask floods — Quinn et al. 2017)"),
+     "DIAGNOSTIC (inactive; mean adopted 2026-07-30 — P99 is tie-degenerate "
+     "at the campaign unit count): P99 across pooled unit-years of annual "
+     "minor-flood days (expectation can mask floods — Quinn et al. 2017)"),
     ("nyc_storage_min_p01_pct",
      "nyc_storage_p5_pct", "maximize", 5.0,
      _nyc_storage_min_annual, PooledPercentileOp(1.0, worst_value=0.0),
@@ -642,7 +647,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "nj_delivery_reliability_weekly", "maximize", 0.025,
      _nj_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NJ diversion "
-     "< 99% of the running-average entitlement; pending redundancy screen"),
+     "< 99% of the running-average entitlement"),
 ]
 
 # Base-objective-name -> annual-objective-name, so config.ACTIVE_OBJECTIVES
@@ -668,7 +673,7 @@ def _build_registry() -> dict[str, AnnualUnitObjective]:
     thresholds = _resolve_thresholds()
     sat_by_base = {
         base: (thresholds[label], kind)
-        for base, label, kind, _eps in _REGISTRY_SPEC
+        for base, label, kind in _REGISTRY_SPEC
     }
     registry: dict[str, AnnualUnitObjective] = {}
     for name, base_name, direction, eps, metric, op, desc in _ANNUAL_REGISTRY_SPEC:

@@ -96,9 +96,9 @@ The two matched designs depart differently from the scenario probabilities of th
 
 ## Open questions
 
-1. **The flood-days unit operator** (mean vs P99) and the frequency objectives' annual failure criteria, set by the ensemble objective-sensitivity experiment.
-2. **Satisficing criterion values** — the centre of the threshold grid (Decree/FFMP anchors where they exist; elicited-convention defaults elsewhere) and the grid's span.
-3. **The optional 8th objective** (NJ delivery reliability) — activate or drop from the redundancy screen.
-4. **Figure plan** for the results — not yet drafted.
+1. **Satisficing criterion values** — the centre of the threshold grid (Decree/FFMP anchors where they exist; elicited-convention defaults elsewhere) and the grid's span.
+2. **Figure plan** for the results — not yet drafted.
+
+Closed 2026-07-30 by the framing-convention diagnostics (`framing_convention_diagnostics.md`): the flood-days unit operator = MEAN (P99 tie-degenerate at the campaign unit count; retained as a diagnostic), the annual failure-week counts confirmed as shipped, and the 8th objective (NJ delivery reliability) ACTIVATED on a clean redundancy screen.
 
 Sizing is fixed (2026-07-30): E_test = 1,000 LHS SOWs × R = 25 × L_test = 50 yr; selection axes m = 6 with N = 100 and P = 10⁶ (`scenario_design_methods.md` §3.3/§5.4/§6; `hazard_selector_diagnostics.md` §5b); K = 3 draws × S = 2 seeds per matched design.

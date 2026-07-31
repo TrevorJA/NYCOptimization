@@ -35,8 +35,9 @@ settings in `supplemental_config.py` (`EPS_*`). Outputs under
   path Borg workers use (`run_simulation_ensemble_batched`, campaign
   realization batch), storing the full stage-(i) cube
   `(n_dv × n_real × n_obj × n_units)` for the **entire annual-unit registry**
-  (active 7 + the optional NJ 8th + the flood-P99 diagnostic), so the pending
-  operator/8th-objective decisions read from the same artifact. Pooling the
+  (the 8 active objectives + the flood-P99 diagnostic; NJ was activated
+  2026-07-30 by the framing-convention screens, which read from this same
+  artifact — `framing_convention_diagnostics.md` §0b). Pooling the
   cube and applying the unit operator reproduces the search scalar exactly.
 
 ## Per-objective quantities (figures script; post-hoc, no re-simulation)

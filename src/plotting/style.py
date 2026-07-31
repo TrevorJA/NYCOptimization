@@ -63,6 +63,7 @@ OBJ_SHORT: list[str] = [
     "Trenton Rel.\n(weekly)",
     "Flood Days\n(minor, rec.)",
     "Storage\n(daily P5)",
+    "NJ Rel.\n(weekly)",
 ]
 
 #: Compact single-line objective labels; ``label_for`` falls back to the raw name.
@@ -124,19 +125,23 @@ OBJ_AXIS_LABELS: dict[str, str] = {
     "downstream_flood_days_annual":      "Flood Days\nNWS minor, annual mean\n(min)",
     "nyc_storage_p5_pct":                "NYC Storage\ndaily 5th pctile %\n(max)",
     "nyc_storage_min_p01_pct":           "NYC Storage\nannual-min 1st pctile %\n(max)",
+    "nj_delivery_reliability_weekly":    "NJ Delivery\nReliability (weekly)\n(max)",
+    "nj_delivery_reliability_annual":    "NJ Delivery\nReliability (annual)\n(max)",
 }
 
 # ---------------------------------------------------------------------------
 # Scatter pair definitions
 # ---------------------------------------------------------------------------
 
-#: Six pairwise scatter pairs (0-based objective indices) for SI diagnostic plots.
+#: Six pairwise scatter pairs (0-based indices into the 8-objective active
+#: set: 0 NYC Rel, 1 NYC Def, 2 Montague Rel, 3 Montague Def, 4 Trenton Rel,
+#: 5 Flood Days, 6 Storage, 7 NJ Rel) for SI diagnostic plots.
 SCATTER_PAIRS: list[tuple[int, int]] = [
     (0, 2),   # NYC Rel. vs Montague Rel.
     (1, 3),   # NYC Deficit vs Montague Deficit
-    (4, 5),   # Salt Front vs Flood Days
-    (0, 6),   # NYC Rel. vs Min Storage
-    (2, 4),   # Montague Rel. vs Salt Front
+    (4, 5),   # Trenton Rel. vs Flood Days
+    (0, 6),   # NYC Rel. vs Storage
+    (0, 7),   # NYC Rel. vs NJ Rel. (the two Decree delivery parties)
     (1, 5),   # NYC Deficit vs Flood Days
 ]
 

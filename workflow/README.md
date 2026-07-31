@@ -85,10 +85,10 @@ Each optimization is one self-contained multi-day sbatch job — one submission
 per (env file × formulation), no campaign wrapper:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_historic.env               --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_8   --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_10  --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj7.env,FORMULATION=ffmp_12  --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env               --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_8   --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_10  --array=1-10 workflow/06_run_mmborg.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12  --array=1-10 workflow/06_run_mmborg.sh
 ```
 
 ## Geometry contract and scaling on Anvil
@@ -129,9 +129,10 @@ independent jobs with no cross-job coordination. Shorter pilots can pass
 - `supplemental/` — off-pipeline diagnostics: `anvil_scaling_packing.sh`
   (ranks-per-node packing sweep), `ensemble_cost_stage_submit.sh` +
   `ensemble_cost_sweep.sh` (the t_eval(N, L, model) cost surface that prices
-  the campaign), `objective_sensitivity.sh` and
-  `ensemble_objective_sensitivity{,_prep}.sh` (random-DV objective-sensitivity
-  sweeps; all settings in root `supplemental_config.py`).
+  the campaign), `objective_sensitivity.sh` (historic random-DV
+  objective-sensitivity sweep), `epsilon_calibration.sh` (per-design epsilon
+  calibration) and `satisfaction_factor.sh` (per-design weekly
+  satisfaction-factor sweep; all settings in root `supplemental_config.py`).
 
 ## Verifying changes locally (no HPC)
 

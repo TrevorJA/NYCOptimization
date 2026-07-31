@@ -375,7 +375,8 @@ ANNUAL_NAMES = [
     "nj_delivery_reliability_annual",
 ]
 
-# The §1 base names config.ACTIVE_OBJECTIVES uses (default 7-objective set).
+# The §1 base names config.ACTIVE_OBJECTIVES uses (default 8-objective set;
+# NJ delivery activated 2026-07-30).
 ACTIVE_BASE_NAMES = [
     "nyc_delivery_reliability_weekly",
     "nyc_delivery_deficit_cvar90_pct",
@@ -384,6 +385,7 @@ ACTIVE_BASE_NAMES = [
     "trenton_flow_reliability_weekly",
     "downstream_flood_days_minor",
     "nyc_storage_p5_pct",
+    "nj_delivery_reliability_weekly",
 ]
 
 
@@ -404,8 +406,9 @@ def test_base_names_resolve_to_active_annual_set():
         "trenton_flow_reliability_annual",
         "downstream_flood_days_annual",
         "nyc_storage_min_p01_pct",
+        "nj_delivery_reliability_annual",
     ]
-    assert obj_set.directions == [1, -1, 1, -1, 1, -1, 1]
+    assert obj_set.directions == [1, -1, 1, -1, 1, -1, 1, 1]
     # The diagnostic P99 flood variant is NOT reachable via base names.
     assert "downstream_flood_days_annual_p99" not in obj_set.names
     # Every objective carries the re-eval layer (base + aggregator). Compare

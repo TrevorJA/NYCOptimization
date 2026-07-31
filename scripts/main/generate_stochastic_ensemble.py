@@ -33,7 +33,7 @@ DU hazard designs share one pool slug, so the second is a no-op.
 All configuration comes from ``config.py`` + the scenario-design registry -- no CLI
 value flags. ``--draw`` / ``--all-draws`` are identifiers, not settings.
 
-    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_hazfill_pilot.env \\
+    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_pilot.env \\
            --array=0-9 workflow/02_generate_ensemble.sh
 
 Set ``NYCOPT_ENSEMBLE_FORCE=1`` to overwrite an already-staged slug.

@@ -55,10 +55,11 @@ allowance — so demand spikes within the banked right are honored and a policy
 cannot lower its own goalpost via drought step-downs.
 
 Diagnostic-only metrics (registered, not in the default active set): the
-worst-case variants above, NJ delivery reliability (optional 8th objective,
-pending the redundancy screen), salt-front intrusion (replaced by the Trenton
+worst-case variants above, salt-front intrusion (replaced by the Trenton
 flow objective — physically redundant, and the LSTM is unreliable in extreme
-drought), and the deferred Lordville thermal metric.
+drought), and the deferred Lordville thermal metric. NJ delivery reliability
+is the ACTIVE 8th objective (activated 2026-07-30: the framing-convention
+redundancy screen found no collinearity, max |rho_S| = 0.38).
 
 Usage:
     from src.objectives import build_objective_set
@@ -728,7 +729,7 @@ _register("nyc_delivery_deficit_max_pct", "minimize", 3.0,
           "DIAGNOSTIC: worst-week NYC delivery deficit, % of Decree cap [0-100]",
           _nyc_delivery_deficit_max_pct)
 
-# --- New Jersey water supply (D&R Canal diversion; optional 8th objective) ---
+# --- New Jersey water supply (D&R Canal diversion; active 8th objective) ---
 _register("nj_delivery_reliability_weekly", "maximize", 0.007,
           f"Frac of weeks NJ diversion >= 99% of the running-avg entitlement "
           f"(min(demand, allowance); {NJ_DELIVERY_CAP_MGD:.0f} MGD baseline)",

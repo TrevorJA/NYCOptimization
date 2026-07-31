@@ -182,7 +182,7 @@ def test_derive_slug_production_clean():
     """Production MOEA config emits a clean slug with no algorithm suffix and
     no ensemble fragment (the ensemble is the parent {scenario} dir)."""
     slug = _slug_with_env({"NYCOPT_MOEA_CONFIG": "production"})
-    assert slug.startswith("ffmp_obj7")
+    assert slug.startswith("ffmp_obj8")
     assert "wcu" not in slug
     assert "smoke" not in slug
 

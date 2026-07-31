@@ -1,8 +1,8 @@
 """ensemble_prep.py - Stage a streamflow ensemble into pywrdrb HDF5 inputs.
 
 Shared Step-3 logic for both the main workflow
-(``scripts/main/prep_pywrdrb_inputs.py``) and the supplemental ensemble
-objective-sensitivity experiment. Given an :class:`~src.ensembles.EnsembleSpec`
+(``scripts/main/prep_pywrdrb_inputs.py``) and the local test-fixture staging
+(``src/local_test_ensemble.py``). Given an :class:`~src.ensembles.EnsembleSpec`
 whose ``catchment_inflow_mgd.hdf5`` has already been staged by the Step-1
 generator (``src/ensemble_generation.py``), this produces the remaining files
 the trimmed-model ensemble simulation path requires under

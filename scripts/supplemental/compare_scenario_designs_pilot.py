@@ -15,7 +15,7 @@ This is a "do they differ at all" signal, NOT a held-out robustness verdict.
 
 Usage:
     python scripts/supplemental/compare_scenario_designs_pilot.py \
-        --slug ffmp_obj7_pilot --seed 1 \
+        --slug ffmp_obj8_pilot --seed 1 \
         --arms hazard_filling_du input_stratified fixed_probabilistic
 """
 from __future__ import annotations
@@ -148,7 +148,7 @@ def mc_hypervolume(front_norm: np.ndarray, n_samples: int, rng) -> float:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--slug", default="ffmp_obj7_pilot")
+    p.add_argument("--slug", default="ffmp_obj8_pilot")
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--formulation", default="ffmp")
     p.add_argument("--arms", nargs="+", default=campaign_designs(),

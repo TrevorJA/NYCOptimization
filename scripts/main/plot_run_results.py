@@ -24,7 +24,7 @@ one failure never blocks the others. Figures 1-2 also work after step 07 alone;
 
 Usage (from repo root, venv active):
   python3 -m scripts.main.plot_run_results \
-      --slug ffmp_obj7_mm_moderate --scenario historic \
+      --slug ffmp_obj8_mm_moderate --scenario historic \
       --preset etest_kn_10yr_n200 --formulation ffmp
 """
 from __future__ import annotations
@@ -234,7 +234,7 @@ def _select_examples(filt, scorecard):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--slug", default="ffmp_obj7_mm_moderate")
+    ap.add_argument("--slug", default="ffmp_obj8_mm_moderate")
     ap.add_argument("--scenario", default="historic")
     ap.add_argument("--preset", default="etest_kn_10yr_n200")
     ap.add_argument("--formulation", default="ffmp")

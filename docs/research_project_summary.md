@@ -104,16 +104,17 @@ Operational how-to: `workflow/README.md` and the step scripts `workflow/00–09_
 
 ## Objectives
 
-Seven active objectives (NYC delivery reliability + CVaR₉₀ deficit, Montague reliability
+Eight active objectives (NYC delivery reliability + CVaR₉₀ deficit, Montague reliability
 + CVaR₉₀ deficit, Trenton reliability, downstream minor-flood days, NYC storage 5th
-percentile), defined in `src/objectives.py` and documented in
+percentile, NJ delivery reliability — activated 2026-07-30 after a clean redundancy
+screen), defined in `src/objectives.py` and documented in
 `notes/methods/objective_definitions.md`. During search, each objective's per-realization
 temporal metric is collapsed across realizations by a two-layer annual-unit scheme
 (annual metric per realization × water-year unit; a per-objective unit operator over the
 pooled unit-years). The annual-unit epsilons were calibrated and adopted 2026-07-30
 (512 constraint-feasible policies per design; max over the two ensemble designs, the
 historic arm excluded and disclosed); satisficing thresholds remain placeholders pending
-the sensitivity experiments.
+the satisficing-criterion diagnostics.
 
 ## Comparison controls
 
@@ -217,11 +218,14 @@ whatever SU remains at the end of the campaign.
 presim pass); the final satisficing thresholds adopted into the registry; step-00 JAR
 regeneration under the adopted epsilons.
 
-**Open decisions:** the flood unit operator (mean vs P99) and failure-criterion values
-(from the sensitivity experiment); the satisficing criterion values and sweep-grid
-centre; the optional 8th objective (redundancy screen); the scenario design under which
-the RQ3 variable-resolution sweep is run, if the leftover SU permits it. See
-`notes/methods/experimental_design.md` for the open-questions list.
+**Open decisions:** the satisficing criterion values and sweep-grid centre; the 0.99
+weekly satisfaction factor (bounded by the dedicated factor sweep, pending its Anvil
+run); the scenario design under which the RQ3 variable-resolution sweep is run, if the
+leftover SU permits it. Adopted 2026-07-30 from the framing-convention diagnostics:
+failure-week counts k confirmed as shipped, flood unit operator = mean (P99 retained as
+a diagnostic), and the 8th objective (NJ delivery reliability) ACTIVATED after a clean
+redundancy screen. See `notes/methods/experimental_design.md` for the open-questions
+list.
 
 ## Document index
 
@@ -233,7 +237,7 @@ the RQ3 variable-resolution sweep is run, if the leftover SU permits it. See
 | Ensemble construction recipe | `notes/methods/scenario_design_methods.md` |
 | Forcing-space parameterization (E_test) | `notes/methods/forcing_parameterization.md` |
 | Objective definitions | `notes/methods/objective_definitions.md` |
-| Objective sensitivity experiments | `notes/methods/objective_sensitivity_experiment.md`, `notes/methods/ensemble_objective_sensitivity_experiment.md` |
+| Objective sensitivity & framing diagnostics | `notes/methods/objective_sensitivity_experiment.md`, `notes/methods/framing_convention_diagnostics.md` |
 | Terminology (controlled vocabulary) | `notes/terminology.md` |
 | Literature hub + topic notes | `notes/literature/README.md`, `notes/literature/scenario_design.md` |
 | Workflow / HPC operation | `../workflow/README.md`, `../workflow/envs/README.md` |

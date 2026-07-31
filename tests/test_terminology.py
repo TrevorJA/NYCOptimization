@@ -59,6 +59,20 @@ RETIRED_TERMS: dict[str, str] = {
     "regret_from_baseline": "improvement_vs_baseline (signed, positive = better)",
     "overfitting gap": "deleted -- undefined in Brodeur (2020) and invalid "
                        "under a measure change",
+    "ensemble objective-sensitivity experiment":
+        "framing-convention diagnostics (framing_convention_diagnostics.md; "
+        "cube reductions of the epsilon-calibration policy populations + the "
+        "satisfaction-factor sweep). Retired 2026-07-30: its per-realization "
+        "matrix predated the annual-unit scheme and every decision it gated "
+        "is now answered by the newer machinery.",
+    "ensemble_objective_sensitivity":
+        "framing_convention_analysis.py / satisfaction_factor_{run,figures}.py "
+        "over the epsilon-calibration cubes (the retired experiment's scripts, "
+        "launchers, and ENS_* config are deleted)",
+    "nested axis sets":
+        "the two diagnostic axis sets: campaign (config.HAZARD_SELECTION_AXES) "
+        "vs the full retained set. The m4/m6 diagnostic nestings were retired "
+        "2026-07-30 (assess_m6_axis_sets.py and its launcher deleted).",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

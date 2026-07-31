@@ -17,11 +17,11 @@
 # (or --export). No value flags.
 #
 #   # 10 independent draws of the fixed-probabilistic design:
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_fixprob.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixprob.env \
 #          --array=0-9 workflow/02_generate_ensemble.sh
 #
 #   # A pool-owning design: one draw is enough.
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj7_hazfill_pilot.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_pilot.env \
 #          workflow/02_generate_ensemble.sh
 #
 # Output: outputs/synthetic_ensembles/{slug}/ — the per-draw search ensemble, or

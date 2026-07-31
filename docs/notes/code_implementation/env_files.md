@@ -31,9 +31,9 @@ Every key must be a documented `NYCOPT_*` knob — the override table lives at t
 
 Filename should match the moea slug `derive_slug()` will produce, so `workflow/envs/<slug>.env` and `outputs/{scenario}/<slug>/` line up (the scenario design is the parent directory, not part of the slug; the MOEA config name is appended unless it is the `production` default):
 
-- `ffmp_obj7_historic.env` (mm_full) → outputs at `outputs/historic/ffmp_obj7_mm_full/`
-- `ffmp_obj7_hazfill_pilot.env` (pilot) → outputs at `outputs/hazard_filling/ffmp_obj7_pilot/`
-- `ffmp_vr_obj7.env` → expands to multiple slugs (one per `FORMULATION=ffmp_N` submission)
+- `ffmp_obj8_historic.env` (mm_full) → outputs at `outputs/historic/ffmp_obj8_mm_full/`
+- `ffmp_obj8_hazfill_pilot.env` (pilot) → outputs at `outputs/hazard_filling/ffmp_obj8_pilot/`
+- `ffmp_vr_obj8.env` → expands to multiple slugs (one per `FORMULATION=ffmp_N` submission)
 
 For ad-hoc tags, set `RUN_SLUG_TAG=mytag` in the env file; the slug becomes `<auto-derived>_mytag`.
 

@@ -233,10 +233,10 @@ def main() -> None:
         )
     design = config.active_scenario_name()
 
-    # The FULL annual-unit registry (active 7 + optional NJ 8th + the flood
-    # P99 diagnostic) so the pending epsilon/operator decisions are all
-    # informed by the same cube; the archive sweep in the figures script uses
-    # the active subset only.
+    # The FULL annual-unit registry (the 8 active objectives + the flood-P99
+    # diagnostic) so epsilon/operator decisions are all informed by the same
+    # cube; the archive sweep in the figures script uses the active subset
+    # only.
     objs = list(ENSEMBLE_OBJECTIVES.values())
     obj_names = list(ENSEMBLE_OBJECTIVES.keys())
     directions = [o.direction for o in objs]
