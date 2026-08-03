@@ -12,9 +12,53 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 The objective set is FINAL (8 objectives, NJ activated 2026-07-30; flood
 exceedance `downstream_flood_exceedance_minor` ADOPTED 2026-08-03 in place of the
 day count) and the delivery-factor bounds moved to the symmetric FFMP ± 0.15
-rule (2026-07-31). Sequence: the epsilon-confirmation rerun (first item) →
-step-00 JARs — the objective set, epsilons, and DV bounds are all baked into
-the problem definition.
+rule (2026-07-31). Sequence: pywrdrb sync + input re-staging (first two items)
+→ the epsilon-confirmation rerun → step-00 JARs — the objective set, epsilons,
+and DV bounds are all baked into the problem definition, and every simulation
+must run on the rebased pywrdrb + re-staged inputs first.
+
+- [ ] **[local→HPC]** (2026-08-03) Pywr-DRB `nyc_opt` was REBUILT on v2.2.0
+  master (curated rebase; history rewritten and force-pushed; old branch head
+  `0bca357` survives only in reflog). Hard-sync every machine's clone:
+  `git fetch && git checkout nyc_opt && git reset --hard origin/nyc_opt` in
+  `../Pywr-DRB` (laptop done at rebase time; **Anvil clone still to sync** —
+  editable installs pick the change up with no reinstall). Numerically
+  breaking deltas for this project, all landing at once: (a) **new STARFIT
+  default params** in `istarf_conus.csv` (2004–2023 refits for blueMarsh,
+  fewalter, prompton; beltzvilleCombined capacity 13,500 → 17,750 MG);
+  (b) **corrected STARFIT physics** — unconditional `max(target, R_min)`
+  clamp (was below-NOR only) and the offline presimulator now matches the
+  model's consumption timing (`CU·withdrawal_{t-1}`, inflow-limited) and
+  bounds releases by net available water; (c) packaged
+  `predicted_inflows_mgd.csv` for `pub_nhmv10_BC_withObsScaled` regenerated
+  under (a)+(b); (d) observations refreshed through 2026-08-02 (DRBC NYC
+  storage splice, pre-1990 prompton storage dropped, the three flood gauges
+  now in obs `gage_flow_mgd.csv` → the sim/obs exceedance ratios quoted in
+  the flood items shift when recomputed). Non-events, verified: pywrdrb's
+  `flow_prediction_mode` default flipped to `regression_disagg`, but
+  `config.py` pins `perfect_foresight` explicitly (the guard comment did its
+  job); `use_individual_storage` and all flood/N-zone machinery are
+  unchanged from the pre-rebase branch.
+- [ ] **[local→HPC]** Re-stage ALL staged pywrdrb inputs with `force=True`
+  and discard any objective values simulated before the sync:
+  `presimulated_releases_mgd.hdf5` (STARFIT-dependent → stale under (a)+(b))
+  and `predicted_inflows_mgd.hdf5` (its perfect-foresight columns read the
+  presim artifact → stale) for EVERY staged ensemble, local and Anvil. The
+  historic-trace trimmed path is stale too: its presim CSV is generated
+  locally (`workflow/01_generate_presim.sh` / `generate_presim.py`) — rerun
+  on both machines; its predicted-inflows CSV is packaged and arrives with
+  the sync. `ensemble_prep` skips silently when outputs exist — force is
+  mandatory,
+  same trap as the 2026-07-31 flood re-staging. NOT stale (no pywrdrb
+  simulation involved): the flood-node inflow HDF5s (pure streamflow
+  redistribution), the P=1e6 pools + hazard images, hazard selection, and
+  E_test generation — the ~1.9k SU pool investment is untouched.
+  Step-05 baseline: stale a THIRD time (physics/params now, on top of the
+  flood-exceedance swap) — regenerates with the §1 chain as already
+  sequenced. The ε-calibration populations are stale too, priced into the
+  rerun below. The DONE determinism/agreement records (2026-07-29/31) are
+  convention-level verdicts — no rerun needed, but their measured numbers
+  are pre-rebase.
 
 - [ ] **[HPC]** Re-run the epsilon calibration (3 designs, ~57 SU) + framing
   figures on the NEW-bounds feasible population and adopt any ε delta into
