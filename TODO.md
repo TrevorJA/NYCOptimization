@@ -21,8 +21,9 @@ must run on the rebased pywrdrb + re-staged inputs first.
   master (curated rebase; history rewritten and force-pushed; old branch head
   `0bca357` survives only in reflog). Hard-sync every machine's clone:
   `git fetch && git checkout nyc_opt && git reset --hard origin/nyc_opt` in
-  `../Pywr-DRB` (laptop done at rebase time; **Anvil clone still to sync** —
-  editable installs pick the change up with no reinstall). Numerically
+  `../Pywr-DRB` (laptop synced 2026-08-03 at `v2.2.0-10-ge293825`; **Anvil
+  clone still to sync** — editable installs pick the change up with no
+  reinstall). Numerically
   breaking deltas for this project, all landing at once: (a) **new STARFIT
   default params** in `istarf_conus.csv` (2004–2023 refits for blueMarsh,
   fewalter, prompton; beltzvilleCombined capacity 13,500 → 17,750 MG);
@@ -59,16 +60,15 @@ must run on the rebased pywrdrb + re-staged inputs first.
   rerun below. The DONE determinism/agreement records (2026-07-29/31) are
   convention-level verdicts — no rerun needed, but their measured numbers
   are pre-rebase.
+  **Local half DONE 2026-08-03** (post-sync at `e293825`): historic presim
+  CSV rerun (step 01); `kn_50yr_n5` + `hazfill_stat_abs_10yr_n50_d0`
+  presim/predicted HDF5s deleted and re-staged (flood-node inflow HDF5s
+  untouched, as scoped); the pre-sync step-05 baseline vector and the
+  orphaned `outputs/presim/full_model_baseline.*` +
+  `outputs/diagnostics/random_sample_objectives.npz` deleted; full test
+  suite passes (261). Remaining: the same re-staging on EVERY Anvil-staged
+  ensemble + the Anvil historic presim.
 
-- [ ] **[HPC]** Re-run the epsilon calibration (3 designs, ~57 SU) + framing
-  figures on the NEW-bounds feasible population and adopt any ε delta into
-  `_ANNUAL_REGISTRY_SPEC` (expect NYC-axis signal IQRs to shrink and NJ's to
-  grow; the k / flood-operator / NJ verdicts are convention-level and are
-  re-confirmed by the same figures for free). This rerun also prices the
-  FINAL ε for the new `downstream_flood_exceedance_annual` objective (shipped
-  provisional 0.01 from `flood_objective_diagnostics.md` block 6). Batch with
-  the satisfaction-factor sweep, which samples its population under the
-  current bounds automatically.
 - [ ] **[HPC]** Regenerate everything downstream of the 36-DV scheme (zone refill-plateau DVs removed 2026-08-03), the 8-objective set, AND the ±0.15 factor bounds: problem JARs (step 00; Anvil login node — no JDK/MOEAFramework on the laptop; nobjs is now 8; nvars is now 36) + `.set` artifacts (Borg search outputs — regenerate with the next smoke/campaign runs). The stale local `.set` trees (`outputs/optimization/`, `outputs/historic/ffmp_obj7_smoke/`) predated the current DV scheme, locked epsilons, and NJ activation — DELETED 2026-07-31.
 - [ ] **[HPC]** Regenerate any `du_forced` ensemble staged before 2026-07-28 with the variance axis off: they carry the fixed `c = 1` convention (absolute-SD) instead of the CV-preserving `c = a` (bug fixed in `src/ensemble_generation.py`). Verified 2026-07-30: no `du_forced` ensemble is staged locally (all local stages are stationary), so this is Anvil-side only.
   Historic single trace: DONE 2026-07-31 — the step-05 anchor is regenerated on the
@@ -79,7 +79,7 @@ must run on the rebased pywrdrb + re-staged inputs first.
   redistribution being mass-conserving. Any baseline vector persisted before
   2026-07-31 15:09 is on the pre-fix inflows.
 - [ ] **[local→HPC]** Re-stage any flood-augmented ensemble inflows (`catchment_inflow_with_flood_nodes_mgd.hdf5`) generated before 2026-07-31, and discard flood objective values computed from them. Local half DONE 2026-08-03: both locally staged ensembles are now post-fix by content check (HE/FE ratio 0.3374) — `kn_50yr_n5` re-staged by the flood-objective run's audit, `hazfill_stat_abs_10yr_n50_d0` re-staged directly (its 07-31 12:19 staging predated the 15:54 fix commit; no flood objective values from it were ever persisted). Remaining: Anvil-side staged ensembles. Pywr-DRB's flood-node inflow preprocessor carried a double subtraction of already-marginal upstream inflows plus three wrong USGS drainage areas, which left the three tail-gauge local catchments at ~2 % of physical magnitude (fixed in `../Pywr-DRB/src/pywrdrb/pre/flood_node_inflows.py`; evidence in `../Pywr-DRB/experiments/nyc_flood_gauge_diagnostics/`). `ensemble_prep` SKIPS staging when the file already exists unless `force=True`, so stale files are reused **silently** — re-stage with `force`. The fix is a strict mass-conserving redistribution, so net basin flow and the Montague/Trenton totals are unchanged and only the `downstream_flood_days_*` objectives move — but they move a lot: on the historic trace the aggregate sim/obs exceedance ratio went 0.44 → 0.56 at minor stage and 0.46 → 0.96 at action stage.
-- [ ] **[local→HPC]** Regenerate everything downstream of the 6-month metric window and the flood days/yr normalization; discard any objective values computed under the old 365-day warm-up or the whole-trace flood count. 2026-07-31: the step-05 baseline is regenerated locally under the current method (obj8, skip-reeval) and now scores on the annual-unit set via `config.get_objective_set()` — `run_baseline.py` had been building the §1 whole-trace set, so every pre-2026-07-31 baseline vector is on a different objective function and must be discarded, not compared. The baseline re-eval matrix half stays open pending E_test (run step 05 with `--reeval` once E_test is staged). 2026-08-03: the flood-exceedance swap makes the step-05 baseline objective vector stale AGAIN (its flood entry is a day count) — regenerate with the next step-05 run.
+- [ ] **[local→HPC]** Regenerate everything downstream of the 6-month metric window and the flood days/yr normalization; discard any objective values computed under the old 365-day warm-up or the whole-trace flood count. 2026-07-31: the step-05 baseline is regenerated locally under the current method (obj8, skip-reeval) and now scores on the annual-unit set via `config.get_objective_set()` — `run_baseline.py` had been building the §1 whole-trace set, so every pre-2026-07-31 baseline vector is on a different objective function and must be discarded, not compared. The baseline re-eval matrix half stays open pending E_test (run step 05 with `--reeval` once E_test is staged). 2026-08-03: the step-05 baseline is REGENERATED locally on the rebased branch under the tolerance-fixed objective function (`_FLOW_TARGET_TOL_MGD`, commit 0468b31 — the rebase's ulp-level changes had flipped 190 exactly-on-target Montague weeks to failures and halved the reliability). Final vector: `downstream_flood_exceedance_annual` = 0.3467 ft·days/yr, `montague_flow_reliability_annual` = 0.789 (vs 0.763 pre-rebase, which itself lost a few zero-deficit weeks to the strict comparison); the remaining shifts vs the discarded pre-sync vector are the expected small STARFIT/forecast deltas.
 
 ## 2. Sizing decisions (evidence-based, before generation)
 
@@ -142,5 +142,20 @@ decision records the open items reference.
 - **(§3, DONE 2026-07-30)** Epsilons for the campaign objective set: epsilon-calibration experiment run (512 feasible policies + baseline per design; historic / fixed_probabilistic / hazard_filling_stationary, draw 0) and the combined recommendation adopted into `_ANNUAL_REGISTRY_SPEC`. The campaign vector is the max over the ENSEMBLE designs only (`EPS_CAMPAIGN_DESIGNS`); the historic reference arm is excluded from the max (its 76-unit noise floor would set reliability ε = 0.10 on the 0-1 scale) and its archive is disclosed to resolve below its own noise floor. 2026-07-31: the delivery-factor bounds change triggers the confirmation rerun in §1 (before JARs — epsilons are baked into the archive).
 - **(§5, DONE 2026-07-30)** Full `diagnose_hazard_selectors.py` battery rerun on the production P=1e6 pool image (laptop, ~90 min): screen retains **8/8** axes (dropped none); adequacy gate **at the decided (campaign 6-axis set, N=100) PASSES — min per-axis tail share 0.311** (reproduces the nested-P rung exactly; the full 8-axis set fails at 0.256, the measured basis for restricting selection). Margin is thin: per-seed min ranges 0.28–0.35, so the per-production-draw re-confirmation stands (carried on the §5 pools item). Battery cleaned 2026-07-30 to score exactly two axis sets (campaign vs full; legacy m4/m6 nestings + `assess_m6_axis_sets.py` deleted) and rerun for the final SI artifacts: figures F1–F10 + 7 tables + `summary.json` under `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n1000000_d0/`.
 - **(§4, DONE 2026-07-31)** Baseline anchor vs search path: NO disagreement under the current objective function. Measured on the historic trace, baseline policy, disk path (`run_simulation_to_disk`) vs search path (`run_simulation_inmemory`), both model modes: all 8 objectives agree to ≤2e-13 relative (trimmed) and to 0.00e+00 (full; `run_baseline --test-inmemory` now passes its own 1e-6 gate on every objective). The ~5e-4 figure this item recorded was measured under the RETIRED §1 whole-trace objective set, whose fraction-of-days metrics have 1/28124 granularity and so resolve the known LP degeneracy jitter; the annual-unit set (38 water-year units) does not. Daily series still differ between any two runs (up to ~2.3e3 MGD on major flows, ~62% of days on cannonsville storage) — same magnitude for same-path repeats as for cross-path, i.e. run-to-run LP jitter, not a path effect, and it does not propagate to the objectives. No code change made; `improvement_vs_baseline` was already path-consistent (its anchor comes from `run_baseline --reeval` → `evaluate_solution_raw` → `evaluate_raw`, the search path).
+- **(§1, DONE 2026-08-03)** Epsilon confirmation rerun (3 designs, new-bounds
+  36-DV feasible population, post-fix flood inflows; tables refreshed in
+  commit 0468b31 alongside the framing + satisfaction-factor sweep outputs):
+  five axes unchanged; Montague deficit-P99 ε 1.5 → 2.0 (hazfill noise floor
+  binds); flood exceedance ε FINAL at 0.2 (noise floor ~0.15–0.18 on both
+  ensemble designs, replacing the provisional 0.01); NYC deficit-P99 kept at
+  2.0 as a DELIBERATE exception against the measured 10.0 rec (hazfill P99
+  bootstrap noise floor — the archive resolves below that design's sampling
+  noise on this axis, disclosed, parallel in kind to the historic-arm
+  exclusion). The k / flood-MEAN / NJ verdicts re-confirmed. The same
+  rebuild exposed the strict weekly Decree-target comparison (ulp-level
+  changes flipped 190 exactly-on-target Montague weeks to failures) →
+  `_FLOW_TARGET_TOL_MGD = 1e-6` added to `_weekly_flow_ok`
+  (`src/objectives.py`); step-05 baseline re-scored under it (Montague
+  reliability 0.421 → 0.789).
 - **(§3, ADOPTED 2026-08-03)** Flood-exceedance objective swap landed repo-wide: `downstream_flood_exceedance_minor` (§1, ε provisional 0.01 ft-days/yr) / `downstream_flood_exceedance_annual` (§2, PooledMean, worst 5490) are the ACTIVE flood objective; the day counts stay registered diagnostics; `config._DEFAULT_OBJECTIVES`, `_BASE_TO_ENSEMBLE`, `_REGISTRY_SPEC` + `__sat1` placeholder (1.0 ft-days/yr), style labels, the 11 pinned `NYCOPT_OBJECTIVES` env lists, framing/epsilon/determinism supplemental scripts, and tests all updated (261 tests pass; slugs stay `*_obj8` — the set is still 8 objectives). CONSEQUENCE: the step-05 baseline objective vector is stale again (flood entry is a day count) and regenerates with the §1 chain; the ε rerun prices the final exceedance ε before JARs. Evidence + checklist: `flood_objective_diagnostics.md` §0b/§7.
 - **(Parked → §3, DIAGNOSED 2026-08-03)** Flood-threshold objective reconsidered: the full diagnostic (`docs/notes/methods/flood_objective_diagnostics.md`; scripts `scripts/supplemental/flood_objective_{run,figures}.py`, outputs under `outputs/supplemental/flood_objective/`) **recommends replacing the day count with C4 = Σ over days of the max-across-gauges (stage − minor)⁺ [ft-days/yr]**. Measured: the incumbent count is degenerate on the historic trace (9 distinct values across 25 feasible policies, 14.7 % tied pairs) while exceedance resolves 25/25 with zero ties; the pre-stated monotone-response gate PASSES for exceedance (ρ_S = −1.00 on the ensemble flood-release ladder, no cliffs) while the count moves in integer shelves; rating-curve exposure is nil (0 of 3,556 flood gauge-days beyond the rated range → stage-ft basis safe, flow-basis C6 unnecessary); C4 has the best annual sim-obs correlation (Pearson 0.91) and, unlike the gauge-summed variants, is robust to the model's structural inability to flood two gauges simultaneously. Costs disclosed: ~1.6× ensemble sampling noise, top unit-year carries ~30 % of the integral. `action` stays rejected for the active set (control-rule discontinuity). Adoption checklist in the note §7 — swap joins the §1 epsilon-calibration rerun + JAR regeneration at zero extra cost.
