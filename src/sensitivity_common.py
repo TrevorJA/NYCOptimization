@@ -162,7 +162,7 @@ def sample_feasible_dvs(formulation: str, seed: int, n_samples: int, *,
     simulation). Rejection from i.i.d. uniform draws yields an *exactly*
     uniform distribution on the feasible region, which is the population the
     Borg archive lives in (constraint-dominance keeps infeasible vectors out
-    of the archive). Random 39-DV vectors are ~1% feasible (the flood-ordering
+    of the archive). Random 36-DV vectors are ~1% feasible (the flood-ordering
     constraint dominates), so expect ~100x oversampling; the constraint check
     costs microseconds per vector after the one-time defaults load.
 

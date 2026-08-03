@@ -886,7 +886,7 @@ DETERMINISM_N_REPEATS: int = int(os.environ.get("NYCOPT_DETERMINISM_REPEATS", "5
 DETERMINISM_N_PERTURBED: int = int(os.environ.get("NYCOPT_DETERMINISM_PERTURBED", "3"))
 
 #: Initial per-DV perturbation, as a fraction of each DV's bound range. Random
-#: 39-DV vectors are ~1% feasible under the two formal constraints, so policies
+#: 36-DV vectors are ~1% feasible under the two formal constraints, so policies
 #: are drawn as small perturbations of the (feasible) baseline and accepted
 #: only when ``compute_constraint_violations`` is exactly [0, 0]; the fraction
 #: halves when acceptance stalls.
@@ -1067,3 +1067,109 @@ def sf_table_path(name: str, design: "str | None" = None) -> Path:
 def sf_figure_path(name: str) -> Path:
     """Path stub for a named figure (extension added by ``save_figure``)."""
     return SF_FIGURES_DIR / name
+
+
+###############################################################################
+# Flood-objective definition diagnostics
+# (docs/notes/methods/flood_objective_diagnostics.md)
+#
+# Decides the flood objective definition: the incumbent any-gauge minor-stage
+# day count (`downstream_flood_days_minor`) vs magnitude-weighted exceedance
+# candidates (stage-ft and flow bases). One local simulation pass evaluates a
+# feasible-policy sample plus a flood-release-scale sweep ladder on the
+# historic trace AND the local KN stationary fixture, persisting per-policy x
+# realization x water-year-unit candidate values and per-gauge flood-day
+# records; the figures script reduces that cube (discriminating power,
+# monotone-response gate, sampling noise, epsilon proposal) and scores every
+# candidate sim-vs-obs on the flood-gauge diagnostic experiment's 2000-2023
+# output (zero re-simulation).
+###############################################################################
+
+
+def configure_floodobj_env() -> None:
+    """Apply env knobs for the flood-objective diagnostics run.
+
+    Salinity and temperature LSTMs off (the flood metrics use neither). The
+    scenario design defaults to ``historic``; the KN-ensemble pass resolves its
+    fixture spec by slug, not through the scenario design. No simulation-window
+    override: the historic pass runs the full trace, the ensemble pass
+    self-derives from the fixture realization length.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+# ---------------------------------------------------------------------------
+# Policy set
+# ---------------------------------------------------------------------------
+#: RNG seed for the feasible-DV rejection sample (distinct experiment identity;
+#: the sample does NOT need row alignment with the epsilon cubes).
+FLOODOBJ_SEED: int = 19
+
+#: Feasible random policies (the FFMP baseline is always policy 0), sized for
+#: a laptop pass: n+1 policies + sweep ladder on historic + N=5 x 50 yr.
+FLOODOBJ_N_POLICIES: int = 24
+
+#: Points on the flood-release-scale sweep ladder: all six
+#: ``flood_release_scale_*`` DVs move together as a fraction t in [0, 1] of
+#: each DV's own [lower, upper] range (monotone-response gate).
+FLOODOBJ_SWEEP_POINTS: int = 9
+
+#: Formulation whose bounds/constraints define the policy population.
+FLOODOBJ_FORMULATION: str = "ffmp"
+
+#: Ensemble pass fixture: the local KN stationary test ensemble
+#: (src/local_test_ensemble.py). Its flood-augmented inflows MUST postdate the
+#: 2026-07-31 flood-node inflow fix; the run script audits and re-stages.
+FLOODOBJ_ENSEMBLE_SLUG: str = "kn_50yr_n5"
+
+#: Realizations per simulation batch (0 = one block, the campaign default).
+FLOODOBJ_REALIZATION_BATCH: int = 0
+
+# ---------------------------------------------------------------------------
+# Sim-vs-obs block (reuses the Pywr-DRB flood-gauge diagnostic experiment)
+# ---------------------------------------------------------------------------
+#: The completed 2026-07-31 flood-gauge diagnostic experiment (read-only
+#: sibling repo). Its post-fix default-policy output HDF5 and helper module
+#: (`diagnostics.py`) provide the sim-vs-obs scoring at zero re-simulation.
+FLOODOBJ_GAUGE_EXPERIMENT_DIR: Path = (
+    _PROJECT_DIR.parent / "Pywr-DRB" / "experiments" / "nyc_flood_gauge_diagnostics"
+)
+
+#: Observed-comparison window (matches the gauge experiment's START/END).
+FLOODOBJ_OBS_WINDOW: tuple = ("2000-01-01", "2023-12-31")
+
+# ---------------------------------------------------------------------------
+# Noise / epsilon reductions
+# ---------------------------------------------------------------------------
+#: Bootstrap resamples for the ensemble sampling-noise block (resampling
+#: realizations and pooled unit-years with replacement).
+FLOODOBJ_BOOTSTRAP_B: int = 1000
+
+#: RNG seed for the bootstrap index draw.
+FLOODOBJ_BOOTSTRAP_SEED: int = 7
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+FLOODOBJ_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "flood_objective"
+FLOODOBJ_CUBE_DIR: Path = FLOODOBJ_OUTPUT_ROOT / "cube"
+FLOODOBJ_TABLES_DIR: Path = FLOODOBJ_OUTPUT_ROOT / "tables"
+FLOODOBJ_FIGURES_DIR: Path = FLOODOBJ_OUTPUT_ROOT / "figures"
+
+
+def floodobj_cube_path(name: str) -> Path:
+    """Path to a named run-output cube (.npz)."""
+    stem = (f"{name}_{FLOODOBJ_FORMULATION}_seed{FLOODOBJ_SEED}"
+            f"_n{FLOODOBJ_N_POLICIES}_s{FLOODOBJ_SWEEP_POINTS}")
+    return FLOODOBJ_CUBE_DIR / f"{stem}.npz"
+
+
+def floodobj_table_path(name: str) -> Path:
+    """Path for a named table CSV."""
+    return FLOODOBJ_TABLES_DIR / f"{name}.csv"
+
+
+def floodobj_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return FLOODOBJ_FIGURES_DIR / name

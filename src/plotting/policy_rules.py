@@ -1,10 +1,12 @@
 """Render a decision-variable vector as the NYC operational rules it encodes.
 
 One figure, five panels, organized by decision-variable grouping and covering
-all 39 FFMP decision variables:
+all 36 FFMP decision variables:
 
-    - Storage-zone rule curves vs day of year    (12 zone_vshift_*_{lower,upper}
-      + 6 zone_tshift_* DVs: two plateau shifts + one temporal per curve)
+    - Storage-zone rule curves vs day of year    (9 zone_vshift_* + 6
+      zone_tshift_* DVs: a void-plateau shift and a temporal shift per curve,
+      plus a refill-plateau shift for L3-L5 only — the L1b/L1c/L2 refill
+      plateaus are fixed at capacity)
     - Zone-dependent diversion limits            (5 drought-factor DVs; the
       NYC cap itself is Decree-fixed)
     - Time-dependent minimum-release schedules   (4 mrf_profile_scale_* DVs;

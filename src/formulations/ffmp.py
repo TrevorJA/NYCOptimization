@@ -161,7 +161,7 @@ def _merge_salt_front_dvs(dvs: OrderedDict, n_drought_levels: int = None) -> Ord
 
 
 ###############################################################################
-# Standard FFMP formulation (39 DVs base, optionally extended via salt_front)
+# Standard FFMP formulation (36 DVs base, optionally extended via salt_front)
 ###############################################################################
 
 # --- Flood-zone (L1a/L1b) spill-mitigation release scaling ---
@@ -219,44 +219,49 @@ FLOOD_RELEASE_SCALE_SPECS = OrderedDict(
 # trapezoidal shape (no new kinks); each knob maps to a visible flat segment, so
 # the change stays stakeholder-legible.
 #
-# Vertical UPPER-bound caps are set from baseline geometry: a plateau cannot be
-# raised above capacity, so the up-cap = min(_ZONE_VSHIFT_BOUND, 1.0 - plateau).
-# Curves whose HIGH plateau sits at full capacity (level1b/1c/2 refill to 1.0)
-# get a 0.0 up-cap on zone_vshift_*_upper (down-only); level1b's LOW plateau sits
-# at 0.975, so its zone_vshift_*_lower up-cap is 0.025. The lower bound on every
+# A curve whose baseline HIGH (refill) plateau sits at full capacity gets NO
+# HIGH-plateau shift DV at all: it could only move down, and lowering the
+# refill target below capacity is a permanent effective-capacity forfeit, not
+# an FFMP-scale operating-rule perturbation. The FFMP treats refill-to-full by
+# ~June 1 as an essential requirement (Appendix A §6: the CSSO "must be limited
+# and ramped" so the reservoirs are "filled on or around June 1st every year");
+# the negotiated flood lever is the seasonal VOID depth (10% in FFMP2014, 15%
+# in FFMP2017), which is exactly the LOW-plateau shift. So level1b/1c/2 keep
+# their refill plateaus fixed at 1.0 and are searched through void depth and
+# timing only. For the remaining curves the up-cap follows baseline geometry:
+# a plateau cannot be raised above capacity, so up-cap =
+# min(_ZONE_VSHIFT_BOUND, 1.0 - plateau); level1b's LOW plateau sits at 0.975,
+# so its zone_vshift_*_lower up-cap is 0.025. The lower bound on every
 # vertical shift is -_ZONE_VSHIFT_BOUND.
 _ZONE_VSHIFT_BOUND = 0.10
 _ZONE_TSHIFT_BOUND = 30.0
-#: Per-curve up-cap on the HIGH-plateau shift (zone_vshift_*_upper) for the
-#: fixed formulation; 0.0 for the three curves that refill to full capacity.
-_ZONE_VSHIFT_UPPER_CAP = {
-    "level1b": 0.0, "level1c": 0.0, "level2": 0.0,
-    "level3": _ZONE_VSHIFT_BOUND, "level4": _ZONE_VSHIFT_BOUND,
-    "level5": _ZONE_VSHIFT_BOUND,
-}
+#: Curves whose baseline refill plateau is at full capacity: HIGH plateau is
+#: fixed at baseline (no zone_vshift_*_upper DV emitted).
+_ZONE_UPPER_FIXED = {"level1b", "level1c", "level2"}
 #: Per-curve up-cap on the LOW-plateau shift (zone_vshift_*_lower); trimmed only
 #: for level1b, whose low plateau (0.975) has 0.025 of headroom to capacity.
 _ZONE_VSHIFT_LOWER_CAP = {"level1b": 0.025}
 
 
-def _zone_shift_specs(levels, lower_cap_by_level, upper_cap_by_level):
-    """Build the zone-shift DV specs (two vertical + one temporal per curve).
+def _zone_shift_specs(levels, lower_cap_by_level, upper_fixed_levels):
+    """Build the zone-shift DV specs (vertical + temporal per curve).
 
     For each curve, adds an additive LOW-plateau shift DV
     (``zone_vshift_{level}_lower``, fraction of capacity), an additive
-    HIGH-plateau shift DV (``zone_vshift_{level}_upper``), and a temporal-shift
-    DV (``zone_tshift_{level}``, days). Baselines are 0.0 so the curve is
-    unperturbed at the baseline vector.
+    HIGH-plateau shift DV (``zone_vshift_{level}_upper``) unless the curve's
+    refill plateau is fixed, and a temporal-shift DV (``zone_tshift_{level}``,
+    days). Baselines are 0.0 so the curve is unperturbed at the baseline
+    vector.
 
     Args:
         levels: Storage-zone curve names.
         lower_cap_by_level: Per-curve upper-bound override for the LOW-plateau
             shift (defaults to ``_ZONE_VSHIFT_BOUND``).
-        upper_cap_by_level: Per-curve upper-bound override for the HIGH-plateau
-            shift (defaults to ``_ZONE_VSHIFT_BOUND``).
+        upper_fixed_levels: Curves whose refill plateau is fixed at baseline —
+            no HIGH-plateau shift DV is emitted for these.
 
     Returns:
-        OrderedDict of DV specs (lower, upper, temporal per curve).
+        OrderedDict of DV specs ([lower, upper,] temporal per curve).
     """
     specs = OrderedDict()
     for level in levels:
@@ -266,12 +271,12 @@ def _zone_shift_specs(levels, lower_cap_by_level, upper_cap_by_level):
                        lower_cap_by_level.get(level, _ZONE_VSHIFT_BOUND)],
             "units": "fraction",
         }
-        specs[f"zone_vshift_{level}_upper"] = {
-            "baseline": 0.0,
-            "bounds": [-_ZONE_VSHIFT_BOUND,
-                       upper_cap_by_level.get(level, _ZONE_VSHIFT_BOUND)],
-            "units": "fraction",
-        }
+        if level not in upper_fixed_levels:
+            specs[f"zone_vshift_{level}_upper"] = {
+                "baseline": 0.0,
+                "bounds": [-_ZONE_VSHIFT_BOUND, _ZONE_VSHIFT_BOUND],
+                "units": "fraction",
+            }
         specs[f"zone_tshift_{level}"] = {
             "baseline": 0.0,
             "bounds": [-_ZONE_TSHIFT_BOUND, _ZONE_TSHIFT_BOUND],
@@ -336,7 +341,7 @@ FFMP_FORMULATION = {
         **_zone_shift_specs(
             ["level1b", "level1c", "level2", "level3", "level4", "level5"],
             _ZONE_VSHIFT_LOWER_CAP,
-            _ZONE_VSHIFT_UPPER_CAP,
+            _ZONE_UPPER_FIXED,
         ),
 
         # --- Flood-zone (L1a/L1b) spill-mitigation release scaling ---
@@ -391,7 +396,7 @@ for _loc in ("montague", "trenton"):
 def generate_ffmp_formulation(n_zones=None):
     """Generate an FFMP formulation, optionally with variable zone resolution.
 
-    With n_zones=None (default), returns the standard 39-DV formulation
+    With n_zones=None (default), returns the standard 36-DV formulation
     matching the 2017 FFMP's 7 drought levels (level1a..level5).
 
     With n_zones=N, generates an N-zone variant where:
@@ -426,14 +431,16 @@ def generate_ffmp_formulation(n_zones=None):
     # MRF baselines are fixed (as in the base formulation); Montague/Trenton
     # baseline targets and the NYC diversion cap are Decree-fixed (not DVs).
 
-    # Zone shifts (N curves): a LOW-plateau shift, a HIGH-plateau shift, and one
-    # temporal shift per curve. The top storage curves (flood-zone boundaries,
-    # near full capacity) refill to ~1.0, so their HIGH-plateau up-cap is 0.0
-    # (down-only) and the topmost curve's LOW-plateau up-cap is trimmed to
-    # 0.025, mirroring the base formulation's level1b/level1c/level2 headroom.
+    # Zone shifts (N curves): a LOW-plateau shift, a HIGH-plateau shift where
+    # the refill plateau is below capacity, and one temporal shift per curve.
+    # The top three storage curves (flood-zone boundaries) refill to ~1.0, so
+    # their refill plateaus are FIXED at baseline (no HIGH-plateau DV — same
+    # rule as the base formulation's level1b/level1c/level2) and the topmost
+    # curve's LOW-plateau up-cap is trimmed to 0.025, mirroring level1b's
+    # headroom to capacity.
     _lower_cap = {storage_levels[0]: 0.025}
-    _upper_cap = {lvl: 0.0 for lvl in storage_levels[:3]}
-    dvs.update(_zone_shift_specs(storage_levels, _lower_cap, _upper_cap))
+    _upper_fixed = set(storage_levels[:3])
+    dvs.update(_zone_shift_specs(storage_levels, _lower_cap, _upper_fixed))
 
     # NYC / NJ delivery factors: the base formulation's symmetric rule —
     # bounds = interpolated FFMP factor ± 0.15, clipped at 1.0 — applied to

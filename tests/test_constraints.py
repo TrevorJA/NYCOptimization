@@ -82,7 +82,7 @@ def test_baseline_is_exactly_feasible(formulation):
 def test_zone_crossings_are_not_constrained():
     # Crossing-inducing shifts are clamp-only: still constraint-feasible.
     cons = compute_constraint_violations(
-        _dv(zone_vshift_level1c_upper=0.0, zone_vshift_level1c_lower=0.05,
+        _dv(zone_vshift_level1c_lower=0.05,
             zone_vshift_level1b_lower=-0.10, zone_tshift_level1c=30.0),
         "ffmp",
     )

@@ -51,7 +51,7 @@ def _factor_row(cfg, level, res):
 
 def test_dv_registry():
     names = get_var_names("ffmp")
-    assert get_n_vars("ffmp") == 39
+    assert get_n_vars("ffmp") == 36
     expected = [
         f"flood_release_scale_{zone}_{res}"
         for zone in ("l1a", "l1b")
@@ -83,14 +83,15 @@ def test_recommended_bounds():
         assert dvs[f"flood_release_scale_l1b_{res}"]["bounds"] == [0.5, 2.0]
     for season in SEASONS:
         assert dvs[f"mrf_profile_scale_{season}"]["bounds"] == [0.8, 2.6]
-    # Two vertical (per-plateau) offsets + one temporal shift per curve.
-    # HIGH-plateau up-cap is 0.0 for the curves that refill to full capacity
-    # (level1b/1c/2); level1b's LOW-plateau up-cap is 0.025 (0.975 baseline).
+    # Vertical plateau offsets + one temporal shift per curve. The curves
+    # that refill to full capacity (level1b/1c/2) have NO high-plateau DV —
+    # their refill plateaus are fixed at baseline (a down-only shift would be
+    # an effective-capacity forfeit, not an FFMP-scale perturbation);
+    # level1b's LOW-plateau up-cap is 0.025 (0.975 baseline).
     assert dvs["zone_vshift_level1b_lower"]["bounds"] == [-0.10, 0.025]
-    assert dvs["zone_vshift_level1b_upper"]["bounds"] == [-0.10, 0.0]
     assert dvs["zone_vshift_level1c_lower"]["bounds"] == [-0.10, 0.10]
-    assert dvs["zone_vshift_level1c_upper"]["bounds"] == [-0.10, 0.0]
-    assert dvs["zone_vshift_level2_upper"]["bounds"] == [-0.10, 0.0]
+    for lvl in ("level1b", "level1c", "level2"):
+        assert f"zone_vshift_{lvl}_upper" not in dvs, lvl
     assert dvs["zone_vshift_level5_lower"]["bounds"] == [-0.10, 0.10]
     assert dvs["zone_vshift_level5_upper"]["bounds"] == [-0.10, 0.10]
     assert dvs["zone_tshift_level5"]["bounds"] == [-30.0, 30.0]

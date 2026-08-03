@@ -1,6 +1,6 @@
 # Decision variables (FFMP formulation)
 
-The decision vector parameterizes the 2017 FFMP rule structure with **39
+The decision vector parameterizes the 2017 FFMP rule structure with **36
 variables** (`src/formulations/ffmp.py`; applied to the model in
 `src/simulation.py`). Variable-resolution variants `ffmp_N` share the same
 group structure with zone-indexed names.
@@ -10,7 +10,7 @@ group structure with zone-indexed names.
 | NYC drought delivery factors (L3–L5) | 3 | `nyc_drought_factor_L{3,4,5}` | 0.85 / 0.70 / 0.65 | [0.70,1.0] / [0.55,0.85] / [0.50,0.80] | fraction |
 | NJ drought delivery factors (L4–L5) | 2 | `nj_drought_factor_L{4,5}` | 0.90 / 0.80 | [0.75,1.0] / [0.65,0.95] | fraction |
 | Storage-zone low-plateau (void) shifts | 6 | `zone_vshift_{level}_lower` | 0.0 | L1b [-0.10,0.025]; L1c–L5 [-0.10,0.10] | fraction of capacity |
-| Storage-zone high-plateau (refill) shifts | 6 | `zone_vshift_{level}_upper` | 0.0 | L1b/L1c/L2 [-0.10,0.0]; L3–L5 [-0.10,0.10] | fraction of capacity |
+| Storage-zone high-plateau (refill) shifts (L3–L5 only) | 3 | `zone_vshift_{level}_upper` | 0.0 | [-0.10, 0.10] | fraction of capacity |
 | Storage-zone temporal shifts (one per curve) | 6 | `zone_tshift_{level}` | 0.0 | [-30, 30] | days |
 | Flood-zone spill-mitigation release scales | 6 | `flood_release_scale_{l1a,l1b}_{res}` | 1.0 | L1a: [0.5, 1.35/1.20/1.55] per reservoir; L1b: [0.5, 2.0] | multiplier |
 | MRF seasonal profile scales (conservation zones) | 4 | `mrf_profile_scale_{season}` | 1.0 | [0.8, 2.6] | multiplier |
@@ -18,10 +18,13 @@ group structure with zone-indexed names.
 
 The six storage-zone boundary curves (`level1b`…`level5`) are trapezoids: a low
 plateau (fall/winter void), a rising ramp, a high plateau (spring/summer refill
-target), and a falling ramp. Each curve gets three DVs — an independent shift of
-its low plateau and of its high plateau, plus one temporal shift (6 curves × 3 =
-18). Splitting the vertical shift by plateau decouples void depth from the
-refill target while preserving the trapezoidal shape; each knob maps to a
+target), and a falling ramp. Each curve gets a low-plateau shift and one
+temporal shift; the drought curves (L3–L5), whose refill plateaus sit below
+capacity, additionally get an independent high-plateau shift (6 × 2 + 3 = 15).
+The flood-zone curves (L1b/L1c/L2) refill to full capacity and their refill
+plateaus are **fixed at baseline** — searchable geometry there is void depth
+and timing. Splitting the vertical shift by plateau decouples void depth from
+the refill target while preserving the trapezoidal shape; each knob maps to a
 visible flat segment, so the change stays stakeholder-legible.
 
 Fixed (never decision variables): the reservoir MRF baselines (122.8 /
@@ -57,12 +60,23 @@ and spillway.
   L1a schedule drops to the L1b rate (the L1a-absent window): the
   flood-ordering clamp (L1b ≤ L1a) holds L1b at ≤ 1.0× there, so scales
   above 1.0 are realizable only outside that ~2-month window.
+- **Fixed refill plateaus (L1b/L1c/L2)**: a curve whose baseline refill
+  plateau sits at full capacity gets no high-plateau DV. Such a shift could
+  only move down, and lowering the refill target below capacity is a
+  permanent effective-capacity forfeit — outside the renegotiation-scale
+  envelope. The FFMP treats refill-to-full by ~June 1 as an essential
+  requirement (Appendix A §6: the CSSO "must be limited and ramped" so the
+  reservoirs are "filled on or around June 1st every year"); its negotiated
+  flood lever is the seasonal void depth (10% in FFMP2014, 15% in FFMP2017),
+  carried here by the low-plateau shift. It also removes the aggressive
+  drawdown artifact: `NYCFloodRelease` targets the `level1c` curve (the
+  CSSO), so a lowered refill plateau would have the model evacuate all
+  storage above it — through the refill window — at up to Table 5 rates.
 - **Zone plateau-shift up-caps**: derived from baseline geometry — a plateau
   cannot be raised above capacity, so its up-cap = min(0.10, 1.0 − plateau
-  level). The high plateaus of L1b/L1c/L2 sit at full capacity (1.0), so their
-  `zone_vshift_*_upper` up-cap is 0.0 (down-only); L1b's low plateau sits at
-  0.975, so its `zone_vshift_*_lower` up-cap is 0.025. All other plateau
-  up-caps are 0.10, and the lower bound is -0.10 throughout.
+  level). L1b's low plateau sits at 0.975, so its `zone_vshift_*_lower`
+  up-cap is 0.025. All other plateau up-caps are 0.10, and the lower bound
+  is -0.10 throughout.
 - **Flood scales season-invariant (6)**: the FFMP holds the L1a/L1b rows
   season-constant; seasonal flood freedom is reallocated to the zone-boundary
   geometry, where the FFMP's own seasonality lives — specifically the
@@ -152,10 +166,12 @@ zone-boundary geometry (the ~15% Nov 1 – Feb 1 void), not the release rates.
 Each storage-zone threshold curve is a trapezoid over the year: a **low
 plateau** (its baseline minimum — the fall/winter void), a rising ramp, a
 **high plateau** (its baseline maximum — the spring/summer refill target), and
-a falling ramp. Each curve carries three DVs: an additive shift of the low
-plateau (`zone_vshift_{level}_lower`, fraction of capacity), an additive shift
-of the high plateau (`zone_vshift_{level}_upper`), and a temporal shift
-(`zone_tshift_{level}`, days). At apply time (`_apply_zone_shifts`) the two
+a falling ramp. Each curve carries an additive shift of the low plateau
+(`zone_vshift_{level}_lower`, fraction of capacity) and a temporal shift
+(`zone_tshift_{level}`, days); curves whose refill plateau sits below capacity
+(L3–L5) also carry an additive shift of the high plateau
+(`zone_vshift_{level}_upper`) — for L1b/L1c/L2 the high plateau is fixed at
+baseline (full capacity). At apply time (`_apply_zone_shifts`) the two
 plateau levels are moved independently to `lo_new = lo + shift_lower` and
 `hi_new = hi + shift_upper`, the daily values are affinely remapped between
 them — `value → lo_new + (value − lo)/(hi − lo) · (hi_new − lo_new)` — so the

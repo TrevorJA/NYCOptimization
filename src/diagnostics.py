@@ -39,7 +39,7 @@ from config import (
 # Per-formulation MOEAFramework problem registrations. Each is built as a
 # separate JAR in MOEAFramework-5.0/lib/ with the correct (nvars, nobjs).
 # All use the active objective set (8 since NJ activation 2026-07-30).
-#   drb_ffmp     -> 39 DVs
+#   drb_ffmp     -> 36 DVs
 #   drb_ffmp_{N} -> per-N DV count (varies with number of zones).
 #                   Built automatically by workflow/00_setup_borg_jars.sh.
 # Slugs can be any string; we infer the formulation family by finding the

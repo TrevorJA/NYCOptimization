@@ -498,8 +498,9 @@ def _apply_ffmp_params(config, params: dict):
         drought_factors_nj=nj_factors,
     )
 
-    # Storage zone shifts (low-plateau + high-plateau vertical shifts and one
-    # temporal shift per curve)
+    # Storage zone shifts (low-plateau vertical shift and one temporal shift
+    # per curve; high-plateau shifts exist only for curves whose refill
+    # plateau sits below capacity — level3/4/5 — the rest default to 0.0)
     zone_levels = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
     vshifts_lower = {level: params.get(f"zone_vshift_{level}_lower", 0.0)
                      for level in zone_levels}
@@ -554,8 +555,9 @@ def _apply_nzone_ffmp_params(config, params: dict):
         drought_factors_nj=nj_factors,
     )
 
-    # Zone shifts (low-plateau + high-plateau vertical shifts and one temporal
-    # shift per curve)
+    # Zone shifts (low-plateau vertical shift and one temporal shift per
+    # curve; high-plateau shift DVs exist only for curves whose refill plateau
+    # sits below capacity — the rest default to 0.0)
     vshifts_lower = {level: params.get(f"zone_vshift_{level}_lower", 0.0)
                      for level in storage_levels_nz}
     vshifts_upper = {level: params.get(f"zone_vshift_{level}_upper", 0.0)

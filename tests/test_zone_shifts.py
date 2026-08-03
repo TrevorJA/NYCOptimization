@@ -1,4 +1,4 @@
-"""Tests for storage-zone shift DVs (two vertical plateaus + one temporal).
+"""Tests for storage-zone shift DVs (vertical plateaus + one temporal).
 
 Covers the `_apply_zone_shifts` pipeline via `dvs_to_config`: each curve is a
 trapezoid whose low plateau (baseline min, the void) and high plateau
@@ -6,7 +6,9 @@ trapezoid whose low plateau (baseline min, the void) and high plateau
 `zone_vshift_{level}_lower` / `zone_vshift_{level}_upper`, the values affinely
 remapped between the new plateau levels, then slid by `zone_tshift_{level}`,
 clipped to [0, 1], and cross-curve monotonicity-clamped. A within-curve clamp
-keeps the void at or below the refill target.
+keeps the void at or below the refill target. Curves whose baseline refill
+plateau sits at full capacity (level1b/1c/2) have NO high-plateau DV — their
+refill targets are fixed at capacity.
 """
 
 import sys
@@ -21,6 +23,9 @@ from src.formulations import get_baseline_values, get_n_vars, get_var_names
 from src.simulation import dvs_to_config, _get_cached_defaults
 
 ZONE_LEVELS = ["level1b", "level1c", "level2", "level3", "level4", "level5"]
+#: Curves with a searchable HIGH-plateau (refill) shift — the rest are pinned
+#: at full capacity and expose no zone_vshift_*_upper DV.
+UPPER_SHIFT_LEVELS = ["level3", "level4", "level5"]
 
 
 def _dv(**overrides):
@@ -47,10 +52,14 @@ def _affine(ref, vlow, vup):
 
 def test_dv_registry():
     names = get_var_names("ffmp")
-    assert get_n_vars("ffmp") == 39
+    assert get_n_vars("ffmp") == 36
     vshift = [n for n in names if n.startswith("zone_vshift_")]
-    assert vshift == [f"zone_vshift_{lvl}_{end}"
-                      for lvl in ZONE_LEVELS for end in ("lower", "upper")]
+    expected = []
+    for lvl in ZONE_LEVELS:
+        expected.append(f"zone_vshift_{lvl}_lower")
+        if lvl in UPPER_SHIFT_LEVELS:
+            expected.append(f"zone_vshift_{lvl}_upper")
+    assert vshift == expected
     tshift = [n for n in names if n.startswith("zone_tshift_")]
     assert tshift == [f"zone_tshift_{lvl}" for lvl in ZONE_LEVELS]
 
@@ -108,28 +117,50 @@ def test_temporal_shift_rounds_to_whole_days():
 
 
 def test_within_curve_clamp_prevents_void_above_refill():
-    """Raising the void past a lowered refill target flattens the curve at the
-    refill level rather than inverting it."""
+    """The defensive within-curve clamp: a void pushed past a lowered refill
+    target flattens the curve at the refill level rather than inverting it.
+
+    No in-bounds DV vector can trigger this anymore (the capacity-pinned
+    curves have no high-plateau DV, and the L3-L5 plateau gaps exceed the
+    combined +/-0.10 shift range), so exercise _apply_zone_shifts directly
+    with a synthetic out-of-registry upper shift.
+    """
+    import copy
+    from src.simulation import _apply_zone_shifts
+
+    cfg = copy.deepcopy(_get_cached_defaults())
     # level1c: baseline 0.85 -> 1.0. Push void +0.10 (0.95) and refill -0.10
     # (0.90): the void would exceed the refill, so the curve flattens at 0.90.
-    cfg = dvs_to_config(
-        _dv(zone_vshift_level1c_lower=0.10, zone_vshift_level1c_upper=-0.10),
-        "ffmp",
-    )
-    z = _zones(cfg)["level1c"]
+    _apply_zone_shifts(cfg, {"level1c": 0.10}, {"level1c": -0.10})
+    z = np.asarray(cfg.get_storage_zone_profile("level1c"), dtype=float)
     assert np.isclose(z.max(), z.min(), atol=1e-9)  # flat
     assert np.allclose(z, 0.90, atol=1e-9)
 
 
+def test_refill_plateaus_fixed_at_capacity_for_all_inbounds_vectors():
+    """No in-bounds DV vector can lower the refill plateau of the
+    capacity-pinned curves (level1b/1c/2): their annual max stays 1.0 and
+    their void never drops more than 0.10 below baseline."""
+    from src.formulations import get_bounds
+    lower, upper = get_bounds("ffmp")
+    ref = _zones(_get_cached_defaults())
+    rng = np.random.default_rng(7)
+    for _ in range(25):
+        dv = lower + rng.uniform(size=lower.size) * (upper - lower)
+        zones = _zones(dvs_to_config(dv, "ffmp"))
+        for lvl in ("level1b", "level1c", "level2"):
+            assert np.isclose(zones[lvl].max(), 1.0, atol=1e-9), lvl
+            assert zones[lvl].min() >= ref[lvl].min() - 0.10 - 1e-9, lvl
+
+
 def test_clamp_enforces_monotonicity_under_extreme_shifts():
     lower_cap = {"level1b": 0.025}
-    upper_cap = {"level1b": 0.0, "level1c": 0.0, "level2": 0.0}
     overrides = {}
     for i, lvl in enumerate(ZONE_LEVELS):
         overrides[f"zone_vshift_{lvl}_lower"] = (
             lower_cap.get(lvl, 0.10) if i % 2 else -0.10)
-        overrides[f"zone_vshift_{lvl}_upper"] = (
-            upper_cap.get(lvl, 0.10) if i % 2 else -0.10)
+        if lvl in UPPER_SHIFT_LEVELS:
+            overrides[f"zone_vshift_{lvl}_upper"] = 0.10 if i % 2 else -0.10
         overrides[f"zone_tshift_{lvl}"] = -30.0 if i % 2 else 30.0
     zones = _zones(dvs_to_config(_dv(**overrides), "ffmp"))
     stacked = np.vstack([zones[lvl] for lvl in ZONE_LEVELS])
@@ -139,10 +170,12 @@ def test_clamp_enforces_monotonicity_under_extreme_shifts():
 
 def test_nzone_shifts():
     names = get_var_names("ffmp_8")
-    assert [n for n in names if n.startswith("zone_vshift_")] == [
-        f"zone_vshift_zone_{i}_{end}"
-        for i in range(1, 9) for end in ("lower", "upper")
-    ]
+    expected = []
+    for i in range(1, 9):
+        expected.append(f"zone_vshift_zone_{i}_lower")
+        if i > 3:  # top three curves: refill plateau fixed, no upper DV
+            expected.append(f"zone_vshift_zone_{i}_upper")
+    assert [n for n in names if n.startswith("zone_vshift_")] == expected
     assert [n for n in names if n.startswith("zone_tshift_")] == [
         f"zone_tshift_zone_{i}" for i in range(1, 9)
     ]

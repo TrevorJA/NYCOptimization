@@ -172,7 +172,7 @@ as independent array tasks. These are multi-day jobs requesting Anvil's
 they do not depend on each other:
 
 ```bash
-# Base FFMP (39 DVs)
+# Base FFMP (36 DVs)
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env               --array=1-10 workflow/06_run_mmborg.sh
 # Variable-resolution FFMP sweep (same objective set), one job per N
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_8  --array=1-10 workflow/06_run_mmborg.sh
