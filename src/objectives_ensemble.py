@@ -617,13 +617,24 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
 # but EXCLUDED from the max (2026-07-30 decision): its 76-unit estimator's
 # noise floor would coarsen the shared vector ~3-4x (reliability eps 0.10
 # instead of 0.02 on the 0-1 scale), so the historic arm's archive is allowed
-# to resolve below its own noise floor (disclosed). Signal (IQR/10) binds the
-# NYC reliability, both deficit-P99, and NJ axes; the noise floor binds
-# Montague/Trenton reliability, both flood axes, and storage P01. Max spread
-# of the raw requirement across the two ensemble designs is 2.5x (< 4x
-# review threshold). NJ delivery is ACTIVE (8th objective, activated
-# 2026-07-30); the diagnostic P99 flood variant remains outside the default
-# set (mean operator adopted 2026-07-30) but carries a calibrated value.
+# to resolve below its own noise floor (disclosed).
+# Confirmation rerun 2026-08-03 (36-DV scheme, symmetric FFMP +/- 0.15 bounds,
+# post-fix flood inflows): five axes unchanged; montague deficit-P99 adopted
+# 1.5 -> 2.0 (hazfill noise floor 1.71 binds); flood exceedance priced FINAL
+# at 0.2 (noise floor ~0.15-0.18 on both designs, ~10x its signal IQR/10 —
+# the axis's sampling noise dominates policy signal at N=100 x 10 yr,
+# disclosed). NYC deficit-P99 is a DELIBERATE EXCEPTION: the measured rec was
+# 10.0, entirely the hazard_filling_stationary P99 bootstrap noise floor
+# (raw 5.15, p90 11.5; cross-design spread 4.6x > the 4x review gate; signal
+# IQR/10 shrank to ~1.03 as expected), and 10.0 was judged too coarse for a
+# headline NYC axis — eps stays 2.0, so the archive resolves below the
+# hazfill design's sampling noise on this axis (disclosed, parallel in kind
+# to the historic-arm exclusion). Signal (IQR/10) binds the NYC reliability
+# and NJ axes; the noise floor binds Montague/Trenton reliability, the
+# Montague deficit-P99, both flood axes, and storage P01. NJ delivery is
+# ACTIVE (8th objective, activated 2026-07-30); the diagnostic P99 flood
+# variant remains outside the default set (mean operator adopted 2026-07-30)
+# but carries a calibrated value.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
@@ -632,6 +643,8 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of NYC delivery "
      "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
+     # 2.0 retained 2026-08-03 against the measured 10.0 rec (hazfill P99
+     # noise floor; see the header comment) — resolution kept at signal scale.
      "nyc_delivery_deficit_cvar90_pct", "minimize", 2.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
@@ -642,7 +655,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of weekly-mean Montague "
      "flow < 1131.05 MGD Decree target"),
     ("montague_flow_deficit_p99_pct",
-     "montague_flow_deficit_cvar90_pct", "minimize", 1.5,
+     "montague_flow_deficit_cvar90_pct", "minimize", 2.0,
      _montague_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
      "flow deficit, % of Decree target [0-100]"),
@@ -652,11 +665,13 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of weekly-mean Trenton "
      "flow < 1938.95 MGD Decree target"),
     ("downstream_flood_exceedance_annual",
-     "downstream_flood_exceedance_minor", "minimize", 0.01,
+     "downstream_flood_exceedance_minor", "minimize", 0.2,
      # worst_value: 366 days x ~15 ft, the largest per-day exceedance the
      # rating curves can produce before endpoint saturation (Bridgeville
-     # 27.9 ft rated max - 13 ft minor). Epsilon 0.01 is PROVISIONAL
-     # (flood_objective_diagnostics.md block 6) pending the calibration rerun.
+     # 27.9 ft rated max - 13 ft minor). Epsilon 0.2 is the FINAL calibrated
+     # value (2026-08-03 rerun; noise floor binds on both ensemble designs,
+     # replacing the provisional 0.01 from flood_objective_diagnostics.md
+     # block 6).
      _flood_exceedance_minor_annual, PooledMeanOp(worst_value=5490.0),
      "Mean across pooled unit-years of ft-days above NWS minor flood stage "
      "at the worst-affected tail gauge (expected annual flood exceedance)"),

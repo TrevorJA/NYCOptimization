@@ -405,13 +405,26 @@ def _weekly_flow_deficit_pct(flow: pd.Series, target: float) -> pd.Series:
     return 100.0 * deficit / target
 
 
+#: Numerical tolerance (MGD) on the weekly Decree-target comparison. Under
+#: perfect foresight the FFMP directed-release chain delivers the target
+#: EXACTLY, so summation rounding leaves weekly means ~1e-12 MGD below it;
+#: a strict >= then counts zero-deficit weeks as failures and the metric
+#: re-rolls with every ulp-level build change (measured 2026-08-03: the
+#: Pywr-DRB presim-consistency rebuild flipped 190 zero-deficit weeks and
+#: halved Montague reliability). Any value in 1e-9..1e-3 gives identical
+#: results; 1e-6 is far below the 0.01-MGD scale of real deficits.
+_FLOW_TARGET_TOL_MGD = 1e-6
+
+
 def _weekly_flow_ok(flow: pd.Series, target: float) -> pd.Series:
     """Weekly success indicators: weekly-mean flow >= a static Decree target.
 
-    Operates on an already-windowed daily flow series. A week with a non-finite
+    Operates on an already-windowed daily flow series. The comparison carries
+    ``_FLOW_TARGET_TOL_MGD`` of numerical headroom so weeks where the model
+    delivers the target exactly are successes. A week with a non-finite
     weekly mean compares False (a degenerate week is a failure week).
     """
-    return flow.resample("W").mean() >= target
+    return flow.resample("W").mean() >= target - _FLOW_TARGET_TOL_MGD
 
 
 def _flow_reliability_weekly(flow: pd.Series, target: float) -> float:

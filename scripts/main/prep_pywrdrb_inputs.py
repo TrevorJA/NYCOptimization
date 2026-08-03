@@ -90,7 +90,11 @@ def main() -> None:
               f"n_realizations={spec.n_realizations} "
               f"ranks={size}", flush=True)
 
-    manifest = stage_pywrdrb_ensemble_inputs(spec, use_mpi=use_mpi, comm=comm)
+    # Always rebuild: staged inputs must reflect the current pywrdrb code and
+    # data, and a silent skip-on-exists has already reused stale files once
+    # (2026-08-03). Regeneration is cheap relative to a poisoned search.
+    manifest = stage_pywrdrb_ensemble_inputs(
+        spec, use_mpi=use_mpi, comm=comm, force=True)
 
     if rank == 0:
         print("[prep_pywrdrb_inputs] staged:", flush=True)
