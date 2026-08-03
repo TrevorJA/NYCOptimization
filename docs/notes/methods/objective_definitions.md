@@ -97,7 +97,7 @@ drought).
 | 3 | `montague_flow_reliability_weekly` | `major_flow.delMontague` | frac of weeks `mean_w(flow) ≥ 1131.05` | MAX | frac | 0.02 |
 | 4 | `montague_flow_deficit_cvar90_pct` | `delMontague` | CVaR₉₀ of `100·max(0, 1131.05 − mean_w(flow))/1131.05` | MIN | % | 1.5 |
 | 5 | `trenton_flow_reliability_weekly` | `major_flow.delTrenton` | frac of weeks `mean_w(flow) ≥ 1938.95` | MAX | frac | 0.0003 |
-| 6 | `downstream_flood_days_minor` | `flood_stage` (Hale Eddy, Fishs Eddy, Bridgeville) | mean annual count of days any gauge `≥` its NWS **minor** flood stage | MIN | days/yr | 0.02 |
+| 6 | `downstream_flood_severity_minor` | `flood_stage` (Hale Eddy, Fishs Eddy, Bridgeville) | mean annual `Σ_days max_gauges (stage − minor)⁺` — ft·days above NWS **minor** flood stage at the worst-affected gauge | MIN | ft·days/yr | 0.01 |
 | 7 | `nyc_storage_p5_pct` | `res_storage[NYC]` | 5th percentile of daily `100·Σ_res storage / 270,837` | MAX | % | 1.5 |
 | 8 | `nj_delivery_reliability_weekly` | `delivery_nj`, `demand_nj` (right 100) | frac of weeks `Σ_w delivery_nj ≥ 0.99·Σ_w E_nj` (entitlement `E_nj = min(demand_nj,A_t)`, monthly reset) | MAX | frac | 0.007 |
 
@@ -120,11 +120,20 @@ experiment.
   tail-risk focus but averages the worst decile → reproducible, smooth Borg
   gradient. Montague flow is storm-dominated, so its single worst week is mostly
   exogenous noise — CVaR matters most there.
-- *Flood days at minor stage (6)* — count-over-threshold, normalized per
-  metric-window year so the metric is invariant to record length; the stable
-  form that avoids the expectation-of-damage trap (Quinn et al. 2017). The NWS **minor**
-  (flood-onset) stage marks actual flooding, a more meaningful goalpost than the
-  FFMP action cutoff; `major` and `action` variants are registered for swapping.
+- *Flood severity above minor stage (6)* — magnitude-weighted exceedance,
+  ADOPTED 2026-08-03 over the former day count
+  (`flood_objective_diagnostics.md`): the count is degenerate across policies
+  (9 distinct values over 25 feasible policies on the historic trace) while
+  the severity integral resolves fully and responds strictly monotonically to
+  the flood-release DVs; severity also tracks observed annual flood magnitude
+  better (Pearson 0.91 vs 0.83) without the expectation-of-damage trap — the
+  integrand is physical exceedance, not monetized damage (Quinn et al. 2017).
+  The max-across-gauges basis avoids triple-counting basin-wide events.
+  Normalized per metric-window year so the metric is invariant to record
+  length. The NWS **minor** (flood-onset) stage marks actual flooding, a more
+  meaningful goalpost than the FFMP cautionary cutoff — which is also the
+  control rule's own switching boundary; the day-count (`minor`/`major`/
+  `action`) variants stay registered as diagnostics.
 - *Storage p5 (7)* — a low percentile is a stable vulnerability proxy; the
   single-day minimum is dominated by one drought event (Quinn et al. 2017).
 - *Trenton vs salinity (5)* and *NJ delivery (8)* — give New Jersey, a co-equal
@@ -134,8 +143,8 @@ experiment.
   not collinear with Trenton reliability.
 
 **Diagnostics (registered, not active):** worst-case variants
-(`*_deficit_max_pct`, `nyc_storage_min_pct`), `downstream_flood_days_major` /
-`_action`, `trenton_flow_deficit_cvar90_pct`, the salt-front metric
+(`*_deficit_max_pct`, `nyc_storage_min_pct`), `downstream_flood_days_minor` /
+`_major` / `_action`, `trenton_flow_deficit_cvar90_pct`, the salt-front metric
 (`salt_front_intrusion_max_rm`), and the deferred Lordville thermal metric. They
 are available for swapping or re-evaluation reporting without code changes.
 
@@ -167,7 +176,7 @@ unit-years** with the objective's **unit operator**:
 | 3 | `montague_flow_reliability_annual` | failure-year indicator: ≥ k = 3 failing weeks (`mean_w(flow) < 1131.05`) | frequency of non-failure years | MAX | as #1 |
 | 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | as #2 |
 | 5 | `trenton_flow_reliability_annual` | failure-year indicator: ≥ k = 1 failing week vs 1938.95 MGD | frequency of non-failure years | MAX | as #1 |
-| 6 | `downstream_flood_days_annual` | count of minor-flood days in the year | **mean across unit-years** (expected annual flood days; ADOPTED 2026-07-30 — the P99 variant is tie-degenerate at NL = 900, 12–30× noisier, ranking-unstable, and stays a registered diagnostic; Quinn et al. 2017 expectation-masking caution answered by the screen) | MIN | Trindade expected-cost form; Quinn 2017 caution |
+| 6 | `downstream_flood_severity_annual` | `Σ_days max_gauges (stage − minor)⁺` in the year (ft·days; severity ADOPTED 2026-08-03 over the day count, which is degenerate across policies — `flood_objective_diagnostics.md`) | **mean across unit-years** (expected annual flood severity; MEAN ADOPTED 2026-07-30 — the P99 unit operator is tie-degenerate at NL = 900, 12–30× noisier, ranking-unstable, and the count variants stay registered diagnostics; Quinn et al. 2017 expectation-masking caution answered by the screen) | MIN | Trindade expected-cost form; Quinn 2017 caution |
 | 7 | `nyc_storage_min_p01_pct` | annual minimum of daily aggregate NYC storage % | **1st-percentile unit-year** | MAX | WP1 pattern (Quinn 2017/2018); Hamilton 2022 Q-of-max |
 | 8 | `nj_delivery_reliability_annual` | failure-year indicator (k = 1) vs NJ delivery criterion | frequency of non-failure years | MAX | as #1; activated 2026-07-30 (clean redundancy screen) |
 
@@ -493,7 +502,7 @@ Three compounding reasons a pooled reference set is biased across designs:
 | Reliability as weekly satisficing frequency | obj. 1, 3, 5, 8 | Hashimoto et al. 1982; Herman et al. 2015; Kasprzyk et al. 2013 |
 | CVaR₉₀ in place of worst-case deficit | obj. 2, 4 | Quinn et al. 2017; Fairbrother et al. 2022; Löhndorf 2016; Rockafellar & Uryasev 2000 |
 | Low percentile in place of single-day minimum | obj. 7 | Quinn et al. 2017 |
-| Count-over-threshold (flood days, minor stage) | obj. 6 | Quinn et al. 2017 |
+| Magnitude-weighted exceedance above flood stage (severity, minor stage) | obj. 6 | Quinn et al. 2017; `flood_objective_diagnostics.md` |
 | Trenton flow replacing salinity (physical redundancy) | obj. 5 | Trindade et al. 2017; Hadjimichael et al. 2020 |
 | ε ≈ IQR/10 calibration | §1 | Reed et al. 2013; Hadka & Reed 2013 |
 | Failure-year frequency across pooled units (search reliability) | §2 #1/3/5/8 | Zeff et al. 2014; Trindade et al. 2017; Gold et al. 2023 |

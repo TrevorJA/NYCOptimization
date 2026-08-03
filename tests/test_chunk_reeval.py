@@ -64,7 +64,7 @@ def test_chunk_reeval_matches_unchunked(tmp_path, monkeypatch):
     # Use objectives with DISTINCT §1 bases: the persisted re-eval matrix is keyed by
     # base name, so the mean/P99 flood variants (which share a base) cannot coexist here.
     monkeypatch.setattr(config, "ACTIVE_OBJECTIVES", [
-        "downstream_flood_days_annual",
+        "downstream_flood_severity_annual",
         "montague_flow_deficit_p99_pct",
         "nyc_delivery_reliability_annual",
     ])

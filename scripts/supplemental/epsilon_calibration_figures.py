@@ -133,6 +133,7 @@ _PREVIOUS_COLOR = "#000000"   # previous provisional registry vector
 #: Suffix for ladder row labels of objectives outside the default active set
 #: (NJ delivery left this dict at its activation, 2026-07-30).
 _NON_DEFAULT_NOTE = {
+    "downstream_flood_days_annual": " (diagnostic)",
     "downstream_flood_days_annual_p99": " (diagnostic)",
 }
 

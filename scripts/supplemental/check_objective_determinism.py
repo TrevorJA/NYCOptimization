@@ -84,6 +84,7 @@ _SHORT_OBJ_LABELS = {
     "montague_flow_reliability_annual": "Montague\nRel.",
     "montague_flow_deficit_p99_pct": "Montague Deficit\nCVaR90",
     "trenton_flow_reliability_annual": "Trenton\nRel.",
+    "downstream_flood_severity_annual": "Flood Severity\n(minor, ft·d)",
     "downstream_flood_days_annual": "Flood Days\n(minor)",
     "nyc_storage_min_p01_pct": "NYC Storage\nmin P01",
 }

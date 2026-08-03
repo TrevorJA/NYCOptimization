@@ -193,10 +193,11 @@ NWS minor stage, days/yr) is controllable by NYC release decisions versus set
 exogenously by the hydrology, pre-empting the critique that the search
 gradient on an exogenously dominated objective is too weak to be meaningful.
 
-**Method.** A post-hoc reduction of the epsilon cubes'
-`downstream_flood_days_annual` per-unit values, held for the full
-feasible-policy population **and** the default-FFMP baseline row on the same
-realizations, per design. For each pooled unit-year u:
+**Method.** A post-hoc reduction of the epsilon cubes' per-unit values of the
+ACTIVE flood objective (`downstream_flood_severity_annual` since 2026-08-03;
+cubes written earlier carry `downstream_flood_days_annual` in that role), held
+for the full feasible-policy population **and** the default-FFMP baseline row
+on the same realizations, per design. For each pooled unit-year u:
 
 - **empirical exogenous floor** F_min(u) = the minimum annual flood-day count
   across the policy population ∪ baseline;

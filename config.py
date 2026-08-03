@@ -410,7 +410,10 @@ NJ_DELIVERY_CAP_MGD = 100.0              # NJ diversion baseline (monthly-avg D&
 #   - NYC supply: weekly delivery reliability + tail (CVaR90) delivery deficit
 #   - Montague flow Decree (NYC's downstream obligation): reliability + CVaR90 deficit
 #   - Trenton flow Decree (lower-basin / NJ obligation; also repels salinity): reliability
-#   - downstream flood exposure: days any reservoir-tail gauge >= NWS minor flood stage
+#   - downstream flood exposure: ft-days above NWS minor flood stage at the
+#     worst-affected reservoir-tail gauge (severity ADOPTED 2026-08-03 over the
+#     day count, which is degenerate across policies —
+#     docs/notes/methods/flood_objective_diagnostics.md)
 #   - storage resilience: 5th-percentile combined NYC storage
 #   - NJ supply: weekly delivery reliability (ACTIVATED 2026-07-30 — the
 #     framing-convention redundancy screen found no collinearity with any
@@ -427,7 +430,7 @@ _DEFAULT_OBJECTIVES = [
     "montague_flow_reliability_weekly",
     "montague_flow_deficit_cvar90_pct",
     "trenton_flow_reliability_weekly",
-    "downstream_flood_days_minor",
+    "downstream_flood_severity_minor",
     "nyc_storage_p5_pct",
     "nj_delivery_reliability_weekly",
 ]

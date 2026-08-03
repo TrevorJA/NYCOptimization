@@ -287,6 +287,27 @@ def test_flood_days_annual_counts_days_per_unit_year():
     assert units.tolist() == [3.0, 0.0]
 
 
+def test_flood_severity_annual_integrates_worst_gauge_exceedance():
+    from pywrdrb.flood_thresholds import flood_stage_thresholds
+    from src.objectives import _DOWNSTREAM_GAUGES
+
+    idx = _wy_index(1945, 3)
+    below = {g: flood_stage_thresholds[g]["minor"] - 1.0
+             for g in _DOWNSTREAM_GAUGES}
+    stage = pd.DataFrame({g: np.full(len(idx), v) for g, v in below.items()},
+                         index=idx)
+    # One gauge 0.5 ft over flood stage on 3 days of the FIRST unit-year;
+    # a second gauge 0.2 ft over on ONE of those days — the max-gauge basis
+    # takes the worst exceedance per day, never the sum.
+    g0, g1 = _DOWNSTREAM_GAUGES[0], _DOWNSTREAM_GAUGES[1]
+    stage.loc["1947-04-01":"1947-04-03", g0] = (
+        flood_stage_thresholds[g0]["minor"] + 0.5
+    )
+    stage.loc["1947-04-02", g1] = flood_stage_thresholds[g1]["minor"] + 0.2
+    units = obj_ens._flood_severity_minor_annual({"flood_stage": stage})
+    assert units == pytest.approx([1.5, 0.0])
+
+
 def test_storage_min_annual_per_unit_year():
     idx = _wy_index(1945, 3)
     per_res = 0.8 * NYC_TOTAL_CAPACITY / len(NYC_RESERVOIRS)
@@ -369,6 +390,7 @@ ANNUAL_NAMES = [
     "montague_flow_reliability_annual",
     "montague_flow_deficit_p99_pct",
     "trenton_flow_reliability_annual",
+    "downstream_flood_severity_annual",
     "downstream_flood_days_annual",
     "downstream_flood_days_annual_p99",
     "nyc_storage_min_p01_pct",
@@ -383,7 +405,7 @@ ACTIVE_BASE_NAMES = [
     "montague_flow_reliability_weekly",
     "montague_flow_deficit_cvar90_pct",
     "trenton_flow_reliability_weekly",
-    "downstream_flood_days_minor",
+    "downstream_flood_severity_minor",
     "nyc_storage_p5_pct",
     "nj_delivery_reliability_weekly",
 ]
@@ -404,7 +426,7 @@ def test_base_names_resolve_to_active_annual_set():
         "montague_flow_reliability_annual",
         "montague_flow_deficit_p99_pct",
         "trenton_flow_reliability_annual",
-        "downstream_flood_days_annual",
+        "downstream_flood_severity_annual",
         "nyc_storage_min_p01_pct",
         "nj_delivery_reliability_annual",
     ]

@@ -108,6 +108,7 @@ from src.objectives import (
     _delivery_entitlement,
     _DOWNSTREAM_GAUGES,
     _flood_over_stage_daily,
+    _flood_severity_daily,
     _nyc_storage_pct_daily,
     _weekly_delivery_deficit_pct,
     _weekly_delivery_ok,
@@ -457,6 +458,23 @@ def _flood_days_minor_annual(data: dict) -> np.ndarray:
     ], dtype=float)
 
 
+def _flood_severity_minor_annual(data: dict) -> np.ndarray:
+    """Ft·days per unit-year above NWS minor flood stage at the worst gauge.
+
+    Plain UNNORMALIZED within-year sum of the daily max-across-gauges
+    exceedance (stage − minor)⁺ — the annual-unit counterpart of the §1
+    ``downstream_flood_severity_minor`` metric, which reports mean annual
+    ft·days/yr over its whole metric window.
+    """
+    sev = _flood_severity_daily(
+        data["flood_stage"][_DOWNSTREAM_GAUGES], "minor",
+    )
+    return np.asarray([
+        float(sev.iloc[sl].sum())
+        for sl in water_year_unit_slices(sev.index)
+    ], dtype=float)
+
+
 def _nyc_storage_min_annual(data: dict) -> np.ndarray:
     """Annual minimum of daily aggregate NYC storage % per unit-year. [0, 100]."""
     storage_pct = _nyc_storage_pct_daily(data)
@@ -527,8 +545,12 @@ _DEFAULT_THRESHOLDS: dict[str, float] = {
     "montague_flow_deficit_cvar90_pct__sat25":    25.0,
     "trenton_flow_reliability_weekly__sat85":     0.85,
     "nj_delivery_reliability_weekly__sat95":      0.95,
-    # Flood threshold in days/yr (the base metric is mean annual flood days);
-    # placeholder pending the satisficing-criterion diagnostics.
+    # Flood threshold in ft-days/yr (the base metric is mean annual flood
+    # severity); placeholder pending the satisficing-criterion diagnostics
+    # (anchors: observed 2000-2023 = 1.17, simulated baseline = 0.35
+    # ft-days/yr — flood_objective_diagnostics.md).
+    "downstream_flood_severity_minor__sat1":      1.0,
+    # DIAGNOSTIC counterpart in days/yr (the retired count metric).
     "downstream_flood_days_minor__sat1":          1.0,
     "nyc_storage_p5_pct__sat25":                  25.0,
 }
@@ -566,6 +588,8 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
      "trenton_flow_reliability_weekly__sat85",   "ge"),
     ("nj_delivery_reliability_weekly",
      "nj_delivery_reliability_weekly__sat95",    "ge"),
+    ("downstream_flood_severity_minor",
+     "downstream_flood_severity_minor__sat1",    "le"),
     ("downstream_flood_days_minor",
      "downstream_flood_days_minor__sat1",        "le"),
     ("nyc_storage_p5_pct",
@@ -627,11 +651,21 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      _trenton_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of weekly-mean Trenton "
      "flow < 1938.95 MGD Decree target"),
+    ("downstream_flood_severity_annual",
+     "downstream_flood_severity_minor", "minimize", 0.01,
+     # worst_value: 366 days x ~15 ft, the largest per-day exceedance the
+     # rating curves can produce before endpoint saturation (Bridgeville
+     # 27.9 ft rated max - 13 ft minor). Epsilon 0.01 is PROVISIONAL
+     # (flood_objective_diagnostics.md block 6) pending the calibration rerun.
+     _flood_severity_minor_annual, PooledMeanOp(worst_value=5490.0),
+     "Mean across pooled unit-years of ft-days above NWS minor flood stage "
+     "at the worst-affected tail gauge (expected annual flood severity)"),
     ("downstream_flood_days_annual",
      "downstream_flood_days_minor", "minimize", 0.05,
      _flood_days_minor_annual, PooledMeanOp(worst_value=366.0),
-     "Mean across pooled unit-years of days any tail gauge >= NWS minor "
-     "flood stage (expected annual flood days)"),
+     "DIAGNOSTIC (inactive; replaced by downstream_flood_severity_annual "
+     "2026-08-03 — the count is degenerate across policies): mean across "
+     "pooled unit-years of days any tail gauge >= NWS minor flood stage"),
     ("downstream_flood_days_annual_p99",
      "downstream_flood_days_minor", "minimize", 1.5,
      _flood_days_minor_annual, PooledPercentileOp(99.0, worst_value=366.0),
@@ -661,6 +695,7 @@ _BASE_TO_ENSEMBLE: dict[str, str] = {
     "montague_flow_reliability_weekly": "montague_flow_reliability_annual",
     "montague_flow_deficit_cvar90_pct": "montague_flow_deficit_p99_pct",
     "trenton_flow_reliability_weekly":  "trenton_flow_reliability_annual",
+    "downstream_flood_severity_minor":  "downstream_flood_severity_annual",
     "downstream_flood_days_minor":      "downstream_flood_days_annual",
     "nyc_storage_p5_pct":               "nyc_storage_min_p01_pct",
     "nj_delivery_reliability_weekly":   "nj_delivery_reliability_annual",

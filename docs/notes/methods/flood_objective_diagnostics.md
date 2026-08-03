@@ -9,10 +9,12 @@ stationary fixture, trimmed model, ~34 simulation-minutes) plus zero-simulation
 re-scorings of the completed Pywr-DRB flood-gauge diagnostic experiment
 (`../Pywr-DRB/experiments/nyc_flood_gauge_diagnostics/`, post-fix 2000–2023
 run). No simulation campaign is launched. Terminology per
-`docs/notes/terminology.md`. The verdicts below are the RECOMMENDATION from
-this diagnostic; the objective registry is unchanged until it is adopted, and
-any adoption reopens the §1 artifact-regeneration chain (epsilons → problem
-JARs) already open for the 2026-07-31 delivery-factor bounds change.*
+`docs/notes/terminology.md`. The recommendation was ADOPTED 2026-08-03: the
+active flood objective is now `downstream_flood_severity_minor` (§1) /
+`downstream_flood_severity_annual` (§2) and the day counts are registered
+diagnostics; the swap rides the §1 artifact-regeneration chain (epsilons →
+problem JARs → step-05 baseline) already open for the 2026-07-31
+delivery-factor bounds change.*
 
 ---
 
@@ -61,15 +63,15 @@ trimmed historic baseline, matched to 1e-12), and its sim-vs-obs block
 reproduces the gauge experiment's `summary.csv` aggregate exactly (0.4167
 days/yr).
 
-## 0b. Measured verdicts (2026-08-03, recommended)
+## 0b. Measured verdicts (2026-08-03, adopted)
 
-- **Flood objective — REPLACE the day count with C4, Σ over days of the
-  max-across-gauges (stage − minor)⁺ [ft-days/yr].** C4 keeps the regulatory
-  NWS flood-stage definition (FFMP2017 Appendix A §6.iv–vi: 11 / 13 / 13 ft),
-  sits 2 / 2 / 1 ft above the control rule's cautionary-stage discontinuity,
-  and is the only candidate class that passes every screen below. Proposed
-  names `downstream_flood_severity_minor` (§1) /
-  `downstream_flood_severity_annual` (§2); the incumbent count stays a
+- **Flood objective — day count REPLACED by C4, Σ over days of the
+  max-across-gauges (stage − minor)⁺ [ft-days/yr]; ADOPTED 2026-08-03.** C4
+  keeps the regulatory NWS flood-stage definition (FFMP2017 Appendix A
+  §6.iv–vi: 11 / 13 / 13 ft), sits 2 / 2 / 1 ft above the control rule's
+  cautionary-stage discontinuity, and is the only candidate class that passes
+  every screen below. Registered as `downstream_flood_severity_minor` (§1) /
+  `downstream_flood_severity_annual` (§2); the former count stays a
   registered diagnostic.
 - **Staleness audit — one stale file found and re-staged.** Checked by content
   (the post-fix construction fixes Hale-Eddy/Fishs-Eddy local inflows at the
@@ -272,27 +274,32 @@ they are noise disclosures, not campaign-scale predictions.
 
 ---
 
-## 7. Adoption checklist (when the recommendation is ratified)
+## 7. Adoption checklist (IMPLEMENTED 2026-08-03)
 
 The swap is cheap in code and expensive only in artifacts already queued for
-regeneration:
+regeneration. Items 1–3 are LANDED; item 4 is the remaining queue:
 
-1. `src/objectives.py` — register the §1 metric (`_flood_severity_anygauge`
-   core beside `_flood_over_stage_daily`; ε provisional 0.01 ft-days/yr);
-   keep `downstream_flood_days_minor` registered as a diagnostic.
-2. `src/objectives_ensemble.py` — annual severity function beside
-   `_flood_days_minor_annual`; new `_ANNUAL_REGISTRY_SPEC` row (PooledMean,
-   worst_value from 366 × the per-day cap-free maximum is unbounded — use the
-   §2 convention of the count row scaled by a generous stage bound, e.g.
-   366 × 15 ft-days), `_BASE_TO_ENSEMBLE` entry, `_REGISTRY_SPEC` sat row,
-   and a `downstream_flood_severity_minor__sat1` threshold (placeholder
-   pending the satisficing-criterion diagnostics; the observed 2000–2023
-   value is 1.17 ft-days/yr, the simulated baseline 0.35).
-3. `config.py` — swap the entry in `_DEFAULT_OBJECTIVES` (the set stays 8;
-   slugs stay `*_obj8`); `src/plotting/style.py` labels.
-4. Reopened by the swap (already open for the ±0.15 bounds change, so zero
-   extra cost if batched): the epsilon-calibration rerun → problem JARs
-   (TODO §1), and the step-05 baseline objective vector.
+1. DONE — `src/objectives.py`: `_flood_severity_daily` /
+   `_flood_severity_anygauge` cores beside the count helpers;
+   `downstream_flood_severity_minor` registered (ε provisional 0.01
+   ft-days/yr); `downstream_flood_days_minor` kept as a diagnostic.
+2. DONE — `src/objectives_ensemble.py`: `_flood_severity_minor_annual`;
+   active `downstream_flood_severity_annual` row (PooledMean, worst_value
+   5490 = 366 days × ~15 ft, the largest rated exceedance); count mean/P99
+   rows kept as diagnostics; `_BASE_TO_ENSEMBLE` + `_REGISTRY_SPEC` rows;
+   `downstream_flood_severity_minor__sat1 = 1.0` ft-days/yr placeholder
+   pending the satisficing-criterion diagnostics (anchors: observed
+   2000–2023 = 1.17, simulated baseline = 0.35).
+3. DONE — `config._DEFAULT_OBJECTIVES` swapped (set stays 8, slugs stay
+   `*_obj8`); `src/plotting/style.py` labels; the 11 pinned
+   `NYCOPT_OBJECTIVES` lists in `workflow/envs/*.env`; supplemental scripts
+   (`framing_convention_analysis._FLOOD_OBJECTIVE`, epsilon-figure ladder
+   notes, determinism labels); tests extended
+   (`test_flood_severity_annual_integrates_worst_gauge_exceedance`).
+4. OPEN (already queued for the ±0.15 bounds change, zero extra cost
+   batched): the epsilon-calibration rerun prices the final severity ε →
+   problem JARs (TODO §1) → the step-05 baseline objective vector, which is
+   STALE again as of this swap (its flood entry is a day count).
 
 ---
 
