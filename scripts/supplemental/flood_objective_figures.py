@@ -9,7 +9,7 @@ figures behind the flood-objective definition decision
      post-fix 2000-2023 run.
   B. Rating-curve exposure: how often, and how far, simulated flood-day
      discharges leave the rated range at each gauge (the risk a stage-based
-     severity metric carries; the stage-vs-flow-basis evidence).
+     exceedance metric carries; the stage-vs-flow-basis evidence).
   C. Resolution / discriminating power (decisive): distinct values, tie-pair
      fraction, spread, and occupied epsilon-boxes across the baseline+random
      policy sample, on the historic trace and on the KN ensemble; plus the
@@ -18,7 +18,7 @@ figures behind the flood-objective definition decision
      fraction t — Spearman |rho|, direction reversals, largest single-step
      share of range (cliff detection).
   E. Ensemble sampling noise: pooled unit-year distributions, zero-inflated
-     fraction, top-unit / top-day share of each severity integral, bootstrap
+     fraction, top-unit / top-day share of each exceedance integral, bootstrap
      SE of the ensemble estimate vs number of realizations.
   F. Epsilon proposal: max(IQR/10, granularity, noise) per candidate on both
      the whole-window (§1) and pooled-annual (§2) scales.

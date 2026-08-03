@@ -97,10 +97,10 @@ _FREQ_OBJECTIVES: tuple = (
     "nj_delivery_reliability_annual",
 )
 
-# The ACTIVE flood objective (severity ADOPTED 2026-08-03,
+# The ACTIVE flood objective (exceedance ADOPTED 2026-08-03,
 # flood_objective_diagnostics.md); cubes written before that date carry the
 # day count under this role instead — re-run on a current cube.
-_FLOOD_OBJECTIVE = "downstream_flood_severity_annual"
+_FLOOD_OBJECTIVE = "downstream_flood_exceedance_annual"
 
 
 def _load_cube(design: str) -> dict:

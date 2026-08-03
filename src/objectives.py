@@ -481,7 +481,7 @@ def _flood_days_anygauge(data: dict, level: str) -> float:
     return count / (n_days / 365.25)
 
 
-def _flood_severity_daily(stage: pd.DataFrame, level: str) -> pd.Series:
+def _flood_exceedance_daily(stage: pd.DataFrame, level: str) -> pd.Series:
     """Daily max-across-gauges positive exceedance above the named stage (ft).
 
     Operates on an already-windowed daily stage DataFrame whose columns are
@@ -497,7 +497,7 @@ def _flood_severity_daily(stage: pd.DataFrame, level: str) -> pd.Series:
     return stage.sub(thresh, axis=1).clip(lower=0.0).max(axis=1)
 
 
-def _flood_severity_anygauge(data: dict, level: str) -> float:
+def _flood_exceedance_anygauge(data: dict, level: str) -> float:
     """Mean annual ft·days above the named NWS stage at the worst gauge.
 
     The magnitude-weighted counterpart of :func:`_flood_days_anygauge`:
@@ -509,7 +509,7 @@ def _flood_severity_anygauge(data: dict, level: str) -> float:
     n_days = len(stage)
     if n_days == 0:
         return 0.0
-    total = float(_flood_severity_daily(stage, level).sum())
+    total = float(_flood_exceedance_daily(stage, level).sum())
     return total / (n_days / 365.25)
 
 
@@ -637,9 +637,9 @@ def _trenton_flow_deficit_cvar90_pct(data: dict) -> float:
 ###############################################################################
 
 
-def _downstream_flood_severity_minor(data: dict) -> float:
+def _downstream_flood_exceedance_minor(data: dict) -> float:
     """Mean annual ft·days above NWS minor flood stage at the worst gauge. [ft-days/yr]."""
-    return _flood_severity_anygauge(data, "minor")
+    return _flood_exceedance_anygauge(data, "minor")
 
 
 def _downstream_flood_days_minor(data: dict) -> float:
@@ -795,21 +795,21 @@ _register("trenton_flow_deficit_cvar90_pct", "minimize", 0.03,
           _trenton_flow_deficit_cvar90_pct)
 
 # --- Downstream flood exposure (any of Hale Eddy / Fishs Eddy / Bridgeville) ---
-# ACTIVE metric = magnitude-weighted severity, adopted 2026-08-03
+# ACTIVE metric = magnitude-weighted exceedance, adopted 2026-08-03
 # (flood_objective_diagnostics.md §0b): the day count is degenerate across
 # policies (9 distinct values / 25 feasible policies on the historic trace)
-# while the severity integral resolves fully and responds strictly
+# while the exceedance integral resolves fully and responds strictly
 # monotonically to the flood-release DVs. Severity epsilon 0.01 ft-days/yr is
 # PROVISIONAL (max(IQR/10, granularity) over the diagnostic's policy sample);
 # the epsilon-calibration rerun prices the final value. The day counts stay
 # registered as diagnostics; their epsilons keep the days/yr rescaling of the
 # whole-trace values (1.0/76 ~= 0.013 -> 0.02, 2.0/76 ~= 0.026 -> 0.03).
-_register("downstream_flood_severity_minor", "minimize", 0.01,
+_register("downstream_flood_exceedance_minor", "minimize", 0.01,
           "Mean annual ft-days above NWS minor flood stage at the "
-          "worst-affected tail gauge (flood severity) [ft-days/yr]",
-          _downstream_flood_severity_minor)
+          "worst-affected tail gauge (flood exceedance) [ft-days/yr]",
+          _downstream_flood_exceedance_minor)
 _register("downstream_flood_days_minor", "minimize", 0.02,
-          "DIAGNOSTIC (replaced by downstream_flood_severity_minor "
+          "DIAGNOSTIC (replaced by downstream_flood_exceedance_minor "
           "2026-08-03): mean annual days any tail gauge >= NWS minor flood "
           "stage [days/yr]",
           _downstream_flood_days_minor)

@@ -75,7 +75,7 @@ PREFERRED_ORDER: list[str] = [
     "trenton_flow_deficit_cvar90_pct",
     "salt_front_intrusion_max_rm",
     "nj_delivery_reliability_weekly",
-    "downstream_flood_severity_minor",
+    "downstream_flood_exceedance_minor",
     "downstream_flood_days_minor",
     "downstream_flood_days_action",
     "downstream_flood_days_major",

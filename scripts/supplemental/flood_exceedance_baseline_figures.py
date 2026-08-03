@@ -1,7 +1,7 @@
-"""flood_severity_baseline_figures.py - SI illustrations of the flood-severity metric.
+"""flood_exceedance_baseline_figures.py - SI illustrations of the flood-exceedance metric.
 
 Manuscript-SI figures conveying the interpretation of the recommended flood
-objective — **downstream flood severity**: the sum over days of the
+objective — **downstream flood exceedance**: the sum over days of the
 max-across-gauges exceedance above NWS flood stage, (stage − minor)⁺, in
 ft·days per year (`flood_objective_diagnostics.md` §0b). All figures show the
 DEFAULT FFMP policy (the baseline decision vector) under the two reference
@@ -12,26 +12,26 @@ simulations:
 
 Figures (under outputs/supplemental/flood_objective/figures/):
 
-  S_flood_severity_event_anatomy   how ft·days accumulate through a flood
+  S_flood_exceedance_event_anatomy   how ft·days accumulate through a flood
                                    event: per-gauge stage relative to its own
                                    NWS flood stage, the worst-gauge envelope,
-                                   and the daily severity increments, for the
+                                   and the daily exceedance increments, for the
                                    two largest simulated historic events.
-  S_flood_severity_annual_series   water-year severity across the full
+  S_flood_exceedance_annual_series   water-year exceedance across the full
                                    historic trace and the five KN
                                    realizations, with the objective value
-                                   (mean-annual severity) marked.
-  S_flood_severity_return_period   unit-year severity vs return period
+                                   (mean-annual exceedance) marked.
+  S_flood_exceedance_return_period   unit-year exceedance vs return period
                                    (Weibull plotting positions), historic vs
                                    KN pooled, with zero-year fractions.
 
 The baseline simulations (~1 min total) are cached to
-outputs/supplemental/flood_objective/cube/baseline_daily_severity.npz and
+outputs/supplemental/flood_objective/cube/baseline_daily_exceedance.npz and
 reused on re-plot; delete the cache to force re-simulation. Configuration
 lives in supplemental_config.py (FLOODOBJ_* section) — no CLI value flags.
 
 Usage:
-    python scripts/supplemental/flood_severity_baseline_figures.py
+    python scripts/supplemental/flood_exceedance_baseline_figures.py
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from src.plotting.style import apply_style, save_figure  # noqa: E402
 
-METRIC_NAME = "downstream flood severity"
+METRIC_NAME = "downstream flood exceedance"
 METRIC_DEF = ("ft·days above NWS flood stage at the worst-affected gauge, "
               "$\\Sigma_{days}\\,\\max_{gauges}\\,(stage - flood\\ stage)^+$")
 
@@ -73,12 +73,12 @@ GAUGE_COLORS = {"01426500": "#0072B2", "01421000": "#009E73",
 HIST_COLOR, ENS_COLOR = "#0072B2", "#D55E00"
 SEVERITY_COLOR = "#333333"
 
-#: Positive-severity days closer than this many days are one event.
+#: Positive-exceedance days closer than this many days are one event.
 EVENT_GAP_DAYS = 5
 #: Days of context drawn either side of an event window.
 EVENT_PAD_DAYS = 12
 
-CACHE = scfg.FLOODOBJ_CUBE_DIR / "baseline_daily_severity.npz"
+CACHE = scfg.FLOODOBJ_CUBE_DIR / "baseline_daily_exceedance.npz"
 
 
 def _minor_series() -> pd.Series:
@@ -109,11 +109,11 @@ def load_baseline_daily() -> dict:
 
     cfg = dvs_to_config(get_baseline_values(scfg.FLOODOBJ_FORMULATION),
                         scfg.FLOODOBJ_FORMULATION)
-    print("[severity_fig] simulating default FFMP baseline (historic) ...",
+    print("[exceedance_fig] simulating default FFMP baseline (historic) ...",
           flush=True)
     hist = _metric_window(run_simulation_inmemory(cfg)["flood_stage"][GAUGES])
 
-    print("[severity_fig] simulating default FFMP baseline (KN ensemble) ...",
+    print("[exceedance_fig] simulating default FFMP baseline (KN ensemble) ...",
           flush=True)
     spec = get_ensemble_spec(scfg.FLOODOBJ_ENSEMBLE_SLUG)
     per_real = run_simulation_ensemble_inmemory(cfg, spec)
@@ -134,13 +134,13 @@ def load_baseline_daily() -> dict:
     return out
 
 
-def daily_severity(stage: np.ndarray, minor: np.ndarray) -> np.ndarray:
+def daily_exceedance(stage: np.ndarray, minor: np.ndarray) -> np.ndarray:
     """Max-across-gauges positive exceedance above flood stage (ft), daily."""
     return np.clip(stage - minor[None, :], 0.0, None).max(axis=1)
 
 
 def wy_totals(dates: np.ndarray, sev: np.ndarray) -> pd.Series:
-    """Complete-water-year severity totals (ft·days) of a daily series."""
+    """Complete-water-year exceedance totals (ft·days) of a daily series."""
     from src.objectives_ensemble import water_year_unit_slices
 
     idx = pd.DatetimeIndex(dates)
@@ -154,7 +154,7 @@ def wy_totals(dates: np.ndarray, sev: np.ndarray) -> pd.Series:
 
 
 def find_events(dates: np.ndarray, sev: np.ndarray) -> pd.DataFrame:
-    """Contiguous positive-severity events (gap-merged), largest first."""
+    """Contiguous positive-exceedance events (gap-merged), largest first."""
     pos = np.flatnonzero(sev > 0)
     if pos.size == 0:
         return pd.DataFrame(columns=["start", "end", "total_ftd"])
@@ -178,7 +178,7 @@ def find_events(dates: np.ndarray, sev: np.ndarray) -> pd.DataFrame:
 def fig_event_anatomy(daily: dict, minor: pd.Series) -> None:
     dates = pd.DatetimeIndex(daily["hist_dates"])
     stage = daily["hist_stage"]
-    sev = daily_severity(stage, minor.to_numpy())
+    sev = daily_exceedance(stage, minor.to_numpy())
     events = find_events(daily["hist_dates"], sev).head(2)
 
     fig, axes = plt.subplots(
@@ -196,13 +196,13 @@ def fig_event_anatomy(daily: dict, minor: pd.Series) -> None:
         ax = axes[0, col]
         ax.axhline(0.0, color="#555555", lw=1.2)
         ax.fill_between(d, 0.0, env, color=SEVERITY_COLOR, alpha=0.18,
-                        lw=0, label="worst-gauge exceedance\n(the daily severity increment)")
+                        lw=0, label="worst-gauge exceedance\n(the daily exceedance increment)")
         for gi, g in enumerate(GAUGES):
             ax.plot(d, rel[:, gi], color=GAUGE_COLORS[g], lw=1.7,
                     label=GAUGE_LABELS[g])
         ax.text(d[2], 0.12, "NWS flood stage", color="#555555", fontsize=8,
                 va="bottom")
-        ax.set_title(f"{ev['start']:%b %Y} event — total severity "
+        ax.set_title(f"{ev['start']:%b %Y} event — total exceedance "
                      f"{ev['total_ftd']:.1f} ft·days", fontsize=10)
         if col == 0:
             ax.set_ylabel("stage relative to each gauge's\n"
@@ -216,7 +216,7 @@ def fig_event_anatomy(daily: dict, minor: pd.Series) -> None:
                      xy=(d[int(np.argmax(env))], env.max()),
                      xytext=(8, -2), textcoords="offset points", fontsize=9)
         if col == 0:
-            axb.set_ylabel("daily severity\nincrement (ft)")
+            axb.set_ylabel("daily exceedance\nincrement (ft)")
         for a in (ax, axb):
             a.tick_params(axis="x", labelrotation=25)
     fig.suptitle(
@@ -225,7 +225,7 @@ def fig_event_anatomy(daily: dict, minor: pd.Series) -> None:
         "flood stage across the three reservoir-tail gauges)",
         y=1.04)
     fig.tight_layout()
-    save_figure(fig, scfg.floodobj_figure_path("S_flood_severity_event_anatomy"))
+    save_figure(fig, scfg.floodobj_figure_path("S_flood_exceedance_event_anatomy"))
     plt.close(fig)
 
 
@@ -236,14 +236,14 @@ def fig_event_anatomy(daily: dict, minor: pd.Series) -> None:
 def fig_annual_series(daily: dict, minor: pd.Series) -> None:
     mn = minor.to_numpy()
     hist_wy = wy_totals(daily["hist_dates"],
-                        daily_severity(daily["hist_stage"], mn))
+                        daily_exceedance(daily["hist_stage"], mn))
     hist_years = len(hist_wy)
     hist_mean = hist_wy.sum() / hist_years
 
     ens_units = []
     for r in range(daily["ens_stage"].shape[0]):
         ens_units.append(wy_totals(daily["ens_dates"],
-                                   daily_severity(daily["ens_stage"][r], mn)))
+                                   daily_exceedance(daily["ens_stage"][r], mn)))
     pooled_mean = float(np.mean(np.concatenate(
         [u.to_numpy() for u in ens_units])))
 
@@ -253,14 +253,14 @@ def fig_annual_series(daily: dict, minor: pd.Series) -> None:
     ax.bar(hist_wy.index, hist_wy.values, width=0.8, color=HIST_COLOR)
     ax.axhline(hist_mean, color=SEVERITY_COLOR, ls="--", lw=1.3)
     ax.text(hist_wy.index[1], hist_mean + 0.25, "objective value: mean-annual "
-            f"severity = {hist_mean:.2f} ft·days/yr",
+            f"exceedance = {hist_mean:.2f} ft·days/yr",
             va="bottom", fontsize=8.5, color=SEVERITY_COLOR)
     for wy, v in hist_wy.nlargest(3).items():
         ax.annotate(f"WY{wy}", (wy, v), xytext=(0, 3),
                     textcoords="offset points", ha="center", fontsize=8)
     ax.set_title(f"historic trace (WY{hist_wy.index[0]}–{hist_wy.index[-1]})",
                  fontsize=10)
-    ax.set_ylabel("water-year severity\n(ft·days)")
+    ax.set_ylabel("water-year exceedance\n(ft·days)")
     ax.set_xlabel("water year")
 
     ax = axes[1]
@@ -282,13 +282,13 @@ def fig_annual_series(daily: dict, minor: pd.Series) -> None:
             color=SEVERITY_COLOR)
     ax.set_title("stationary Kirsch–Nowak baseline ensemble "
                  f"({len(ens_units)} × {n_per} unit-years)", fontsize=10)
-    ax.set_ylabel("unit-year severity\n(ft·days)")
+    ax.set_ylabel("unit-year exceedance\n(ft·days)")
 
     fig.suptitle(
         f"{METRIC_NAME.capitalize()} of the default FFMP policy\n"
         f"({METRIC_DEF})", y=1.03)
     fig.tight_layout()
-    save_figure(fig, scfg.floodobj_figure_path("S_flood_severity_annual_series"))
+    save_figure(fig, scfg.floodobj_figure_path("S_flood_exceedance_annual_series"))
     plt.close(fig)
 
 
@@ -299,10 +299,10 @@ def fig_annual_series(daily: dict, minor: pd.Series) -> None:
 def fig_return_period(daily: dict, minor: pd.Series) -> None:
     mn = minor.to_numpy()
     hist_wy = wy_totals(daily["hist_dates"],
-                        daily_severity(daily["hist_stage"], mn)).to_numpy()
+                        daily_exceedance(daily["hist_stage"], mn)).to_numpy()
     ens_wy = np.concatenate([
         wy_totals(daily["ens_dates"],
-                  daily_severity(daily["ens_stage"][r], mn)).to_numpy()
+                  daily_exceedance(daily["ens_stage"][r], mn)).to_numpy()
         for r in range(daily["ens_stage"].shape[0])
     ])
 
@@ -326,19 +326,19 @@ def fig_return_period(daily: dict, minor: pd.Series) -> None:
         zero_frac = float((vals == 0).mean())
         zero_note.append(f"{zero_frac:.0%} of "
                          f"{label.split('(')[0].strip()} years are zero")
-    ax.text(0.03, 0.74, "zero-severity years:\n  " + "\n  ".join(zero_note),
+    ax.text(0.03, 0.74, "zero-exceedance years:\n  " + "\n  ".join(zero_note),
             transform=ax.transAxes, fontsize=8.5, va="top",
             color=SEVERITY_COLOR)
     ax.set_xscale("log")
-    ax.set_xlabel("return period of the water-year severity (years)")
-    ax.set_ylabel("water-year severity (ft·days)")
+    ax.set_xlabel("return period of the water-year exceedance (years)")
+    ax.set_ylabel("water-year exceedance (ft·days)")
     ax.legend(frameon=False, fontsize=9, loc="upper left")
     ax.set_title(
         f"{METRIC_NAME.capitalize()} is episodic: most years contribute "
         "zero,\nthe objective integrates the exceedance of the rare flood "
         "years", fontsize=10)
     fig.tight_layout()
-    save_figure(fig, scfg.floodobj_figure_path("S_flood_severity_return_period"))
+    save_figure(fig, scfg.floodobj_figure_path("S_flood_exceedance_return_period"))
     plt.close(fig)
 
 
@@ -350,7 +350,7 @@ def main() -> None:
     fig_event_anatomy(daily, minor)
     fig_annual_series(daily, minor)
     fig_return_period(daily, minor)
-    print(f"[severity_fig] figures -> {scfg.FLOODOBJ_FIGURES_DIR}")
+    print(f"[exceedance_fig] figures -> {scfg.FLOODOBJ_FIGURES_DIR}")
 
 
 if __name__ == "__main__":

@@ -61,7 +61,7 @@ OBJ_SHORT: list[str] = [
     "Montague Rel.\n(weekly)",
     "Montague Def.\n(wk CVaR90)",
     "Trenton Rel.\n(weekly)",
-    "Flood Severity\n(ft·d, minor)",
+    "Flood Exceedance\n(ft·d, minor)",
     "Storage\n(daily P5)",
     "NJ Rel.\n(weekly)",
 ]
@@ -88,9 +88,9 @@ OBJECTIVE_LABELS: dict[str, str] = {
     "trenton_flow_reliability_annual":  "Trenton Flow Reliability (annual)",
     "trenton_flow_deficit_cvar90_pct":  "Trenton Flow Deficit (weekly CVaR90, %)",
     # Downstream flooding: ft·days above the NWS minor flood stage at the
-    # worst-affected gauge (severity, active); day counts are diagnostics.
-    "downstream_flood_severity_minor":  "Flood Severity (NWS minor, ft·d/yr)",
-    "downstream_flood_severity_annual": "Flood Severity (NWS minor, annual mean)",
+    # worst-affected gauge (exceedance, active); day counts are diagnostics.
+    "downstream_flood_exceedance_minor":  "Flood Exceedance (NWS minor, ft·d/yr)",
+    "downstream_flood_exceedance_annual": "Flood Exceedance (NWS minor, annual mean)",
     "downstream_flood_days_minor":      "Flood Days (NWS minor, days/yr)",
     "downstream_flood_days_annual":     "Flood Days (NWS minor, annual mean)",
     "downstream_flood_days_annual_p99": "Flood Days (NWS minor, annual P99)",
@@ -124,8 +124,8 @@ OBJ_AXIS_LABELS: dict[str, str] = {
     "montague_flow_deficit_p99_pct":     "Montague Flow Deficit\nannual CVaR90 %\n(min)",
     "trenton_flow_reliability_weekly":   "Trenton Flow\nReliability (weekly)\n(max)",
     "trenton_flow_reliability_annual":   "Trenton Flow\nReliability (annual)\n(max)",
-    "downstream_flood_severity_minor":   "Flood Severity\nNWS minor, ft·d/yr\n(min)",
-    "downstream_flood_severity_annual":  "Flood Severity\nNWS minor, annual mean\n(min)",
+    "downstream_flood_exceedance_minor":   "Flood Exceedance\nNWS minor, ft·d/yr\n(min)",
+    "downstream_flood_exceedance_annual":  "Flood Exceedance\nNWS minor, annual mean\n(min)",
     "downstream_flood_days_minor":       "Flood Days\nNWS minor, days/yr\n(min)",
     "downstream_flood_days_annual":      "Flood Days\nNWS minor, annual mean\n(min)",
     "nyc_storage_p5_pct":                "NYC Storage\ndaily 5th pctile %\n(max)",
