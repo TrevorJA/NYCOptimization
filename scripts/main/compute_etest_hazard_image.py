@@ -23,12 +23,26 @@ Run after E_test is staged (workflow step 12 / ``generate_test_ensemble.py``)::
 
 Configuration is via environment variables (no CLI value flags):
 
-    NYCOPT_ETEST_VARIANT   E_test variant whose staged slug is scored (default "kn")
+    NYCOPT_ETEST_VARIANT             E_test variant whose staged slug is scored (default "kn")
+    NYCOPT_ETEST_HAZARD_SHARD_INDEX  When set: score ONLY this chunk index, write its
+                                     shard file, and exit (one SLURM array task per
+                                     chunk; workflow/supplemental/etest_hazard_image_shards.sh).
+                                     Unset: the original serial loop over all chunks
+                                     (the reference path).
+    NYCOPT_ETEST_HAZARD_MERGE        "1": verify every shard file exists, then merge and
+                                     write the final artifact without recomputing anything
+                                     (workflow/supplemental/etest_hazard_image_merge.sh).
+
+The merge is a pure function of the shard contents: rows are lexsorted by
+(realization_id, window_index) and every key is unique, so shard-then-merge is
+byte-identical to the serial loop regardless of completion order.
 """
 
 from __future__ import annotations
 
+import os
 import sys
+import time
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -114,12 +128,16 @@ def _score_chunk(
 
     rows_by_key: dict[tuple[int, int], np.ndarray] = {}
     axes: list[str] = []
+    t_read = t_score = 0.0
     for b0 in range(0, len(local_ids), _READ_BATCH):
         batch_local = local_ids[b0:b0 + _READ_BATCH]
         batch_global = global_ids[b0:b0 + _READ_BATCH]
+        _t = time.perf_counter()
         ens = Ensemble.from_hdf5(
             str(chunk_path / "catchment_inflow_mgd.hdf5"), realization_subset=batch_local
         )
+        t_read += time.perf_counter() - _t
+        _t = time.perf_counter()
         # from_hdf5 re-keys the subset 0..len-1 in `batch_local` order.
         agg = {
             g: ens.data_by_realization[i].loc[:, list(DEFAULT_NYC_INFLOW_NODES)].sum(axis=1)
@@ -141,12 +159,42 @@ def _score_chunk(
             )
             for r, g in enumerate(batch_global):
                 rows_by_key[(g, k)] = H_win[r]
+        t_score += time.perf_counter() - _t
 
+    print(f"[etest-hazard]   {chunk_path.name}: read {t_read:.1f}s, "
+          f"score {t_score:.1f}s", flush=True)
     keys = sorted(rows_by_key)
     H = np.vstack([rows_by_key[key] for key in keys])
     rid = np.asarray([key[0] for key in keys], dtype=int)
     win = np.asarray([key[1] for key in keys], dtype=int)
     return H, rid, win, list(axes)
+
+
+def _merge_shards(shard_paths: list[Path], out_path: Path, R: int) -> None:
+    """Merge per-chunk shard files into the canonical sub-window image.
+
+    A pure function of the shard contents: rows are lexsorted by
+    ``(realization_id, window_index)`` and every key is unique with disjoint
+    rid ranges per chunk, so the output is independent of shard completion
+    order and of row order within a shard. Shards are unlinked after the write.
+    """
+    parts = [np.load(p, allow_pickle=True) for p in shard_paths]
+    H = np.vstack([p["H"] for p in parts])
+    rid = np.concatenate([p["realization_ids"] for p in parts])
+    win = np.concatenate([p["window_index"] for p in parts])
+    axes = [str(a) for a in parts[0]["hazard_axes"]]
+    order = np.lexsort((win, rid))
+    H, rid, win = H[order], rid[order], win[order]
+    np.savez(
+        out_path,
+        H=H, hazard_axes=np.asarray(axes, dtype=object),
+        realization_ids=rid, window_index=win, theta_index=rid // R,
+        window_years=np.asarray(SCENARIO_YEARS), exclusion_months=np.asarray(METRIC_EXCLUSION_MONTHS),
+    )
+    for p in shard_paths:
+        p.unlink()
+    print(f"[etest-hazard] wrote {out_path} ({H.shape[0]} rows x {H.shape[1]} axes); "
+          f"removed {len(shard_paths)} shards.")
 
 
 def main() -> None:
@@ -175,10 +223,21 @@ def main() -> None:
     print(f"[etest-hazard] '{slug}': {len(chunks)} chunk(s), {n_windows} disjoint "
           f"{SCENARIO_YEARS}-yr sub-windows per realization.")
 
+    shard_env = os.environ.get("NYCOPT_ETEST_HAZARD_SHARD_INDEX", "")
+    shard_index = int(shard_env) if shard_env != "" else None
+    merge_only = os.environ.get("NYCOPT_ETEST_HAZARD_MERGE", "0") == "1"
+    if shard_index is not None and not (0 <= shard_index < len(chunks)):
+        raise ValueError(
+            f"NYCOPT_ETEST_HAZARD_SHARD_INDEX={shard_index} out of range for "
+            f"{len(chunks)} chunks."
+        )
+
     shard_paths: list[Path] = []
     for i, (spec, gids) in enumerate(chunks):
         shard = out_dir / f"hazard_image_subwindows_shard_{i:03d}.npz"
         shard_paths.append(shard)
+        if merge_only or (shard_index is not None and i != shard_index):
+            continue
         if shard.exists():
             print(f"[etest-hazard] chunk {i}: shard already staged, skipping.")
             continue
@@ -191,23 +250,20 @@ def main() -> None:
                  hazard_axes=np.asarray(axes, dtype=object))
         print(f"[etest-hazard] chunk {i}: {H.shape[0]} rows -> {shard.name}")
 
-    parts = [np.load(p, allow_pickle=True) for p in shard_paths]
-    H = np.vstack([p["H"] for p in parts])
-    rid = np.concatenate([p["realization_ids"] for p in parts])
-    win = np.concatenate([p["window_index"] for p in parts])
-    axes = [str(a) for a in parts[0]["hazard_axes"]]
-    order = np.lexsort((win, rid))
-    H, rid, win = H[order], rid[order], win[order]
-    np.savez(
-        out_path,
-        H=H, hazard_axes=np.asarray(axes, dtype=object),
-        realization_ids=rid, window_index=win, theta_index=rid // R,
-        window_years=np.asarray(SCENARIO_YEARS), exclusion_months=np.asarray(METRIC_EXCLUSION_MONTHS),
-    )
-    for p in shard_paths:
-        p.unlink()
-    print(f"[etest-hazard] wrote {out_path} ({H.shape[0]} rows x {H.shape[1]} axes); "
-          f"removed {len(shard_paths)} shards.")
+    if shard_index is not None:
+        print(f"[etest-hazard] shard mode: chunk {shard_index} done; merge "
+              f"separately with NYCOPT_ETEST_HAZARD_MERGE=1.")
+        return
+
+    if merge_only:
+        missing = [p.name for p in shard_paths if not p.exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"[etest-hazard] merge: {len(missing)} shard(s) missing: "
+                f"{missing[:10]}{'...' if len(missing) > 10 else ''}"
+            )
+
+    _merge_shards(shard_paths, out_path, R)
 
 
 if __name__ == "__main__":

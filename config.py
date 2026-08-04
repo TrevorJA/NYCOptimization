@@ -825,6 +825,57 @@ REEVAL_ENSEMBLE_SPEC = get_ensemble_spec(NYCOPT_REEVAL_ENSEMBLE_PRESET)
 # for large search ensembles (e.g. N>=128) to avoid OOM on a Borg worker.
 SEARCH_REALIZATION_BATCH = _parse_int_env("NYCOPT_SEARCH_REALIZATION_BATCH", 0)
 
+# Print a one-line build/run/extract wall-time split per ensemble model run
+# (src/simulation.py::run_simulation_ensemble_inmemory). Logging only — never
+# affects results. Used to attribute per-(solution, chunk) unit cost in the
+# step 08/09 re-evaluation before committing to a campaign geometry.
+SIM_PHASE_TIMING = _parse_int_env("NYCOPT_SIM_PHASE_TIMING", 0)
+
+# --- Chunked re-evaluation (step 09, src/chunk_reeval.py) execution knobs ---
+# None of these change results — every unit's rows are keyed by (solution id,
+# GLOBAL realization id, objective), so persistence layout, scheduling, and
+# merge placement provably cannot alter the merged re-evaluation cube
+# (tests/test_chunk_reeval.py proves equality). They exist because the campaign
+# re-eval (~55k units of ~1 h each) must survive wall-clock kills and rank
+# imbalance that the legacy one-shot path cannot.
+#
+# CHUNK_INCREMENTAL  1 (default): flush each completed (solution, chunk) unit
+#                    to partial/units/chunk{j}/sol{sid}.parquet atomically and
+#                    skip already-done units on restart — resubmitting the same
+#                    sbatch IS the resume. 0: legacy accumulate-in-memory,
+#                    one write per rank at the end.
+# CHUNK_SCHEDULE     claim (default): ranks pull units off a shared chunk-major
+#                    list via O_CREAT|O_EXCL claim files (dynamic, restart-
+#                    tolerant load balance in the repo's .done-marker idiom).
+#                    interleave: static strided over the chunk-major list.
+#                    contiguous: the legacy s-major np.array_split assignment.
+# CHUNK_MERGE        job (default): rank 0 merges after all ranks finish (small
+#                    runs). off: ranks only write units and exit — no
+#                    await_all_done barrier at all; merge separately via
+#                    workflow/09b_merge_test_chunks.sh (campaign runs).
+# CHUNK_MERGE_ALLOW_PARTIAL  1: merge with missing units as NaN rows (same
+#                    semantics as a failed unit) instead of refusing.
+# CHUNK_DONE_DEADLINE_S      await_all_done deadline for the in-job merge.
+# CHUNK_RETRY_FAILED 1: a resume re-attempts units whose previous run raised
+#                    (their .failed sidecars are otherwise treated as done).
+# CHUNK_STOP_EPOCH / CHUNK_UNIT_SECONDS  wall guard: don't start a unit within
+#                    1.25 x CHUNK_UNIT_SECONDS of CHUNK_STOP_EPOCH (unix time;
+#                    the sbatch script exports it from scontrol's EndTime).
+CHUNK_INCREMENTAL = _parse_int_env("NYCOPT_CHUNK_INCREMENTAL", 1)
+CHUNK_SCHEDULE = os.environ.get("NYCOPT_CHUNK_SCHEDULE", "claim")
+CHUNK_MERGE = os.environ.get("NYCOPT_CHUNK_MERGE", "job")
+CHUNK_MERGE_ALLOW_PARTIAL = _parse_int_env("NYCOPT_CHUNK_MERGE_ALLOW_PARTIAL", 0)
+CHUNK_DONE_DEADLINE_S = _parse_float_env("NYCOPT_CHUNK_DONE_DEADLINE_S", 10800.0)
+CHUNK_RETRY_FAILED = _parse_int_env("NYCOPT_CHUNK_RETRY_FAILED", 0)
+CHUNK_STOP_EPOCH = _parse_float_env("NYCOPT_CHUNK_STOP_EPOCH", 0.0)
+CHUNK_UNIT_SECONDS = _parse_float_env("NYCOPT_CHUNK_UNIT_SECONDS", 0.0)
+
+# FIFO bound on the per-process base model_dict cache
+# (src/simulation.py::_get_cached_model_dict). Speed/memory only — a cache miss
+# rebuilds the dict (~1 s) with identical content. The chunked re-eval visits
+# 50 chunk presets (x batch offsets) per rank; unbounded growth was ~GBs/rank.
+MODEL_DICT_CACHE_MAX = _parse_int_env("NYCOPT_MODEL_DICT_CACHE_MAX", 8)
+
 # Optional realization-index override on the search ensemble. Useful for smoke
 # testing a subset of a large ensemble without authoring a new preset.
 _ensemble_indices_override = _parse_int_list_env("NYCOPT_ENSEMBLE_INDICES", [])

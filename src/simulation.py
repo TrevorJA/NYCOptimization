@@ -49,6 +49,7 @@ from config import (
     INCLUDE_SALINITY_MODEL,
     INCLUDE_TEMPERATURE_MODEL,
     NYC_DECREE_DIVERSION_CAP_MGD,
+    SIM_PHASE_TIMING,
 )
 from src.formulations import get_formulation, get_var_names
 from src.formulations.salt_front_dvs import apply_salt_front_dvs
@@ -222,6 +223,13 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
         )
         if key == (legacy_levels, False, False, True, "historic_single", ""):
             _CACHED_MODEL_DICT = _CACHED_MODEL_DICTS[key]
+        # FIFO bound: the chunked re-eval walks 50 chunk presets (x batch
+        # offsets) per rank; unbounded growth is GBs/rank. Eviction is
+        # speed-only — a re-miss rebuilds an identical dict (~1 s).
+        from config import MODEL_DICT_CACHE_MAX
+
+        while len(_CACHED_MODEL_DICTS) > max(1, MODEL_DICT_CACHE_MAX):
+            _CACHED_MODEL_DICTS.pop(next(iter(_CACHED_MODEL_DICTS)))
     return _CACHED_MODEL_DICTS[key]
 
 
@@ -1515,6 +1523,7 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
     # inflow_ensemble_indices are set. We pass use_trimmed=None so the
     # cache picks up USE_TRIMMED_MODEL from config, matching the legacy
     # single-trace behavior.
+    t0 = time.perf_counter()
     base_dict = _get_cached_model_dict(
         use_trimmed=None,
         nyc_config=nyc_config,
@@ -1526,9 +1535,11 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
     with open(model_json, "w") as f:
         json.dump(model_dict, f)
     model = pywrdrb.Model.load(model_json)
+    t_build = time.perf_counter()
 
     mem_recorder = InMemoryRecorder(model)
     model.run()
+    t_run = time.perf_counter()
 
     datetime_index = model.timestepper.datetime_index.to_timestamp()
     data_per_real = _extract_results_per_scenario(
@@ -1540,6 +1551,16 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
     for s in range(ensemble_spec.n_realizations):
         _extract_salinity_records(
             model, datetime_index, data_per_real[s], scenario=s,
+        )
+
+    if SIM_PHASE_TIMING:
+        t_extract = time.perf_counter()
+        print(
+            f"[phase] preset={ensemble_spec.preset_name} "
+            f"n_scen={ensemble_spec.n_realizations} "
+            f"build_s={t_build - t0:.2f} run_s={t_run - t_build:.2f} "
+            f"extract_s={t_extract - t_run:.2f}",
+            flush=True,
         )
 
     del model, mem_recorder

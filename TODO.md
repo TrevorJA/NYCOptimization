@@ -131,6 +131,84 @@ ensemble design, ~26 SU each).
 - [ ] **[HPC]** End-to-end smoke of `hazard_filling_stationary`: step 06 only (`submit_smoke.sh` = 79 MPI ranks). Local half DONE 2026-07-31 — steps 02→03→04 at P=1000/N=50 exercised wet-exclusion, the robust p1/p99 bounds and the dedupe-only screen; selection ran on the m6 campaign axes (6/6 retained), `axis_screen` + per-axis bounds/clipped fractions + coverage-vs-null persisted in the staged meta, all four pywrdrb inputs staged, and one trimmed-model evaluation on the result returned 8 finite objectives. Untested locally: the MPI fan-out in step 04 (no `mpirun` on the laptop; ran 1 rank).
 - [ ] **[HPC]** `pilot` MOEA config go/no-go run.
 
+## 4b. Pre-campaign parallelization (2026-08-04, all working trees UNCOMMITTED for review)
+
+Wallclock/SU reduction pass, output-identical by construction and gated on
+bit-compare acceptance tests (plan:
+`~/.claude/plans/prompt-task-reduce-total-silly-spark.md`). Measured profile
+first: step-04's ~52-59 min/chunk was 98.9% the perfect-foresight
+`PredictedInflowEnsemblePreprocessor` (flood 19-24 s, presim 10-14 s — the §5
+"presim ~3 min/realization" note below was a MISATTRIBUTION; the presim
+vectorization bought ~no wall time); pool shards are 12.1-12.4 h median (not
+~9 h) with the fit ≈ 30 s (the log-inferred "75-min fit" is unattributed
+generation-loop overhead — instrumentation added, next production shard log
+answers it); the E_test sub-window hazard job paces 0.386 s/realization.
+
+- [x] **DONE — pywrdrb predicted-inflow vectorization** (`../Pywr-DRB`
+  `pre/predict_inflows.py`): perfect-foresight kernel vectorized per
+  realization (get_indexer shift + hoisted wd/cu + np.minimum elementwise
+  twin, 99fd7d6 discipline; scalar path retained as reference via
+  `_vectorize_perfect_foresight=False`); narrowed HDF5 reads to the 18
+  travel-time nodes; datetime strings encoded once in save(). Gates:
+  `../Pywr-DRB/tests/test_predicted_inflow_vectorized.py` 3/3 (float32
+  fixtures, both-direction .iloc[-1] fills, interior windows);
+  `tests/test_predicted_inflow_vectorization.py` @slow PASSED (kn_50yr_n5,
+  every dataset bit-equal); **production bitcheck PASSED job 19662429 —
+  chunk000 regenerated on 33 ranks and EXACT bit-identical to the staged
+  scalar artifact, whole job 31 s** (stage was ~51 min → step-04 chunk now
+  ~1-2 min, I/O-bound; retained gate:
+  `workflow/supplemental/predicted_inflow_bitcheck.sh`). Future staging
+  passes drop ~1,500 core-h each; the already-staged E_test is untouched.
+- [x] **DONE — hazard-kernel efficiency** (scengen sibling tree +
+  NYCOptimization): reference-SSI fit + POT threshold now cached
+  content-keyed in `scengen/hazard_metrics.py::get_reference_fits` (was
+  refit per call: 1,250×/E_test image run; same-fitted-object reuse ⇒ exact;
+  scengen tests 10/10 incl. 2 new cache tests);
+  `compute_etest_hazard_image.py` array-parallelized via
+  `NYCOPT_ETEST_HAZARD_SHARD_INDEX`/`_MERGE` + new
+  `workflow/supplemental/etest_hazard_image_{shards,merge}.sh` (array 0-49;
+  wall ~2h42m → ~5-10 min; serial loop unchanged as reference; merge proven
+  row-order-invariant in `tests/test_etest_hazard_shards.py`). Row-level
+  gate vs the production `hazard_image_subwindows.npz` (landed 2026-08-04
+  ~15:00, job 19660004): `scripts/supplemental/verify_etest_hazard_rows.py`
+  — run in flight. Phase instrumentation added to
+  `src/ensemble_generation.py` (fit/generate/disagg/hazard/write totals) and
+  `_score_chunk` (read vs score). SSI-transform fast path DEFERRED and
+  generator-state persistence DROPPED (Trevor 2026-08-04); zero-code note:
+  stream-only pool shards have no alignment constraint —
+  `NYCOPT_ENSEMBLE_SHARD_COUNT=100` halves a future draw's 12.2 h wall.
+- [x] **DONE — step 08/09 re-eval hardening** (`src/chunk_reeval.py`
+  rewrite): incremental per-unit atomic persistence + resume
+  (`partial/units/chunk{j}/sol{sid}.parquet`, `.failed` sidecars keep the
+  NaN semantics; resubmitting the same sbatch resumes), claim-file dynamic
+  scheduling over a chunk-major list (`NYCOPT_CHUNK_SCHEDULE`, legacy
+  contiguous retained), wall guard (`NYCOPT_CHUNK_STOP_EPOCH` exported by
+  the sbatch script), merge split out (`NYCOPT_CHUNK_MERGE=off` removes the
+  await_all_done barrier whose 1800 s deadline would have discarded every
+  campaign merge; new `scripts/main/merge_test_chunks.py` +
+  `workflow/09b_merge_test_chunks.sh`; direct-placement merge, no 240M-row
+  pivots), `[unit]`/`[phase]` telemetry, model-dict cache FIFO-bounded
+  (`NYCOPT_MODEL_DICT_CACHE_MAX=8`). Gates: `tests/test_chunk_reeval.py`
+  5/5 (incremental==legacy, schedule invariance, resume==oneshot with
+  skip-idempotency call counts, standalone==in-job merge + partial-NaN) —
+  NOTE: mpi-touching pytest suites must run as `mpirun -np 1 python -m
+  pytest ...` on compute nodes (bare `srun python -m pytest` dies silently
+  in MPI_Init); real-sim gate `workflow/supplemental/
+  mini_etest_reeval_bitcompare.sh` (mini etest_kn_10yr_n4, legacy serial vs
+  4-rank claim path, bit-identical reeval_raw) submitted 19663187.
+- [x] **CANCELLED 2026-08-04 (Trevor)** — dedicated re-eval unit profiling
+  P1-P4 (jobs 19662118-21) scancelled before running: Anvil batch-scaling
+  experiments already exist (the §6 ledger's 128-ranks/node 0.729
+  strong-scaling figure), and the rewrite makes precise pre-measurement
+  unnecessary — resume means a mis-sized job loses at most one unit/rank,
+  and the always-on `[unit] ... rss_gb` telemetry makes the FIRST campaign
+  job its own profile. Campaign runbook: start step 09 at a conservative
+  geometry (e.g. 64 ranks/node shared, batch=100), read the telemetry after
+  ~1 h, then scale the resume-chained resubmissions (sketch: 8 wholenode ×
+  128 ranks × 24 h ≈ 69k SU vs the ledger's ~80k; NEVER 64 ranks/node on
+  exclusive wholenode). Submission line documented in
+  `workflow/09_simulate_test_chunks.sh` header.
+
 ## 5. Production gates
 
 - [ ] **[HPC]** Generate production pools (K draws) + `fixed_probabilistic` draws + E_test (step 12 at the locked sizing, then step 04 incl. the one-time full-model presim pass over its 25,000 realizations). P=1e6 draw-0 image already staged (`statpool_10yr_n1000000_d0`; a prefix is an honest pool of any smaller P); draws 1..K−1 still to generate (sharded path: `workflow/supplemental/gen_pool_shards.sh` + `gen_pool_merge.sh`, ~600 core-hours each). **Per-draw gate**: re-confirm the per-axis tail-share adequacy gate (min ≥ ~0.30 on the campaign 6-axis set, N=100) on EACH production draw's hazard image — the P=1e6 draw-0 margin is thin (0.311; per-seed min 0.28–0.35), per the §2 (m, N, P) decision and the battery rerun (both in DONE).
@@ -178,11 +256,66 @@ ensemble design, ~26 SU each).
   Validated: new `test_sharded_chunked_generation_matches_serial` (every
   artifact bit-identical serial vs shard⊎merge) + misalignment-rejection
   test; full determinism/shard/etest suites 31/31 pass (job 19654507).
-  IN FLIGHT: shard array 19654577 → merge 19654610 → step-04 staging+presim
-  19654612. Serial chunk000 snapshotted to `_serialref_etest_chunk000` on
-  project space for a production-scale cross-partition check (compare at the
-  1%-range tolerance per the cross-job FP convention, then delete). Code
-  changes are UNCOMMITTED for Trevor's review. E_test lives on
+  **GENERATION DONE 2026-08-04 ~11:00**: all 50 shards completed in ~2h
+  each (19654577), merge 19654610 verified 50 chunks tile [0, 25000), wrote
+  the canonical artifacts, and passed assert_staged_etest_contract. The
+  production-scale cross-partition check came back BIT-IDENTICAL (serial vs
+  shard-0 chunk000, worst diff 0.0 on both HDF5s; snapshot deleted after the
+  check). Wall time ~3h vs ~84h serial.
+  **Staging gap found + fixed 2026-08-04**: step-04 against the parent slug
+  (19654612) FAILED immediately — a LATENT gap, not a shard regression:
+  `ensemble_prep` expects a monolithic catchment_inflow_mgd.hdf5 in the slug
+  dir, but E_test daily data lives only in the 50 chunk dirs (the original
+  chained staging job 19644594 would have failed identically; this path had
+  never run end-to-end). The chunked re-eval (step 09, src/chunk_reeval.py)
+  simulates PER CHUNK — each chunk is a standalone staged ensemble — so the
+  step-04 inputs belong per chunk dir: new
+  `workflow/supplemental/prep_etest_chunks.sh` (array 0-49, one
+  `--preset {slug}__chunk{JJJ}` prep per task through the ordinary prep
+  path). Chunk-0 validation (19659496) PASSED 2026-08-04 12:05 — all four
+  inputs staged in 52m41s on 33 ranks. Measured presim pace ~3 min per 50-yr
+  realization (pure-Python day loop in pywrdrb's STARFITOfflineSimulator) →
+  the full array would cost ~1,300 SU, not the ~70 SU the §6 ledger assumed.
+  **Presim VECTORIZED + verified 2026-08-04 afternoon**: pywrdrb commit
+  `99fd7d6` (nyc_opt, on top of the pinned e293825) adds
+  `simulate_reservoir_ensemble` — the same sequential day loop with each
+  iteration vectorized across realizations — and rewires the ensemble
+  preprocessor to one vectorized run per reservoir (plus reservoir-only
+  input reads). Reviewed line-by-line (elementwise twin, identical op
+  order, physics verbatim; scalar path untouched as reference). ACCEPTANCE
+  TEST PASSED at production scale: the vectorized path reproduces chunk-0's
+  scalar-produced staged presim BIT-IDENTICALLY across all 500 realizations
+  x 14 reservoirs, in **10.4 s** vs ~25 core-hours scalar (job 19660330).
+  No downstream diagnostics re-run needed (bit-identity), no
+  NYCOptimization API changes needed. Chunks 1-49 staging array launched on
+  the fast path (19660403). Laptop needs a `git pull` in Pywr-DRB to pick
+  up 99fd7d6. NYCOptimization code
+  changes UNCOMMITTED for Trevor's review.
+  **STAGING COMPLETE 2026-08-04 evening**: all 50 chunks carry the four
+  pywrdrb inputs. Main array 19660403 (47 ok, ~52 min/chunk); chunks 3-4
+  OOM'd via node co-location and passed on resubmit at 80G (19661166). With
+  the vectorized presim the per-chunk cost is flood/predicted-inflow
+  dominated (candidates for the same treatment, flagged to the
+  parallelization effort).
+  **E_test hazard image + overlay DONE 2026-08-04 evening**:
+  `hazard_image_subwindows.npz` (125,000 sub-window rows x 8 axes, job
+  19660004); overlay + containment vs pool d0 + staged draw-0 search
+  ensembles (job 19663001 -> `outputs/supplemental/etest_hazard_overlay/`):
+  E_test is FULLY INSIDE the pool hull on every campaign axis (outside-hull
+  0.000 x6); beyond-robust-box tails modest (max 0.064 above p-hi
+  flood_peak_magnitude; 0.049 below p-lo deficit_volume). Supports the
+  generalization claim; rerun the overlay per draw once d1/d2 search
+  ensembles are staged.
+  **Baseline-on-E_test matrix (the step-05 --reeval half): path corrected**
+  — `run_baseline --reeval` cannot consume a chunked reeval preset
+  (evaluate_raw needs monolithic daily HDF5s; latent gap, never exercised).
+  Running the baseline through step 09's chunked path instead
+  (NYCOPT_CHUNK_POLICIES=baseline, same persist_reeval_raw artifact; job
+  19663131 on shared, 32 ranks x 4 cpus, 50 units, incremental+resumable).
+  When done: move reeval_raw.{parquet,json} into the reeval tag's
+  `baseline/` subdir (the location step-08/09 auto-detects for
+  improvement_vs_baseline) and give each campaign design's reeval dir a
+  copy/symlink of it at campaign time. E_test lives on
   project space (`/anvil/projects/x-ees260021/NYCOptimization/`, 5 TB, no
   purge) via symlinks under `outputs/synthetic_ensembles/` — the 25 GB home
   quota killed the first generation attempt; keep big artifacts OUT of home.

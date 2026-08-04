@@ -16,6 +16,7 @@ is registered with the path navigator (see ``src.ensembles.register_ensemble_pat
 from __future__ import annotations
 
 import json
+import time
 import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -946,7 +947,9 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
           f"population={config.population}, full {config.full_period})"
           + (f"; drawing {N_forcing} {config.theta_sampler} forcing profiles" if forced else "")
           + "...")
+    _t_fit = time.perf_counter()
     setup = _prepare_generators(config)
+    print(f"[gen] fit phase: {time.perf_counter() - _t_fit:.1f} s", flush=True)
 
     # Historical reference for the SSI/POT hazard fit (aggregate NYC inflow; fixed once).
     reference_monthly = reference_daily = None
@@ -970,6 +973,15 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
     sites: list[str] = []
     chunk_index: list[dict] = []
 
+    # Phase wall-clock accumulators (logging only; printed per chunk and every
+    # 100 blocks so stream-only pools — one giant chunk — stay observable).
+    _pt = {"generate": 0.0, "disagg": 0.0, "hazard": 0.0, "write": 0.0}
+    _n_blocks = 0
+
+    def _phase_totals() -> str:
+        return (f"generate={_pt['generate']:.0f}s disagg={_pt['disagg']:.0f}s "
+                f"hazard={_pt['hazard']:.0f}s write={_pt['write']:.0f}s")
+
     for pf0 in range(pf_lo, pf_hi, chunk_profiles):
         # Chunk numbering is GLOBAL (pf0 // chunk_profiles), not shard-local, so a sharded
         # generation writes exactly the chunk dirs a serial run would.
@@ -978,6 +990,7 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
         chunk_gage: dict[int, pd.DataFrame] = {}
         chunk_inflow: dict[int, pd.DataFrame] = {}
         for b0 in range(pf0, pf1, block):
+            _t = time.perf_counter()
             monthly_by_real: dict[int, pd.DataFrame] = {}
             metadata = None
             for p in range(b0, min(b0 + block, pf1)):
@@ -985,25 +998,36 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
                 monthly_by_real.update(block_monthly)
                 if metadata is None:
                     metadata = md
+            _pt["generate"] += time.perf_counter() - _t
+            _t = time.perf_counter()
             gage_by_real, inflow_by_real, sites = _disaggregate_fill_inflow(
                 Ensemble(monthly_by_real, metadata=metadata),
                 nowak=setup.nowak, kdes=setup.kdes,
                 root_seed=config.root_seed, start_date=config.start_date,
             )
+            _pt["disagg"] += time.perf_counter() - _t
             if config.compute_hazard_image:
+                _t = time.perf_counter()
                 H_block, hazard_axes = _hazard_block(
                     inflow_by_real, sorted(inflow_by_real), DEFAULT_NYC_INFLOW_NODES,
                     reference_monthly, reference_daily,
                 )
                 H_blocks.append(H_block)
+                _pt["hazard"] += time.perf_counter() - _t
             if config.store_daily:
                 chunk_gage.update(gage_by_real)
                 chunk_inflow.update(inflow_by_real)
+            _n_blocks += 1
+            if _n_blocks % 100 == 0:
+                print(f"[gen]   phase totals after {_n_blocks} blocks: "
+                      f"{_phase_totals()}", flush=True)
 
         global_ids = list(range(pf0 * R, pf1 * R))
         if config.store_daily:
             chunk_dir = out_dir.parent / f"{out_dir.name}__chunk{chunk_idx:03d}" if chunked else out_dir
+            _t = time.perf_counter()
             _write_chunk_hdf5(chunk_dir, global_ids, chunk_gage, chunk_inflow)
+            _pt["write"] += time.perf_counter() - _t
             if chunked:
                 _write_chunk_meta(chunk_dir, global_ids, config, sites, forcing_hash,
                                   chunk_idx=chunk_idx)
@@ -1015,7 +1039,7 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
                 "n_realizations": len(global_ids),
             })
         print(f"[gen]   chunk {chunk_idx}: profiles [{pf0},{pf1}) -> "
-              f"realizations [{pf0 * R},{pf1 * R}) of {N}")
+              f"realizations [{pf0 * R},{pf1 * R}) of {N}; {_phase_totals()}")
 
     if shard is not None:
         np.savez(
