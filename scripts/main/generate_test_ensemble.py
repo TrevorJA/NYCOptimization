@@ -34,6 +34,14 @@ no workflow step depends on it.
 
 E_test needs no ``PRESETS`` entry -- point ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` at the printed slug.
 Set ``NYCOPT_ENSEMBLE_FORCE=1`` to overwrite an already-staged slug.
+
+Sharded generation (the ~84 h serial build parallelized across a Slurm array): the same
+``NYCOPT_ENSEMBLE_SHARD_COUNT`` / ``NYCOPT_ENSEMBLE_SHARD_INDEX`` / ``NYCOPT_ENSEMBLE_MERGE_SHARDS``
+contract as the candidate-pool path (``scripts/main/generate_stochastic_ensemble.py``). Each shard
+owns a chunk-aligned slice of the LHS profiles, writes its daily chunk dirs plus a hazard-image
+shard npz (the completion marker); the merge run rebuilds the global artifacts through the same
+finalizer the serial path uses. Submit via ``workflow/supplemental/gen_etest_shards.sh`` +
+``gen_etest_merge.sh``.
 """
 
 from __future__ import annotations
@@ -60,8 +68,33 @@ _FORCE = os.environ.get("NYCOPT_ENSEMBLE_FORCE", "").strip().lower() in (
     "1", "true", "yes", "on",
 )
 
+# Sharded generation: same env contract as the candidate-pool path. Set SHARD_COUNT +
+# SHARD_INDEX per array task, then run once with MERGE_SHARDS=1 to write the canonical
+# artifacts. Rows are keyed to the GLOBAL realization index, so the shard union equals
+# a serial generation; shard boundaries must align to chunk boundaries (enforced by
+# src.ensemble_generation).
+_SHARD_COUNT = int(os.environ.get("NYCOPT_ENSEMBLE_SHARD_COUNT", "0"))
+_SHARD_INDEX = os.environ.get("NYCOPT_ENSEMBLE_SHARD_INDEX", "")
+_MERGE_SHARDS = os.environ.get("NYCOPT_ENSEMBLE_MERGE_SHARDS", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
-def etest_config(variant: ETestVariant):
+
+def _shard_extra() -> dict:
+    """Resolve the shard/merge ``ForcingEnsembleConfig.extra`` payload from the env."""
+    if _MERGE_SHARDS:
+        return {"merge_shards": True}
+    if _SHARD_COUNT > 0:
+        if _SHARD_INDEX == "":
+            raise ValueError(
+                "NYCOPT_ENSEMBLE_SHARD_COUNT is set but NYCOPT_ENSEMBLE_SHARD_INDEX "
+                "is not (expected the SLURM array task id)."
+            )
+        return {"profile_shard": (int(_SHARD_INDEX), _SHARD_COUNT)}
+    return {}
+
+
+def etest_config(variant: ETestVariant, *, extra: dict | None = None):
     """Build the ``ForcingEnsembleConfig`` for one E_test variant.
 
     The single place the E_test construction contract is expressed as generator arguments. Exposed
@@ -69,6 +102,7 @@ def etest_config(variant: ETestVariant):
 
     Args:
         variant: The registered E_test variant.
+        extra: Optional shard/merge payload (see :func:`_shard_extra`).
 
     Returns:
         A ``scengen.forcing_ensemble.ForcingEnsembleConfig``.
@@ -76,6 +110,7 @@ def etest_config(variant: ETestVariant):
     from scengen.forcing_ensemble import ForcingEnsembleConfig
 
     return ForcingEnsembleConfig(
+        extra=extra or {},
         root_seed=variant.seed,
         seed_domain=variant.seed_domain,
         generator=variant.generator,
@@ -114,8 +149,11 @@ def main() -> None:
 
     variant = get_etest_variant(_parse_args().variant)
     out = STAGED_ENSEMBLE_DIR / variant.slug
+    extra = _shard_extra()
 
-    if out.exists() and any(out.iterdir()) and not _FORCE:
+    # Shard/merge runs bypass the staged-slug guard: the slug dir legitimately fills with
+    # shard npz files first, and per-shard idempotency is handled at the shard-file level.
+    if not extra and out.exists() and any(out.iterdir()) and not _FORCE:
         print(f"[etest] '{variant.slug}' already staged at {out}. "
               f"Set NYCOPT_ENSEMBLE_FORCE=1 to regenerate.")
     else:
@@ -124,10 +162,14 @@ def main() -> None:
               f"N_theta={variant.n_theta} x R={variant.realizations_per_theta} "
               f"= {variant.n_realizations} realizations, L={variant.realization_years}yr, "
               f"LHS box=pct{variant.bound_pct} margin={variant.margin}, seed={variant.seed} "
-              f"({variant.seed_domain}), chunk={variant.chunk_size}.")
-        generate_forcing_ensemble(etest_config(variant))
+              f"({variant.seed_domain}), chunk={variant.chunk_size}"
+              + (f", shard={extra.get('profile_shard')}" if "profile_shard" in extra else "")
+              + (", MERGE" if extra.get("merge_shards") else "") + ".")
+        generate_forcing_ensemble(etest_config(variant, extra=extra))
 
-    assert_staged_etest_contract(variant.slug)
+    if "profile_shard" not in extra:
+        # A shard run stages no global artifacts; the contract is checked serially and post-merge.
+        assert_staged_etest_contract(variant.slug)
     print(f"[etest] Done. Set NYCOPT_REEVAL_ENSEMBLE_PRESET={variant.slug} for steps 05/08/09/11.")
 
 

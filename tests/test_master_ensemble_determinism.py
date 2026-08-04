@@ -131,6 +131,90 @@ def test_chunked_generation(tmp_path):
 
 
 @slow
+def test_sharded_chunked_generation_matches_serial(tmp_path):
+    """Shard ⊎ merge of a daily-chunked forced ensemble equals the serial build (E_test path).
+
+    Two shards each own one chunk; the merge rebuilds the global artifacts. Same-process
+    determinism makes every artifact bit-comparable: daily chunk HDF5s, hazard image,
+    chunk index, forcing profiles, and the staged meta.
+    """
+    import json
+    from src.ensemble_generation import generate_forcing_ensemble
+
+    def _cfg(out: Path, extra: dict | None = None) -> ForcingEnsembleConfig:
+        return ForcingEnsembleConfig(
+            root_seed=_SEED, n_forcing_profiles=8, realizations_per_profile=2,
+            realization_years=_L, output_dir=out,
+            mean_frac_csv=config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+            store_daily=True, compute_hazard_image=True, hazard_block_size=4, chunk_size=8,
+            extra=extra or {},
+        )
+
+    if not Path(config.ENSEMBLE_FORCING_MEAN_FRAC_CSV).exists():
+        pytest.skip("CMIP6 forcing table not available")
+
+    serial = tmp_path / "serial" / "pool_2yr_n16"
+    sharded = tmp_path / "sharded" / "pool_2yr_n16"
+    generate_forcing_ensemble(_cfg(serial))
+    for i in (0, 1):
+        assert generate_forcing_ensemble(_cfg(sharded, {"profile_shard": (i, 2)})) is None
+    manifest = generate_forcing_ensemble(_cfg(sharded, {"merge_shards": True}))
+    assert manifest.n_realizations == 16
+
+    # Shard npz markers are consumed by the merge; chunk dirs carry GLOBAL numbering.
+    assert not list(sharded.glob("hazard_image_shard_*.npz"))
+    for k in (0, 1):
+        a = serial.parent / f"pool_2yr_n16__chunk{k:03d}"
+        b = sharded.parent / f"pool_2yr_n16__chunk{k:03d}"
+        for name in ("gage_flow_mgd.hdf5", "catchment_inflow_mgd.hdf5"):
+            ea = Ensemble.from_hdf5(str(a / name)).data_by_realization
+            eb = Ensemble.from_hdf5(str(b / name)).data_by_realization
+            assert sorted(ea) == sorted(eb)
+            for r in ea:
+                np.testing.assert_array_equal(
+                    ea[r].to_numpy(np.float32), eb[r].to_numpy(np.float32))
+        ma = json.loads((a / "_meta.json").read_text())
+        mb = json.loads((b / "_meta.json").read_text())
+        assert {k2: v for k2, v in ma.items() if k2 != "slug"} \
+            == {k2: v for k2, v in mb.items() if k2 != "slug"} or ma == mb
+
+    ha = np.load(serial / "hazard_image.npz", allow_pickle=True)
+    hb = np.load(sharded / "hazard_image.npz", allow_pickle=True)
+    np.testing.assert_array_equal(ha["H"], hb["H"])
+    assert [str(x) for x in ha["hazard_axes"]] == [str(x) for x in hb["hazard_axes"]]
+
+    ia = json.loads((serial / "chunk_index.json").read_text())
+    ib = json.loads((sharded / "chunk_index.json").read_text())
+    assert ia["chunks"] == ib["chunks"] and ia["n_chunks"] == ib["n_chunks"] == 2
+
+    pa, pb = (np.load(d / "forcing_profiles.npz") for d in (serial, sharded))
+    np.testing.assert_array_equal(pa["mean_factor_a"], pb["mean_factor_a"])
+    np.testing.assert_array_equal(pa["theta_params"], pb["theta_params"])
+
+    meta_a = json.loads((serial / "_meta.json").read_text())
+    meta_b = json.loads((sharded / "_meta.json").read_text())
+    assert meta_a == meta_b
+
+
+@slow
+def test_shard_chunk_misalignment_raises(tmp_path):
+    """A shard count that splits a chunk across shards is rejected up front."""
+    from src.ensemble_generation import generate_forcing_ensemble
+
+    if not Path(config.ENSEMBLE_FORCING_MEAN_FRAC_CSV).exists():
+        pytest.skip("CMIP6 forcing table not available")
+    cfg = ForcingEnsembleConfig(
+        root_seed=_SEED, n_forcing_profiles=8, realizations_per_profile=2,
+        realization_years=_L, output_dir=tmp_path / "pool",
+        mean_frac_csv=config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+        store_daily=True, compute_hazard_image=True, chunk_size=8,
+        extra={"profile_shard": (1, 3)},  # 8 profiles / 3 shards -> [3,6) splits chunk 0/1
+    )
+    with pytest.raises(ValueError, match="align"):
+        generate_forcing_ensemble(cfg)
+
+
+@slow
 def test_hazard_image_and_forcing_profiles_shapes(tmp_path):
     from src.ensemble_generation import generate_forcing_ensemble
     from scengen.diagnostics import load_hazard_image

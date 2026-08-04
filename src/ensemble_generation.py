@@ -743,6 +743,46 @@ def _load_hazard_shards(
     return H, axes_ref, sites, shard_files
 
 
+def _collect_shard_chunk_index(
+    out_dir: Path, n_forcing: int, r: int, chunk_profiles: int
+) -> list[dict]:
+    """Rebuild the global ``chunk_index`` from the chunk dirs a sharded generation staged.
+
+    The chunk plan is a pure function of ``(N_forcing, R, chunk_profiles)``, so the expected dirs
+    are enumerated directly; each must hold the two daily HDF5s plus ``_meta.json`` (written last
+    per chunk, so its presence marks a complete chunk) with the expected global-id range.
+
+    Returns:
+        The ``chunk_index`` entries in global chunk order, as the serial path would build them.
+    """
+    chunk_index: list[dict] = []
+    for chunk_idx, pf0 in enumerate(range(0, n_forcing, chunk_profiles)):
+        pf1 = min(pf0 + chunk_profiles, n_forcing)
+        chunk_dir = out_dir.parent / f"{out_dir.name}__chunk{chunk_idx:03d}"
+        missing = [f for f in ("_meta.json", "gage_flow_mgd.hdf5", "catchment_inflow_mgd.hdf5")
+                   if not (chunk_dir / f).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"chunk {chunk_idx} ({chunk_dir.name}) is incomplete (missing {missing}) — "
+                "regenerate its shard before merging."
+            )
+        meta = json.loads((chunk_dir / "_meta.json").read_text())
+        got = (meta["global_realization_ids"][0], meta["global_realization_ids"][-1] + 1)
+        if got != (pf0 * r, pf1 * r):
+            raise ValueError(
+                f"chunk {chunk_idx} ({chunk_dir.name}) covers global ids {got}, expected "
+                f"({pf0 * r}, {pf1 * r}) — was it staged under a different chunk plan?"
+            )
+        chunk_index.append({
+            "chunk_index": chunk_idx,
+            "slug": chunk_dir.name,
+            "global_start": pf0 * r,
+            "global_end": pf1 * r,
+            "n_realizations": (pf1 - pf0) * r,
+        })
+    return chunk_index
+
+
 def _validate_config(config) -> None:
     """Fail fast on an inconsistent :class:`scengen.forcing_ensemble.ForcingEnsembleConfig`."""
     if config.output_dir is None:
@@ -790,10 +830,17 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
     daily HDF5s (per chunk) when ``store_daily``.
 
     Sharded generation (``config.extra["profile_shard"] = (index, count)``) computes
-    only that contiguous global-index slice of a stationary stream-only pool and
-    writes a ``hazard_image_shard_*.npz`` intermediate instead of the canonical
-    artifacts; ``config.extra["merge_shards"]`` concatenates the staged shards and
-    writes the canonical artifacts through the same finalizer the serial path uses.
+    only that contiguous global-index slice and writes a ``hazard_image_shard_*.npz``
+    intermediate instead of the canonical artifacts; ``config.extra["merge_shards"]``
+    concatenates the staged shards and writes the canonical artifacts through the
+    same finalizer the serial path uses. Two layouts shard: stream-only pools
+    (``store_daily=False``, the only artifact is the hazard image) and daily-CHUNKED
+    ensembles (``store_daily=True`` with ``0 < chunk_size < N``), where each shard
+    additionally writes its chunks' daily HDF5 dirs — shard boundaries must then
+    align to chunk boundaries so every chunk is owned by exactly one shard, and the
+    merge reconstructs ``chunk_index`` from the staged chunk dirs. Either way rows
+    are keyed to the GLOBAL realization index (§3.4 partition invariance), so the
+    shard union equals a serial generation.
 
     Args:
         config: A ``scengen.forcing_ensemble.ForcingEnsembleConfig``.
@@ -814,29 +861,60 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
     N_forcing, R = config.n_forcing_profiles, config.realizations_per_profile
     N = N_forcing * R
 
+    # Chunk plan (also needed by the shard/merge branches below): split the N_forcing profiles into
+    # contiguous chunks of `chunk_profiles` profiles (= chunk_size realizations). chunk_size<=0 or
+    # >=N keeps the single-directory layout (daily HDF5 in out_dir); otherwise each chunk is written
+    # to a sibling staged dir `{slug}__chunk{JJJ}` and out_dir holds only the global artifacts.
+    chunked = config.store_daily and 0 < config.chunk_size < N
+    if chunked and config.chunk_size % R != 0:
+        raise ValueError(
+            f"chunk_size ({config.chunk_size}) must be a multiple of "
+            f"realizations_per_profile ({R}) so chunks align to forcing profiles."
+        )
+    chunk_profiles = (config.chunk_size // R) if chunked else N_forcing
+
     # Sharded generation / shard merge (``config.extra`` keys ``profile_shard`` =
-    # (index, count) and ``merge_shards``). Restricted to stationary stream-only
-    # candidate pools, where the only artifact is the hazard image and every row
-    # is keyed to the GLOBAL realization index (§3.4 partition invariance), so
-    # the shard union is bit-identical to a serial generation.
+    # (index, count) and ``merge_shards``). Supported for stream-only pools and for
+    # daily-CHUNKED ensembles (each chunk owned by exactly one shard); an unchunked
+    # store_daily ensemble is a single monolithic HDF5 and cannot shard. Every row
+    # is keyed to the GLOBAL realization index (§3.4 partition invariance), so the
+    # shard union equals a serial generation.
     shard = config.extra.get("profile_shard")
     merge_shards = bool(config.extra.get("merge_shards"))
-    if (shard is not None or merge_shards) and (
-        config.store_daily or not config.compute_hazard_image
-        or config.population != "stationary"
-    ):
+    if (shard is not None or merge_shards) and not config.compute_hazard_image:
         raise ValueError(
-            "profile_shard/merge_shards support only stationary stream-only candidate "
-            "pools (population='stationary', store_daily=False, compute_hazard_image=True)."
+            "profile_shard/merge_shards require compute_hazard_image=True (the shard "
+            "npz is the completion marker and the merge input)."
+        )
+    if (shard is not None or merge_shards) and config.store_daily and not chunked:
+        raise ValueError(
+            "profile_shard/merge_shards with store_daily=True require a chunked layout "
+            f"(0 < chunk_size < N); got chunk_size={config.chunk_size}, N={N}."
         )
 
     if merge_shards:
         H_merged, hazard_axes, sites, shard_files = _load_hazard_shards(out_dir, N)
         print(f"[gen] Merged {len(shard_files)} hazard-image shards for "
               f"'{out_dir.name}' (N={N}).")
+        chunk_index: list[dict] = []
+        if chunked:
+            chunk_index = _collect_shard_chunk_index(out_dir, N_forcing, R, chunk_profiles)
+            print(f"[gen] Verified {len(chunk_index)} staged daily chunks tile [0, {N}).")
+        setup = None
+        forcing_hash = ""
+        if forced:
+            # The finalizer persists forcing_profiles.npz (per-realization theta) and the forcing
+            # hash for a forced population; both are pure functions of root_seed, so refitting here
+            # reproduces exactly what the serial path would have written.
+            print("[gen] Refitting generators to persist forcing profiles (forced population)...")
+            setup = _prepare_generators(config)
+            forcing_hash = fs.forcing_hash(
+                setup.a_wy, envelope_csv=config.mean_frac_csv, margin=config.margin,
+                seed=config.root_seed,
+            )
         manifest = _finalize_pool_artifacts(
             config, out_dir, H_blocks=[H_merged], hazard_axes=hazard_axes,
-            sites=sites, chunk_index=[], forcing_hash="", setup=None,
+            sites=sites, chunk_index=chunk_index, forcing_hash=forcing_hash, setup=setup,
         )
         for f in shard_files:
             f.unlink()
@@ -846,6 +924,16 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
     pf_lo, pf_hi = (0, N_forcing) if shard is None else shard_profile_range(
         N_forcing, shard[1], shard[0]
     )
+    if shard is not None and chunked and (
+        pf_lo % chunk_profiles != 0
+        or (pf_hi % chunk_profiles != 0 and pf_hi != N_forcing)
+    ):
+        raise ValueError(
+            f"shard {shard[0]}/{shard[1]} covers profiles [{pf_lo},{pf_hi}), which does not "
+            f"align to the chunk plan ({chunk_profiles} profiles/chunk): every chunk must be "
+            f"owned by exactly one shard. Pick a shard count that divides the {N // config.chunk_size} "
+            "chunks evenly."
+        )
     shard_path = None
     if shard is not None:
         shard_path = out_dir / f"hazard_image_shard_{pf_lo * R:08d}_{pf_hi * R:08d}.npz"
@@ -872,18 +960,9 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
         setup.a_wy, envelope_csv=config.mean_frac_csv, margin=config.margin, seed=config.root_seed
     ) if forced else ""
 
-    # Chunk plan: split the N_forcing profiles into contiguous chunks of `chunk_profiles` profiles
-    # (= chunk_size realizations). chunk_size<=0 or >=N keeps the single-directory layout (daily
-    # HDF5 in out_dir); otherwise each chunk is written to a sibling staged dir `{slug}__chunk{JJJ}`
-    # and out_dir holds only the global artifacts. Only one chunk's daily traces are ever resident,
-    # so peak memory is bounded by chunk_size (methods §3.2).
-    chunked = config.store_daily and 0 < config.chunk_size < N
-    if chunked and config.chunk_size % R != 0:
-        raise ValueError(
-            f"chunk_size ({config.chunk_size}) must be a multiple of "
-            f"realizations_per_profile ({R}) so chunks align to forcing profiles."
-        )
-    chunk_profiles = (config.chunk_size // R) if chunked else N_forcing
+    # Only one chunk's daily traces are ever resident, so peak memory is bounded by chunk_size
+    # (methods §3.2). The chunk plan itself (`chunked`, `chunk_profiles`) is computed above,
+    # before the shard/merge branches.
     block = max(1, min(config.hazard_block_size, chunk_profiles))
 
     H_blocks: list[np.ndarray] = []
@@ -891,7 +970,10 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
     sites: list[str] = []
     chunk_index: list[dict] = []
 
-    for chunk_idx, pf0 in enumerate(range(pf_lo, pf_hi, chunk_profiles)):
+    for pf0 in range(pf_lo, pf_hi, chunk_profiles):
+        # Chunk numbering is GLOBAL (pf0 // chunk_profiles), not shard-local, so a sharded
+        # generation writes exactly the chunk dirs a serial run would.
+        chunk_idx = pf0 // chunk_profiles
         pf1 = min(pf0 + chunk_profiles, pf_hi)
         chunk_gage: dict[int, pd.DataFrame] = {}
         chunk_inflow: dict[int, pd.DataFrame] = {}

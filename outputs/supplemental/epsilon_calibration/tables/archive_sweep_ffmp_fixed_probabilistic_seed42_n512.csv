@@ -1,7 +1,7 @@
 design,vector,scale,archive_size,n_policies,n_pareto_eps0
-fixed_probabilistic,campaign,0.25,370,513,420
-fixed_probabilistic,campaign,0.5,306,513,420
-fixed_probabilistic,campaign,1.0,184,513,420
-fixed_probabilistic,campaign,2.0,72,513,420
-fixed_probabilistic,campaign,4.0,30,513,420
-fixed_probabilistic,previous,1.0,349,513,420
+fixed_probabilistic,campaign,0.25,371,513,424
+fixed_probabilistic,campaign,0.5,312,513,424
+fixed_probabilistic,campaign,1.0,181,513,424
+fixed_probabilistic,campaign,2.0,74,513,424
+fixed_probabilistic,campaign,4.0,32,513,424
+fixed_probabilistic,previous,1.0,250,513,424

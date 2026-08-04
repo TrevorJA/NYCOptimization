@@ -1,7 +1,7 @@
 design,vector,scale,archive_size,n_policies,n_pareto_eps0
-hazard_filling_stationary,campaign,0.25,332,513,388
-hazard_filling_stationary,campaign,0.5,282,513,388
-hazard_filling_stationary,campaign,1.0,162,513,388
-hazard_filling_stationary,campaign,2.0,84,513,388
-hazard_filling_stationary,campaign,4.0,35,513,388
-hazard_filling_stationary,previous,1.0,296,513,388
+hazard_filling_stationary,campaign,0.25,334,513,381
+hazard_filling_stationary,campaign,0.5,286,513,381
+hazard_filling_stationary,campaign,1.0,158,513,381
+hazard_filling_stationary,campaign,2.0,89,513,381
+hazard_filling_stationary,campaign,4.0,39,513,381
+hazard_filling_stationary,previous,1.0,235,513,381

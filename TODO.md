@@ -17,13 +17,10 @@ rule (2026-07-31). Sequence: pywrdrb sync + input re-staging (first two items)
 and DV bounds are all baked into the problem definition, and every simulation
 must run on the rebased pywrdrb + re-staged inputs first.
 
-- [ ] **[local→HPC]** (2026-08-03) Pywr-DRB `nyc_opt` was REBUILT on v2.2.0
-  master (curated rebase; history rewritten and force-pushed; old branch head
-  `0bca357` survives only in reflog). Hard-sync every machine's clone:
-  `git fetch && git checkout nyc_opt && git reset --hard origin/nyc_opt` in
-  `../Pywr-DRB` (laptop synced 2026-08-03 at `v2.2.0-10-ge293825`; **Anvil
-  clone still to sync** — editable installs pick the change up with no
-  reinstall). Numerically
+- [x] **DONE 2026-08-03 (both machines)** — Pywr-DRB `nyc_opt` was REBUILT on
+  v2.2.0 master (curated rebase; history rewritten and force-pushed; old
+  branch head `0bca357` survives only in reflog). Laptop and Anvil both
+  hard-synced at `v2.2.0-10-ge293825`. Numerically
   breaking deltas for this project, all landing at once: (a) **new STARFIT
   default params** in `istarf_conus.csv` (2004–2023 refits for blueMarsh,
   fewalter, prompton; beltzvilleCombined capacity 13,500 → 17,750 MG);
@@ -40,8 +37,8 @@ must run on the rebased pywrdrb + re-staged inputs first.
   `config.py` pins `perfect_foresight` explicitly (the guard comment did its
   job); `use_individual_storage` and all flood/N-zone machinery are
   unchanged from the pre-rebase branch.
-- [ ] **[local→HPC]** Re-stage ALL staged pywrdrb inputs with `force=True`
-  and discard any objective values simulated before the sync:
+- [x] **DONE 2026-08-03 (both machines)** Re-stage ALL staged pywrdrb inputs
+  with `force=True` and discard any objective values simulated before the sync:
   `presimulated_releases_mgd.hdf5` (STARFIT-dependent → stale under (a)+(b))
   and `predicted_inflows_mgd.hdf5` (its perfect-foresight columns read the
   presim artifact → stale) for EVERY staged ensemble, local and Anvil. The
@@ -66,11 +63,29 @@ must run on the rebased pywrdrb + re-staged inputs first.
   untouched, as scoped); the pre-sync step-05 baseline vector and the
   orphaned `outputs/presim/full_model_baseline.*` +
   `outputs/diagnostics/random_sample_objectives.npz` deleted; full test
-  suite passes (261). Remaining: the same re-staging on EVERY Anvil-staged
-  ensemble + the Anvil historic presim.
+  suite passes (261). **Anvil half DONE 2026-08-03 evening**: historic presim
+  regenerated; both staged pywrdrb-input ensembles (`fixprob_10yr_n100_d0`,
+  `hazfill_stat_abs_10yr_n100_d0`) force-re-staged all four inputs (jobs
+  19644341/42) — this also closes the Anvil half of the flood-inflow
+  re-staging item below; step-05 baseline regenerated (0.789 Montague vector
+  below). `prep_pywrdrb_inputs.py` now ALWAYS force-regenerates (committed) —
+  the silent-skip trap is retired. E_test staging is first-time generation,
+  in flight (§5 pools item).
 
-- [ ] **[HPC]** Regenerate everything downstream of the 36-DV scheme (zone refill-plateau DVs removed 2026-08-03), the 8-objective set, AND the ±0.15 factor bounds: problem JARs (step 00; Anvil login node — no JDK/MOEAFramework on the laptop; nobjs is now 8; nvars is now 36) + `.set` artifacts (Borg search outputs — regenerate with the next smoke/campaign runs). The stale local `.set` trees (`outputs/optimization/`, `outputs/historic/ffmp_obj7_smoke/`) predated the current DV scheme, locked epsilons, and NJ activation — DELETED 2026-07-31.
-- [ ] **[HPC]** Regenerate any `du_forced` ensemble staged before 2026-07-28 with the variance axis off: they carry the fixed `c = 1` convention (absolute-SD) instead of the CV-preserving `c = a` (bug fixed in `src/ensemble_generation.py`). Verified 2026-07-30: no `du_forced` ensemble is staged locally (all local stages are stationary), so this is Anvil-side only.
+- [x] **JAR half DONE 2026-08-03** — problem JARs rebuilt on the Anvil login
+  node under the adopted ε vector and 36-DV/8-obj scheme (ffmp 36 DV, ffmp_8
+  45, ffmp_10 55, ffmp_12 64). Post-reset ε re-verification (19644709-11)
+  COMPLETED 2026-08-04 01:38: vector UNCHANGED on every axis (all
+  previous/campaign ratios 1.0; NYC-deficit measured 10.0 vs adopted 2.0 is
+  the standing deliberate override) → **no rebuild needed; JARs are final**.
+  Combined tables/figures + framing analysis regenerated on the all-fresh
+  cubes (job 19650686) after a mid-batch stale-cube race (19644712 read a
+  pre-reset hazfill cube; final writers were fresh; refreshed anyway). `.set` artifacts
+  (Borg search outputs) regenerate with the next smoke/campaign runs (§4).
+  The stale local `.set` trees (`outputs/optimization/`,
+  `outputs/historic/ffmp_obj7_smoke/`) predated the current DV scheme, locked
+  epsilons, and NJ activation — DELETED 2026-07-31.
+- [x] **CLOSED 2026-08-03** Regenerate any `du_forced` ensemble staged before 2026-07-28 with the variance axis off: they carry the fixed `c = 1` convention (absolute-SD) instead of the CV-preserving `c = a` (bug fixed in `src/ensemble_generation.py`). Verified 2026-07-30: no `du_forced` ensemble is staged locally. Verified 2026-08-03: none staged on Anvil either (all stages are stationary pools/ensembles + the kn E_test) — nothing to regenerate.
   Historic single trace: DONE 2026-07-31 — the step-05 anchor is regenerated on the
   corrected `pub_nhmv10_BC_withObsScaled` flood-node inflows (restaged 15:09).
   Measured effect on the baseline policy, corrected vs pre-fix: `downstream_flood_days_annual`
@@ -78,12 +93,14 @@ must run on the rebased pywrdrb + re-staged inputs first.
   `montague_flow_deficit_p99_pct` at 3e-6 relative, consistent with the
   redistribution being mass-conserving. Any baseline vector persisted before
   2026-07-31 15:09 is on the pre-fix inflows.
-- [ ] **[local→HPC]** Re-stage any flood-augmented ensemble inflows (`catchment_inflow_with_flood_nodes_mgd.hdf5`) generated before 2026-07-31, and discard flood objective values computed from them. Local half DONE 2026-08-03: both locally staged ensembles are now post-fix by content check (HE/FE ratio 0.3374) — `kn_50yr_n5` re-staged by the flood-objective run's audit, `hazfill_stat_abs_10yr_n50_d0` re-staged directly (its 07-31 12:19 staging predated the 15:54 fix commit; no flood objective values from it were ever persisted). Remaining: Anvil-side staged ensembles. Pywr-DRB's flood-node inflow preprocessor carried a double subtraction of already-marginal upstream inflows plus three wrong USGS drainage areas, which left the three tail-gauge local catchments at ~2 % of physical magnitude (fixed in `../Pywr-DRB/src/pywrdrb/pre/flood_node_inflows.py`; evidence in `../Pywr-DRB/experiments/nyc_flood_gauge_diagnostics/`). `ensemble_prep` SKIPS staging when the file already exists unless `force=True`, so stale files are reused **silently** — re-stage with `force`. The fix is a strict mass-conserving redistribution, so net basin flow and the Montague/Trenton totals are unchanged and only the `downstream_flood_days_*` objectives move — but they move a lot: on the historic trace the aggregate sim/obs exceedance ratio went 0.44 → 0.56 at minor stage and 0.46 → 0.96 at action stage.
+- [x] **DONE 2026-08-03 (both machines)** Re-stage any flood-augmented ensemble inflows (`catchment_inflow_with_flood_nodes_mgd.hdf5`) generated before 2026-07-31, and discard flood objective values computed from them. Local half DONE 2026-08-03: both locally staged ensembles are now post-fix by content check (HE/FE ratio 0.3374) — `kn_50yr_n5` re-staged by the flood-objective run's audit, `hazfill_stat_abs_10yr_n50_d0` re-staged directly (its 07-31 12:19 staging predated the 15:54 fix commit; no flood objective values from it were ever persisted). Anvil half DONE 2026-08-03 evening via the force re-staging above (jobs 19644341/42 regenerate all four inputs, flood inflows included). Pywr-DRB's flood-node inflow preprocessor carried a double subtraction of already-marginal upstream inflows plus three wrong USGS drainage areas, which left the three tail-gauge local catchments at ~2 % of physical magnitude (fixed in `../Pywr-DRB/src/pywrdrb/pre/flood_node_inflows.py`; evidence in `../Pywr-DRB/experiments/nyc_flood_gauge_diagnostics/`). `ensemble_prep` SKIPS staging when the file already exists unless `force=True`, so stale files are reused **silently** — re-stage with `force`. The fix is a strict mass-conserving redistribution, so net basin flow and the Montague/Trenton totals are unchanged and only the `downstream_flood_days_*` objectives move — but they move a lot: on the historic trace the aggregate sim/obs exceedance ratio went 0.44 → 0.56 at minor stage and 0.46 → 0.96 at action stage.
 - [ ] **[local→HPC]** Regenerate everything downstream of the 6-month metric window and the flood days/yr normalization; discard any objective values computed under the old 365-day warm-up or the whole-trace flood count. 2026-07-31: the step-05 baseline is regenerated locally under the current method (obj8, skip-reeval) and now scores on the annual-unit set via `config.get_objective_set()` — `run_baseline.py` had been building the §1 whole-trace set, so every pre-2026-07-31 baseline vector is on a different objective function and must be discarded, not compared. The baseline re-eval matrix half stays open pending E_test (run step 05 with `--reeval` once E_test is staged). 2026-08-03: the step-05 baseline is REGENERATED locally on the rebased branch under the tolerance-fixed objective function (`_FLOW_TARGET_TOL_MGD`, commit 0468b31 — the rebase's ulp-level changes had flipped 190 exactly-on-target Montague weeks to failures and halved the reliability). Final vector: `downstream_flood_exceedance_annual` = 0.3467 ft·days/yr, `montague_flow_reliability_annual` = 0.789 (vs 0.763 pre-rebase, which itself lost a few zero-deficit weeks to the strict comparison); the remaining shifts vs the discarded pre-sync vector are the expected small STARFIT/forecast deltas.
 
 ## 2. Sizing decisions (evidence-based, before generation)
 
-- [ ] **[HPC]** Confirm K=3 / S=2 against the allocation.
+- [x] **CONFIRMED 2026-08-03** K=3 / S=2 against the allocation: the total is
+  750k SU (Anvil registers 300k tranches, so `mybalance` under-reports);
+  campaign ≈ 503k + reserve ≈ 247k per the §6 ledger fits. Decision stands.
 
 ## 3. Remaining method closures
 
@@ -95,9 +112,14 @@ the epsilon-calibration policy populations
 plus the satisfaction-factor sweep (`satisfaction_factor.sh`, one Anvil job per
 ensemble design, ~26 SU each).
 
-- [ ] **[HPC]** Run the satisfaction-factor sweep on Anvil (both ensemble
-  designs) and adopt the 0.99-factor verdict; smoke validated locally
-  2026-07-30 (bit-exact vs the method functions).
+- [x] **DONE 2026-08-04** Satisfaction-factor sweep re-verified post-reset
+  (jobs 19644712/13; fresh cubes 01:36): **0.99 factor ADOPTED** — on both
+  ensemble designs τ-vs-shipped ≥ 0.92 at 0.98/0.99 while the strict 1.00
+  collapses rankings (τ 0.59–0.65) and 0.95 drifts (τ 0.70). Framing
+  verdicts re-confirmed on the same fresh cubes (19650686 refresh): k counts
+  unsaturated (τ = 1.0, zero boundary mass, all designs), flood operator
+  MEAN (boot τ-vs-full 0.95–0.96 vs 0.53–0.56 for P99), NJ screen clean
+  (max |ρ| 0.36).
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test).
@@ -112,7 +134,59 @@ ensemble design, ~26 SU each).
 ## 5. Production gates
 
 - [ ] **[HPC]** Generate production pools (K draws) + `fixed_probabilistic` draws + E_test (step 12 at the locked sizing, then step 04 incl. the one-time full-model presim pass over its 25,000 realizations). P=1e6 draw-0 image already staged (`statpool_10yr_n1000000_d0`; a prefix is an honest pool of any smaller P); draws 1..K−1 still to generate (sharded path: `workflow/supplemental/gen_pool_shards.sh` + `gen_pool_merge.sh`, ~600 core-hours each). **Per-draw gate**: re-confirm the per-axis tail-share adequacy gate (min ≥ ~0.30 on the campaign 6-axis set, N=100) on EACH production draw's hazard image — the P=1e6 draw-0 margin is thin (0.311; per-seed min 0.28–0.35), per the §2 (m, N, P) decision and the battery rerun (both in DONE).
-- [ ] **[HPC]** Trimmed-vs-full re-eval agreement check (SI S1's E_test half): evaluate the baseline + the 4 determinism-check policies both ways on a slice of E_test; report objective-by-objective agreement. A few SU; converts the trimmed-re-eval choice into a measured statement.
+  **IN FLIGHT 2026-08-03 evening**: draw-1/2 shard arrays running (19640254 /
+  19640289, 100 tasks) with merges + 2k-prefix determinism verification
+  chained (19640288 / 19640292); run the per-draw adequacy gate on each merged
+  image when they land.
+  **Draw-2 DONE 2026-08-04 morning**: merged + verified (all 8 boundary rows
+  within the 1%-range tolerance; 2k prefix bit-identical to the standalone
+  pool) and the **adequacy gate PASSES: campaign 6-axis min tail share 0.303**
+  (worst axis drought_deficit_volume; mean 0.414; vs draw-0's 0.311 — thin
+  margin holds), saturation-mode battery output under
+  `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n1000000_d2/`.
+  **Draw-1 repair in flight**: shard 43 (rows 860k-880k) OOM-killed at the 4G
+  limit after 8h50 (other 49 shards peaked ~1.2G — anomalous spike); rerun
+  submitted at 8G (19653925) with the merge rechained on it (19653926; the
+  original 19640288 was cancelled — its afterok dependency was permanently
+  failed). Gate draw-1 when the new merge lands.
+  E_test generation running (19644593,
+  `etest_kn_50yr_n25000`, 50 × 500-realization chunks) with step-04 staging +
+  the one-time full-model presim pass chained (19644594).
+  **E_test TIMEOUT + resubmit 2026-08-04**: 19644593 hit its 12h wall limit at
+  ~7/50 chunks (measured ~1.65 h/chunk → ~84 h serial; the 12h sizing was
+  wrong). Chunks can't be resumed without code changes (the streamed hazard
+  image accumulates in memory across chunks and sharded generation explicitly
+  rejects store_daily ensembles), and generation is deterministic per profile,
+  so the clean fix is a full rerun: resubmitted verbatim at
+  `--time=96:00:00` (19654203; shared MaxTime is UNLIMITED) with step-04
+  staging rechained (19654207, same submit line incl. `--preset
+  etest_kn_50yr_n25000`). Completed chunk dirs 0-6 get overwritten with
+  bit-identical content. ETA ~3.5 days — E_test-dependent closures (step-05
+  --reeval, hazard overlay, §3 OAT diagnostic) slip accordingly. The dead
+  19644594 (DependencyNeverSatisfied) needs a manual `scancel` — the
+  assistant's scancel was permission-blocked.
+  **SUPERSEDED same morning — sharded rewrite (Trevor-directed)**: the 96h
+  serial rerun (19654203) + its staging chain were cancelled and E_test
+  generation was PARALLELIZED: `generate_forcing_ensemble`'s shard/merge
+  machinery extended from stream-only pools to daily-CHUNKED ensembles
+  (`src/ensemble_generation.py`: chunk-aligned shard validation, GLOBAL chunk
+  numbering, merge-side chunk_index reconstruction + deterministic generator
+  refit for forcing_profiles.npz), the same NYCOPT_ENSEMBLE_SHARD_* env
+  contract wired into `scripts/main/generate_test_ensemble.py`, and new
+  submit scripts `workflow/supplemental/gen_etest_shards.sh` (array 0-49,
+  1 chunk/shard, ~2.3h each vs ~84h serial) + `gen_etest_merge.sh`.
+  Validated: new `test_sharded_chunked_generation_matches_serial` (every
+  artifact bit-identical serial vs shard⊎merge) + misalignment-rejection
+  test; full determinism/shard/etest suites 31/31 pass (job 19654507).
+  IN FLIGHT: shard array 19654577 → merge 19654610 → step-04 staging+presim
+  19654612. Serial chunk000 snapshotted to `_serialref_etest_chunk000` on
+  project space for a production-scale cross-partition check (compare at the
+  1%-range tolerance per the cross-job FP convention, then delete). Code
+  changes are UNCOMMITTED for Trevor's review. E_test lives on
+  project space (`/anvil/projects/x-ees260021/NYCOptimization/`, 5 TB, no
+  purge) via symlinks under `outputs/synthetic_ensembles/` — the 25 GB home
+  quota killed the first generation attempt; keep big artifacts OUT of home.
+- [x] **CLOSED 2026-08-03 (decision)** Trimmed-vs-full agreement check: the historic-trace validation is SUFFICIENT — measured from the 2026-07-29 determinism data, all 28 trimmed-vs-full policy × objective pairs (4 policies × 7 objectives) agree to ≤ 2.5e-13 relative, and the structural argument (boundary releases are policy-independent) is input-independent. The planned E_test-slice half is DROPPED, not deferred; SI S1 reports the historic check only (`scenario_design_methods.md` §5.4 and the S1 outline updated to match).
 - [ ] **[HPC]** Launch campaign searches.
 
 ## 6. Post-campaign deliverables
@@ -158,4 +232,19 @@ decision records the open items reference.
   (`src/objectives.py`); step-05 baseline re-scored under it (Montague
   reliability 0.421 → 0.789).
 - **(§3, ADOPTED 2026-08-03)** Flood-exceedance objective swap landed repo-wide: `downstream_flood_exceedance_minor` (§1, ε provisional 0.01 ft-days/yr) / `downstream_flood_exceedance_annual` (§2, PooledMean, worst 5490) are the ACTIVE flood objective; the day counts stay registered diagnostics; `config._DEFAULT_OBJECTIVES`, `_BASE_TO_ENSEMBLE`, `_REGISTRY_SPEC` + `__sat1` placeholder (1.0 ft-days/yr), style labels, the 11 pinned `NYCOPT_OBJECTIVES` env lists, framing/epsilon/determinism supplemental scripts, and tests all updated (261 tests pass; slugs stay `*_obj8` — the set is still 8 objectives). CONSEQUENCE: the step-05 baseline objective vector is stale again (flood entry is a day count) and regenerates with the §1 chain; the ε rerun prices the final exceedance ε before JARs. Evidence + checklist: `flood_objective_diagnostics.md` §0b/§7.
+- **(§1/§2/§5, DONE 2026-08-03 evening)** Post-reset Anvil recovery chain:
+  Anvil clone hard-synced at `e293825`; historic presim + both staged
+  ensembles force-re-staged (19644341/42); step-05 baseline regenerated and
+  the sentinel verified under the tolerance fix (Montague reliability
+  0.7895, flood exceedance 0.3467 — matches the §1 record);
+  `prep_pywrdrb_inputs.py` made always-force (committed); K=3/S=2 confirmed
+  against the 750k SU total; no `du_forced` staged anywhere; SI S1's
+  historic-trace trimmed-vs-full agreement extracted from the determinism
+  data (28/28 pairs ≤ 2.5e-13). Storage: E_test moved to project space via
+  symlinks after the home-quota incident; logs/ pruned (keep doing this).
+  Left in flight: pool draws 1-2 (+merges/gates) and E_test gen → staging →
+  presim. The post-reset ε (19644709-11) + satisfaction-factor (19644712/13)
+  re-verification batch LANDED 2026-08-04 01:38, all verdicts unchanged (ε
+  vector, 0.99 sat-factor, k/flood-MEAN/NJ) — recorded on the §1 JAR and §3
+  sweep items.
 - **(Parked → §3, DIAGNOSED 2026-08-03)** Flood-threshold objective reconsidered: the full diagnostic (`docs/notes/methods/flood_objective_diagnostics.md`; scripts `scripts/supplemental/flood_objective_{run,figures}.py`, outputs under `outputs/supplemental/flood_objective/`) **recommends replacing the day count with C4 = Σ over days of the max-across-gauges (stage − minor)⁺ [ft-days/yr]**. Measured: the incumbent count is degenerate on the historic trace (9 distinct values across 25 feasible policies, 14.7 % tied pairs) while exceedance resolves 25/25 with zero ties; the pre-stated monotone-response gate PASSES for exceedance (ρ_S = −1.00 on the ensemble flood-release ladder, no cliffs) while the count moves in integer shelves; rating-curve exposure is nil (0 of 3,556 flood gauge-days beyond the rated range → stage-ft basis safe, flow-basis C6 unnecessary); C4 has the best annual sim-obs correlation (Pearson 0.91) and, unlike the gauge-summed variants, is robust to the model's structural inability to flood two gauges simultaneously. Costs disclosed: ~1.6× ensemble sampling noise, top unit-year carries ~30 % of the integral. `action` stays rejected for the active set (control-rule discontinuity). Adoption checklist in the note §7 — swap joins the §1 epsilon-calibration rerun + JAR regeneration at zero extra cost.
