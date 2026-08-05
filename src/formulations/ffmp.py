@@ -7,7 +7,7 @@ supports N-zone variable-resolution variants.
 
 Salt-front-dependent flow-target adjustment DVs (FFMP-family only) are
 merged in conditionally based on `config.SALT_FRONT_PARAM_MODE`. See
-`salt_front_dvs.py` and `decisions/2026-04-29_salt_front_parameterization.md`.
+`salt_front_dvs.py`.
 """
 
 import numpy as np

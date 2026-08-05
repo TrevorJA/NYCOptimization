@@ -9,11 +9,8 @@ no edits to the main ``config.py`` settings.
 IMPORTANT — import order and per-experiment env. ``config.py`` reads several
 ``NYCOPT_*`` and ``PYWRDRB_*`` environment variables *at its own import* (e.g.
 to decide whether the salinity/temperature LSTMs run, and the simulation
-window). Different experiments need **different** values for those knobs — the
-historic objective-sensitivity diagnostic runs the salinity LSTM on a short
-calendar window, while the ensemble diagnostic runs salinity *off* and derives
-its window from the realization length. A single set of module-top
-``os.environ`` writes therefore cannot serve both.
+window). Different experiments need **different** values for those knobs, so
+a single set of module-top ``os.environ`` writes cannot serve them all.
 
 Each experiment instead exposes a ``configure_*_env()`` function that applies
 its env knobs via ``os.environ.setdefault``. Entry-point scripts call the
@@ -65,7 +62,6 @@ def _apply_env(*, salinity: str, temperature: str,
 
 ###############################################################################
 # Objective-sensitivity experiment (HISTORIC, single trace)
-# (docs/notes/methods/objective_sensitivity_experiment.md)
 #
 # Runs many random DV vectors through the model on a single historical
 # reference trace and measures, per objective, discrimination across policies
@@ -85,12 +81,12 @@ SMOKE: bool = False
 def configure_historic_env() -> None:
     """Apply env knobs for the historic single-trace objective-sensitivity run.
 
-    Salinity and temperature LSTMs stay off: the diagnostic now calibrates the
-    ANNUAL-UNIT (§2) objectives — the set the historic design searches under —
-    and that registry has no salt-front or thermal objective, so neither LSTM is
-    needed (and the salinity LSTM checkout is not present on every host). Under
-    SMOKE a short window keeps each simulation to ~10-15 s; the end stays within
-    the trimmed model's pre-simulated release data (2022-09-30 water-year end).
+    Salinity and temperature LSTMs stay off: the diagnostic calibrates the
+    ANNUAL-UNIT (§2) objectives, and that registry has no salt-front or thermal
+    objective (the salinity LSTM checkout is also not present on every host).
+    Under SMOKE a short window keeps each simulation to ~10-15 s; the end stays
+    within the trimmed model's pre-simulated release data (2022-09-30
+    water-year end).
     """
     _apply_env(
         salinity="0",
@@ -109,10 +105,10 @@ SEED: int = 42
 #: Formulation whose DV bounds define the sampling space ("ffmp" or "ffmp_N").
 FORMULATION: str = "ffmp"
 
-#: Number of random DV vectors. The doc recommends N ~ 200-500 for stable
-#: Spearman estimates; the FFMP baseline is added as an extra reference row.
-#: Laptop epsilon-recalibration pass uses a small N (full window, ~24 samples);
-#: scale back up to 200-500 on the HPC for the stable redundancy screen.
+#: Number of random DV vectors; the FFMP baseline is added as an extra
+#: reference row. N ~ 200-500 gives stable Spearman estimates for the
+#: redundancy screen (use that on the HPC); the small default is sized for
+#: laptop passes over the full window.
 N_SAMPLES: int = 3 if SMOKE else 24
 
 #: Objective-set selection (config setting, not a CLI flag):
@@ -248,8 +244,8 @@ EPS_BOOTSTRAP_SEED: int = 7
 EPS_SCALE_GRID: tuple = (0.25, 0.5, 1.0, 2.0, 4.0)
 
 #: Designs whose raw floors enter the campaign epsilon max (figures script).
-#: The historic single-trace design is deliberately EXCLUDED (2026-07-30
-#: decision): it is a reported reference arm, not a matched-contrast arm, and
+#: The historic single-trace design is deliberately EXCLUDED: it is a
+#: reported reference arm, not a matched-contrast arm, and
 #: its 76-unit-year estimator's noise floor would coarsen the shared vector
 #: ~3-4x beyond what the ensemble search measures need (e.g. reliability
 #: epsilon 0.10 instead of 0.02 on the 0-1 scale). Its cube and per-design
@@ -356,7 +352,7 @@ PACKING_MODES: "dict[str, list[tuple[int, int, int]]]" = {
     "smoke":  [(1, 1, 0), (4, 1, 0)],
     "ladder": [(1, 6, 0), (8, 4, 0), (16, 2, 0), (32, 2, 0),
                (48, 2, 0), (64, 2, 0), (96, 2, 0), (128, 2, 0)],
-    # Spot densities from the 2026-07-10 ladder (job 19013400): slowdown is
+    # Spot densities from the packing-ladder measurements: slowdown is
     # only ~1.17x at K=128 with ~89 GB projected node memory, so SU/eval is
     # minimized at full packing — re-measure the two densest points, plus one
     # batched step at K* for the memory-vs-time trade.
@@ -784,8 +780,8 @@ ENSEMBLE_COST_PROJ_EFFICIENCY: float = 0.729
 
 #: Re-evaluation side: n_policies archived policies re-simulated on the held-out
 #: test ensemble E_test (N_theta forcing draws x R realizations each, L_test yr)
-#: on the TRIMMED model (decided 2026-07-30). 1,200 = ~400 policies per design
-#: at the calibrated epsilons, merged across seeds. The decided E_test cell is
+#: on the TRIMMED model. 1,200 = ~400 policies per design
+#: at the calibrated epsilons, merged across seeds. The adopted E_test cell is
 #: (N_theta, R, L_test) = (1000, 25, 50); the grid brackets it.
 ENSEMBLE_COST_REEVAL_POLICIES: int = 1200
 ENSEMBLE_COST_ETEST_NTHETA: "tuple[int, ...]" = (500, 1000, 1500)
@@ -1129,8 +1125,8 @@ FLOODOBJ_REALIZATION_BATCH: int = 0
 # ---------------------------------------------------------------------------
 # Sim-vs-obs block (reuses the Pywr-DRB flood-gauge diagnostic experiment)
 # ---------------------------------------------------------------------------
-#: The completed 2026-07-31 flood-gauge diagnostic experiment (read-only
-#: sibling repo). Its post-fix default-policy output HDF5 and helper module
+#: The flood-gauge diagnostic experiment (read-only sibling repo). Its
+#: post-fix default-policy output HDF5 and helper module
 #: (`diagnostics.py`) provide the sim-vs-obs scoring at zero re-simulation.
 FLOODOBJ_GAUGE_EXPERIMENT_DIR: Path = (
     _PROJECT_DIR.parent / "Pywr-DRB" / "experiments" / "nyc_flood_gauge_diagnostics"
@@ -1266,8 +1262,8 @@ RTD_HEADLINE_IMPACT_DELTA: float = 0.10
 #: columns NaN). Keys are base objective names; basis strings are the short
 #: per-objective justification carried into the summary table.
 #:
-#: Pass-1 verdicts (2026-08-05, robustness_threshold_diagnostics.md §measured
-#: verdicts): the three delivery criteria the HISTORIC status quo itself fails
+#: Pass-1 measured verdicts (robustness_threshold_diagnostics.md):
+#: the three delivery criteria the HISTORIC status quo itself fails
 #: (NYC rel 0.869 < 0.95, NYC CVaR 29.2 > 10, NJ rel 0.919 < 0.95) are
 #: re-anchored at the historic-trace attainment, rounded to the stricter side;
 #: the flood criterion adopts the observed 2000-2023 burden anchor; the

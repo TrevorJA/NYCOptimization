@@ -78,7 +78,7 @@ reference only.
 **Verification.** The figures script recomputes the realization-unit
 fraction at the current thresholds and requires equality (atol 1e-9) with the
 shipped `objectives_summary.csv` (written by `SatisficingAgg` at re-eval
-time) — PASSED for all 8 objectives on 2026-08-05 (job 19675365).
+time) — PASSED for all 8 objectives.
 
 ---
 

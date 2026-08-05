@@ -81,10 +81,8 @@ def _reset_caches():
     """Each test gets a clean module-level cache so cache-key tests are
     independent of test ordering."""
     sim._CACHED_MODEL_DICTS.clear()
-    sim._CACHED_MODEL_DICT = None
     yield
     sim._CACHED_MODEL_DICTS.clear()
-    sim._CACHED_MODEL_DICT = None
 
 
 # ---------------------------------------------------------------------------

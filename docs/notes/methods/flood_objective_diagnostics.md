@@ -1,305 +1,90 @@
 # Flood-Objective Definition Diagnostics (SI)
 
-*Last updated: 2026-08-03. Specification and measured results of the diagnostics
-that decide the flood objective's definition: the incumbent any-gauge day count
-at NWS minor flood stage (`downstream_flood_days_minor`) against
-magnitude-weighted exceedance candidates on stage and flow bases. One local
-simulation pass (34 policies × the historic trace + the `kn_50yr_n5` KN
-stationary fixture, trimmed model, ~34 simulation-minutes) plus zero-simulation
-re-scorings of the completed Pywr-DRB flood-gauge diagnostic experiment
+*Last updated: 2026-08-05. Measured results of the diagnostics behind the
+active flood objective: **`downstream_flood_exceedance_minor`** (§1 scale) /
+**`downstream_flood_exceedance_annual`** (§2 scale) — Σ over days of the
+max-across-gauges (stage − NWS minor flood stage)⁺, in ft·days/yr. The day
+counts are registered diagnostics. Evidence: one local simulation pass
+(34 policies × the historic trace + the `kn_50yr_n5` KN stationary fixture,
+trimmed model) plus zero-simulation re-scorings of the Pywr-DRB flood-gauge
+diagnostic experiment
 (`../Pywr-DRB/experiments/nyc_flood_gauge_diagnostics/`, post-fix 2000–2023
-run). No simulation campaign is launched. Terminology per
-`docs/notes/terminology.md`. The recommendation was ADOPTED 2026-08-03: the
-active flood objective is now `downstream_flood_exceedance_minor` (§1) /
-`downstream_flood_exceedance_annual` (§2) and the day counts are registered
-diagnostics; the swap rides the §1 artifact-regeneration chain (epsilons →
-problem JARs → step-05 baseline) already open for the 2026-07-31
-delivery-factor bounds change.*
+run). Terminology per `docs/notes/terminology.md`.*
 
 ---
 
-## 0. Scope and cost model
+## 1. Definition and rationale
 
-Candidates, all minimized, all normalized by the metric-window length in years
-(the `_flood_days_anygauge` convention; §2 annual units are within-water-year
-sums), stage in ft from the model's rating-curve parameters, thresholds from
-`pywrdrb.flood_thresholds`:
+The objective keeps the regulatory NWS flood-stage definition (FFMP2017
+Appendix A §6.iv–vi: 11 / 13 / 13 ft at Hale Eddy / Fishs Eddy / Bridgeville),
+which sits 2 / 2 / 1 ft above the control rule's cautionary-stage
+discontinuity. The max-across-gauges basis avoids triple-counting basin-wide
+events (the model never floods two gauges on the same day, while observations
+do — gauge-summed bases inherit that structural miss as extra low bias).
+Stage in ft comes from the model's rating-curve parameters; thresholds from
+`pywrdrb.flood_thresholds`.
 
-| # | Definition | Units |
-|---|---|---|
-| C1 | days/yr any tail gauge ≥ NWS minor flood stage (**incumbent**) | days/yr |
-| C2 | days/yr any tail gauge ≥ FFMP cautionary ("action") stage (reference only) | days/yr |
-| C3 | Σ over gauges and days of (stage − minor)⁺ | gauge-ft-days/yr |
-| C4 | Σ over days of the max-across-gauges (stage − minor)⁺ | ft-days/yr |
-| C5 | C3 with each gauge scaled by 1/(major − minor) | 1/yr |
-| C6 | Σ over gauges and days of (Q − Q_minor)⁺, Q_minor by rating-curve inversion (7,593 / 17,090 / 4,842 MGD) | MG/yr |
+Measured verdicts that support the definition:
 
-| # | Diagnostic | Input artifact | New simulation | Deliverable |
-|---|---|---|---|---|
-| 1 | Staleness audit + re-stage | staged flood-augmented inflows (content-checked) | none (re-stage only) | manifest in the run cube |
-| 2 | Sim-vs-obs / regulatory | gauge experiment's post-fix 2000–2023 output + observed flows | none | table + SI figure |
-| 3 | Rating-curve exposure | flood-day records from the policy cube | none | table + SI figure |
-| 4 | Resolution / discriminating power | policy cube (baseline + 24 feasible-uniform policies) | one 34-policy pass (`flood_objective_run.py`) | table + SI figure; **decisive** |
-| 5 | Monotone-response gate | policy cube (9-point flood-release ladder) | same pass | table + SI figure; **the gate** |
-| 6 | Ensemble noise + epsilon | policy cube unit-years, bootstrap | none | tables |
+- **Resolution.** The day count is degenerate on the historic trace: across
+  25 baseline+feasible-uniform policies it takes 9 distinct values (14.7% of
+  policy pairs tied); the exceedance integral takes 25/25 distinct values
+  with zero ties in both domains.
+- **Monotone response.** Ramping all six `flood_release_scale_*` DVs over a
+  feasible 9-point ladder, the exceedance responds strictly monotonically on
+  the ensemble (ρ_S = −1.00, 0 reversals); the count moves in integer
+  shelves (a 4-rung plateau, then steps of 33–50% of its range) — the
+  no-gradient pathology.
+- **Rating-curve exposure — none.** Across 3,556 flood gauge-days zero days
+  exceed any gauge's rated maximum discharge (headroom ≥ 2.8× in discharge,
+  ≥ 8 ft in stage), so stage-ft is a safe integration basis and a flow-basis
+  variant adds nothing.
+- **Sim-vs-obs.** Annual-series Pearson r vs observed (WY2001–2023):
+  exceedance 0.91 vs count 0.83; every candidate places 3 of the 5 worst
+  observed flood years in its own top 5. Whole-window sim/obs ratio 0.82.
+- **Ensemble noise (disclosed, not disqualifying).** The exceedance integral
+  is ~1.6× noisier and more tail-concentrated than the count
+  (bootstrap CV 0.29–0.31 vs 0.19 at the N=5 fixture); both shrink at the
+  campaign composition (900 pooled unit-years), and the K=3 draws bound
+  draw-to-draw spread.
+- **The FFMP cautionary ("action") stage is not used as the threshold**: it
+  is the FFMP control trigger, not a flood definition — an objective there
+  sits on the switching boundary of `NYCFloodRelease` /
+  `NYCCombinedReleaseFactor` and measures "days discharge-mitigation is
+  curtailed", not flood harm. It stays a registered diagnostic.
+
+The exceedance epsilon comes from the epsilon-calibration experiment
+(`epsilon_calibration_experiment.md`); the integrand is physical exceedance,
+never monetized damage (Quinn et al. 2017).
+
+## 2. Implementation and artifacts
 
 The simulation pass is `scripts/supplemental/flood_objective_run.py` (cube +
 manifest under `outputs/supplemental/flood_objective/cube/`); every reduction
 is `scripts/supplemental/flood_objective_figures.py` (tables/figures under
 `outputs/supplemental/flood_objective/{tables,figures}/`). Configuration in
-`supplemental_config.py` (`FLOODOBJ_*`).
-
-Manuscript-SI illustrations of the recommended metric (default FFMP policy,
-historic trace + stationary KN baseline; no candidate comparison):
-`scripts/supplemental/flood_exceedance_baseline_figures.py` →
-`S_flood_exceedance_event_anatomy` (how ft·days accumulate through a flood
-event: per-gauge stage relative to its own NWS flood stage, the worst-gauge
-envelope, daily increments), `S_flood_exceedance_annual_series` (water-year
-exceedance across both domains with the objective value marked), and
-`S_flood_exceedance_return_period` (unit-year exceedance vs return period; the
-zero-inflated, episodic structure the objective integrates). Wiring anchors: the run's C1
+`supplemental_config.py` (`FLOODOBJ_*`). Wiring anchors: the run's day-count
 machinery reproduces the registered objective exactly (0.196076 days/yr,
 trimmed historic baseline, matched to 1e-12), and its sim-vs-obs block
-reproduces the gauge experiment's `summary.csv` aggregate exactly (0.4167
-days/yr).
+reproduces the gauge experiment's `summary.csv` aggregate exactly
+(0.4167 days/yr).
 
-## 0b. Measured verdicts (2026-08-03, adopted)
-
-- **Flood objective — day count REPLACED by C4, Σ over days of the
-  max-across-gauges (stage − minor)⁺ [ft-days/yr]; ADOPTED 2026-08-03.** C4
-  keeps the regulatory NWS flood-stage definition (FFMP2017 Appendix A
-  §6.iv–vi: 11 / 13 / 13 ft), sits 2 / 2 / 1 ft above the control rule's
-  cautionary-stage discontinuity, and is the only candidate class that passes
-  every screen below. Registered as `downstream_flood_exceedance_minor` (§1) /
-  `downstream_flood_exceedance_annual` (§2); the former count stays a
-  registered diagnostic.
-- **Staleness audit — one stale file found and re-staged.** Checked by content
-  (the post-fix construction fixes Hale-Eddy/Fishs-Eddy local inflows at the
-  same donor, so their column-mean ratio must equal 0.337379): the historic
-  CSV (`pub_nhmv10_BC_withObsScaled`, mtime 2026-07-31 15:09) is post-fix
-  (ratio exact); the `kn_50yr_n5` flood HDF5 (mtime 2026-07-23 20:09) was
-  PRE-FIX (mean Hale Eddy inflow 13.4 MGD ≈ 2% of physical; ratio 1.013) and
-  was re-staged with `force=True` on 2026-08-03 (now 143.6 MGD, ratio exact).
-  Its presimulated releases and predicted inflows derive from the base inflow
-  file (`src/ensemble_prep.py`) and were left in place. Every flood number in
-  this note postdates the fix.
-- **Resolution — the incumbent count is DEGENERATE on the historic trace;
-  exceedance restores full resolution.** Across 25 baseline+feasible-uniform
-  policies C1 takes 9 distinct values on the historic trace (14.7% of policy
-  pairs tied; 9 occupied ε-boxes at its shipped ε) and 18 on the KN ensemble;
-  C3–C6 take 25/25 distinct values with zero ties in both domains (16–17
-  ε-boxes at the block-6 epsilons). The suspected count-degeneracy is
-  confirmed on the historic trace and partially mitigated (not removed) by
-  ensemble pooling.
-- **Monotone-response gate — exceedance PASSES.** Ramping all six
-  `flood_release_scale_*` DVs over a feasible 9-point ladder (common
-  per-reservoir multiplier for both zones, 0.5 → the L1a upper bound):
-  more-aggressive flood releases reduce downstream flooding (storage drawdown
-  dominates the added release), and on the ensemble C4 responds strictly
-  monotonically (ρ_S = −1.00, 0 reversals, largest single step 27% of range;
-  C3/C6 −0.98, C5 −1.00). C1 responds in the same direction (ρ_S = −0.95)
-  but in integer shelves — a 4-rung plateau followed by steps of 33–50% of
-  its range — exactly the no-gradient pathology.
-- **Rating-curve exposure — NONE measured; the flow basis solves a
-  non-problem.** Across 3,556 flood gauge-days (34 policies × both domains)
-  zero days exceed any gauge's rated maximum discharge; headroom is ≥ 2.8×
-  in discharge and ≥ 8 ft in stage (max simulated stage 15.9 ft vs 23.9 ft
-  rated at Hale Eddy). The endpoint-saturation fallback in
-  `flood_stage.py` never engages at flood-relevant flows, so stage-ft is a
-  safe integration basis and C6's motivation dissolves.
-- **Sim-vs-obs — exceedance tracks observed flood magnitude at least as well as
-  the count, and C4 is the honest basis.** Annual-series Pearson r vs
-  observed (WY2001–2023, stage from flow through the shared curves on both
-  sides): C4 0.91 (best), C5 0.89, C3 0.88, C6 0.87, C2 0.86, C1 0.83;
-  Spearman 0.61–0.71; every candidate places 3 of the 5 worst observed flood
-  years in its own top 5. Whole-window sim/obs ratios: C2 1.13, C4 0.82, C1
-  0.77, C5 0.60, C3 0.53, C6 0.47. The model NEVER floods two gauges on the
-  same day (simulated C3 ≡ C4) while observations do — the gauge-summed bases
-  (C3/C5/C6) inherit that structural miss as extra low bias, the max-gauge
-  basis C4 does not.
-- **Ensemble noise — the exceedance integral is ~1.6× noisier and more
-  tail-concentrated than the count; disclosed, not disqualifying.** Baseline
-  policy, 245 pooled unit-years (N=5 × 50 yr): zero-unit fraction 0.89 for
-  every minor-based candidate (same event set); the largest single unit-year
-  carries 28–30% of the exceedance integral vs 14% of the count;
-  bootstrap-over-realizations CV of the ensemble mean 0.29–0.31 (exceedance)
-  vs 0.19 (count). At the campaign composition (N=100 × 10 yr, 900 pooled
-  unit-years) both shrink; the K=3 draws bound draw-to-draw spread.
-- **Epsilon — C4 ε ≈ 0.01 on both scales (provisional).** max(IQR/10,
-  granularity) over the policy sample: 0.0085 ft-days/yr (§1 historic scale)
-  and 0.0103 ft-days per unit-year (§2 pooled-annual scale) — the analogue of
-  the incumbent's 0.02 / 0.05. Evaluation at fixed ensemble is deterministic
-  (objective-determinism check 2026-07-29), so sampling noise across draws is
-  a design property, not an ε input. Final value comes from the §1
-  epsilon-calibration rerun (512-policy population, new bounds), which the
-  swap joins at zero extra cost.
-- **C2 (cautionary stage) — REJECTED for the active set** despite the best
-  calibration ratio (1.13) and lowest noise (CV 0.06): 9 / 11 / 12 ft is the
-  FFMP control trigger, not a flood definition — an objective there sits its
-  own discontinuity on the switching boundary of
-  `NYCFloodRelease` / `NYCCombinedReleaseFactor` and measures "days
-  discharge-mitigation is curtailed", not flood harm. Stays a registered
-  diagnostic.
-
----
-
-## 1. Staleness audit and targeted re-stage
-
-**Purpose.** Every flood metric here depends on
-`catchment_inflow_with_flood_nodes_mgd.{csv,hdf5}`; files staged before the
-2026-07-31 flood-node inflow fix carry local catchments at ~2% of physical
-magnitude, and `ensemble_prep` skips staging silently when the file exists.
-
-**Method.** Content check, not mtime: the post-fix redistribution
+**Staleness guard.** Every flood metric depends on
+`catchment_inflow_with_flood_nodes_mgd.{csv,hdf5}`, and `ensemble_prep` skips
+staging silently when the file exists. The run script therefore checks
+content, not mtime: the flood-node redistribution
 (`flood_node_inflow_fractions()`) makes the Hale-Eddy/Fishs-Eddy column-mean
-ratio exactly 0.1824/0.5407 = **0.337379** in any post-fix file. The run
-script verifies both files it consumes and re-stages the ensemble file with
-`FloodNodeInflowEnsemblePreprocessor(force=True)` when the check fails; a
-stale historic CSV aborts (that file is regenerated by the sibling repo's own
-preprocessor). Presimulated releases and predicted inflows derive from the
-base inflow file and are not invalidated.
+ratio exactly 0.1824/0.5407 = **0.337379** in any current file. It re-stages
+the ensemble file with `FloodNodeInflowEnsemblePreprocessor(force=True)` when
+the check fails; a stale historic CSV aborts (that file is regenerated by the
+sibling repo's own preprocessor). The audit manifest persists in
+`flood_run_manifest.json`.
 
-**Gates / output.** The audit manifest (paths, mtimes, measured/expected
-ratios, action) persists in `flood_run_manifest.json`; findings in §0b.
-
-**Cost.** Seconds; the one re-stage was ~1 minute for 5 realizations.
-
----
-
-## 2. Sim-vs-obs / regulatory relevance
-
-**Purpose.** Score each candidate as a measurement of observed flood harm:
-absolute bias, annual-magnitude tracking, and whether it ranks the bad flood
-years correctly (the ranking property matters more than absolute calibration,
-since the ~0.56 minor-day input ceiling is un-closable by construction).
-
-**Method.** Zero simulation: the gauge experiment's post-fix default-policy
-output (`output_floodgauge_2000_2023.hdf5`) and observed flows, both converted
-flow → stage through the shared rating curves via the experiment's own
-`diagnostics.py` helpers (curve artifacts cancel; the experiment window is
-used without the 6-month exclusion to match its `summary.csv`). Reported per
-candidate: whole-window sim/obs ratio, annual-series (complete water years
-WY2001–2023) Pearson and Spearman, and the top-5 observed-flood-year overlap.
-
-**Gates / output.** `A_sim_vs_obs.csv` + the annual-series figure; feeds the
-§0b basis choice (max-gauge vs gauge-sum) via the simulated C3 ≡ C4 identity.
-
-**Cost.** Zero simulation; seconds.
-
----
-
-## 3. Rating-curve exposure
-
-**Purpose.** A exceedance metric weights the stage tail far more than a count
-does, and `StageFromDischargeParameter` saturates at the rated-range endpoint
-— quantify how often and how far simulated flood-day discharges leave the
-rated range, which is also the stage-vs-flow-basis evidence.
-
-**Method.** Every flood gauge-day record in the cube (union of stage- and
-flow-basis exceedances, all 34 policies, both domains) against each gauge's
-rated maximum; plus the per-policy per-realization flow/stage maxima
-regardless of flooding.
-
-**Gates / output.** `B_rating_curve_exposure.csv` + the stage-vs-discharge
-figure. Zero exceedances → stage-ft basis adopted; C6 (flow basis) loses its
-rationale.
-
-**Cost.** Zero simulation; seconds.
-
----
-
-## 4. Resolution / discriminating power
-
-**Purpose.** The decisive screen: an objective that assigns many policies the
-identical value gives the MOEA no gradient (and its ε-box archive no
-occupancy). Confirm or refute the incumbent's suspected near-degeneracy.
-
-**Method.** Baseline + 24 constraint-feasible uniform policies
-(`sample_feasible_dvs`, seed 19), each evaluated on the historic trace (§1
-whole-window scale) and the KN fixture (§2 pooled-annual mean over 245
-unit-years). Per candidate × domain: distinct values, tie-pair fraction,
-range, IQR, and occupied ε-boxes at the block-6 epsilons; plus the
-cross-candidate Spearman matrix (exceedance candidates are mutually ρ_S ≥ 0.99;
-exceedance vs count 0.85–0.92 — same objective family, finer resolution).
-
-**Gates / output.** `C_resolution.csv`, `C_candidate_spearman.csv`, the strip
-figure and agreement heatmap. Verdict in §0b.
-
-**Cost.** The 34-policy pass (~34 simulation-minutes, laptop) shared with §5.
-
----
-
-## 5. Monotone-response gate
-
-**Purpose.** The pre-stated adoption gate: a metric that does not respond
-monotonically (and without cliffs) to the NYC levers that should move
-downstream flooding is useless as a search objective however well it
-calibrates.
-
-**Method.** A 9-point ladder ramps all six `flood_release_scale_*` DVs with a
-common per-reservoir multiplier for both flood zones from 0.5 to the L1a
-upper bound (the common multiplier preserves the effective L1b ≤ L1a ordering
-elementwise, so every rung is feasible under the formal flood constraint —
-ramping each zone over its own bounds is not). Per candidate × domain:
-Spearman ρ of value vs ladder fraction, direction reversals against the
-dominant trend, and the largest single-step share of the response range.
-
-**Gates / output.** `D_monotone_response.csv` + the response figure. The
-historic trace is reported but not gating (single-trace responses are
-sub-integer for the counts and ~3% relative for exceedance); the ensemble
-column carries the verdict in §0b.
-
-**Cost.** Shared with §4.
-
----
-
-## 6. Ensemble sampling noise and epsilon
-
-**Purpose.** A exceedance integral can be dominated by one extreme event;
-quantify tail concentration and estimator noise rather than assuming them,
-and propose a defensible ε on each candidate's scale.
-
-**Method.** Baseline policy's 245 pooled unit-years: zero-unit fraction,
-top-unit share of the integral, and bootstrap (B = 1,000, resampling the 5
-realizations) SE/CV of the ensemble mean. ε = max(IQR/10 across the §4 policy
-sample, metric granularity) on both scales; granularity is 1/76 (historic
-units) and 1/245 (pooled units) for the counts, none for the continuous
-integrals.
-
-**Gates / output.** `E_ensemble_noise.csv`, `F_epsilon_proposal.csv`, the
-unit-distribution figure. The N=5 fixture bounds these estimates from above;
-they are noise disclosures, not campaign-scale predictions.
-
-**Cost.** Zero simulation; seconds.
-
----
-
-## 7. Adoption checklist (IMPLEMENTED 2026-08-03)
-
-The swap is cheap in code and expensive only in artifacts already queued for
-regeneration. Items 1–3 are LANDED; item 4 is the remaining queue:
-
-1. DONE — `src/objectives.py`: `_flood_exceedance_daily` /
-   `_flood_exceedance_anygauge` cores beside the count helpers;
-   `downstream_flood_exceedance_minor` registered (ε provisional 0.01
-   ft-days/yr); `downstream_flood_days_minor` kept as a diagnostic.
-2. DONE — `src/objectives_ensemble.py`: `_flood_exceedance_minor_annual`;
-   active `downstream_flood_exceedance_annual` row (PooledMean, worst_value
-   5490 = 366 days × ~15 ft, the largest rated exceedance); count mean/P99
-   rows kept as diagnostics; `_BASE_TO_ENSEMBLE` + `_REGISTRY_SPEC` rows;
-   `downstream_flood_exceedance_minor__sat1 = 1.0` ft-days/yr placeholder
-   pending the satisficing-criterion diagnostics (anchors: observed
-   2000–2023 = 1.17, simulated baseline = 0.35).
-3. DONE — `config._DEFAULT_OBJECTIVES` swapped (set stays 8, slugs stay
-   `*_obj8`); `src/plotting/style.py` labels; the 11 pinned
-   `NYCOPT_OBJECTIVES` lists in `workflow/envs/*.env`; supplemental scripts
-   (`framing_convention_analysis._FLOOD_OBJECTIVE`, epsilon-figure ladder
-   notes, determinism labels); tests extended
-   (`test_flood_exceedance_annual_integrates_worst_gauge_exceedance`).
-4. OPEN (already queued for the ±0.15 bounds change, zero extra cost
-   batched): the epsilon-calibration rerun prices the final exceedance ε →
-   problem JARs (TODO §1) → the step-05 baseline objective vector, which is
-   STALE again as of this swap (its flood entry is a day count).
+Manuscript-SI illustrations of the metric (default FFMP policy, historic
+trace + stationary KN baseline):
+`scripts/supplemental/flood_exceedance_baseline_figures.py` →
+`S_flood_exceedance_event_anatomy`, `S_flood_exceedance_annual_series`, and
+`S_flood_exceedance_return_period`.
 
 ---
 

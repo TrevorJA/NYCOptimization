@@ -28,7 +28,7 @@ The final campaign vector is the clean-rounded per-objective maximum of the
 raw requirement across the CAMPAIGN designs (``EPS_CAMPAIGN_DESIGNS``; the
 Borg problem/JARs carry one epsilon set for every design). The historic
 single-trace reference arm is analyzed and reported but excluded from the max
-(2026-07-30 decision) — its small-NL noise floor would otherwise coarsen the
+— its small-NL noise floor would otherwise coarsen the
 shared vector ~3-4x beyond what the ensemble search measures need.
 
 Outputs (all under ``outputs/supplemental/epsilon_calibration/``):
@@ -130,8 +130,7 @@ _FALLBACK_COLORS = ["#56B4E9", "#CC79A7", "#E69F00"]
 _CAMPAIGN_COLOR = "#009E73"   # adopted campaign epsilon vector
 _PREVIOUS_COLOR = "#000000"   # previous provisional registry vector
 
-#: Suffix for ladder row labels of objectives outside the default active set
-#: (NJ delivery left this dict at its activation, 2026-07-30).
+#: Suffix for ladder row labels of objectives outside the default active set.
 _NON_DEFAULT_NOTE = {
     "downstream_flood_days_annual": " (diagnostic)",
     "downstream_flood_days_annual_p99": " (diagnostic)",

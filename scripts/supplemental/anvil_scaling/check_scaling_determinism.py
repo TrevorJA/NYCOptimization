@@ -1,4 +1,4 @@
-"""check_objective_determinism.py - Is the model's nondeterminism reaching the objectives?
+"""check_scaling_determinism.py - Is the model's nondeterminism reaching the objectives?
 
 Runs the SAME baseline DVs through the SAME ensemble twice in one process and
 compares (a) the raw simulated flows and (b) every registered objective. Then
@@ -13,7 +13,7 @@ amplify it into a discrete jump? A reliability objective of the form
 
 Usage (never on a login node):
     srun --partition=shared --account=ees260021 --ntasks=1 --time=00:30:00 \
-        python3 scripts/supplemental/anvil_scaling/check_objective_determinism.py
+        python3 scripts/supplemental/anvil_scaling/check_scaling_determinism.py
 """
 from __future__ import annotations
 

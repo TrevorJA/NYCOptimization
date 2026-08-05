@@ -83,7 +83,7 @@ def _resolve_ref_file(slug: str, formulation: str, scenario: str,
 
     Prefers the merged Pareto set written by diagnostics, then the Borg
     per-seed solution set written directly by the optimizer, then a curated
-    reference_sets/ entry, then the legacy formulation-keyed path.
+    reference_sets/ entry, then the formulation-keyed fallback path.
     """
     sets_dir = run_output_dir(scenario, slug, "sets")
     candidates = [

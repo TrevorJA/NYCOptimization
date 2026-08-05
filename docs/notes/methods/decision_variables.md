@@ -123,8 +123,8 @@ the zone-shift bounds make crossings common under random sampling, and
 the monotonicity clamp resolves them cleanly at apply time —
 the clamped geometry is the intended policy, not a defect to search away from.
 
-**Formal Borg constraint — post-simulation** (added 2026-08-04;
-`src.formulations.make_post_sim_constraint_function`): a third constraint,
+**Formal Borg constraint — post-simulation**
+(`src.formulations.make_post_sim_constraint_function`): a third constraint,
 `nyc_reliability_floor`, enforces the stakeholder floor on NYC weekly
 delivery reliability directly in the search. Unlike the two DV-space
 constraints it reads the COMPUTED objective vector — the MM Borg objective
@@ -136,9 +136,9 @@ by name, `nyc_delivery_reliability_weekly`) back to the natural 0–1 scale:
    `config.NYC_RELIABILITY_FLOOR` (env `NYCOPT_NYC_RELIABILITY_FLOOR`,
    default 0.5). A policy delivering below-floor weekly reliability is
    unacceptable to stakeholders regardless of the rest of the trade-off.
-   Constraint-dominance now excludes such policies from search and archive,
-   replacing the post-hoc Pareto screen (`src/pareto_filter.py`, retained
-   for archives produced before this change).
+   Constraint-dominance excludes such policies from search and archive;
+   `src/pareto_filter.py` applies the same floor as a post-hoc screen for
+   archives that predate the formal constraint.
 
 Borg applies constraint-dominance ahead of Pareto/epsilon dominance: any
 feasible solution dominates every infeasible one, and infeasible solutions

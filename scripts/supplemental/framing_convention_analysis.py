@@ -97,9 +97,9 @@ _FREQ_OBJECTIVES: tuple = (
     "nj_delivery_reliability_annual",
 )
 
-# The ACTIVE flood objective (exceedance ADOPTED 2026-08-03,
-# flood_objective_diagnostics.md); cubes written before that date carry the
-# day count under this role instead — re-run on a current cube.
+# The ACTIVE flood objective (flood_objective_diagnostics.md); cubes
+# written before the exceedance adoption carry the day count under this role
+# instead — re-run on a current cube.
 _FLOOD_OBJECTIVE = "downstream_flood_exceedance_annual"
 
 

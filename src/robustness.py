@@ -548,15 +548,11 @@ def improvement_vs_baseline(raw: RawCube, baseline: RawCube,
     **positive always means BETTER than current operations**, whatever the
     objective's direction. Averaged over realizations. Higher is better.
 
-    An earlier version clipped this at 0 (crediting a policy with nothing for
-    beating the baseline) to preserve Savage-regret semantics, in which regret is
-    non-negative by construction. That was wrong twice over. First, we deliberately
-    do NOT compute Savage regret, so the clip was inherited from an abandoned
-    framing. Second, the clip is degenerate here: optimized policies are expected
-    to dominate the status quo on most objectives in most realizations, so the
+    Clipping at 0 would be degenerate here: optimized policies are expected to
+    dominate the status quo on most objectives in most realizations, so a
     clipped quantity collapses to ~0 for every policy of every design and
-    discriminates nothing -- a metric that is stable, computable, and useless
-    (exactly the failure mode of Bonham et al. 2024 and Huang et al. 2025).
+    discriminates nothing (the failure mode of Bonham et al. 2024 and Huang et
+    al. 2025).
 
     The baseline cube must carry the same objectives; realizations are joined on
     ``realization_id`` (not position). ``normalize="best"`` divides by
@@ -810,13 +806,12 @@ def score_robustness(raw: RawCube, baseline: Optional[RawCube] = None,
 
     # EVERY metric here is defined ACROSS realizations, so all of them are N/A on
     # a single-trace re-eval. Two things depend on this gate:
-    #   - It must cover the WHOLE scorecard. Previously only satisficing was
-    #     gated, so the baseline-relative metric was still computed (and written)
-    #     at R == 1 -- a meaningless number that looked meaningful.
+    #   - It must cover the WHOLE scorecard, including the baseline-relative
+    #     metric (meaningless at R == 1).
     #   - Gated metrics must not be COMPUTED, only NaN-filled afterwards: a
     #     single-trace re-eval resolves a non-ensemble objective set that may
-    #     carry no satisficing thresholds, and _satisfaction_cube now (rightly)
-    #     raises on a missing threshold.
+    #     carry no satisficing thresholds, and _satisfaction_cube raises on a
+    #     missing threshold.
     r1 = (not raw.is_ensemble) or raw.n_realizations <= 1
 
     # The SOW unit needs a SOW grouping. Its absence is a property of the ensemble

@@ -1,6 +1,6 @@
 # Framing-Convention Diagnostics (SI)
 
-*Last updated: 2026-07-30. Specification of four light diagnostics that test the
+*Last updated: 2026-08-05. Specification of four light diagnostics that test the
 sensitivity of the study's framing conventions — the annual failure-week count
 k, the weekly satisfaction factor, the re-evaluation satisficing criteria, and
 the controllability of the flood-days objective. All four are offline
@@ -43,7 +43,7 @@ design); diagnostic 3 is a re-scoring of the re-evaluation cube via
 `src/robustness.py`, extending the pooled stringency sweep of
 `scripts/main/compare_designs.py`.
 
-## 0b. Measured verdicts (2026-07-30, adopted)
+## 0b. Measured verdicts (adopted)
 
 Run on the three epsilon cubes (tables + SI figures under
 `outputs/supplemental/framing_convention/`):
@@ -63,13 +63,15 @@ Run on the three epsilon cubes (tables + SI figures under
 - **Flood controllability — objective retained.** Empirical floor share of
   the baseline's flood days 0.57 (fixed_probabilistic) / 0.61
   (hazard_filling): controllable fraction ≥ 0.43 / 0.39 (lower bound).
-- **8th objective — NJ delivery ACTIVATED.** Max |ρ_S| vs any objective 0.38
+- **8th objective — NJ delivery ACTIVE.** Max |ρ_S| vs any objective 0.38
   (vs flood mean); vs NYC delivery ~0.15; vs Trenton ≤ 0.08. Only flagged
   pair anywhere: flood mean ↔ flood P99 (0.85/0.89), internal to the operator
-  decision. NJ's ε (0.025) was pre-calibrated by the same experiment.
+  decision. NJ's ε (0.025) was calibrated by the same experiment.
+- **Weekly satisfaction factor — 0.99 ADOPTED** (diagnostic 2, both ensemble
+  designs): τ-vs-shipped ≥ 0.92 at 0.98/0.99, while the strict 1.00
+  collapses rankings (τ_b 0.59–0.65) and 0.95 drifts (τ_b 0.70).
 
-Diagnostic 2 (satisfaction factor) awaits its Anvil run; diagnostic 3 waits
-on the persisted re-evaluation cube (post E_test).
+Diagnostic 3 waits on the persisted re-evaluation cube (post E_test).
 
 ---
 
@@ -186,47 +188,39 @@ dominate; the grid is ~8 objectives × the stringency grid × runs).
 
 ---
 
-## 4. Flood-days attribution and controllability
+## 4. Flood attribution and controllability
 
-**Purpose.** Bound how much of the flood-days objective (mean annual days at
-NWS minor stage, days/yr) is controllable by NYC release decisions versus set
-exogenously by the hydrology, pre-empting the critique that the search
-gradient on an exogenously dominated objective is too weak to be meaningful.
+**Purpose.** Bound how much of the flood objective is controllable by NYC
+release decisions versus set exogenously by the hydrology, pre-empting the
+critique that the search gradient on an exogenously dominated objective is
+too weak to be meaningful.
 
 **Method.** A post-hoc reduction of the epsilon cubes' per-unit values of the
-ACTIVE flood objective (`downstream_flood_exceedance_annual` since 2026-08-03;
-cubes written earlier carry `downstream_flood_days_annual` in that role), held
-for the full feasible-policy population **and** the default-FFMP baseline row
-on the same realizations, per design. For each pooled unit-year u:
+ACTIVE flood objective (`downstream_flood_exceedance_annual`; older cubes
+carry the day-count diagnostic in that role), held for the full
+feasible-policy population **and** the default-FFMP baseline row on the same
+realizations, per design. For each pooled unit-year u:
 
-- **empirical exogenous floor** F_min(u) = the minimum annual flood-day count
-  across the policy population ∪ baseline;
+- **empirical exogenous floor** F_min(u) = the minimum annual value across
+  the policy population ∪ baseline;
 - **across-policy spread** = the distribution of F_p(u) − F_min(u) across
   policies.
 
-Summaries, per design:
-
-1. the distribution of the ensemble-mean annual flood days (days/yr, the §2
-   unit-operator scale) across the policy population, with the baseline and the
-   pooled floor Σ_u F_min(u) / NL marked;
-2. the **floor share** Σ_u F_min(u) / Σ_u F_base(u) — the policy-invariant
-   fraction of the baseline's flood days;
-3. its complement, the controllable fraction, contrasted between the ensemble
-   designs (the wet-enriched hazard-filling composition tests controllability
-   under stress).
+Summaries, per design: the policy-population distribution of the §2
+unit-operator scale with the baseline and the pooled floor Σ_u F_min(u) / NL
+marked; the **floor share** Σ_u F_min(u) / Σ_u F_base(u) (the
+policy-invariant fraction of the baseline's flood burden); and its
+complement, the controllable fraction, contrasted between the ensemble
+designs (the wet-enriched hazard-filling composition tests controllability
+under stress).
 
 The floor is empirical — a minimum over the evaluated policy sample, not an
 oracle — so it is an **upper bound on the exogenous component and the quoted
-controllable fraction is a lower bound**; this is stated wherever the figure is
-used. The same reduction reports the spread of the P99 unit-operator variant
-alongside the mean, feeding the flood unit-operator decision (expectation can
-mask floods; Quinn et al. 2017).
+controllable fraction is a lower bound**; this is stated wherever the figure
+is used.
 
-**Gates / output.** One SI figure (per design: policy-population distribution
-of mean annual flood days with the baseline and empirical-floor lines, plus
-the floor-share summary). Informs whether flood days remains in the active
-search set with the mean operator, and supplies the quantitative reply to the
-weak-gradient critique.
+**Gates / output.** One SI figure per design, plus the floor-share summary —
+the quantitative reply to the weak-gradient critique.
 
 **Cost.** Zero simulation; seconds of post-processing.
 

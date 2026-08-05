@@ -26,9 +26,9 @@ python3 scripts/main/run_baseline.py "$@"
 
 # Also persist the baseline policy's re-eval matrix on the common re-eval
 # ensemble (raw per-realization base metrics), so step 08's robustness scoring
-# can compute regret-from-baseline (auto-detected at <reeval_dir>/baseline).
+# can compute improvement-vs-baseline (auto-detected at <reeval_dir>/baseline).
 # Opt out with NYCOPT_BASELINE_SKIP_REEVAL=1.
 if [[ "${NYCOPT_BASELINE_SKIP_REEVAL:-0}" != "1" ]]; then
-    echo "[05_run_baseline] persisting baseline re-eval matrix (regret-from-baseline)"
+    echo "[05_run_baseline] persisting baseline re-eval matrix (improvement-vs-baseline)"
     python3 scripts/main/run_baseline.py "$@" --reeval
 fi

@@ -17,7 +17,7 @@
 #   SEED                           optional, per-seed output subdir
 #   MAX_SOLUTIONS                  default 0 = all Pareto solutions
 #   NYCOPT_REEVAL_SCORE=1          opt-in offline robustness scoring
-#   NYCOPT_REEVAL_BASELINE_DIR     optional, for regret-from-baseline
+#   NYCOPT_REEVAL_BASELINE_DIR     optional, for improvement-vs-baseline
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
@@ -87,7 +87,7 @@ esac
 
 # ---- Optional offline robustness scoring (opt-in) ----
 # Scores the persisted raw matrix (reeval_raw.parquet) into a multi-metric
-# robustness scorecard. Cheap, no re-simulation. Regret-from-baseline also
+# robustness scorecard. Cheap, no re-simulation. Improvement-vs-baseline also
 # needs a baseline raw pass: run `python3 scripts/main/run_baseline.py
 # --formulation ${FORMULATION} --reeval` first and pass --baseline-dir.
 if [[ "${NYCOPT_REEVAL_SCORE:-0}" == "1" ]]; then

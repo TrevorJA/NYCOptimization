@@ -24,7 +24,7 @@ Parts:
      and restarts, so a confirmatory search under the adopted vector is
      still required (disclosed).
   3. MOEAFramework comparison: ResultFileMerger re-merges the per-seed
-     merged sets under one candidate vector. MEASURED 2026-08-05: v5's
+     merged sets under one candidate vector. MEASURED: v5's
      merger applies PLAIN Pareto dominance regardless of --epsilon
      (identical 7,544-row output under the current and C1 vectors), so the
      step-07 {slug}_merged.set is a plain nondominated union, NOT an ε-box
@@ -61,8 +61,8 @@ from src.sensitivity_common import epsilon_nondominated
 from config import get_epsilons
 
 # Candidate grids, keyed by objective name (active-set order preserved).
-# Axes not listed keep the current adopted value. Grid choices: the axes
-# Trevor flagged 2026-08-05 (deficit-P99 pair, flood exceedance, storage-P01
+# Axes not listed keep the current adopted value. Grid choices: the flagged
+# axes (deficit-P99 pair, flood exceedance, storage-P01
 # too fine; Trenton reliability possibly too coarse), spanning current ->
 # the calibration experiment's measured per-design recommendations
 # (epsilon_recommendation_ffmp_combined: NYC-def measured 10.0 hazfill /
@@ -77,10 +77,10 @@ OAT_GRIDS: dict[str, list[float]] = {
 
 # Combined candidates: overrides applied to the current vector.
 CANDIDATES: dict[str, dict[str, float]] = {
-    # C1_moderate revised 2026-08-05 (Trevor): storage-P01 epsilon stays at
-    # the current 5.0 (a 5%-of-capacity distinction is significant), and the
-    # NYC/Montague deficit-P99 epsilons are PAIRED at 5.0 — matching the
-    # paired 0.02 on the two sites' reliability axes.
+    # storage-P01 epsilon stays at the current 5.0 (a 5%-of-capacity
+    # distinction is significant); the NYC/Montague deficit-P99 epsilons are
+    # PAIRED at 5.0 — matching the paired 0.02 on the two sites' reliability
+    # axes.
     "C1_adopted": {
         "nyc_delivery_deficit_p99_pct": 5.0,
         "montague_flow_deficit_p99_pct": 5.0,

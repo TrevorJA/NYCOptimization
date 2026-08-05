@@ -52,31 +52,72 @@ E. **Selection invariance**: leave-one-axis-out and add-one-axis-back (campaign 
 
 **Figures** (SI): F1 selected members on the (dry, wet) magnitude plane per rule; F2 coverage vs the random null in both geometries; F3 tail enrichment + atom treatment; F4 snap distances + minimum separation; F5 the bounds sweep; F6 Spearman heatmap + cluster tree; F7 per-axis coverage and tail enrichment vs the null; F8 snap behavior vs dimension; F9 the (N × axis set) sizing surface; F10 selection invariance + implicit weighting.
 
-## 5. Findings at laptop scale (P = 2,000, L = 10, N = 100; 10 seeds + 50-seed null)
+## 5. Findings
 
-Results in `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n2000_d0/`.
+Laptop battery: P = 2,000, L = 10, N = 100; 10 seeds + 50-seed null
+(`outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n2000_d0/`).
+Production axis-set decision: nested-P saturation rungs {2k, 5k, 20k, 10⁵,
+3×10⁵, 10⁶} of ONE stream-only P = 10⁶ pool
+(`nested_P_saturation.md` + `m6_axis_set_assessment.json`; prefixes are
+honest i.i.d. pools by the global-index seeding).
 
-- **Axis screen: all 8 candidates retained (m = 8).** No degenerate axes; no near-duplicate pair — the largest |ρ_S| is 0.88 (deficit volume ↔ duration), below the 0.95 dedupe cut and still below a 0.90 tightening, so the retained set is insensitive to the threshold over that range. The cluster tree shows the expected concept groups (integrated-drought {deficit volume, duration, peak depth}; drought rates; flood magnitude/rise; pulse duration) with all between-group |ρ_S| ≤ 0.61.
-- **Campaign selector re-confirmed (`lhs_nn`) at the full axis set.** Best coverage of the campaign geometry (L2-star 0.023 vs 0.132 random) and tail enrichment at strength (mean share above pool P90 = 0.259 vs the 0.10 of an unbiased rule; any-axis corner share 0.95 vs 0.51 random). `lhs_assign` is metric-indistinguishable (L2-star 0.024, tail 0.256) and selects nearly the same members (per-seed Jaccard 0.83 at full m), so the greedy snap's order-dependence remains immaterial at eight axes. No near-duplicate pathology (minimum separation 0.164 vs 0.104 random). The dry zero-event atom is 0.7% of windows and `lhs_nn` selects none of it.
-- **Per-axis mechanism holds on every axis.** At full m and N = 100 every retained axis is both better stratified than the null (KS to uniform below the null mean on all 8 axes) and tail-enriched above it (per-axis tail shares 0.14–0.37 vs ≈ 0.10): the marginal-coverage guarantee survives the move to eight axes. Enrichment is not uniform across axes — weakest on drought duration (0.151) and flood rise rate (0.195), strongest on drought onset rate (0.368).
-- **Dimension dilutes the snap at this pool size.** From four axes to the full set the mean anchor snap distance grows 0.205 → 0.606 and the distance-concentration ratio 0.39 → 0.80, i.e. at P = 2,000 in eight dimensions a snapped member is barely closer to its anchor than a random pool point; per-axis mean tail share falls 0.354 → 0.259 accordingly. This is a finite-pool effect — the expected anchor-to-nearest-member distance scales as P^(−1/m) — not an intrinsic property of the axis set, so the production pool size P is the binding lever on full-set enrichment. The **pool-size saturation diagnostic (nested P) and the production-pool rerun decide it**; the laptop numbers are the conservative floor.
-- **Raising N does not buy enrichment at fixed P.** Across N = 100 → 300, per-axis tail shares are flat-to-declining at every axis set (full-set mean 0.259 → 0.228; four-axis benchmark 0.354 → 0.300): the pool holds only ~P/10 members above P90 per axis, so additional selections increasingly draw from the bulk. Joint L2-star also degrades mildly with N. Under the pre-stated adequacy criterion (min per-axis tail share ≥ ~0.30 on every axis) **no (axis set, N) combination passes at P = 2,000** — the four-axis benchmark itself reaches only 0.256 at N = 100 — and N = 100 is the best value in the sweep at every axis set. The criterion is therefore a gate on the production pool size, not on N.
-- **Robust bounds re-confirmed (p1/p99) at full m.** Full-range (0, 100) bounds degrade realized coverage ~2.5–3× (`lhs_nn` L2-star 0.031 → 0.076 between (0.5, 99.5) and (0, 100)) — the outlier-fixation failure mode — while tail enrichment moves smoothly across (2, 98)–(0.5, 99.5) (0.219–0.282) with no sensitivity cliff at the campaign default.
-- **The selection is not hostage to any single axis, and the implicit weighting is disclosed.** Leave-one-axis-out selections overlap the full-set selection at Jaccard 0.18–0.27 with no outlier axis (add-one-back: 0.18–0.23): every axis moves the selection somewhat and none dominates it. Per-axis shares of the squared snap displacement are 0.08–0.16 (equal weighting = 0.125); the dry group carries 0.67 vs the 0.625 of pure axis-count proportionality — the 5:3 dry:wet count, not hidden concept-doubling, sets the weighting.
-- **Alternatives characterized.** `maximin` concentrates on the hull and over-selects the sparse zero-event corner (4% of its members); `eps_cell` under-enriches the tails (0.191). Caveat for reading the tables: box-based L2-star structurally favors anchor/box-filling rules over manifold-support-filling rules, so F1 (the selection scatter) is the fair visual comparison.
-- **Sub-pool stability**: between-half means are identical to three digits for `lhs_nn` (tail share 0.229 / 0.229) — the seed/construction-stability SI evidence.
+- **Axis screen: all 8 candidates retained (m = 8).** No degenerate axes; no
+  near-duplicate pair — the largest |ρ_S| is 0.88 (deficit volume ↔
+  duration), below the 0.95 dedupe cut and still below a 0.90 tightening.
+  The cluster tree shows the expected concept groups with all between-group
+  |ρ_S| ≤ 0.61.
+- **Campaign selector confirmed (`lhs_nn`).** Best coverage of the campaign
+  geometry (L2-star 0.023 vs 0.132 random) and tail enrichment at strength
+  (mean per-axis share above pool P90 = 0.259 vs 0.10 unbiased; any-axis
+  corner share 0.95 vs 0.51 random). `lhs_assign` is metric-indistinguishable
+  and selects nearly the same members (per-seed Jaccard 0.83), so the greedy
+  snap's order-dependence is immaterial. No near-duplicate pathology; the dry
+  zero-event atom is 0.7% of windows and `lhs_nn` selects none of it.
+  `maximin` concentrates on the hull and over-selects the sparse zero-event
+  corner; `eps_cell` under-enriches the tails.
+- **Per-axis mechanism holds on every axis**: every retained axis is both
+  better stratified than the null and tail-enriched above it. Snap distance
+  dilutes with dimension at fixed P (the expected anchor-to-nearest-member
+  distance scales as P^(−1/m)).
+- **N = 100 confirmed; raising N does not buy enrichment at fixed P.** Across
+  N = 100 → 300 per-axis tail shares are flat-to-declining at every axis set
+  (the pool holds only ~P/10 members above P90 per axis), and joint L2-star
+  degrades mildly. N = 100 is the best value in the sweep, and larger N costs
+  linearly in every search.
+- **Robust bounds confirmed (p1/p99).** Full-range (0, 100) bounds degrade
+  realized coverage ~2.5–3× (outlier fixation); tail enrichment moves
+  smoothly across (2, 98)–(0.5, 99.5) with no cliff at the campaign default.
+- **Selection axis set: the campaign selects on m = 6**
+  ({deficit volume, peak depth, onset rate, recovery rate, peak magnitude,
+  pulse duration} = `config.HAZARD_SELECTION_AXES`, consumed by the step-03
+  selection). The full 8-axis set cannot pass the pre-stated adequacy gate
+  (min per-axis tail share ≥ ~0.30) at any affordable pool size — the
+  nested-P rungs show an improvement exponent ~0.04, far below the P^(−1/8)
+  bound, i.e. geometry-limited, not supply-limited. The m = 6 set passes at
+  P = 10⁶ (min 0.311; thin margin — re-confirm per production draw); the
+  measured alternatives (duration for peak depth; duration + rise rate both
+  in) fail the gate. The dropped descriptors stay computed in every hazard
+  image and reportable post-hoc. The battery scores exactly two axis sets —
+  campaign and full — the full set serving as the measured evidence for
+  restricting selection.
+- **Not hostage to any single axis; implicit weighting disclosed.**
+  Leave-one-axis-out selections overlap the full-set selection at Jaccard
+  0.18–0.27 with no outlier axis; per-axis shares of the squared snap
+  displacement are near-equal, and the dry group carries 0.67 vs the 0.625 of
+  pure axis-count proportionality — the dry:wet axis count, not hidden
+  concept-doubling, sets the weighting.
+- **Sub-pool stability**: between-half means identical to three digits for
+  `lhs_nn` — the seed/construction-stability SI evidence.
 
-**Reading of this battery at laptop scale** (superseded on the axis-set question by §5b): the screen finds no near-duplicates to prune and no axis pathology, and the per-axis guarantee holds on all eight axes; **N = 100** is confirmed — larger N is strictly worse on enrichment at fixed P and costs linearly (173.8 s/eval at N = 100; N = 150 would raise every search cost 1.5×). The open lever the battery identified — the production pool size P — was resolved by the nested-P run (§5b): full-set enrichment is geometry-limited rather than supply-limited, and the campaign selects on the m = 6 subset.
-
-## 5b. Nested-P saturation outcome (HPC, 2026-07-29/30) and the axis-set decision
-
-The pool-size saturation diagnostic ran on Anvil as prefix rungs {2k, 5k, 20k, 10⁵, 3×10⁵, 10⁶} of ONE stream-only P = 10⁶ pool (`outputs/supplemental/hazard_selector_diagnostics/nested_P_saturation.md`; prefixes are honest i.i.d. pools by the global-index seeding). **The (m = 8, N = 100) gate fails at every rung** (min per-axis tail share 0.144 → 0.256; improvement exponent ~0.04, far below the P^(−1/8) bound from the intrinsic dimension — geometry-limited, so P is not the lever), activating the pre-registered fallback ladder. A follow-on candidate-set assessment (`m6_axis_set_assessment.json`) measured the fallback options: the **campaign decision (2026-07-30) is the m = 6 set** {deficit volume, peak depth, onset rate, recovery rate, peak magnitude, pulse duration}, which passes at P = 10⁶ (min 0.311; thin margin — re-confirm per production draw); keeping duration instead of peak depth fails (0.265, pinned by duration's quasi-discrete tail), as does swapping duration and rise rate in together (0.249, pinned by the flood-group-entangled rise rate). A four-axis concept-group benchmark passes from P ≈ 10⁵ with margin (0.353 at 10⁶). Wired as `config.HAZARD_SELECTION_AXES`, consumed by the step-03 selection; the dropped descriptors stay computed and reportable. The battery itself scores exactly two axis sets — campaign and full — the full set serving as the measured evidence for restricting selection.
+Caveat for reading the tables: box-based L2-star structurally favors
+anchor/box-filling rules over manifold-support-filling rules, so F1 (the
+selection scatter) is the fair visual comparison.
 
 ## 6. Sizing
 
 | Scale | Pool | Use |
 |---|---|---|
-| Laptop (test) | P ≈ 2,000–5,000, L = 10, stream-only (hazard image only) | Selector + bounds + axis-set + N decisions for the campaign; SI draft figures |
-| HPC (production) | The production candidate pool (P = 10⁶, decided §5b) | Final SI figures on the campaign pool; must confirm the per-axis adequacy criterion at the campaign selection set (m = 6, N = 100) on every draw |
+| Laptop (test) | P ≈ 2,000–5,000, L = 10, stream-only (hazard image only) | Selector + bounds + N evidence; SI draft figures |
+| HPC (production) | The production candidate pool (P = 10⁶; §5) | Final SI figures on the campaign pool; must confirm the per-axis adequacy criterion at the campaign selection set (m = 6, N = 100) on every draw |
 
 The experiment reads only `hazard_image.npz` (never pool timeseries), so production-scale cost is minutes. N, seed counts, and the pool slug are environment-configured in the driver.

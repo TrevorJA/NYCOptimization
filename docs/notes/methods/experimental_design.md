@@ -40,9 +40,11 @@ The two matched designs share the same generator, population, *N*, and *L*. Only
 
 ---
 
-## Designs not in the campaign
-
-Earlier planning considered additional constructions (a per-evaluation resampled ensemble, an input-stratified LHS design over forcing parameters, and a DU-forced hazard-filling variant) together with a "hazard coverage beats input coverage" claim. These are not part of the current campaign and are not presented as designs here. If revisited at all, they belong in future work, and the "hazard coverage beats input coverage" claim is not made. The current study isolates one mechanism (the selection rule within a single stationary population) so that the comparison rests on an exact within-population control.
+The campaign comprises exactly the three designs above; other registered
+constructions in `src/scenario_designs.py` are future-work material, and no
+"hazard coverage beats input coverage" claim is made. The study isolates one
+mechanism (the selection rule within a single stationary population) so that
+the comparison rests on an exact within-population control.
 
 ---
 
@@ -84,7 +86,7 @@ Design rankings are conditional on the test-ensemble design, since robustness is
 
 **Comparison metrics.** The primary comparison measure is the multivariate Starr satisficing fraction on E_test. The pre-specified run-level endpoint is the maximum satisficing fraction attained by any policy in the run's re-evaluated set — the most robust policy the design can find — reported with the per-objective satisficing decomposition alongside so that a single scalar does not carry the whole comparison (a maximum over a set carries a mild upward bias that grows with set cardinality; this is disclosed). Secondary metrics are univariate satisficing, the coverage-weighted mean (Laplace, risk-neutral), maximin (risk-averse), and the signed improvement over the status-quo FFMP policy on the same E_test. Ranking agreement across these metrics is summarized by Kendall's τ_b over the design rankings (`objective_definitions.md` §3). Uncertainty on ensemble-level quantities is assessed at the SOW level, since realizations within a state of the world are not independent and precision is governed by N_θ.
 
-The signed improvement over the status quo is the only regret-type quantity computed. It is a fixed-reference, design-independent regret in the McPhail et al. (2018) taxonomy: the reference is the default 2017 FFMP policy simulated on the same E_test, and it does not move when a design is added or dropped. No set-relative (best-in-set) regret is computed, because it is design-coupled (removing one design changes every other design's score) and is the slowest-converging robustness family in Bonham et al. (2024). No perfect-foresight (Cohen-style baseline) regret is computed, because it requires one perfect-foresight optimization per scenario and does not scale to a candidate pool. No search-minus-test overfitting gap is reported, because under the shifted `hazard_filling` measure the in-sample term is not an expectation under E_test's measure, so the difference is an artifact of the distribution change rather than an overfitting quantity.
+The signed improvement over the status quo is the only regret-type quantity computed — a fixed-reference, design-independent regret in the McPhail et al. (2018) taxonomy: the reference is the default 2017 FFMP policy simulated on the same E_test, and it does not move when a design is added or dropped. No set-relative regret, perfect-foresight regret, or search-vs-test gap is computed (`objective_definitions.md` §3.3).
 
 **The criterion sweep is retained.** Where a satisficing criterion is not fixed by a Decree or FFMP goalpost it is a convention, so each such criterion is swept over a grid and the question asked is whether the design difference is invariant rather than whether robustness values move (Quinn et al. 2020). This is the sense in which the comparison is reported as a difference that holds or fails to hold across the range of defensible criteria.
 
@@ -99,6 +101,4 @@ The two matched designs depart differently from the scenario probabilities of th
 1. **Satisficing criterion values** — the centre of the threshold grid (Decree/FFMP anchors where they exist; elicited-convention defaults elsewhere) and the grid's span.
 2. **Figure plan** for the results — not yet drafted.
 
-Closed 2026-07-30 by the framing-convention diagnostics (`framing_convention_diagnostics.md`): the flood-days unit operator = MEAN (P99 tie-degenerate at the campaign unit count; retained as a diagnostic), the annual failure-week counts confirmed as shipped, and the 8th objective (NJ delivery reliability) ACTIVATED on a clean redundancy screen.
-
-Sizing is fixed (2026-07-30): E_test = 1,000 LHS SOWs × R = 25 × L_test = 50 yr; selection axes m = 6 with N = 100 and P = 10⁶ (`scenario_design_methods.md` §3.3/§5.4/§6; `hazard_selector_diagnostics.md` §5b); K = 3 draws × S = 2 seeds per matched design.
+Fixed sizing: E_test = 1,000 LHS SOWs × R = 25 × L_test = 50 yr; selection axes m = 6 with N = 100 and P = 10⁶ (`scenario_design_methods.md` §3.3/§5.4/§6; `hazard_selector_diagnostics.md` §5); K = 3 draws × S = 2 seeds per matched design. Framing conventions (failure-week counts, flood unit operator = MEAN, NJ delivery active, 0.99 satisfaction factor) are measured verdicts in `framing_convention_diagnostics.md` §0b.

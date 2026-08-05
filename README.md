@@ -122,7 +122,8 @@ sbatch workflow/01_generate_presim.sh
 Then evaluate the **baseline**: the default (unoptimized) FFMP policy scored on
 the same objective set. This is the comparison anchor for all optimized Pareto
 sets, and it also persists the baseline re-evaluation matrix on the common
-held-out ensemble so step `08` can compute regret-from-baseline:
+held-out ensemble so step `08` can compute the improvement over the
+status-quo baseline:
 
 ```bash
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
@@ -148,15 +149,15 @@ never from the command line:
 
 ```bash
 # Generate the design's own realizations (or its candidate pool), one array task per draw
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
        workflow/02_generate_ensemble.sh
 
 # Hazard-filling designs only: select N members from the design's own pool (all K draws in one job)
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
        workflow/03_subsample_ensemble.sh
 
 # Format each draw's search ensemble into pywrdrb inputs
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
        --array=0-9 workflow/04_prep_pywrdrb_inputs.sh
 ```
 
@@ -225,12 +226,10 @@ tiny-NFE end-to-end pipeline check per formulation (Anvil `debug` queue,
 Off-pipeline diagnostics (benchmarks, objective-sensitivity sweeps) live in
 `workflow/supplemental/`.
 
-## Pending
+## Staging requirements
 
-The `historic` scenario design runs end-to-end today. The fixed/resampled
-probabilistic designs are code-wired and resolve once their Kirsch-Nowak
-ensembles are staged (steps `02`+`04`). The forcing-master designs
-(`input_stratified`, `hazard_filling`, `hazard_filling_absolute`) are
-code-wired but require the `scengen` master-ensemble + subsample staging
-(steps `02`–`04`); until staged, the MM-Borg pre-flight fails fast with a
-staging message.
+The `historic` scenario design runs end-to-end with no staged data. Every
+other design resolves once its ensemble is staged: `fixed_probabilistic`
+via steps `02`+`04`, and the hazard-filling designs via the `scengen`
+candidate-pool generation + subsample staging (steps `02`–`04`). Until
+staged, the MM-Borg pre-flight fails fast with a staging message.

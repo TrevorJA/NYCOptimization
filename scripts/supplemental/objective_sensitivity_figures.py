@@ -4,7 +4,7 @@ objective-sensitivity diagnostic.
 Pure post-processing of the per-sample CSV written by
 ``objective_sensitivity_run.py``; it never re-runs simulations, so figures can
 be regenerated freely. Implements the two analyses of
-``docs/notes/methods/objective_sensitivity_experiment.md``:
+the historic objective-sensitivity diagnostic:
 
   Step 2 - **Discrimination.** Per-objective spread across random policies
            (does the objective carry a Pareto gradient?).

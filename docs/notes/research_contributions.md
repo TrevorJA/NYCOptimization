@@ -11,4 +11,4 @@ The following are the hypothesized and planned research contributions. The final
 
 2. This study demonstrates the potential to improve DRB reservoir outcomes through re-optimization of the existing FFMP rule structure (RQ2), and probes whether a variable-resolution FFMP with more storage zones improves performance or robustness (RQ3).
 
-(The input-space redundancy observation, that distinct generator parameterizations can yield realizations with overlapping hazards, is retained only as brief motivation for why hazard-space selection is interesting, not as a tested contrast. The previously scoped `resampled_probabilistic`, `input_stratified`, and `hazard_filling_du` designs, and the "hazard coverage beats input coverage" claim, are out of the campaign and appear, if at all, only as future work.)
+(The input-space redundancy observation, that distinct generator parameterizations can yield realizations with overlapping hazards, is retained only as brief motivation for why hazard-space selection is interesting, not as a tested contrast.)

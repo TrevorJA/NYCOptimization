@@ -1,16 +1,13 @@
 # Objective Definitions for the Scenario-Design MOEA Study
 
-*Last updated: 2026-07-13. Authoritative record of the objective formulations
+*Last updated: 2026-08-05. Authoritative record of the objective formulations
 used in the MOEA optimization and of the held-out re-evaluation metric set;
 supersedes inline docstrings where they disagree. Terminology per
 `docs/notes/terminology.md`; citations resolve to the Zotero collection
 "Paper 3 NYC Reoptimization" (`ISYGLK35`) and the notes under
-`docs/notes/literature/`. Supporting diagnostics: the historic single-trace
-random-DV experiment (`objective_sensitivity_experiment.md`), the
-epsilon-calibration experiment (`epsilon_calibration_experiment.md`; epsilons
-adopted 2026-07-30), and the framing-convention diagnostics
-(`framing_convention_diagnostics.md`; failure-week counts, flood operator,
-satisfaction factor, thresholds, redundancy screen).*
+`docs/notes/literature/`. Supporting diagnostics: the epsilon-calibration
+experiment (`epsilon_calibration_experiment.md`) and the framing-convention
+diagnostics (`framing_convention_diagnostics.md`).*
 
 This document gives the mathematical definition of every objective and the rule
 that reduces a simulated **(timesteps × realizations)** matrix to one scalar,
@@ -80,15 +77,13 @@ scoring is in `src/robustness.py`.
 These metrics are the per-realization quantities scored at re-evaluation (§3).
 During search, every design — including historic — is scored through the §2
 annual-unit scheme; the historic trace enters it as N = 1 over its 76
-water-year units. The active set is
-**8 objectives** (NJ delivery ACTIVATED 2026-07-30: the framing-convention
-redundancy screen found no collinearity — max |ρ_S| = 0.38 against any
-objective, ≤ 0.08 against Trenton — so the Decree party carries independent
-information). Worst-case extremes were replaced with stable tail/percentile/count
-forms (Quinn et al. 2017; Bonham et al. 2024); the salt-front objective was
-replaced by the Trenton flow Decree (physically redundant — the Trenton target
-repels salt intrusion — and the salt-front LSTM is unreliable in extreme
-drought).
+water-year units. The active set is **8 objectives**; NJ delivery carries
+independent information (redundancy screen: max |ρ_S| = 0.38 against any
+objective, ≤ 0.08 against Trenton). All objectives use stable
+tail/percentile/count forms rather than worst-case extremes (Quinn et al.
+2017; Bonham et al. 2024); Trenton flow serves as the salinity-repulsion
+goalpost (the Trenton target repels salt intrusion, and the salt-front LSTM —
+unreliable in extreme drought — stays a registered diagnostic).
 
 | # | Name (registry) | Source | Temporal aggregation | Dir | Units | ε |
 |---|-----------------|--------|----------------------|-----|-------|---|
@@ -104,10 +99,9 @@ drought).
 Epsilons are the calibrated values in `src/objectives.py`: ε ≈ IQR/10 of each
 objective's spread across N = 500 random-DV policies on the historic reference
 trace (Reed et al. 2013), rounded to clean steps. The §2 annual-unit registry
-(`src/objectives_ensemble.py`) carries its **own, separate** epsilons,
-calibrated the same way on the historic trace scored as annual units; only the
-NJ and flood-P99 entries remain placeholders pending the ensemble sensitivity
-experiment.
+(`src/objectives_ensemble.py`) carries its **own, separate** campaign epsilons
+from the epsilon-calibration experiment
+(`epsilon_calibration_experiment.md`).
 
 **Why these aggregations.**
 - *Reliability frequencies (1, 3, 5, 8)* — Hashimoto reliability / multivariate
@@ -120,11 +114,11 @@ experiment.
   tail-risk focus but averages the worst decile → reproducible, smooth Borg
   gradient. Montague flow is storm-dominated, so its single worst week is mostly
   exogenous noise — CVaR matters most there.
-- *flood exceedance above minor stage (6)* — magnitude-weighted exceedance,
-  ADOPTED 2026-08-03 over the former day count
-  (`flood_objective_diagnostics.md`): the count is degenerate across policies
-  (9 distinct values over 25 feasible policies on the historic trace) while
-  the exceedance integral resolves fully and responds strictly monotonically to
+- *flood exceedance above minor stage (6)* — magnitude-weighted exceedance
+  (`flood_objective_diagnostics.md`): the day count is degenerate across
+  policies (9 distinct values over 25 feasible policies on the historic trace)
+  while the exceedance integral resolves fully and responds strictly
+  monotonically to
   the flood-release DVs; exceedance also tracks observed annual flood magnitude
   better (Pearson 0.91 vs 0.83) without the expectation-of-damage trap — the
   integrand is physical exceedance, not monetized damage (Quinn et al. 2017).
@@ -138,9 +132,7 @@ experiment.
   single-day minimum is dominated by one drought event (Quinn et al. 2017).
 - *Trenton vs salinity (5)* and *NJ delivery (8)* — give New Jersey, a co-equal
   Decree party, direct representation so the search can discover NYC↔NJ
-  robustness conflicts (Trindade et al. 2017; Hadjimichael et al. 2020). NJ
-  delivery is added to the active set only if the redundancy screen shows it is
-  not collinear with Trenton reliability.
+  robustness conflicts (Trindade et al. 2017; Hadjimichael et al. 2020).
 
 **Diagnostics (registered, not active):** worst-case variants
 (`*_deficit_max_pct`, `nyc_storage_min_pct`), `downstream_flood_days_minor` /
@@ -148,7 +140,7 @@ experiment.
 (`salt_front_intrusion_max_rm`), and the deferred Lordville thermal metric. They
 are available for swapping or re-evaluation reporting without code changes.
 
-Dimensionality: 7 keeps the epsilon-dominance archive where hypervolume stays
+Dimensionality: 8 keeps the epsilon-dominance archive where hypervolume stays
 estimable (Reed et al. 2013); epsilons are in each metric's native units.
 
 ---
@@ -176,9 +168,9 @@ unit-years** with the objective's **unit operator**:
 | 3 | `montague_flow_reliability_annual` | failure-year indicator: ≥ k = 3 failing weeks (`mean_w(flow) < 1131.05`) | frequency of non-failure years | MAX | as #1 |
 | 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | as #2 |
 | 5 | `trenton_flow_reliability_annual` | failure-year indicator: ≥ k = 1 failing week vs 1938.95 MGD | frequency of non-failure years | MAX | as #1 |
-| 6 | `downstream_flood_exceedance_annual` | `Σ_days max_gauges (stage − minor)⁺` in the year (ft·days; exceedance ADOPTED 2026-08-03 over the day count, which is degenerate across policies — `flood_objective_diagnostics.md`) | **mean across unit-years** (expected annual flood exceedance; MEAN ADOPTED 2026-07-30 — the P99 unit operator is tie-degenerate at NL = 900, 12–30× noisier, ranking-unstable, and the count variants stay registered diagnostics; Quinn et al. 2017 expectation-masking caution answered by the screen) | MIN | Trindade expected-cost form; Quinn 2017 caution |
+| 6 | `downstream_flood_exceedance_annual` | `Σ_days max_gauges (stage − minor)⁺` in the year (ft·days; `flood_objective_diagnostics.md`) | **mean across unit-years** (expected annual flood exceedance; the P99 unit operator is tie-degenerate at NL = 900 and 12–30× noisier — registered diagnostic; Quinn et al. 2017 expectation-masking caution answered by the operator screen) | MIN | Trindade expected-cost form; Quinn 2017 caution |
 | 7 | `nyc_storage_min_p01_pct` | annual minimum of daily aggregate NYC storage % | **1st-percentile unit-year** | MAX | WP1 pattern (Quinn 2017/2018); Hamilton 2022 Q-of-max |
-| 8 | `nj_delivery_reliability_annual` | failure-year indicator (k = 1) vs NJ delivery criterion | frequency of non-failure years | MAX | as #1; activated 2026-07-30 (clean redundancy screen) |
+| 8 | `nj_delivery_reliability_annual` | failure-year indicator (k = 1) vs NJ delivery criterion | frequency of non-failure years | MAX | as #1 |
 
 **Why this scheme.**
 - *Reliability objectives keep the threshold form where the literature keeps it* —
@@ -188,9 +180,9 @@ unit-years** with the objective's **unit operator**:
   Each annual failure criterion combines a **static goalpost** (§0) with a
   **failure-week count k** (k = 3 for NYC delivery and Montague flow; k = 1 for
   Trenton and NJ; `_DEFAULT_FAILURE_K`). The goalposts are anchored; k is a
-  convention, screened for saturation per design composition and CONFIRMED
-  2026-07-30 (`framing_convention_diagnostics.md` §1: no shipped k saturates
-  in either composition, rankings stable to k ± 1; Trenton k = 1 binding).
+  convention, screened for saturation per design composition
+  (`framing_convention_diagnostics.md` §1: no shipped k saturates in either
+  composition, rankings stable to k ± 1; Trenton k = 1 binding).
 - *The long-record design needs no special case:* its records are scored as
   consecutive annual units with inherited state — exactly the treatment of Quinn et
   al. (2018), who slice one continuous 1000-yr record into 1-yr units "so that the
@@ -316,43 +308,19 @@ designs the same way? (Herman et al. 2015; McPhail et al. 2018, 2020.)
 
 ### 3.3 Metrics deliberately excluded
 
-**Regret-from-best (best-in-set regret) is not used.** Two reasons.
-(a) *It is set-relative and design-coupled.* With `f*(s)` = the best performance
-in scenario *s* over the pooled re-evaluated policies, dropping one design from
-the pool changes every other design's regret. It is therefore not a
-design-independent quantity, and design-independence is the minimum requirement
-of a cross-design comparison statistic.
-(b) *It does not converge on our objectives.* Bonham et al. (2024) find
-regret-from-best needs 400+ scenarios to stabilize (satisficing: 50–300) and,
-on a max-over-time objective, **never** converges; they explicitly caution
-against using it in isolation. Our two deficit objectives are worst-1st-percentile
-(P99) operators, so regret on them is exactly the extreme-of-extremes estimator
-Bonham warns about.
-
-**Cohen et al. (2021) baseline regret is not used, and no perfect-foresight
-optimization is performed anywhere in this study.** It requires one
-perfect-foresight MOEA run per scenario (97 optimizations, 3,233 CPU-h in
-Cohen), which is formulation-specific and does not scale to a candidate pool of
-10⁵–10⁶ scenarios. Cohen et al. (2021) is cited as **motivation** for the
-contribution, never as a metric we compute.
-
-**The search-vs-test "overfitting gap" is not used.** Two reasons.
-(a) *There is no such metric to cite.* Brodeur et al. (2020) diagnose overfitting
-**graphically** — cost distributions over the training and the held-out test
-ensembles plotted side by side. They define no gap equation, report no gap
-magnitude, and rank nothing by a gap. Citing Brodeur for a defined gap metric
-would not survive review.
-(b) *It is structurally invalid here.* When the in-sample term is
-coverage-weighted (hazard-filling's deliberately distorted measure) and the
-out-of-sample term is measure-weighted (E_test's natural composition), their
-difference is a difference of two expectations **under two different measures**.
-It is an artifact of the measure change, not an overfitting quantity — and it
-would *grow* with exactly the coverage this study advocates. Brodeur's own caveat
-is the citation: they restrict all claims to *relative* rankings within each
-period and never interpret the absolute train-vs-test difference, precisely
-because their two ensembles are not drawn from the same distribution.
-(`src/robustness.py` deliberately contains no such helper;
-`tests/test_robustness.py` asserts its absence.)
+Three measures are deliberately NOT computed. **Best-in-set regret** is
+set-relative and design-coupled (dropping one design changes every other
+design's score), and Bonham et al. (2024) show it converges far more slowly
+than satisficing — never, on max-over-time objectives like our P99 deficit
+operators. **Cohen et al. (2021) baseline regret** would require one
+perfect-foresight MOEA run per scenario; no perfect-foresight optimization is
+performed anywhere in this study, and Cohen is cited as motivation only. A
+**search-vs-test "overfitting gap"** is likewise not computed: Brodeur et al.
+(2020) diagnose overfitting graphically and define no gap metric, and a
+coverage-weighted in-sample term minus a measure-weighted out-of-sample term
+measures the measure change, not overfitting. (`src/robustness.py`
+deliberately contains no such helper; `tests/test_robustness.py` asserts its
+absence.)
 
 ### 3.4 Attainability screen (free)
 
@@ -431,26 +399,15 @@ metrics (hypervolume, generational distance, ε-indicator) scored against a
 are demoted to the supplement, where the reference set is built **per design** and
 the metrics are read as within-design convergence diagnostics only.
 
-Protocol precedent: **Zatarain Salazar et al. (2017)** §5.3 / Figs. 12–13
-optimize the same problem at three search-ensemble sizes and rule that (i) the
-reference set is built **per level**, (ii) cross-level MOEA metrics are
-**incomparable**, and (iii) levels are compared **only** by re-evaluating on a
-common independent verification ensemble. Their Fig. 13 gates reference-set
-contribution on held-out performance — the nearest published thing to a
-winner's-curse correction.
-
-Three compounding reasons a pooled reference set is biased across designs:
-1. **Contributor bias** — a design contributes points to the very frontier it is
-   scored against. Contribution share is reported as a *merit* diagnostic (Reed et
-   al. 2013; Zatarain Salazar et al. 2016), not as a neutral yardstick.
-2. **Cardinality asymmetry** — designs return different numbers of solutions.
-   Bartholomew & Kwakkel (2020) name this and do not correct it; Shavazipour et
-   al. (2021) mitigate only by reporting % retained rather than counts.
-3. **Noise-induced spurious dominance** — Shavazipour et al. (2021): "some
-   solutions are dominated because of the random values set by the model … not
-   because of the existence of any better solutions." A design whose re-evaluated
-   estimates are **noisier** contributes more spuriously nondominated points and is
-   therefore **flattered** by the pooled sort.
+A pooled reference set is biased across designs three ways: a design
+contributes points to the very frontier it is scored against (contribution
+share is a merit diagnostic, not a yardstick — Reed et al. 2013); designs
+return different solution counts (Bartholomew & Kwakkel 2020); and noisier
+re-evaluated estimates contribute more spuriously nondominated points
+(Shavazipour et al. 2021). Protocol precedent: Zatarain Salazar et al. (2017)
+§5.3 build reference sets per search-ensemble level, rule cross-level MOEA
+metrics incomparable, and compare levels only by re-evaluating on a common
+independent verification ensemble.
 
 ---
 
@@ -534,31 +491,9 @@ Three compounding reasons a pooled reference set is biased across designs:
 
 ## 7. Open items
 
-1. ~~Finalize the optional 8th objective~~ — ACTIVATED 2026-07-30 by the
-   framing-convention redundancy screen (no collinearity; max |ρ_S| = 0.38).
-2. From the framing-convention diagnostics
-   (`framing_convention_diagnostics.md`; reductions of the epsilon-calibration
-   cubes plus the satisfaction-factor sweep):
-   (a) ~~confirm the annual failure criteria~~ — CONFIRMED 2026-07-30 (no
-   saturation in either composition; Trenton k = 1 binding);
-   (b) ~~pick the flood-days unit operator~~ — MEAN adopted 2026-07-30 (P99
-   tie-degenerate at NL = 900, 12–30× noisier, ranking-unstable; retained as
-   a registered diagnostic);
-   (c) ~~set native-unit epsilons for the §2 mean/percentile objectives~~ — done
-   2026-07-30 by the dedicated epsilon-calibration experiment
-   (`epsilon_calibration_experiment.md`; ensemble-designs-only max adopted into
-   `_ANNUAL_REGISTRY_SPEC`);
-   (d) bound the 0.99 weekly satisfaction factor — sweep machinery ready,
-   pending its Anvil run;
-   (e) validate the annual-unit choice against realization-level rankings
+1. Validate the annual-unit choice against realization-level rankings
    (long-record set; machinery specified only if pursued).
-3. Set the **centre** of the §4.1 threshold grid (Decree/FFMP anchors where they
+2. Set the **centre** of the §4.1 threshold grid (Decree/FFMP anchors where they
    exist; elicited-convention defaults elsewhere) and the grid's span.
-4. ~~Fix the retained hazard-descriptor set and the ensemble size N from the
-   selector diagnostics on the production pool~~ — done 2026-07-30: selection
-   axes m = 6 (`config.HAZARD_SELECTION_AXES`), N = 100, P = 10⁶ via the
-   nested-P diagnostic (`hazard_selector_diagnostics.md` §5b).
-5. The salt-front (`salt_front_intrusion_max_rm`) and Lordville thermal metrics
+3. The salt-front (`salt_front_intrusion_max_rm`) and Lordville thermal metrics
    remain registered diagnostics; both are out of the active search set.
-</content>
-</invoke>

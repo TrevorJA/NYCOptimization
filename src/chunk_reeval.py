@@ -16,13 +16,13 @@ Design (reusing the re-evaluation stack):
   the merged cube (``tests/test_chunk_reeval.py`` asserts equality across all of them).
 - **Incremental mode** (``NYCOPT_CHUNK_INCREMENTAL=1``, default): each completed unit is flushed
   atomically to ``partial/units/chunk{j:03d}/sol{sid:05d}.parquet``; a failed unit leaves a
-  ``.failed`` sidecar (its rows stay NaN, exactly like the legacy no-rows semantics). Restarting
+  ``.failed`` sidecar (its rows stay NaN, exactly like the one-shot no-rows semantics). Restarting
   the same submission resumes — done units are skipped regardless of rank count. A wall guard
   (``NYCOPT_CHUNK_STOP_EPOCH``/``NYCOPT_CHUNK_UNIT_SECONDS``) stops cleanly before the limit.
   Scheduling (``NYCOPT_CHUNK_SCHEDULE``): ``claim`` (default) = dynamic pull via O_CREAT|O_EXCL
   claim files over a chunk-major list (each node's ranks share 1-2 chunks' HDF5 working set);
-  ``interleave`` = static strided; ``contiguous`` = the legacy s-major ``np.array_split``.
-- **Legacy mode** (``NYCOPT_CHUNK_INCREMENTAL=0``): each rank accumulates its rows and writes one
+  ``interleave`` = static strided; ``contiguous`` = static s-major ``np.array_split``.
+- **One-shot mode** (``NYCOPT_CHUNK_INCREMENTAL=0``): each rank accumulates its rows and writes one
   long-format parquet partial at the end (the original path, kept as the reference).
 - Merge: rank 0 reassembles per-solution ``(N_M, M)`` matrices and reuses
   :func:`src.reeval_core.persist_reeval_raw` (so ``reeval_raw.parquet`` / ``reeval_raw_meta.json`` /
@@ -84,7 +84,7 @@ def _evaluate_unit(
     """Simulate one (solution, chunk) unit; return (long rows, None) or (None, error).
 
     The row construction is the single source of truth for unit payloads — both
-    the legacy per-rank accumulation and the incremental per-unit flush go
+    the one-shot per-rank accumulation and the incremental per-unit flush go
     through it, so the two persistence layouts carry identical rows.
     """
     from src.simulation import evaluate_raw
@@ -134,7 +134,7 @@ def _rank_long_rows(
     chunks: list[tuple[object, list[int]]],
     realization_batch: int | None,
 ) -> pd.DataFrame:
-    """Legacy driver: simulate this rank's units, returning accumulated long rows."""
+    """One-shot driver: simulate this rank's units, returning accumulated long rows."""
     frames = []
     for sol_idx, chunk_idx in work_slots:
         df, _err = _evaluate_unit(sol_idx, chunk_idx, dvs, solution_ids,
@@ -318,8 +318,8 @@ def _persist_and_score(
     persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions, seed)
 
     # Pass the status-quo re-eval matrix if step 05 staged one under this same
-    # reeval tag. Without it `improvement_vs_baseline` warns and silently drops --
-    # which is what happened on every chunked run before this.
+    # reeval tag. Without it `improvement_vs_baseline` warns and silently
+    # drops the metric.
     from config import REEVALUATION_SETTINGS
 
     baseline_dir = reeval_dir / "baseline"
@@ -340,7 +340,7 @@ def _merge_and_persist(
     partial_dir: Path, reeval_dir: Path, solution_ids: list[int], n_realizations: int,
     formulation: str, obj_set, seed,
 ) -> Path:
-    """Legacy merge: concatenate rank partials, reassemble per-solution matrices."""
+    """One-shot merge: concatenate rank partials, reassemble per-solution matrices."""
     parts = _read_partials(partial_dir)
     long_df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(
         columns=["solution_id", "realization_id", "objective", "value"]
@@ -376,9 +376,9 @@ def merge_units(
 ) -> Path:
     """Merge per-unit files into the re-eval cube (no pivots, no full-table scans).
 
-    Direct placement by (global realization id, objective) reproduces the legacy
+    Direct placement by (global realization id, objective) reproduces the one-shot
     ``pivot_table`` + ``reindex`` semantics exactly for the unique-cell case;
-    absent units (failed or missing) leave NaN rows, the legacy no-rows
+    absent units (failed or missing) leave NaN rows, the one-shot no-rows
     behavior. Stateless over the unit files -> trivially resumable.
 
     Args:
@@ -525,7 +525,7 @@ def simulate_test_chunks(
         # set through the page cache instead of touching all chunks at once.
         work = [(s, j) for j in range(len(chunks)) for s in range(n_solutions)]
     else:
-        # Legacy s-major ordering (kept bit-for-bit for the reference path).
+        # Static s-major ordering (the reference path).
         work = [(s, j) for s in range(n_solutions) for j in range(len(chunks))]
 
     if rank == 0:

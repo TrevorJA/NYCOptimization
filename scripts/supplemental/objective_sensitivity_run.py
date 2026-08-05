@@ -9,7 +9,7 @@ and redundancy diagnostics.
 
 There is **no realization / ensemble loop** — one simulation per DV vector.
 Ensemble- and scenario-noise questions are out of scope here (see §4 of
-``docs/notes/methods/objective_sensitivity_experiment.md``).
+the historic objective-sensitivity diagnostic).
 
 Configuration lives entirely in ``supplemental_config.py`` (sample count, seed,
 formulation, objective-set selection, simulation window, output paths) — there

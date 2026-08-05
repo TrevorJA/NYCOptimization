@@ -106,8 +106,7 @@ def reeval_obj_names() -> list:
     return [f"sat__{o.base.name}" for o in obj_set]
 
 
-def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str,
-                          out_path=None):
+def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str):
     """Re-evaluate one policy and return its raw per-realization base matrix.
 
     The re-eval work unit for the decoupled robustness path: instead of
@@ -116,9 +115,6 @@ def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str,
     units so robustness metrics are scored offline (see ``src.robustness``).
     Reuses the search-path :func:`src.simulation.evaluate_raw`, so re-eval base
     metrics match search byte-for-byte; only the ensemble differs.
-
-    ``out_path`` is accepted for driver-signature parity and is unused (raw
-    re-eval is in-memory).
 
     Returns:
         ``(solution_id, base_matrix | None, base_names | None, error | None)``.
@@ -141,7 +137,7 @@ def satisficing_from_raw(base_matrix, base_names=None) -> list:
     """Reproduce the re-eval summary's natural satisficing fractions.
 
     Aggregates each column of the raw base matrix with its ensemble objective's
-    aggregator (natural, un-negated), so the legacy ``objectives_summary.csv``
+    aggregator (natural, un-negated), so ``objectives_summary.csv``
     can be derived from the persisted matrix instead of a second simulation —
     guaranteeing the two are consistent. For a single-trace re-eval set the matrix
     row IS the natural objective vector, so it is returned directly.
@@ -336,7 +332,7 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
     # actual realization index (not batch position) so they join to the ensemble's
     # hazard coordinates. Built vectorized per solution (np.repeat/np.tile) rather
     # than cell-by-cell so persistence stays cheap as the ensemble grows toward
-    # 1e3-1e4 realizations (row order is identical to the old triple loop:
+    # 1e3-1e4 realizations (row order:
     # row-major over (realization, objective)).
     ri = np.asarray(realization_indices, dtype=int)
     frames = []

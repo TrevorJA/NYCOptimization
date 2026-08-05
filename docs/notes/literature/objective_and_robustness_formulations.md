@@ -49,4 +49,3 @@ Scope: how the optimization problem is *posed* — objective/problem formulation
 ---
 
 **Related notes:** [scenario design overview](scenario_design.md) · [DU optimization workflows](du_optimization_workflows.md) · [scenario choice during search](scenario_choice_in_search.md) · [scenario subset selection](scenario_subset_selection.md) · [MOEA methods](moea_methods.md)
-</content>

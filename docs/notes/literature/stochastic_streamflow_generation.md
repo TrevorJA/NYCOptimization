@@ -2,7 +2,7 @@
 
 *Paper 3 literature note. Annotated summaries of items in the Zotero collection "Paper 3 NYC Reoptimization" (`ISYGLK35`). Last updated 2026-06-16.*
 
-Scope: synthetic streamflow and weather generators used to build large hydrologic ensembles, including those that deliberately amplify drought characteristics. These are the candidate engines for the **candidate pools** the hazard-filling designs select from, for the probabilistic and input-stratified designs' generated members, and for the held-out re-evaluation ensemble; they also inform the scenario-length / window-construction decision. Bottom-up exposure-space framing of these generators is in [bottom-up & scenario-neutral design](bottom_up_scenario_neutral.md); the hazard metrics computed on their output are in [hydrologic hazard metrics](hydrologic_hazard_metrics.md).
+Scope: synthetic streamflow and weather generators used to build large hydrologic ensembles, including those that deliberately amplify drought characteristics. These are the candidate engines for the **candidate pools** the hazard-filling designs select from, for the probabilistic design's generated members, and for the held-out re-evaluation ensemble; they also inform the scenario-length / window-construction decision. Bottom-up exposure-space framing of these generators is in [bottom-up & scenario-neutral design](bottom_up_scenario_neutral.md); the hazard metrics computed on their output are in [hydrologic hazard metrics](hydrologic_hazard_metrics.md).
 
 ---
 

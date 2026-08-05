@@ -44,7 +44,7 @@ Precedent for the construction: Trindade et al. (2017) (10,000 LHS DU samples x 
 realizations); Gold et al. (2022) (1e6 SOWs); Kasprzyk et al. (2013) and Bartholomew & Kwakkel
 (2020) (10,000 LHS SOWs); Quinn et al. (2020) (LHS over generator parameters).
 
-SIZING (decided 2026-07-30)
+SIZING
 ---------------------------
 ``N_theta_test = 1000``, ``R_test = 25``, ``L_test = 50`` — 25,000 realizations, 1.25M
 scenario-years, ~80k SU at the measured trimmed-model cost. The reasoning, priced against the
@@ -84,7 +84,7 @@ from scengen.seeds import design_seed
 from src.scenario_designs import SCENARIO_YEARS, SEED_ROOT
 
 ###############################################################################
-# Sizing (LOCKED 2026-07-30; derivation in scenario_design_methods.md section 5.4)
+# Sizing (derivation in scenario_design_methods.md section 5.4)
 ###############################################################################
 
 #: Number of LHS design points (deeply-uncertain states of the world) in E_test.

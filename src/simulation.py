@@ -76,7 +76,6 @@ if _env_end:
 _CACHED_PRESIM_FILE = None
 _PRESIM_SEARCHED = False
 _CACHED_DEFAULTS_CONFIG = None   # Cached NYCOperationsConfig.from_defaults()
-_CACHED_MODEL_DICT = None        # Cached base model dict (avoids make_model per eval)
 _CACHED_MODEL_DICTS = {}         # Keyed by tuple(drought_levels) for N-zone support
 _CACHED_NZONE_CONFIGS = {}       # Keyed by n_zones
 
@@ -192,7 +191,7 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
     keying: every production caller passes ``None``, so keying on the raw
     argument would collapse both variants onto one entry.
     """
-    global _CACHED_MODEL_DICT, _CACHED_MODEL_DICTS
+    global _CACHED_MODEL_DICTS
     if nyc_config is None:
         nyc_config = _get_cached_defaults()
     if ensemble_spec is None:
@@ -215,14 +214,6 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
             ensemble_spec=ensemble_spec,
         )
         _CACHED_MODEL_DICTS[key] = mb.model_dict
-        # Keep legacy single reference in sync for backward compatibility
-        # (only when T/S is off, no ensemble, so legacy callers still see
-        # a sane default).
-        legacy_levels = tuple(
-            ["level1a", "level1b", "level1c", "level2", "level3", "level4", "level5"]
-        )
-        if key == (legacy_levels, False, False, True, "historic_single", ""):
-            _CACHED_MODEL_DICT = _CACHED_MODEL_DICTS[key]
         # FIFO bound: the chunked re-eval walks 50 chunk presets (x batch
         # offsets) per rank; unbounded growth is GBs/rank. Eviction is
         # speed-only — a re-miss rebuilds an identical dict (~1 s).
@@ -234,9 +225,9 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
 
 
 def _config_levels(nyc_config):
-    """Return (drought_levels, storage_levels) from config, handling both old and new API.
+    """Return (drought_levels, storage_levels) from config.
 
-    The Phase 1 pywrdrb adds DROUGHT_LEVELS and STORAGE_LEVELS as properties.
+    pywrdrb exposes DROUGHT_LEVELS and STORAGE_LEVELS as properties.
     The default config's storage_zones_df includes all profile rows (storage zones
     AND MRF factor rows), so the STORAGE_LEVELS property returns too many rows.
     We detect this by checking if the first entry is 'zone_' prefixed (N-zone)
@@ -964,7 +955,7 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
             (which routes pywrdrb's path navigator to the staged HDF5 dir)
             and ``inflow_ensemble_indices`` so pywr instantiates one scenario
             per requested realization. When None or ``is_ensemble=False``,
-            the legacy single-trace ``INFLOW_TYPE`` from config is used.
+            the single-trace ``INFLOW_TYPE`` from config is used.
     """
     import pywrdrb
 
@@ -1312,7 +1303,7 @@ def _extract_results_from_recorder(recorder_dict, datetime_index, scenario=0) ->
         results["salinity"] = pd.DataFrame(sal_data, index=dt_index)
 
     # Temperature LSTM outputs (only when INCLUDE_TEMPERATURE_MODEL is on;
-    # currently inactive — see decisions/2026-04-29_temperature_lstm_deferred.md).
+    # currently inactive — the thermal metric is deferred).
     temperature_keys = [
         "temperature_after_thermal_release_mu",
         "temperature_after_thermal_release_sd",
@@ -1333,7 +1324,7 @@ def _extract_results_per_scenario(recorder_dict, datetime_index,
 
     Calls ``_extract_results_from_recorder`` once per scenario index in
     ``[0, n_scenarios)`` and returns a list of N data dicts (one per
-    realization). Each dict is shape-identical to the legacy single-trace
+    realization). Each dict is shape-identical to the single-trace
     return so existing metric functions work unchanged.
 
     Salinity LSTM extraction is handled by the ensemble runner (a per-
@@ -1527,7 +1518,7 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
     # presimulated_releases_mgd.hdf5 staged by STARFITReleaseEnsemble-
     # Preprocessor) when both use_trimmed_model=True AND
     # inflow_ensemble_indices are set. We pass use_trimmed=None so the
-    # cache picks up USE_TRIMMED_MODEL from config, matching the legacy
+    # cache picks up USE_TRIMMED_MODEL from config, matching the single-trace
     # single-trace behavior.
     t0 = time.perf_counter()
     base_dict = _get_cached_model_dict(
@@ -1605,7 +1596,7 @@ def run_simulation_ensemble_batched(
         nyc_config: NYCOperationsConfig (DV-applied).
         ensemble_spec: ``EnsembleSpec`` with ``is_ensemble=True``.
         batch_size: Realizations per simulation batch. ``<= 0`` (or ``None``)
-            collapses to one batch of all realizations (legacy single-model
+            collapses to one batch of all realizations (single-model
             behavior, just with a ``__b0`` cache key).
         per_realization_fn: Callable ``data_dict -> value`` applied to each
             realization's result dict. Exceptions raised inside it are NOT
@@ -1877,7 +1868,7 @@ def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
 
     def per_real(data):
         # Per-realization base-metric vector (one column per objective). Strict
-        # (no per-metric try/except) so behavior matches the legacy path.
+        # (no per-metric try/except) so behavior matches the single-trace path.
         return [o.base.compute(data) for o in ens_objs]
 
     base_rows = run_simulation_ensemble_batched(
@@ -1901,7 +1892,7 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
     matrix instead of search's pooled annual-unit objectives. This lets
     robustness metrics (satisficing, regret, ...) be scored offline from the
     persisted matrix without re-simulating. Mirrors ``evaluate()``'s dispatch
-    (resample / single-trace / batched / legacy unbatched) so re-eval
+    (resample / single-trace / batched / unbatched) so re-eval
     simulations match the search path.
 
     Args:
@@ -1933,7 +1924,7 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
         ensemble_spec = SEARCH_ENSEMBLE_SPEC
 
     # Parity with evaluate(): redraw a resample-per-eval master pool. Re-eval
-    # specs are not resample pools, so this is a no-op there; kept for safety.
+    # specs are not resample pools, so this is a no-op there.
     if ensemble_spec is not None and ensemble_spec.resample_per_eval:
         ensemble_spec = _resampled_eval_spec(ensemble_spec, _EVAL_COUNT)
 
@@ -1968,7 +1959,7 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
             skip_failed_batches=True,
         )
 
-    # Legacy single-model ensemble path (all realizations as one scenario block).
+    # Single-model ensemble path (all realizations as one scenario block).
     ens_objs = list(objective_set)
     if not ens_objs or not all(hasattr(o, "base") for o in ens_objs):
         raise NotImplementedError(
@@ -2029,9 +2020,8 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
     Called by Borg MOEA for each candidate solution. Uses in-memory
     simulation to minimize I/O overhead.
 
-    Dispatches to either the legacy single-trace path or the ensemble path
-    based on ``ensemble_spec.is_ensemble``. The legacy path (default) is
-    byte-identical to the manuscript baseline.
+    Dispatches to either the single-trace path or the ensemble path
+    based on ``ensemble_spec.is_ensemble``.
 
     Args:
         dv_vector: Array of decision variable values.
@@ -2040,10 +2030,10 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
             from config.ACTIVE_OBJECTIVE_SET.
         ensemble_spec: Optional EnsembleSpec override. If None, uses
             ``config.SEARCH_ENSEMBLE_SPEC``. The default ``historic_single``
-            preset routes through the legacy single-trace path.
+            preset routes through the single-trace path.
         realization_batch: Realizations per simulation batch for the ensemble
             path. If None, uses ``config.SEARCH_REALIZATION_BATCH``. ``<= 0``
-            keeps the legacy single-model behavior (all realizations as one
+            keeps the single-model behavior (all realizations as one
             scenario block); a positive value bounds peak memory by simulating
             the ensemble in sequential batches via
             :func:`run_simulation_ensemble_batched` — the same shared path the
@@ -2101,7 +2091,7 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
             nyc_config, ensemble_spec, objective_set, realization_batch,
         )
     else:
-        # Legacy single-model ensemble path (byte-identical to prior behavior):
+        # Single-model ensemble path:
         # one Pywr model with all realizations as scenarios, then aggregate.
         data_per_real = run_simulation_ensemble_inmemory(
             nyc_config, ensemble_spec,
@@ -2109,7 +2099,7 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
         # The ensemble dispatch expects an ObjectiveSet built via
         # `src.objectives_ensemble.build_ensemble_objective_set`, which is
         # what `formulations.get_objective_set()` returns when
-        # `SEARCH_ENSEMBLE_SPEC.is_ensemble` is True. A legacy single-trace
+        # `SEARCH_ENSEMBLE_SPEC.is_ensemble` is True. A single-trace
         # set leaks through only if a caller hand-built one and passed it
         # explicitly — fail loudly there rather than silently invoking the
         # wrong compute path.

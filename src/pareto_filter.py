@@ -10,7 +10,7 @@ before any figure or robustness summary is produced.
 This is a *screening* filter applied AFTER search, not a new optimization: it
 never changes an objective value, only which solutions are carried forward.
 
-NOTE (2026-08-04): new searches enforce the reliability floor FORMALLY — the
+NOTE: new searches enforce the reliability floor FORMALLY — the
 post-simulation Borg constraint ``nyc_reliability_floor``
 (``src.formulations.make_post_sim_constraint_function``, floor from
 ``config.NYC_RELIABILITY_FLOOR`` / env ``NYCOPT_NYC_RELIABILITY_FLOOR``)

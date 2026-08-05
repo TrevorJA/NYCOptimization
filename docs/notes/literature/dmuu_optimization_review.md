@@ -3,7 +3,7 @@
 Trevor Amestoy, Reed Research Group, Cornell University
 February 2026
 
-> **Status note (2026-06-11).** General background, still valid. Sections 4.3 and 11 reflect the pre-pivot policy-architecture framing and are superseded. The project's current focus, scenario design for the optimization evaluation ensemble, is covered in `scenario_design.md`, `scenario_design_tables.md`, `../terminology.md`, and `../methods/experimental_design.md`, which take precedence where they overlap with this document.
+> **Status note.** General background. The project's current focus, scenario design for the optimization evaluation ensemble, is covered in `scenario_design.md`, `scenario_design_tables.md`, `../terminology.md`, and `../methods/experimental_design.md`, which take precedence where they overlap with this document.
 
 ---
 
@@ -124,11 +124,6 @@ EMODPS (Giuliani et al., 2016) couples simulation models with MOEAs to optimize 
 - Preserve institutional interpretability and acceptability
 - May miss performance gains available through more flexible policy forms
 - Directly comparable to status quo operations
-
-### 4.3 Comparison Across Formulations
-
-A key methodological question is whether "opening up" the policy space (from parameterized rules to RBFs to MLPs) yields meaningful performance improvements. This can be framed as a "value of flexibility" analysis, comparing Pareto fronts across formulations. Prior work has shown that more flexible policies often dominate parameterized rules, but the marginal value of additional flexibility varies by system and objective set.
-
 
 ## 5. Scenario Generation and Robustness Analysis
 
@@ -266,12 +261,10 @@ Based on this review, several gaps and opportunities emerge:
 
 1. **No prior MOEA optimization of DRB operations**: Sensitivity analysis has been performed (NYCOperationExploration), but full many-objective optimization of FFMP parameters has not been published.
 
-2. **Policy formulation comparison**: Comparing parameterized FFMP rules vs. RBF vs. MLP policies would directly contribute to the direct policy search literature while being practically relevant for DRB stakeholders.
+2. **Robustness under stochastic ensembles**: The StochasticExploratoryExperiment provides the infrastructure for re-evaluation, but applying this to optimized (rather than default) policies is novel.
 
-3. **Robustness under stochastic ensembles**: The StochasticExploratoryExperiment provides the infrastructure for re-evaluation, but applying this to optimized (rather than default) policies is novel.
+3. **Multi-stakeholder objectives**: The decree party structure naturally maps to a multi-stakeholder MORDM analysis where different parties weight objectives differently.
 
-4. **Multi-stakeholder objectives**: The decree party structure naturally maps to a multi-stakeholder MORDM analysis where different parties weight objectives differently.
+4. **Flood-drought tradeoffs**: The tension between maintaining void for flood mitigation and maintaining storage for drought resilience is underexplored in the optimization literature for this basin.
 
-5. **Flood-drought tradeoffs**: The tension between maintaining void for flood mitigation and maintaining storage for drought resilience is underexplored in the optimization literature for this basin.
-
-6. **Salt front considerations**: As sea level rise intensifies, incorporating salinity objectives into the optimization could provide forward-looking policy recommendations.
+5. **Salt front considerations**: As sea level rise intensifies, incorporating salinity objectives into the optimization could provide forward-looking policy recommendations.

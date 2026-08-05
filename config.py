@@ -233,22 +233,22 @@ END_DATE = "2022-09-30"     # Water-year end matching presimulated release data
 # reconstructed DRB streamflow ensemble (1945-2023; Environmental Modelling
 # & Software, 195, 106756). The key "pub_nhmv10_BC_withObsScaled" is the
 # median realization of that ensemble and ships pre-packaged with pywrdrb's
-# Data() loader. See local_notes/decisions/2026-04-30_inflow_and_du_search.md.
+# Data() loader.
 # Override per-experiment via NYCOPT_INFLOW_TYPE in workflow/envs/*.env.
 INFLOW_TYPE = os.environ.get("NYCOPT_INFLOW_TYPE", "pub_nhmv10_BC_withObsScaled")
 # Trimmed model (presimulated lower-basin releases) is BOTH the search and the
-# re-evaluation path (decided 2026-07-30): the non-NYC STARFIT releases are
-# policy-independent, so step 04 presimulates them once per staged realization
-# and every policy evaluation reuses them. The full model (all reservoirs
-# simulated live) is used only for the presim pass (step 01/04) and the
-# single-trace historic baseline (step 05); the env knob exists so benchmarks
-# and those jobs can select it without editing this file.
+# re-evaluation path: the non-NYC STARFIT releases are policy-independent, so
+# step 04 presimulates them once per staged realization and every policy
+# evaluation reuses them. The full model (all reservoirs simulated live) is
+# used only for the presim pass (step 01/04) and the single-trace historic
+# baseline (step 05); the env knob exists so benchmarks and those jobs can
+# select it without editing this file.
 USE_TRIMMED_MODEL = _parse_bool_env("NYCOPT_USE_TRIMMED_MODEL", True)
 INITIAL_VOLUME_FRAC = 0.80
 
 # Montague/Trenton flow-forecast mode passed to pywrdrb.ModelBuilder
 # (Options.flow_prediction_mode). The project standard is perfect_foresight
-# for EVERY Pywr-DRB simulation (decision 2026-07-30). Always pinned
+# for EVERY Pywr-DRB simulation. Always pinned
 # explicitly at model build — never rely on pywrdrb's default, which has
 # changed across versions (regression_disagg -> perfect_foresight, Feb 2025)
 # and would silently vary results with the installed pywrdrb.
@@ -332,12 +332,11 @@ ENSEMBLE_FORCING_STD_CSV = _parse_path_env(
     "NYCOPT_ENSEMBLE_FORCING_STD_CSV",
     _CMIP6_STATS_DIR / "datasets_nyc_inflow_monthly_stds.csv",
 )
-# DECIDED (2026-07-28) OFF for the campaign: the 3-D mean box [m, r1, r2] with the
-# CV-preserving c = a. The paired footprint diagnostic
-# (scripts/supplemental/diagnose_cv_axis_footprint.py) measured that the CMIP6 CV axis
-# does not widen drought/flood tail stress in hazard space (dry spans ~unchanged, all
-# three flood-axis spans CONTRACT ~0.72-0.83x: CMIP6 reduces winter/spring CV), so it
-# adds 3 DU dimensions without adding stress coverage. Stays wired as an opt-in
+# OFF for the campaign: the forcing space is the 3-D mean box [m, r1, r2] with
+# the CV-preserving c = a. The footprint diagnostic
+# (scripts/supplemental/diagnose_cv_axis_footprint.py) measured that the CMIP6
+# CV axis does not widen drought/flood tail stress in hazard space, so it adds
+# 3 DU dimensions without adding stress coverage. Wired as an opt-in
 # sensitivity via the env var.
 ENSEMBLE_FORCING_VARIANCE_AXIS = _parse_bool_env("NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS", False)
 ENSEMBLE_FORCING_BOUND_PCT = (
@@ -346,26 +345,23 @@ ENSEMBLE_FORCING_BOUND_PCT = (
 )
 ENSEMBLE_FORCING_MARGIN = _parse_float_env("NYCOPT_ENSEMBLE_FORCING_MARGIN", 0.0)
 ENSEMBLE_MASTER_SEED = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_SEED", 0)
-# stream_only discards daily traces after hazard computation (the ~1e6 production
-# master); default False keeps the daily HDF5s so workflow/03 consumes M unchanged.
+# stream_only discards daily traces after hazard computation (the ~1e6
+# production candidate pool); default False keeps the daily HDF5s so
+# workflow/03 consumes them unchanged.
 ENSEMBLE_MASTER_STREAM_ONLY = _parse_bool_env("NYCOPT_ENSEMBLE_MASTER_STREAM_ONLY", False)
 ENSEMBLE_MASTER_HAZARD_BLOCK = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_HAZARD_BLOCK", 256)
-# Chunk the stored daily master into contiguous chunks of this many realizations (must be a
-# multiple of realizations_per_profile). 0 = single directory. Bounds generation write-memory and
-# avoids a monolithic multi-hundred-GB HDF5 for a large master (methods §3.2).
+# Chunk the stored daily candidate pool into contiguous chunks of this many
+# realizations (must be a multiple of realizations_per_profile). 0 = single
+# directory. Bounds generation write-memory and avoids a monolithic
+# multi-hundred-GB HDF5 for a large pool (methods §3.2).
 ENSEMBLE_MASTER_CHUNK_SIZE = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_CHUNK_SIZE", 0)
 
-# Campaign hazard SELECTION axis set (m = 6), decided 2026-07-30 from the nested-P
-# saturation diagnostic (outputs/supplemental/hazard_selector_diagnostics/
-# nested_P_saturation.md + m6_axis_set_assessment.json): the full 8-axis set cannot
-# pass the per-axis tail-share adequacy gate (>= 0.30) at any affordable pool size —
-# the snap is dimension-limited, improvement exponent ~0.04 « P^(-1/8). Dropped:
-# drought_duration (quasi-discrete; |rho_S| = 0.87 with deficit volume, the most
-# redundant retained pair) and flood_rise_rate (flood-group-entangled, |rho_S| = 0.60
-# with peak magnitude). This set passes at
-# P = 1e6 (min per-axis tail share 0.311; thin margin — re-confirm per production
-# draw). Both dropped axes remain computed in every hazard image and reportable
-# post-hoc; they simply never enter the snap distance.
+# Campaign hazard SELECTION axis set (m = 6), chosen via the nested-P
+# saturation diagnostic (outputs/supplemental/hazard_selector_diagnostics/).
+# This set passes the per-axis tail-share adequacy gate (>= 0.30) at P = 1e6
+# (min per-axis tail share 0.311; thin margin — re-confirm per production
+# draw). drought_duration and flood_rise_rate remain computed in every hazard
+# image and reportable post-hoc; they simply never enter the snap distance.
 HAZARD_SELECTION_AXES = _parse_list_env("NYCOPT_HAZARD_SELECTION_AXES", [
     "drought_deficit_volume",
     "drought_peak_depth",
@@ -412,16 +408,13 @@ NJ_DELIVERY_CAP_MGD = 100.0              # NJ diversion baseline (monthly-avg D&
 #   - Montague flow Decree (NYC's downstream obligation): reliability + CVaR90 deficit
 #   - Trenton flow Decree (lower-basin / NJ obligation; also repels salinity): reliability
 #   - downstream flood exposure: ft-days above NWS minor flood stage at the
-#     worst-affected reservoir-tail gauge (exceedance ADOPTED 2026-08-03 over the
-#     day count, which is degenerate across policies —
-#     docs/notes/methods/flood_objective_diagnostics.md)
+#     worst-affected reservoir-tail gauge
+#     (docs/notes/methods/flood_objective_diagnostics.md)
 #   - storage resilience: 5th-percentile combined NYC storage
-#   - NJ supply: weekly delivery reliability (ACTIVATED 2026-07-30 — the
-#     framing-convention redundancy screen found no collinearity with any
-#     active objective, max |rho_S| = 0.38; epsilon pre-calibrated)
-# Worst-case extremes (max-deficit, min-storage, salt-front-max) were replaced
-# with stable tail/percentile/count forms (see docs/notes/methods/objective_definitions.md
-# §1-2; Quinn et al. 2017; Bonham et al. 2024). The full registry in
+#   - NJ supply: weekly delivery reliability
+# All active objectives use stable tail/percentile/count forms rather than
+# worst-case extremes (docs/notes/methods/objective_definitions.md §1-2;
+# Quinn et al. 2017; Bonham et al. 2024). The full registry in
 # src.objectives.OBJECTIVES also exposes diagnostic variants (max-deficit,
 # min-storage, flood-major/action, salt-front) for easy swapping.
 
@@ -443,9 +436,9 @@ ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
 # (violation = max(0, floor - reliability), NATURAL 0-1 scale; see
 # src.formulations.make_post_sim_constraint_function). A policy delivering NYC
 # water below this weekly reliability is unacceptable to stakeholders
-# regardless of the rest of the trade-off. The same 0.5 floor was previously
-# applied only as post-hoc Pareto screening (src/pareto_filter.py, retained
-# for archives produced before the constraint existed).
+# regardless of the rest of the trade-off. src/pareto_filter.py applies the
+# same floor as a post-hoc screen for archives that predate the formal
+# constraint.
 NYC_RELIABILITY_FLOOR = _parse_float_env("NYCOPT_NYC_RELIABILITY_FLOOR", 0.5)
 
 
@@ -485,22 +478,14 @@ PRODUCTION_FORMULATIONS = _parse_list_env(
 ###############################################################################
 # When enabled, the LSTMs (from PywrDRB-ML) run as pywrdrb Parameters during
 # simulation. Both default off, and NEITHER is used in the manuscript: the
-# salinity LSTM was evaluated and dropped (it does not perform well under
-# extreme droughts, the regime the salt-front objective most needs to
-# resolve), and temperature is deferred
-# (decisions/2026-04-29_temperature_lstm_deferred.md). The coupling machinery
-# below is retained, dormant, so either LSTM can be re-enabled via
-# `NYCOPT_SALINITY_ON` / `NYCOPT_TEMPERATURE_ON` without code changes.
+# salinity LSTM does not perform well under extreme droughts (the regime the
+# salt-front objective most needs to resolve), and temperature is deferred.
+# The coupling machinery below is retained, dormant, so either LSTM can be
+# re-enabled via `NYCOPT_SALINITY_ON` / `NYCOPT_TEMPERATURE_ON` without code
+# changes.
 #
-# `NYCOPT_TS_ON` is a legacy convenience flag (historically toggled the
-# then-active salinity LSTM). It stays for backward compatibility but should
-# not be used in new scripts — set `NYCOPT_SALINITY_ON` /
-# `NYCOPT_TEMPERATURE_ON` explicitly.
-#
-# See:
-#   local_notes/methodology/temperature_salinity.md
-#   local_notes/decisions/2026-04-29_ts_observe_only.md
-#   local_notes/decisions/2026-04-29_temperature_lstm_deferred.md
+# `NYCOPT_TS_ON` is a convenience alias for `NYCOPT_SALINITY_ON`; prefer
+# setting `NYCOPT_SALINITY_ON` / `NYCOPT_TEMPERATURE_ON` explicitly.
 
 _TS_ON_LEGACY = _parse_bool_env("NYCOPT_TS_ON", False)
 INCLUDE_TEMPERATURE_MODEL = _parse_bool_env("NYCOPT_TEMPERATURE_ON", False)
@@ -536,8 +521,8 @@ SALT_FRONT_REFERENCE_RM = _parse_float_env(
 # overwrites `X[0, :]` and the LSTM forward pass over the full window is
 # dominated by historical training data. In sync mode the LSTM advances 1
 # step per sim day and produces a per-day sf_mu series that is genuinely
-# responsive to NYC operational decisions — verified by the random-sample
-# diagnostics 2026-04-29.
+# responsive to NYC operational decisions (verified by random-sample
+# diagnostics).
 #
 # Side effect of sync mode: when the system enters NYC drought emergency
 # (drought_level_agg_nyc_idx == n_drought_levels - 1), the salinity LSTM
@@ -652,12 +637,11 @@ SALT_FRONT_FIXED_ACTIVATION_LEVEL = _parse_int_env(
 ###############################################################################
 # Borg MOEA Settings (algorithm axis)
 ###############################################################################
-# Algorithm settings now live in a named, versioned registry
-# (src/moea_config.py). The active config is selected by NYCOPT_MOEA_CONFIG and
-# is the second axis (alongside the scenario design) that specifies a run. The
-# legacy BORG_SETTINGS / MMBORG_SETTINGS dicts are kept as the public read
-# surface for existing callers, but are now *projected* from ACTIVE_MOEA_CONFIG
-# rather than hand-edited. Change algorithm settings by editing/selecting a
+# Algorithm settings live in a named, versioned registry (src/moea_config.py).
+# The active config is selected by NYCOPT_MOEA_CONFIG and is the second axis
+# (alongside the scenario design) that specifies a run. The BORG_SETTINGS /
+# MMBORG_SETTINGS dicts are the public read surface, projected from
+# ACTIVE_MOEA_CONFIG. Change algorithm settings by editing/selecting a
 # MOEAConfig, not these dicts.
 
 from src.moea_config import get_moea_config   # noqa: E402
@@ -759,8 +743,8 @@ CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
 #
 # The MOEA evaluator runs a candidate policy on whatever ensemble the active
 # scenario design resolves to (an ``EnsembleSpec`` from src.ensembles). The
-# legacy single-trace default is the ``historic`` design (-> ``historic_single``
-# preset), which preserves byte-identical behavior of all pre-existing runs.
+# single-trace default is the ``historic`` design (-> ``historic_single``
+# preset).
 #
 # Two specs are resolved at import time:
 #   SEARCH_ENSEMBLE_SPEC  - from ACTIVE_SCENARIO_DESIGN; used inside Borg's
@@ -791,9 +775,9 @@ NYCOPT_SCENARIO_DESIGN = _parse_str_env("NYCOPT_SCENARIO_DESIGN", "historic")
 ACTIVE_SCENARIO_DESIGN = get_scenario_design(NYCOPT_SCENARIO_DESIGN)
 
 # Independent ensemble-draw replication index. A draw is the design's
-# construction RE-RUN FROM SCRATCH with a fresh seed — draws are now independent
-# generations, not re-indexings of shared data. Designs with no fixed ensemble to
-# redraw (historic) accept only 0 and raise otherwise (fail fast at import).
+# construction RE-RUN FROM SCRATCH with a fresh seed — an independent
+# generation, not a re-indexing of shared data. Designs with no fixed ensemble
+# to redraw (historic) accept only 0 and raise otherwise (fail fast at import).
 # Nonzero draws are appended to the moea slug as "_d{k}" so replicate runs
 # partition to distinct output directories.
 SCENARIO_ENSEMBLE_DRAW = _parse_int_env("NYCOPT_ENSEMBLE_DRAW", 0)
@@ -802,10 +786,9 @@ NYCOPT_REEVAL_ENSEMBLE_PRESET = _parse_str_env(
     "NYCOPT_REEVAL_ENSEMBLE_PRESET", "historic_single",
 )
 
-# Seed domains must not collide: now that every design GENERATES rather than
-# selecting indices from shared data, two designs sharing a seed would produce
-# correlated realizations and reintroduce exactly the confound the per-design
-# architecture removes. Fail fast at import.
+# Seed domains must not collide: every design GENERATES its own ensemble, so
+# two designs sharing a seed would produce correlated realizations. Fail fast
+# at import.
 assert_seed_domains_disjoint()
 
 # Resolve the search ensemble. Designs whose ensemble is not staged yet leave
@@ -826,9 +809,8 @@ except NotImplementedError as _e:
 REEVAL_ENSEMBLE_SPEC = get_ensemble_spec(NYCOPT_REEVAL_ENSEMBLE_PRESET)
 
 # Realizations simulated per Pywr model build inside Borg's evaluate() ensemble
-# path (src/simulation.py::run_simulation_ensemble_batched). 0 (default) keeps
-# the legacy single-model behavior — all N realizations as one scenario block,
-# byte-identical to prior runs. A positive value bounds peak memory per
+# path (src/simulation.py::run_simulation_ensemble_batched). 0 (default) runs
+# all N realizations as one scenario block. A positive value bounds peak memory per
 # evaluation by simulating the ensemble in sequential batches of this size and
 # reducing each realization to its per-objective base metric before the next
 # batch (the same memory-batching the supplemental policy-sweep diagnostics
@@ -848,18 +830,18 @@ SIM_PHASE_TIMING = _parse_int_env("NYCOPT_SIM_PHASE_TIMING", 0)
 # merge placement provably cannot alter the merged re-evaluation cube
 # (tests/test_chunk_reeval.py proves equality). They exist because the campaign
 # re-eval (~55k units of ~1 h each) must survive wall-clock kills and rank
-# imbalance that the legacy one-shot path cannot.
+# imbalance that the one-shot path cannot.
 #
 # CHUNK_INCREMENTAL  1 (default): flush each completed (solution, chunk) unit
 #                    to partial/units/chunk{j}/sol{sid}.parquet atomically and
 #                    skip already-done units on restart — resubmitting the same
-#                    sbatch IS the resume. 0: legacy accumulate-in-memory,
+#                    sbatch IS the resume. 0: accumulate-in-memory,
 #                    one write per rank at the end.
 # CHUNK_SCHEDULE     claim (default): ranks pull units off a shared chunk-major
 #                    list via O_CREAT|O_EXCL claim files (dynamic, restart-
 #                    tolerant load balance in the repo's .done-marker idiom).
 #                    interleave: static strided over the chunk-major list.
-#                    contiguous: the legacy s-major np.array_split assignment.
+#                    contiguous: static s-major np.array_split assignment.
 # CHUNK_MERGE        job (default): rank 0 merges after all ranks finish (small
 #                    runs). off: ranks only write units and exit — no
 #                    await_all_done barrier at all; merge separately via
@@ -883,8 +865,8 @@ CHUNK_UNIT_SECONDS = _parse_float_env("NYCOPT_CHUNK_UNIT_SECONDS", 0.0)
 
 # FIFO bound on the per-process base model_dict cache
 # (src/simulation.py::_get_cached_model_dict). Speed/memory only — a cache miss
-# rebuilds the dict (~1 s) with identical content. The chunked re-eval visits
-# 50 chunk presets (x batch offsets) per rank; unbounded growth was ~GBs/rank.
+# rebuilds the dict (~1 s) with identical content. The bound matters because
+# the chunked re-eval visits 50 chunk presets (x batch offsets) per rank.
 MODEL_DICT_CACHE_MAX = _parse_int_env("NYCOPT_MODEL_DICT_CACHE_MAX", 8)
 
 # Optional realization-index override on the search ensemble. Useful for smoke
@@ -966,11 +948,10 @@ assert_search_test_seed_domains_disjoint(SEARCH_ENSEMBLE_SPEC, REEVAL_ENSEMBLE_S
 #   ffmp_obj8_pilot42            — ad-hoc tagged run (RUN_SLUG_TAG=pilot42)
 #   ffmp_obj8_sal                — salinity LSTM on (dormant; only if
 #                                  NYCOPT_SALINITY_ON=1 — not used in manuscript)
-# (pre-2026-07-30 runs carry obj7 slugs — the set predated NJ activation)
 #
 # `RUN_SLUG_TAG` env appends a free-form suffix; useful for one-off variants
 # without polluting the canonical slug grammar.
-# A non-empty `RUN_SLUG` env wins outright (escape hatch for legacy paths).
+# A non-empty `RUN_SLUG` env wins outright (escape hatch for nonstandard paths).
 
 def active_scenario_name() -> str:
     """Return the active scenario-design name (top-level output partition)."""

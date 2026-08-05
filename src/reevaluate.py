@@ -70,8 +70,8 @@ def reevaluate(formulation: str,
     slug = derive_slug(formulation)
     # Reference set: prefer the merged Pareto set written by diagnostics, then
     # the Borg per-seed solution set written directly by the optimizer, then a
-    # curated reference_sets/ entry and the legacy formulation-keyed path, so
-    # re-evals work whether or not run_diagnostics has merged a reference set.
+    # curated reference_sets/ entry and the formulation-keyed fallback path, so
+    # re-evals work whether or not step 07 diagnostics has merged a reference set.
     sets_dir = run_output_dir(scenario, slug, "sets")
     set_seed = seed if seed is not None else 1
     candidate_refs = [

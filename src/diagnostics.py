@@ -38,7 +38,7 @@ from config import (
 
 # Per-formulation MOEAFramework problem registrations. Each is built as a
 # separate JAR in MOEAFramework-5.0/lib/ with the correct (nvars, nobjs).
-# All use the active objective set (8 since NJ activation 2026-07-30).
+# All use the active objective set.
 #   drb_ffmp     -> 36 DVs
 #   drb_ffmp_{N} -> per-N DV count (varies with number of zones).
 #                   Built automatically by workflow/00_setup_borg_jars.sh.
@@ -79,9 +79,6 @@ def problem_name_for(slug: str) -> str:
         f"{sorted(_FORMULATION_TO_PROBLEM)}."
     )
 
-
-# Back-compat default (unused when problem_name_for is called)
-MOEA_PROBLEM_NAME = "drb_ffmp"
 
 
 def get_cli_path() -> str:
@@ -194,7 +191,7 @@ def epsilon_box_filter_set(set_file: Path, slug: str) -> tuple[int, int]:
     """Rewrite a merged .set file as its ε-box nondominated archive, in place.
 
     MOEAFramework v5's ResultFileMerger merges by PLAIN Pareto dominance and
-    ignores ``--epsilon`` for archiving (measured 2026-08-05, identical
+    ignores ``--epsilon`` for archiving (measured: identical
     output under two vectors), so its union overstates the front at archive
     resolution. This applies the Borg box convention
     (``sensitivity_common.epsilon_nondominated`` — validated to reproduce

@@ -32,17 +32,16 @@ ensemble (all realizations' units concatenated):
 - *Pooled percentile*: P99 of the annual metric for the tail-deficit
   objectives ("worst-1st-percentile unit-year", minimize) and P01 for the
   annual-minimum-storage objective (maximize).
-- *Pooled mean*: expected annual flood days (minimize). ADOPTED 2026-07-30 by
-  the framing-convention operator screen: the P99 variant is tie-degenerate at
-  the campaign's 900 pooled unit-years (integer day counts; population IQR ~0),
-  12-30x noisier under bootstrap, and ranking-unstable. It stays registered as
-  an inactive diagnostic.
+- *Pooled mean*: expected annual flood exceedance (minimize). The P99 unit
+  operator is tie-degenerate at the campaign's 900 pooled unit-years and
+  12-30x noisier under bootstrap; it stays registered as an inactive
+  diagnostic.
 
 Non-finite annual metrics: a non-finite unit-year counts as a **failure-year**
 for the frequency objectives; for the mean/percentile objectives it is
 replaced by the objective's orientation-aware worst-possible sentinel
-(``worst_value``: 100% for the bounded deficit percentages, 366 days for
-annual flood days, 0% for annual minimum storage) before aggregation, so a
+(``worst_value``: 100% for the bounded deficit percentages, 5490 ft-days for
+annual flood exceedance, 0% for annual minimum storage) before aggregation, so a
 degenerate unit pushes the objective toward failure instead of being dropped.
 
 Metric reuse: all weekly accounting (weekly sums for delivery, weekly means
@@ -52,21 +51,17 @@ running-average delivery entitlement via ``_delivery_entitlement``, CVaR90 via
 so §1 and §2 share one formula per quantity. Deficit-% and storage-% metrics
 are 0-100 scales matching §1; frequency objectives are 0-1 fractions.
 
-The active set's epsilons are FINAL: calibrated in native metric units by the
-epsilon-calibration experiment (2026-07-30; 512 constraint-feasible policies +
-baseline per design, max over the ensemble campaign designs — see the
-`_ANNUAL_REGISTRY_SPEC` comment and
+The active set's epsilons are calibrated in native metric units by the
+epsilon-calibration experiment (see the `_ANNUAL_REGISTRY_SPEC` comment and
 `docs/notes/methods/epsilon_calibration_experiment.md`). NJ delivery is the
-ACTIVE 8th objective (activated 2026-07-30; redundancy screen clean, epsilon
-pre-calibrated at 0.025). The one inactive-registry entry
-(`downstream_flood_days_annual_p99`) carries a calibrated value from the same
-experiment.
+active 8th objective. The inactive-registry entries carry calibrated values
+from the same experiment.
 
 Re-evaluation satisficing layer (retained)
 ------------------------------------------
 The re-eval robustness pipeline (`src.reeval_core`, `src.robustness`) persists
-the PER-REALIZATION §1 base-metric matrix and scores satisficing/regret from
-it offline. Each :class:`AnnualUnitObjective` therefore also carries:
+the PER-REALIZATION §1 base-metric matrix and scores the robustness metrics
+from it offline. Each :class:`AnnualUnitObjective` therefore also carries:
 
 - ``base`` — the §1 single-trace ``Objective`` whose per-realization values
   populate the persisted re-eval matrix (``src.simulation.evaluate_raw``);
@@ -74,9 +69,9 @@ it offline. Each :class:`AnnualUnitObjective` therefore also carries:
   ``reeval_core`` for the derived ``objectives_summary.csv`` and the
   threshold/kind metadata of the robustness scorecard.
 
-The search path never touches these two; they exist so re-evaluation semantics
-are byte-identical to the pre-annual-unit pipeline. Thresholds are labelled by
-the historical ``<base>__sat<thr>`` keys and remain overridable via
+The search path never touches these two; they exist so re-evaluation scoring
+is independent of the search-side annual-unit scheme. Thresholds are labelled
+by ``<base>__sat<thr>`` keys and remain overridable via
 ``NYCOPT_SAT_THRESHOLDS`` (JSON name→threshold). No CLI flags.
 
 Env overrides (JSON objects; pattern-matched, no CLI flags):
@@ -494,10 +489,9 @@ def _nyc_storage_min_annual(data: dict) -> np.ndarray:
 # weeks are graded, so k reclassifies the 1-2-week years); NYC is nearly
 # threshold-insensitive (its shortfalls are whole-season curtailments), so there
 # the choice is mainly definitional. Trenton and NJ stay at k = 1 — at k = 3
-# Trenton saturates toward 1.0, compressing the metric. CONFIRMED 2026-07-30
-# by the framing-convention k sweep (framing_convention_diagnostics.md §1): no
-# shipped k saturates in either ensemble composition, rankings stable to k ± 1,
-# and Trenton k = 1 is binding (k >= 3 ties 24-97% of the policy population).
+# Trenton saturates toward 1.0, compressing the metric. The framing-convention
+# k sweep (framing_convention_diagnostics.md §1) confirms no shipped k
+# saturates in either ensemble composition and rankings are stable to k ± 1.
 # Overridable via NYCOPT_FAILURE_K.
 _DEFAULT_FAILURE_K: dict[str, int] = {
     "nyc_delivery_reliability_annual":   3,
@@ -533,10 +527,11 @@ def _resolve_failure_k() -> dict[str, int]:
 ###############################################################################
 # Per-BASE-objective satisficing levels applied to the PER-REALIZATION §1
 # metrics of the persisted re-eval matrix (reeval_core summary derivation and
-# robustness threshold/kind metadata). Labels keep the historical
-# `<base>__sat<thr>` form; they are threshold labels, not objective names.
-# Placeholder values pending the satisficing-criterion diagnostics
-# (framing_convention_diagnostics.md §3); override via NYCOPT_SAT_THRESHOLDS.
+# robustness threshold/kind metadata). Labels use the `<base>__sat<thr>` form;
+# they are threshold labels, not objective names. Final values await adoption
+# per docs/notes/methods/robustness_threshold_diagnostics.md (measured
+# recommendations in supplemental_config.RTD_RECOMMENDED_THRESHOLDS); override
+# via NYCOPT_SAT_THRESHOLDS.
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
     "nyc_delivery_reliability_weekly__sat95":     0.95,
@@ -546,9 +541,8 @@ _DEFAULT_THRESHOLDS: dict[str, float] = {
     "trenton_flow_reliability_weekly__sat85":     0.85,
     "nj_delivery_reliability_weekly__sat95":      0.95,
     # Flood threshold in ft-days/yr (the base metric is mean annual flood
-    # exceedance); placeholder pending the satisficing-criterion diagnostics
-    # (anchors: observed 2000-2023 = 1.17, simulated baseline = 0.35
-    # ft-days/yr — flood_objective_diagnostics.md).
+    # exceedance); anchors: observed 2000-2023 = 1.17, simulated baseline =
+    # 0.35 ft-days/yr (flood_objective_diagnostics.md).
     "downstream_flood_exceedance_minor__sat1":      1.0,
     # DIAGNOSTIC counterpart in days/yr (the retired count metric).
     "downstream_flood_days_minor__sat1":          1.0,
@@ -604,50 +598,12 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
 #   (name, base_name, direction, epsilon, annual_metric, operator, description)
 # `operator` is either the string "frequency" (built with the resolved
 # per-objective k) or a stage-(ii) operator instance whose `worst_value` is
-# the metric's orientation-aware non-finite sentinel. Epsilons are the CAMPAIGN
-# vector from the epsilon-calibration experiment, adopted 2026-07-30
-# (docs/notes/methods/epsilon_calibration_experiment.md; combined table
-# epsilon_recommendation_ffmp_combined_seed42_n512.csv): 512 constraint-
-# feasible random policies + the FFMP baseline evaluated per design on its
-# own search ensemble, with eps = clean-ceil of the max over the ENSEMBLE
-# campaign designs (fixed_probabilistic + hazard_filling_stationary, N=100 x
-# 10-yr, draw 0; supplemental_config.EPS_CAMPAIGN_DESIGNS) of max(signal
-# IQR/10 [Reed et al. 2013], bootstrap noise floor [Kasprzyk et al. 2013],
-# frequency granularity). The historic reference arm is measured and reported
-# but EXCLUDED from the max (2026-07-30 decision): its 76-unit estimator's
-# noise floor would coarsen the shared vector ~3-4x (reliability eps 0.10
-# instead of 0.02 on the 0-1 scale), so the historic arm's archive is allowed
-# to resolve below its own noise floor (disclosed).
-# Confirmation rerun 2026-08-03 (36-DV scheme, symmetric FFMP +/- 0.15 bounds,
-# post-fix flood inflows): five axes unchanged; montague deficit-P99 adopted
-# 1.5 -> 2.0 (hazfill noise floor 1.71 binds); flood exceedance priced FINAL
-# at 0.2 (noise floor ~0.15-0.18 on both designs, ~10x its signal IQR/10 —
-# the axis's sampling noise dominates policy signal at N=100 x 10 yr,
-# disclosed). NYC deficit-P99 is a DELIBERATE EXCEPTION: the measured rec was
-# 10.0, entirely the hazard_filling_stationary P99 bootstrap noise floor
-# (raw 5.15, p90 11.5; cross-design spread 4.6x > the 4x review gate; signal
-# IQR/10 shrank to ~1.03 as expected), and 10.0 was judged too coarse for a
-# headline NYC axis — eps stays 2.0, so the archive resolves below the
-# hazfill design's sampling noise on this axis (disclosed, parallel in kind
-# to the historic-arm exclusion). Signal (IQR/10) binds the NYC reliability
-# and NJ axes; the noise floor binds Montague/Trenton reliability, the
-# Montague deficit-P99, both flood axes, and storage P01. NJ delivery is
-# ACTIVE (8th objective, activated 2026-07-30); the diagnostic P99 flood
-# variant remains outside the default set (mean operator adopted 2026-07-30)
-# but carries a calibrated value.
-# Post-shakeout revision ADOPTED 2026-08-05 (epsilon_calibration_experiment.md
-# "Post-shakeout revision diagnostics" section; re-filter sweep on the first
-# converged front, jobs 19684079-19684597): the 2-seed historic mm_full
-# shakeout archives (~2k members/seed) showed the deficit-P99 pair driving
-# archive cardinality. NYC deficit-P99 2.0 -> 5.0 (softens the standing
-# override to 2x below the measured hazfill floor of 10.0; equals the
-# historic-design requirement), Montague deficit-P99 2.0 -> 5.0 (PAIRED with
-# NYC per site symmetry, as the two sites' reliability epsilons are paired
-# at 0.02), flood exceedance 0.2 -> 0.3. Storage-P01 stays 5.0 (a 5%-of-
-# capacity distinction is significant) and all reliability epsilons are
-# unchanged (the shakeout's coarse-looking Trenton axis is the historic
-# 1/76 unit lattice, not epsilon). Measured effect: seed archives -43%/-48%
-# (1,159/1,036), cross-seed eps-front 1,599.
+# the metric's orientation-aware non-finite sentinel.
+# Epsilons are the FINAL campaign vector in native metric units, calibrated
+# by the epsilon-calibration experiment as the clean-ceil of
+# max(signal IQR/10, bootstrap noise floor, frequency granularity) over the
+# ensemble campaign designs. Derivation, per-axis exceptions, and disclosures:
+# docs/notes/methods/epsilon_calibration_experiment.md.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
@@ -656,9 +612,6 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of NYC delivery "
      "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
-     # 2.0 -> 5.0 ADOPTED 2026-08-05 (post-shakeout revision, header comment):
-     # 2x below the measured hazfill floor of 10.0, equal to the historic-
-     # design requirement; paired with the Montague deficit epsilon.
      "nyc_delivery_deficit_cvar90_pct", "minimize", 5.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
@@ -669,10 +622,6 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of weekly-mean Montague "
      "flow < 1131.05 MGD Decree target"),
     ("montague_flow_deficit_p99_pct",
-     # 2.0 -> 5.0 ADOPTED 2026-08-05: paired with the NYC deficit epsilon
-     # (site symmetry; above the hazfill noise floor 2.0 that bound the
-     # previous value — coarser than the floor is permitted for cardinality,
-     # criterion iii of the calibration note).
      "montague_flow_deficit_cvar90_pct", "minimize", 5.0,
      _montague_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
@@ -686,24 +635,22 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "downstream_flood_exceedance_minor", "minimize", 0.3,
      # worst_value: 366 days x ~15 ft, the largest per-day exceedance the
      # rating curves can produce before endpoint saturation (Bridgeville
-     # 27.9 ft rated max - 13 ft minor). Epsilon calibrated 0.2 (2026-08-03
-     # rerun; noise floor binds on both ensemble designs) -> 0.3 ADOPTED
-     # 2026-08-05 (post-shakeout revision, header comment).
+     # 27.9 ft rated max - 13 ft minor).
      _flood_exceedance_minor_annual, PooledMeanOp(worst_value=5490.0),
      "Mean across pooled unit-years of ft-days above NWS minor flood stage "
      "at the worst-affected tail gauge (expected annual flood exceedance)"),
     ("downstream_flood_days_annual",
      "downstream_flood_days_minor", "minimize", 0.05,
      _flood_days_minor_annual, PooledMeanOp(worst_value=366.0),
-     "DIAGNOSTIC (inactive; replaced by downstream_flood_exceedance_annual "
-     "2026-08-03 — the count is degenerate across policies): mean across "
-     "pooled unit-years of days any tail gauge >= NWS minor flood stage"),
+     "DIAGNOSTIC (inactive; the day count is degenerate across policies): "
+     "mean across pooled unit-years of days any tail gauge >= NWS minor "
+     "flood stage"),
     ("downstream_flood_days_annual_p99",
      "downstream_flood_days_minor", "minimize", 1.5,
      _flood_days_minor_annual, PooledPercentileOp(99.0, worst_value=366.0),
-     "DIAGNOSTIC (inactive; mean adopted 2026-07-30 — P99 is tie-degenerate "
-     "at the campaign unit count): P99 across pooled unit-years of annual "
-     "minor-flood days (expectation can mask floods — Quinn et al. 2017)"),
+     "DIAGNOSTIC (inactive; P99 is tie-degenerate at the campaign unit "
+     "count): P99 across pooled unit-years of annual minor-flood days "
+     "(expectation can mask floods — Quinn et al. 2017)"),
     ("nyc_storage_min_p01_pct",
      "nyc_storage_p5_pct", "maximize", 5.0,
      _nyc_storage_min_annual, PooledPercentileOp(1.0, worst_value=0.0),

@@ -7,20 +7,17 @@ name* (e.g., ``"historic_single"``, ``"wcu_kirsch_n5"``) to an immutable
 draw, deeply-uncertain (DU) factor specs, and the slug-fragment that
 identifies this ensemble in output paths.
 
-The single-realization legacy path is itself a preset (``historic_single``)
-with ``is_ensemble=False`` and ``realization_indices=(0,)``. Existing runs
-continue to work unchanged when ``NYCOPT_ENSEMBLE_PRESET`` is unset, because
-the slug fragment is empty and the simulation layer routes ``is_ensemble=False``
-through the original ``run_simulation_inmemory`` path.
+The single-realization path is itself a preset (``historic_single``) with
+``is_ensemble=False`` and ``realization_indices=(0,)``: its slug fragment is
+empty and the simulation layer routes it through ``run_simulation_inmemory``.
 
-v1 ships:
-    - ``historic_single``       — single-trace passthrough (default, legacy)
-    - ``wcu_kirsch_n5``         — N=5 Kirsch–Nowak ensemble test fixture (M2 stages)
-    - ``reeval_wcu_kirsch_n300``— independent N=300 re-eval ensemble (M2 stages)
+Static presets registered here:
+    - ``historic_single``       — single-trace passthrough (default)
+    - ``wcu_kirsch_n5``         — N=5 Kirsch–Nowak ensemble test fixture
+    - ``reeval_wcu_kirsch_n300``— independent N=300 re-eval ensemble
 
-DU factors are intentionally absent from v1 presets — see
-local_notes/followups/du_factor_design.md (TBD) for the deferred design notes;
-the ``du_factors`` field is the forward hook.
+Static presets carry no DU factors; the ``du_factors`` field is the forward
+hook.
 """
 
 import re
@@ -52,8 +49,8 @@ class EnsembleSpec:
         equals the number of pywr scenarios. For ``historic_single`` this is
         ``(0,)`` (single trace, treated as a 1-realization scenario block).
     du_factors
-        Mapping of factor-name -> per-realization value spec. **Empty in v1**;
-        forward-hooked for the deferred DU-factor work. Treat as immutable.
+        Mapping of factor-name -> per-realization value spec. Empty for
+        static presets; forward hook for DU-factor work. Treat as immutable.
     seed
         Optional seed used by the underlying generator. Carried so the staging
         pipeline can reproduce or re-stage the ensemble deterministically.
@@ -61,14 +58,14 @@ class EnsembleSpec:
         ``True`` when the simulation layer should route through the
         ensemble-aware path (``run_simulation_ensemble_inmemory``) and use
         pywrdrb's ``inflow_ensemble_indices`` plumbing. ``False`` for the
-        legacy single-trace passthrough.
+        single-trace passthrough.
     source_kind
         Short identifier for the generator family: ``"historic"``,
-        ``"synhydro_kn"``, ``"moeafind"`` (M2+). Used for diagnostics and
+        ``"synhydro_kn"``, ``"moeafind"``. Used for diagnostics and
         for dispatching the correct generator class in the staging pipeline.
     slug_fragment
         String inserted into the output slug (e.g. ``"wcu5"``). Empty for
-        ``historic_single`` so legacy slugs remain unchanged.
+        ``historic_single``.
     """
 
     preset_name: str
@@ -79,23 +76,21 @@ class EnsembleSpec:
     is_ensemble: bool = True
     source_kind: str = "synhydro_kn"
     slug_fragment: str = ""
-    realization_years: int | None = None
-    resample_per_eval: bool = False
-    # When True, this spec describes a *master pool*: ``realization_indices`` is
-    # the full pool, and the simulation layer redraws ``resample_size`` indices
-    # from it at every function evaluation (the resampled-probabilistic design,
-    # Trindade et al. 2017). False for all fixed designs (the default), so every
-    # existing preset is unchanged.
-    resample_size: int | None = None
-    # Number of realizations to draw per evaluation when ``resample_per_eval``;
-    # ``None`` for fixed designs.
-    # Length (in years) of each generated synthetic realization. ``None`` means
-    # span the full training window (currently 1945-10-01 → 2022-09-30 ≈ 78
-    # years). Smaller values produce shorter realizations, which is faster to
-    # generate and simulate — useful while the ensemble pipeline is in active
-    # development. The simulation window for an ensemble run is automatically
+    # Length (in years) of each generated synthetic realization. ``None``
+    # means span the full training window (1945-10-01 → 2022-09-30 ≈ 78
+    # years). The simulation window for an ensemble run is automatically
     # clipped to the realization length (see
     # ``src/simulation.py::run_simulation_ensemble_inmemory``).
+    realization_years: int | None = None
+    # When True, this spec describes a resample pool: ``realization_indices``
+    # is the full pool, and the simulation layer redraws ``resample_size``
+    # indices from it at every function evaluation (the resampled-
+    # probabilistic design, Trindade et al. 2017). False for all fixed
+    # designs (the default).
+    resample_per_eval: bool = False
+    # Number of realizations to draw per evaluation when ``resample_per_eval``;
+    # ``None`` for fixed designs.
+    resample_size: int | None = None
 
     @property
     def n_realizations(self) -> int:
@@ -120,11 +115,10 @@ class EnsembleSpec:
 # this dict are what users supply via NYCOPT_ENSEMBLE_PRESET / NYCOPT_REEVAL_-
 # ENSEMBLE_PRESET.
 #
-# v1 inflow_type values for the WCU/reeval entries are forward-looking: the
-# matching staged HDF5 files do not exist until M2 of the ensemble plan has
-# been completed. M1 ships the registry plumbing only; resolving these specs
-# at config import time is safe (no I/O). Trying to *run* a simulation with
-# them before M2 will fail at pywrdrb's HDF5 load step with a clear error.
+# inflow_type values may name staged HDF5 directories that are not present
+# in every checkout. Resolving a spec at config import time is safe (no I/O);
+# running a simulation without the staged files fails at pywrdrb's HDF5 load
+# step with a clear error.
 
 PRESETS: dict[str, EnsembleSpec] = {
     "historic_single": EnsembleSpec(
@@ -133,14 +127,14 @@ PRESETS: dict[str, EnsembleSpec] = {
         realization_indices=(0,),
         is_ensemble=False,
         source_kind="historic",
-        slug_fragment="",  # legacy slug-preserving
+        slug_fragment="",
     ),
     # Small N=5 ensemble used only as a fixture by tests/test_ensemble_simulation.py
     # to exercise the ensemble-aware simulation machinery (cache keys, batching,
     # end-to-end). Not referenced by any scenario design.
     "wcu_kirsch_n5": EnsembleSpec(
         preset_name="wcu_kirsch_n5",
-        # M2 KirschNowakGenerator stages this directory:
+        # Staged by KirschNowakGenerator:
         inflow_type="syn_kirsch_drb_n100_seed42",
         realization_indices=tuple(range(5)),
         seed=42,
@@ -271,16 +265,16 @@ def with_indices_override(spec: EnsembleSpec, indices: list[int]) -> EnsembleSpe
 
 
 def as_resampling_pool(spec: EnsembleSpec, resample_size: int) -> EnsembleSpec:
-    """Mark ``spec`` as a resample-per-eval master pool.
+    """Mark ``spec`` as a resample-per-eval pool.
 
-    The returned spec keeps ``realization_indices`` as the full master pool and
+    The returned spec keeps ``realization_indices`` as the full pool and
     sets ``resample_per_eval=True`` with ``resample_size`` realizations drawn
     per evaluation (see ``src/simulation.py::evaluate``). Used by the
     resampled-probabilistic scenario design.
     """
     if resample_size > spec.n_realizations:
         raise ValueError(
-            f"resample_size ({resample_size}) cannot exceed the master pool size "
+            f"resample_size ({resample_size}) cannot exceed the pool size "
             f"({spec.n_realizations}) of preset '{spec.preset_name}'."
         )
     return replace(spec, resample_per_eval=True, resample_size=resample_size)
@@ -597,10 +591,9 @@ def register_ensemble_path(inflow_type: str) -> None:
     commit 7d5e210 on the nyc_opt branch) uses a different API
     (``pn.flows.get_str(inflow_type)``) which only works for inflow
     types that physically live under pywrdrb's bundled ``flows/`` tree.
-    A fix-up patch on the pywrdrb side is queued — see
-    ``local_notes/followups/pywrdrb_flood_preproc_path_api.md`` — that
-    will switch the new preprocessor to ``pn.sc.get`` for consistency
-    with the other ensemble preprocessors.
+    A fix-up patch on the pywrdrb side would switch the new preprocessor
+    to ``pn.sc.get`` for consistency with the other ensemble
+    preprocessors.
 
     Idempotent. Safe to call multiple times.
     """

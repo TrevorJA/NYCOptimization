@@ -61,7 +61,7 @@ $E_{\text{test}}$ is sampled by **LHS, not i.i.d.** The i.i.d. rule applies only
 ## Style rules
 
 1. All `_pct` quantities are 0-1 fractions (repo-wide rule).
-2. **"Master ensemble" is retired.** It previously named a single pool that every design subsampled — an architecture that has been removed. Write **candidate pool** (a hazard-filling design's own pool) or **test ensemble** (the held-out re-evaluation set), never "master".
+2. Never write "master ensemble". Write **candidate pool** (a hazard-filling design's own pool) or **test ensemble** (the held-out re-evaluation set).
 3. Say "evaluation ensemble" not "training set" in manuscripts, but the ML training/generalization analogy (Brodeur et al. 2020, *WRR*) may be invoked explicitly when discussing overfitting.
 4. Sequence length is stated in years, and window construction (disjoint vs overlapping, initialization of storages, handling of partial drought events at window edges) must be specified wherever scenarios are introduced.
 5. The units of the experimental comparison are called **scenario designs** (or experiments where the optimization run is meant). Avoid clinical-trial vocabulary such as "arm", "treatment", and "ablation". For a comparison that isolates a mechanism, write a controlled or diagnostic comparison.

@@ -55,11 +55,10 @@ allowance — so demand spikes within the banked right are honored and a policy
 cannot lower its own goalpost via drought step-downs.
 
 Diagnostic-only metrics (registered, not in the default active set): the
-worst-case variants above, salt-front intrusion (replaced by the Trenton
-flow objective — physically redundant, and the LSTM is unreliable in extreme
-drought), and the deferred Lordville thermal metric. NJ delivery reliability
-is the ACTIVE 8th objective (activated 2026-07-30: the framing-convention
-redundancy screen found no collinearity, max |rho_S| = 0.38).
+worst-case variants above, salt-front intrusion (the Trenton flow objective
+covers the same physics, and the LSTM is unreliable in extreme drought), and
+the deferred Lordville thermal metric. NJ delivery reliability is the active
+8th objective.
 
 Usage:
     from src.objectives import build_objective_set
@@ -696,9 +695,9 @@ def _nyc_storage_min_pct(data: dict) -> float:
 ###############################################################################
 # Metric Functions — Salt-front intrusion (LSTM) — DIAGNOSTIC ONLY
 ###############################################################################
-# Retained for re-evaluation diagnostics. Superseded as a search objective by
-# the Trenton flow Decree metric (physically redundant; LSTM unreliable in
-# extreme drought). Active only when INCLUDE_SALINITY_MODEL=True.
+# Retained for re-evaluation diagnostics only; the Trenton flow Decree metric
+# covers the same physics in the active set (LSTM unreliable in extreme
+# drought). Active only when INCLUDE_SALINITY_MODEL=True.
 
 
 def _salt_front_intrusion_max_rm(data: dict) -> float:
@@ -725,7 +724,6 @@ def _salt_front_intrusion_max_rm(data: dict) -> float:
 ###############################################################################
 # Inputs require multivariate meteorology not available for stochastic re-eval
 # scenarios. Kept registered so the metric is one config flag from re-enable.
-# See local_notes/decisions/2026-04-29_temperature_lstm_deferred.md.
 
 
 def _lordville_temp_exceedance_days(data: dict) -> float:
@@ -753,12 +751,10 @@ def _lordville_temp_exceedance_days(data: dict) -> float:
 OBJECTIVES: dict[str, Objective] = {}
 
 
-# Epsilons calibrated to the signal scale (Reed et al. 2013): epsilon ~ IQR/10
-# of each objective's spread across N=500 random DV policies on the historic
-# reference trace (objective-sensitivity diagnostic, seed 42, 2026-06-17),
-# rounded to clean steps. salt_front (no gradient), downstream_flood_days_major
-# (binary on this trace), and lordville_temp (LSTM off -> all NaN) had no usable
-# IQR and keep prior placeholders; revisit under the ensemble experiment.
+# These §1 epsilons are signal-scale values (Reed et al. 2013: epsilon ~
+# IQR/10 across random DV policies on the historic reference trace, rounded to
+# clean steps) and apply to single-trace diagnostics only. The CAMPAIGN
+# epsilons live on the annual-unit registry in src/objectives_ensemble.py.
 def _register(name, direction, epsilon, description, func):
     OBJECTIVES[name] = Objective(
         name=name, direction=direction, epsilon=epsilon,
@@ -808,22 +804,16 @@ _register("trenton_flow_deficit_cvar90_pct", "minimize", 0.03,
           _trenton_flow_deficit_cvar90_pct)
 
 # --- Downstream flood exposure (any of Hale Eddy / Fishs Eddy / Bridgeville) ---
-# ACTIVE metric = magnitude-weighted exceedance, adopted 2026-08-03
-# (flood_objective_diagnostics.md §0b): the day count is degenerate across
-# policies (9 distinct values / 25 feasible policies on the historic trace)
-# while the exceedance integral resolves fully and responds strictly
-# monotonically to the flood-release DVs. Severity epsilon 0.01 ft-days/yr is
-# PROVISIONAL (max(IQR/10, granularity) over the diagnostic's policy sample);
-# the epsilon-calibration rerun prices the final value. The day counts stay
-# registered as diagnostics; their epsilons keep the days/yr rescaling of the
-# whole-trace values (1.0/76 ~= 0.013 -> 0.02, 2.0/76 ~= 0.026 -> 0.03).
+# ACTIVE metric = magnitude-weighted exceedance (flood_objective_diagnostics.md):
+# the day count is degenerate across policies while the exceedance integral
+# resolves fully and responds strictly monotonically to the flood-release DVs.
+# The day counts stay registered as diagnostics.
 _register("downstream_flood_exceedance_minor", "minimize", 0.01,
           "Mean annual ft-days above NWS minor flood stage at the "
           "worst-affected tail gauge (flood exceedance) [ft-days/yr]",
           _downstream_flood_exceedance_minor)
 _register("downstream_flood_days_minor", "minimize", 0.02,
-          "DIAGNOSTIC (replaced by downstream_flood_exceedance_minor "
-          "2026-08-03): mean annual days any tail gauge >= NWS minor flood "
+          "DIAGNOSTIC: mean annual days any tail gauge >= NWS minor flood "
           "stage [days/yr]",
           _downstream_flood_days_minor)
 _register("downstream_flood_days_major", "minimize", 0.03,
@@ -843,7 +833,7 @@ _register("nyc_storage_min_pct", "maximize", 1.0,
           "DIAGNOSTIC: minimum combined NYC storage, % of total capacity [0-100]",
           _nyc_storage_min_pct)
 
-# --- Salt-front intrusion (LSTM) — DIAGNOSTIC; superseded by Trenton flow ---
+# --- Salt-front intrusion (LSTM) — DIAGNOSTIC only ---
 _register("salt_front_intrusion_max_rm", "minimize", 0.5,
           "DIAGNOSTIC: max (most-upstream) salt-front river mile over sim "
           f"(DRBC reference RM {SALT_FRONT_REFERENCE_RM})",

@@ -70,10 +70,10 @@ warming (end-century, higher SSP) raises the seasonal amplitude `r₁` markedly 
 only modest volume change — i.e. *warming amplifies seasonality more than it shifts total volume* — and
 the canonical seasonal-change phase peaks in **January**.
 
-### Improving shape fidelity (why phases are fixed)
+### Why phases are fixed
 
-Sampling the amplitudes `{m, r₁, r₂}` over the CMIP6 box with phases fixed at the canonical shape
-(default `fix_phase=True`) was chosen after a direct comparison against the all-free 5-parameter form
+The amplitudes `{m, r₁, r₂}` are sampled over the CMIP6 box with phases fixed at the canonical shape
+(default `fix_phase=True`); the measured comparison against the all-free 5-parameter form
 (`SI_harmonic_monthly_flow_comparison.png`):
 
 | sampler | params | over-extension | 5–95 band match | median shape RMSE | % peaking in winter |
@@ -110,7 +110,7 @@ load-bearing free axis. A deliberate earlier-melt ±1-month perturbation (Stewar
 al. 2020; 1 month = 30°) — a *single shared* phase-shift on both harmonics — belongs in a separately
 labeled supplementary sensitivity, not the primary design.
 
-**Variance axis — OFF for the campaign (decided 2026-07-28).** `v_j` is derived from the CMIP6
+**Variance axis — OFF for the campaign.** `v_j` is derived from the CMIP6
 monthly-std change (`derive_variance_envelope`, sibling-matched CV change) and sampled with the same
 harmonic-hypercube machinery; `c = a·v` decouples the real-space mean and SD effects through the
 Kirsch transform, and `variance_axis=False` is exactly the `v = 1` (CV-preserving, `c = a`) slice.
@@ -133,7 +133,7 @@ axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitiv
   **hazard space** (hull volume, tail percentiles) rather than on forcing-space fit alone. If a corner
   is under-covered, add the 3rd harmonic (shape-R² → 0.93) or a bounded per-month residual.
 - **Scope.** The forcing perturbs only the monthly mean/CV of the Kirsch marginals; it does not perturb
-  interannual **persistence** (which dominates multi-year drought; decided against as a DU axis —
+  interannual **persistence** (which dominates multi-year drought; no persistence DU axis —
   disclosure only, `persistence_axis_diagnostics.md`). Daily structure within each month comes from the
   Nowak fragments scaled by the stochastic (and forced) Kirsch monthly totals, so daily flood extremes
   vary through monthly-scale variability and forcing rather than through a separate axis.

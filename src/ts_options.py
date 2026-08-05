@@ -6,7 +6,7 @@ The ModelBuilder accepts an `options` dict with `temperature_model` and/or
 `salinity_model` sub-dicts. Each sub-dict points the corresponding pywrdrb
 Parameter at YAML/JSON artifacts on disk; the parameter does its own loading.
 
-Design choices for NYCOptimization (see local_notes/decisions/):
+Design choices for NYCOptimization:
 
 - **Salinity is the active manuscript path.** It depends only on simulated
   Q_Trenton_bc and Q_Schuylkill_bc, which are available in any pywrdrb run
@@ -66,7 +66,7 @@ from config import (
 # PywrDRB-ML leaf names collide with NYCOpt's src/* layout).
 #
 # A long-term fix is for PywrDRB-ML to rename `src/` to a proper package name
-# (e.g. `pywrdrb_ml/`); see local_notes/configuration/pywrdrb_ml_setup.md.
+# (e.g. `pywrdrb_ml/`); see docs/notes/code_implementation/pywrdrb_ml_setup.md.
 
 _ML_LEAF_MODULES = (
     "src.lstm_model",

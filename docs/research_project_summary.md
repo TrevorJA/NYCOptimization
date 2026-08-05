@@ -1,6 +1,6 @@
 # NYC Reservoir Re-Optimization: Project Summary
 
-*Entry point for new readers. Last updated 2026-07-30. Details live in `docs/notes/`;
+*Entry point for new readers. Last updated 2026-08-05. Details live in `docs/notes/`;
 this page states what the study is, what is decided, and what is still open. The
 manuscript at `docs/manuscript/Amestoy_NYC_reoptimization_manuscript_draft.md` is the
 authoritative description of the method. Where a note and the code disagree, the code
@@ -105,16 +105,17 @@ Operational how-to: `workflow/README.md` and the step scripts `workflow/00–09_
 ## Objectives
 
 Eight active objectives (NYC delivery reliability + CVaR₉₀ deficit, Montague reliability
-+ CVaR₉₀ deficit, Trenton reliability, downstream minor-flood days, NYC storage 5th
-percentile, NJ delivery reliability — activated 2026-07-30 after a clean redundancy
-screen), defined in `src/objectives.py` and documented in
-`notes/methods/objective_definitions.md`. During search, each objective's per-realization
-temporal metric is collapsed across realizations by a two-layer annual-unit scheme
-(annual metric per realization × water-year unit; a per-objective unit operator over the
-pooled unit-years). The annual-unit epsilons were calibrated and adopted 2026-07-30
-(512 constraint-feasible policies per design; max over the two ensemble designs, the
-historic arm excluded and disclosed); satisficing thresholds remain placeholders pending
-the satisficing-criterion diagnostics.
++ CVaR₉₀ deficit, Trenton reliability, downstream flood exceedance (ft·days above NWS
+minor flood stage), NYC storage 5th percentile, NJ delivery reliability), defined in
+`src/objectives.py` and documented in `notes/methods/objective_definitions.md`. During
+search, each objective's per-realization temporal metric is collapsed across
+realizations by a two-layer annual-unit scheme (annual metric per realization ×
+water-year unit; a per-objective unit operator over the pooled unit-years). The
+annual-unit epsilons are calibrated per `notes/methods/epsilon_calibration_experiment.md`
+(max over the two ensemble designs, the historic arm excluded and disclosed); the
+satisficing-threshold vector is measured
+(`notes/methods/robustness_threshold_diagnostics.md`) and awaits adoption into the
+registry.
 
 ## Comparison controls
 
@@ -188,10 +189,11 @@ at strength, never as a comparison result.
 
 ## Status
 
-**Working now:** end-to-end smoke runs; the stationary designs' generation and single-
-realization regeneration verified; chunked-pool machinery implemented; the Anvil
-packing/scaling experiment and the ensemble cost-surface experiment complete (measured
-campaign cost: 173.8 s/eval trimmed, full model 1.16×, ~33,400 SU per 500k-NFE search).
+**In place:** the end-to-end pipeline (smoke-verified); measured campaign costs
+(173.8 s/eval trimmed, full model 1.16×, ~33,400 SU per 500k-NFE search); all
+production inputs staged, verified, and adequacy-gated — candidate pools for all
+three draws, both matched designs' search ensembles, E_test with its one-time
+presim pass, and the baseline-on-E_test matrix.
 
 **Decided:** the three designs above; a single stationary search population with deep
 uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE per search
@@ -199,12 +201,13 @@ uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE pe
 recomputable at earlier budgets); the production MM Borg geometry (8 Anvil nodes,
 4 islands × 254 workers, 1,021 ranks, ~32.6 h/search); K = 3 draws × S = 2 seeds; absolute
 range-scaled hazard-space selection on the six campaign selection axes from a P = 10⁶
-candidate pool; E_test locked at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr (trimmed-model
-re-evaluation); the calibrated annual-unit epsilon vector (adopted 2026-07-30); comparison
+candidate pool; E_test at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr (trimmed-model
+re-evaluation); the calibrated annual-unit epsilon vector; comparison
 metrics = multivariate Starr satisficing (primary) with Laplace, maximin, and signed
-improvement-over-status-quo as anchors, **no set-relative or perfect-foresight regret**;
-search aggregation = two-layer annual-unit scheme; forcing space retains historical
-persistence (claims scoped accordingly).
+improvement-over-status-quo as anchors; search aggregation = two-layer annual-unit
+scheme; the framing conventions (failure-week counts, flood unit operator = mean,
+0.99 weekly satisfaction factor) measured and confirmed; forcing space retains
+historical persistence (claims scoped accordingly).
 
 **Total Anvil allocation = 750,000 SU.** The full campaign (two matched designs × K = 3 ×
 S = 2 at 500k NFE, plus the cheap `historic` reference, generation, and the E_test
@@ -213,19 +216,13 @@ reserve. First call on the reserve is an additional draw for both matched design
 (~134k); the RQ3 variable-resolution sweep (~200k) is deprioritized and runs only on
 whatever SU remains at the end of the campaign.
 
-**Not yet in place (gates the RQ1 campaign):** the multi-draw (K > 1) pool generation
-(the P = 10⁶ draw-0 pool is staged); E_test staged at production size (plus its one-time
-presim pass); the final satisficing thresholds adopted into the registry; step-00 JAR
-regeneration under the adopted epsilons.
+**Remaining before campaign launch:** adopt the measured satisficing thresholds into
+the registry; the confirmatory search under the adopted epsilon vector; the Anvil
+shakeout (hazard-filling step-06 smoke + pilot go/no-go). Tracked in `TODO.md`.
 
-**Open decisions:** the satisficing criterion values and sweep-grid centre; the 0.99
-weekly satisfaction factor (bounded by the dedicated factor sweep, pending its Anvil
-run); the scenario design under which the RQ3 variable-resolution sweep is run, if the
-leftover SU permits it. Adopted 2026-07-30 from the framing-convention diagnostics:
-failure-week counts k confirmed as shipped, flood unit operator = mean (P99 retained as
-a diagnostic), and the 8th objective (NJ delivery reliability) ACTIVATED after a clean
-redundancy screen. See `notes/methods/experimental_design.md` for the open-questions
-list.
+**Open decisions:** the satisficing criterion values and sweep-grid centre; the
+scenario design under which the RQ3 variable-resolution sweep is run, if the leftover
+SU permits it. See `notes/methods/experimental_design.md` for the open-questions list.
 
 ## Document index
 
@@ -237,7 +234,7 @@ list.
 | Ensemble construction recipe | `notes/methods/scenario_design_methods.md` |
 | Forcing-space parameterization (E_test) | `notes/methods/forcing_parameterization.md` |
 | Objective definitions | `notes/methods/objective_definitions.md` |
-| Objective sensitivity & framing diagnostics | `notes/methods/objective_sensitivity_experiment.md`, `notes/methods/framing_convention_diagnostics.md` |
+| Framing-convention diagnostics | `notes/methods/framing_convention_diagnostics.md` |
 | Terminology (controlled vocabulary) | `notes/terminology.md` |
 | Literature hub + topic notes | `notes/literature/README.md`, `notes/literature/scenario_design.md` |
 | Workflow / HPC operation | `../workflow/README.md`, `../workflow/envs/README.md` |
