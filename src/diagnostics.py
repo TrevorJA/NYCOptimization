@@ -190,6 +190,52 @@ def compute_metrics(
     return output_file
 
 
+def epsilon_box_filter_set(set_file: Path, slug: str) -> tuple[int, int]:
+    """Rewrite a merged .set file as its ε-box nondominated archive, in place.
+
+    MOEAFramework v5's ResultFileMerger merges by PLAIN Pareto dominance and
+    ignores ``--epsilon`` for archiving (measured 2026-08-05, identical
+    output under two vectors), so its union overstates the front at archive
+    resolution. This applies the Borg box convention
+    (``sensitivity_common.epsilon_nondominated`` — validated to reproduce
+    Borg's own seed-archive membership exactly) under the campaign vector
+    and rewrites the file: header comments preserved, only retained rows,
+    trailing ``#`` terminator kept, and the plain union saved alongside as
+    ``*_raw.set``. Downstream consumers (step 08/09 re-evaluation, result
+    figures) all resolve ``{slug}_merged.set``, so they consume the ε-front
+    automatically.
+
+    Returns:
+        (n_before, n_after) data-row counts.
+    """
+    import numpy as np
+    from src.formulations import get_n_vars, get_n_objs
+    from src.load.reference_set import load_reference_set
+    from src.sensitivity_common import epsilon_nondominated
+
+    formulation = problem_name_for(slug).removeprefix("drb_")
+    _, objs = load_reference_set(set_file, get_n_vars(formulation),
+                                 n_objs=get_n_objs())
+    keep = set(epsilon_nondominated(objs, get_epsilons()).tolist())
+
+    lines = set_file.read_text().splitlines(keepends=True)
+    header = [l for l in lines if l.startswith("#")]
+    data = [l for l in lines if not l.startswith("#") and l.strip()]
+    if len(data) != len(objs):
+        raise RuntimeError(
+            f"{set_file}: parsed {len(objs)} rows but found {len(data)} "
+            f"data lines — refusing to rewrite")
+
+    raw_copy = set_file.with_name(set_file.stem + "_raw.set")
+    raw_copy.write_text("".join(lines))
+    filtered = [l for i, l in enumerate(data) if i in keep]
+    # Trailing '#' terminates the entry; interior header comments lead it.
+    body = header[:-1] if header and header[-1].strip() == "#" else header
+    tail = ["#\n"] if body is not header else [header[-1]]
+    set_file.write_text("".join(body + filtered + tail))
+    return len(data), len(filtered)
+
+
 def run_diagnostics(
     slug: str,
     seed: int = 1,
@@ -295,11 +341,17 @@ def run_full_diagnostics(
         return {}
 
     # Cross-seed merged reference set (sets/{slug}_merged.set): the best-known
-    # front over all seeds. Metrics are computed against it so indicator values
-    # are comparable across seeds (Reed et al. 2013 diagnostics convention),
-    # and it is the reference set step 08/09 re-evaluates.
+    # front over all seeds, ε-box filtered to archive resolution (the merger
+    # itself is plain-dominance; see epsilon_box_filter_set). Metrics are
+    # computed against it so indicator values are comparable across seeds
+    # (Reed et al. 2013 diagnostics convention), and it is the reference set
+    # step 08/09 re-evaluates — the filter caps re-evaluation cost for every
+    # optimization configuration.
     print(f"[{scenario}/{slug}] merging cross-seed reference set...")
     global_ref = merge_reference_set(slug, runtime_dir=runtime_dir, scenario=scenario)
+    n_union, n_front = epsilon_box_filter_set(global_ref, slug)
+    print(f"[{scenario}/{slug}] ε-box filtered reference set: "
+          f"{n_union} -> {n_front} (union kept as *_raw.set)")
 
     results = {}
     for seed in seeds:

@@ -121,6 +121,43 @@ ensemble design, ~26 SU each).
   unsaturated (τ = 1.0, zero boundary mass, all designs), flood operator
   MEAN (boot τ-vs-full 0.95–0.96 vs 0.53–0.56 for P99), NJ screen clean
   (max |ρ| 0.36).
+- [x] **ADOPTED 2026-08-05 — Epsilon revision (C1_adopted)**: registry
+  updated (`_ANNUAL_REGISTRY_SPEC`: NYC deficit-P99 2.0→5.0, Montague
+  deficit-P99 2.0→5.0 PAIRED per site symmetry, flood exceedance 0.2→0.3;
+  storage 5.0 + all reliability ε unchanged), JARs rebuilt (step 00, login,
+  2026-08-05 12:19), affected suites 90/90 (job 19688123, mpirun-wrapped
+  pytest on shared). Step 07 now ε-BOX-FILTERS the cross-seed
+  `{slug}_merged.set` under the campaign vector before metrics
+  (`src/diagnostics.py::epsilon_box_filter_set`; plain union kept as
+  `*_raw.set`; verified end-to-end job 19688141) — and that file is the
+  first-choice re-eval reference set (`src/reevaluate{,_mpi}.py`), so
+  merge → ε-filter → re-evaluate holds for every optimization
+  configuration. Old-ε shakeout search outputs (sets/runtime/metrics +
+  search figures) DELETED as stale; the E_test baseline reeval subdir and
+  the epsilon_refilter decision-record outputs are KEPT. **REMAINING: one
+  confirmatory 2-seed historic search under the new vector (~2.4k SU)** —
+  measured expectation ~1,100-1,200/seed archives.
+  Measurement record (jobs 19684079-19684597): the shakeout archives
+  (~2k members/seed) re-filtered under candidate vectors
+  (`scripts/supplemental/epsilon_refilter_sweep.py`; tables + acceptance
+  figure under `outputs/supplemental/epsilon_refilter/`; dated section in
+  `epsilon_calibration_experiment.md`). Recommended **C1_adopted** (Trevor
+  2026-08-05, two revisions of C1_moderate: storage-P01 ε stays 5.0 — a
+  5%-of-capacity distinction is significant — and the NYC/Montague
+  deficit-P99 epsilons are PAIRED, matching the sites' paired 0.02
+  reliability epsilons): NYC deficit-P99 2.0→5.0, Montague deficit-P99
+  2.0→5.0, flood exceedance 0.2→0.3; storage + reliability axes unchanged
+  (Trenton's visible gaps are the historic 1/76 unit lattice, not ε — 0.01
+  changes nothing and resolves below the ensemble noise floors). Effect:
+  seed archives −43%/−48% (1,159/1,036), cross-seed ε-front 1,599;
+  fallbacks C1_moderate (Mont-def 4.0 + storage 7.5: −53%) and C2_measured
+  (10/5/0.5/10, each at its measured floor: −74%). Box filter validated:
+  reproduces Borg's archive membership exactly under the current vector.
+  Pipeline finding: step-07 `{slug}_merged.set` is a PLAIN nondominated
+  union (ResultFileMerger ignores --epsilon for archiving) — ε-box-filter
+  it before step-08/09 sizing. On adoption: `_ANNUAL_REGISTRY_SPEC` →
+  step-00 JAR rebuild → tests → one confirmatory 2-seed historic search
+  (~2.4k SU).
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test). The threshold vector it sweeps around is now the measured
@@ -182,7 +219,10 @@ ensemble design, ~26 SU each).
   spacing settled ~1.0, GD → ~0.002), but **hypervolume is still climbing
   at 12,500 NFE/island on all 8 islands** — 50k NFE/seed has not plateaued
   on the historic problem; revisit NFE sizing (or rely on multi-seed
-  merging) before campaign submissions.
+  merging) before campaign submissions. (2026-08-05 addendum: step 07 also
+  ε-box-filters the merged reference set now — §3 epsilon-adoption record —
+  and this run's search outputs were deleted as stale after the ε revision
+  they motivated; the numbers above remain the shakeout's record.)
 - [ ] **[HPC]** End-to-end smoke of `hazard_filling_stationary`: step 06 only (`submit_smoke.sh` = 79 MPI ranks). Local half DONE 2026-07-31 — steps 02→03→04 at P=1000/N=50 exercised wet-exclusion, the robust p1/p99 bounds and the dedupe-only screen; selection ran on the m6 campaign axes (6/6 retained), `axis_screen` + per-axis bounds/clipped fractions + coverage-vs-null persisted in the staged meta, all four pywrdrb inputs staged, and one trimmed-model evaluation on the result returned 8 finite objectives. Untested locally: the MPI fan-out in step 04 (no `mpirun` on the laptop; ran 1 rank).
 - [ ] **[HPC]** `pilot` MOEA config go/no-go run.
 

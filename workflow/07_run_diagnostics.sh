@@ -1,10 +1,16 @@
 #!/bin/bash
 # Step 7: Run MOEAFramework runtime diagnostics — builds the cross-seed
-# reference set ({slug}_merged.set), per-seed merged sets, and per-island
-# runtime metrics scored against the cross-seed set, then renders the
-# standard post-search figure suite (parallel axes, hypervolume convergence,
-# six-indicator runtime panel) under figures/{scenario}/{slug}/
-# (src/plotting/search_diagnostics.py).
+# reference set ({slug}_merged.set) and ε-BOX FILTERS it to archive
+# resolution under the campaign epsilon vector (the raw plain-dominance
+# union is kept as *_raw.set; see src/diagnostics.py::epsilon_box_filter_set
+# — ResultFileMerger alone ignores --epsilon for archiving), plus per-seed
+# merged sets and per-island runtime metrics scored against the filtered
+# cross-seed set, then renders the standard post-search figure suite
+# (parallel axes, hypervolume convergence, six-indicator runtime panel)
+# under figures/{scenario}/{slug}/ (src/plotting/search_diagnostics.py).
+# The filtered {slug}_merged.set is the FIRST-choice reference set of the
+# step 08/09 re-evaluation (src/reevaluate{,_mpi}.py), so this step must run
+# between search and re-evaluation for every optimization configuration.
 #
 # By default, runs ffmp + variable-resolution FFMP at each N in
 # FFMP_VR_N_SWEEP in parallel as background jobs. The MOEAFramework CLI

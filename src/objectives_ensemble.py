@@ -635,6 +635,19 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
 # ACTIVE (8th objective, activated 2026-07-30); the diagnostic P99 flood
 # variant remains outside the default set (mean operator adopted 2026-07-30)
 # but carries a calibrated value.
+# Post-shakeout revision ADOPTED 2026-08-05 (epsilon_calibration_experiment.md
+# "Post-shakeout revision diagnostics" section; re-filter sweep on the first
+# converged front, jobs 19684079-19684597): the 2-seed historic mm_full
+# shakeout archives (~2k members/seed) showed the deficit-P99 pair driving
+# archive cardinality. NYC deficit-P99 2.0 -> 5.0 (softens the standing
+# override to 2x below the measured hazfill floor of 10.0; equals the
+# historic-design requirement), Montague deficit-P99 2.0 -> 5.0 (PAIRED with
+# NYC per site symmetry, as the two sites' reliability epsilons are paired
+# at 0.02), flood exceedance 0.2 -> 0.3. Storage-P01 stays 5.0 (a 5%-of-
+# capacity distinction is significant) and all reliability epsilons are
+# unchanged (the shakeout's coarse-looking Trenton axis is the historic
+# 1/76 unit lattice, not epsilon). Measured effect: seed archives -43%/-48%
+# (1,159/1,036), cross-seed eps-front 1,599.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
@@ -643,9 +656,10 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of NYC delivery "
      "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
-     # 2.0 retained 2026-08-03 against the measured 10.0 rec (hazfill P99
-     # noise floor; see the header comment) — resolution kept at signal scale.
-     "nyc_delivery_deficit_cvar90_pct", "minimize", 2.0,
+     # 2.0 -> 5.0 ADOPTED 2026-08-05 (post-shakeout revision, header comment):
+     # 2x below the measured hazfill floor of 10.0, equal to the historic-
+     # design requirement; paired with the Montague deficit epsilon.
+     "nyc_delivery_deficit_cvar90_pct", "minimize", 5.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
      "delivery deficit, % of Decree cap [0-100]"),
@@ -655,7 +669,11 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of weekly-mean Montague "
      "flow < 1131.05 MGD Decree target"),
     ("montague_flow_deficit_p99_pct",
-     "montague_flow_deficit_cvar90_pct", "minimize", 2.0,
+     # 2.0 -> 5.0 ADOPTED 2026-08-05: paired with the NYC deficit epsilon
+     # (site symmetry; above the hazfill noise floor 2.0 that bound the
+     # previous value — coarser than the floor is permitted for cardinality,
+     # criterion iii of the calibration note).
+     "montague_flow_deficit_cvar90_pct", "minimize", 5.0,
      _montague_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
      "flow deficit, % of Decree target [0-100]"),
@@ -665,13 +683,12 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "Frac of pooled unit-years with < k weeks of weekly-mean Trenton "
      "flow < 1938.95 MGD Decree target"),
     ("downstream_flood_exceedance_annual",
-     "downstream_flood_exceedance_minor", "minimize", 0.2,
+     "downstream_flood_exceedance_minor", "minimize", 0.3,
      # worst_value: 366 days x ~15 ft, the largest per-day exceedance the
      # rating curves can produce before endpoint saturation (Bridgeville
-     # 27.9 ft rated max - 13 ft minor). Epsilon 0.2 is the FINAL calibrated
-     # value (2026-08-03 rerun; noise floor binds on both ensemble designs,
-     # replacing the provisional 0.01 from flood_objective_diagnostics.md
-     # block 6).
+     # 27.9 ft rated max - 13 ft minor). Epsilon calibrated 0.2 (2026-08-03
+     # rerun; noise floor binds on both ensemble designs) -> 0.3 ADOPTED
+     # 2026-08-05 (post-shakeout revision, header comment).
      _flood_exceedance_minor_annual, PooledMeanOp(worst_value=5490.0),
      "Mean across pooled unit-years of ft-days above NWS minor flood stage "
      "at the worst-affected tail gauge (expected annual flood exceedance)"),

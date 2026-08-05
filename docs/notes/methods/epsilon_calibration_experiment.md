@@ -99,3 +99,67 @@ table (`tables/epsilon_recommendation_*.csv`) into `_ANNUAL_REGISTRY_SPEC`
   retained by ε-box nondominance under the adopted vector highlighted and
   the FFMP baseline bold; shows the adopted resolution thins the set
   without collapsing any tradeoff axis's span).
+
+## Post-shakeout revision diagnostics (2026-08-05)
+
+The first search under the adopted vector (2-seed historic `mm_full`
+shakeout, job 19677667) produced ~2,000-member per-seed archives — too
+dense to report or affordably re-evaluate. New diagnostic:
+`scripts/supplemental/epsilon_refilter_sweep.py` (launcher
+`workflow/supplemental/epsilon_refilter_sweep.sh`; outputs under
+`outputs/supplemental/epsilon_refilter/historic_ffmp_obj8_mm_full/`)
+re-filters the CONVERGED archives under candidate vectors
+(`sensitivity_common.epsilon_nondominated`) — the converged-front complement
+to this experiment's random-policy sweep. Validation: under the current
+vector the box filter reproduces the Borg C archive membership of both seed
+`.set` files EXACTLY (2,051/2,051 and 1,990/1,990).
+
+Measured (axis_structure + archive_size_sweep tables):
+
+- All four reliability axes sit on the historic trace's **1/76 unit lattice**
+  (0.0131579 exactly; the metrics pool 76 unit-years). Trenton's visible
+  axis gaps are that lattice — only 10 attainable values span its archive
+  range — NOT epsilon coarseness: refiltering at ε 0.01 changes nothing
+  (2,051/1,990 → identical), and 0.01 would resolve below the ensemble
+  noise floors (0.0145/0.0147). Trenton ε stays 0.015.
+- Flood exceedance and storage-P01 occupy only 3 and 7 one-dimensional
+  ε-boxes across the whole front — their apparent solution density is
+  whole-archive density. Cardinality is driven by the deficit-P99 pair and
+  the reliability axes (21-26 boxes each).
+- One-at-a-time (per-seed effect): NYC-def ε 2→5 cuts 25-29% (2→10 cuts
+  41-48%); Mont-def 2→4 cuts 11-14%; storage 5→7.5 cuts 24% (saturates by
+  10); flood 0.2→0.3 cuts 10-12%.
+- Combined **C1_adopted** {NYC-def 5.0, Mont-def 5.0, flood 0.3; storage
+  kept at 5.0} — Trevor 2026-08-05: the two sites' deficit-P99 epsilons are
+  PAIRED at 5.0 (matching the paired 0.02 reliability epsilons), and a
+  5%-of-capacity storage distinction is significant: seed archives →
+  1,159/1,036 (−43%/−48%), cross-seed ε-front 1,599; the refilter
+  parallel-axes figures (single-panel overlay + two-panel full-vs-filtered)
+  show every axis span preserved.
+  **C1_moderate** (Mont-def 4.0, storage 7.5): → 979/926 (−53%), cross-seed
+  1,410. **C2_measured** {10.0, 5.0, 0.5, 10.0} (each at its measured floor
+  / historic rec): → 544/500 (−74%), cross-seed 640.
+- Pipeline finding: MOEAFramework v5 `ResultFileMerger` merges by PLAIN
+  Pareto dominance regardless of `--epsilon` (identical output under two
+  vectors), so a bare merge overstates the front at archive resolution
+  (7,544 rows vs 2,678 under the then-current ε box filter). **FIXED
+  2026-08-05**: step 07 (`run_full_diagnostics`) now ε-box-filters the
+  cross-seed `{slug}_merged.set` in place under the campaign vector
+  (`src/diagnostics.py::epsilon_box_filter_set`; plain union kept as
+  `*_raw.set`) before computing metrics against it — and that file is the
+  first-choice reference set of the step 08/09 re-evaluation
+  (`src/reevaluate{,_mpi}.py`), so the merge → ε-filter → re-evaluate
+  ordering holds for every optimization configuration by construction.
+
+**ADOPTED 2026-08-05**: C1_adopted — NYC-def 5.0 (softens the standing 2.0
+override to 2× below the measured hazfill floor of 10.0, and equals the
+historic-design requirement), Mont-def 5.0 (paired with NYC per site
+symmetry; both sites' reliability epsilons are likewise paired at 0.02),
+flood 0.3; storage and all reliability axes unchanged. C1_moderate /
+C2_measured remain the fallbacks if campaign archives run too large.
+Executed same day: `_ANNUAL_REGISTRY_SPEC` updated (+ provenance comments),
+JARs rebuilt (step 00), affected suites green (90/90, job 19688123), the
+pre-adoption shakeout outputs (old-ε archives, metrics, figures) deleted as
+stale. Still open: one confirmatory cheap search under the new vector
+(re-filtering approximates the archive but ε also steers Borg
+selection/restarts; the 2-seed historic shakeout costs ~2.4k SU to repeat).
