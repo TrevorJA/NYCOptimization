@@ -26,7 +26,7 @@ settings in `supplemental_config.py` (`EPS_*`). Outputs under
   draw 0) — because the search objectives are computed under different
   measures across designs and the archive lives inside each search.
 - **Policies**: `EPS_N_POLICIES` = 512 random policies drawn **uniform on the
-  constraint-feasible region** (rejection against the two formal Borg
+  constraint-feasible region** (rejection against the two DV-space formal Borg
   constraints — pure DV arithmetic; realized acceptance rate persisted as QC),
   plus the FFMP baseline (id −1). Feasible-only sampling matches the archive's
   population: constraint-dominance keeps infeasible vectors out of the

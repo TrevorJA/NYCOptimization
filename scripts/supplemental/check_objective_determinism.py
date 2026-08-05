@@ -106,7 +106,7 @@ def build_policies() -> dict:
 
     Perturbed policies are drawn as uniform perturbations of the baseline
     (± ``DETERMINISM_PERTURB_FRAC`` of each DV's bound range, clipped to
-    bounds) and accepted only when both formal DV-arithmetic constraints are
+    bounds) and accepted only when both DV-space formal constraints are
     exactly zero; the fraction halves every 25 rejected draws. The draw is
     seeded, so the set is reproducible; an existing ``policies.json`` is
     reused verbatim so a resumed run measures the same vectors.

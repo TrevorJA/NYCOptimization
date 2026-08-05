@@ -19,7 +19,8 @@ Exported API
     make_objective_function(name) -> callable for Borg evaluation
     get_n_constrs()             -> int (formal Borg constraint count)
     get_constraint_names()      -> list of constraint names
-    make_constraint_function(name) -> callable: dv_vector -> violation list
+    make_constraint_function(name) -> callable: dv_vector -> DV-space violation list
+    make_post_sim_constraint_function() -> callable: borg_objs -> violation list
     generate_ffmp_formulation(n_zones) -> formulation dict
 
 Circular-import note
@@ -51,9 +52,14 @@ __all__ = [
     "get_objective_set",
     "make_objective_function",
     "CONSTRAINT_NAMES",
+    "DV_CONSTRAINT_NAMES",
+    "POST_SIM_CONSTRAINT_NAMES",
+    "RELIABILITY_FLOOR_OBJECTIVE",
+    "reliability_floor_objective_index",
     "get_n_constrs",
     "get_constraint_names",
     "make_constraint_function",
+    "make_post_sim_constraint_function",
     "generate_ffmp_formulation",
 ]
 
@@ -213,42 +219,109 @@ def get_obj_directions(items=None) -> list:
 # Formal Borg constraint accessors
 ###############################################################################
 
-#: Names/order of the formal Borg constraint functions (violation magnitude
-#: convention: 0.0 = feasible, positive scales linearly with the degree of
-#: violation). The same conditions are also enforced by the apply-time clamps
-#: in src/simulation.py — the constraints give Borg a direct pre-simulation
-#: feasibility signal; the clamps remain as intentional redundancy.
+#: DV-space formal Borg constraints (violation magnitude convention: 0.0 =
+#: feasible, positive scales linearly with the degree of violation). Computed
+#: from pure DV arithmetic BEFORE any simulation. The same conditions are also
+#: enforced by the apply-time clamps in src/simulation.py — the constraints
+#: give Borg a direct pre-simulation feasibility signal; the clamps remain as
+#: intentional redundancy.
 #: Zone-curve crossings are clamp-only (not a constraint): the monotonicity
 #: clamp resolves them at apply time and the clamped geometry is the
 #: intended policy.
-CONSTRAINT_NAMES = [
+DV_CONSTRAINT_NAMES = [
     "delivery_monotonicity",
     "flood_zone_ordering",
 ]
 
+#: POST-SIMULATION formal Borg constraints: computed from the objective vector
+#: AFTER simulation, so they can only be evaluated inside the MM Borg objective
+#: wrapper (src/mmborg.py), never by `make_constraint_function` (DV-only).
+#: `nyc_reliability_floor` enforces the stakeholder floor on NYC weekly
+#: delivery reliability (`config.NYC_RELIABILITY_FLOOR`, env
+#: NYCOPT_NYC_RELIABILITY_FLOOR, default 0.5) directly in the search:
+#: constraint-dominance excludes below-floor policies from search and archive,
+#: replacing the post-hoc Pareto screen in src/pareto_filter.py for new runs.
+POST_SIM_CONSTRAINT_NAMES = [
+    "nyc_reliability_floor",
+]
+
+#: Full constraint order handed to Borg: DV-space first, post-simulation last.
+CONSTRAINT_NAMES = DV_CONSTRAINT_NAMES + POST_SIM_CONSTRAINT_NAMES
+
+#: Objective (by NAME — never a hard-coded index) that carries the raw
+#: reliability value the `nyc_reliability_floor` constraint reads. This is
+#: the BASE (§1) spelling used by config.ACTIVE_OBJECTIVES; resolved
+#: objective sets report registry names (the annual-unit registry renames it
+#: whenever a scenario design is wired — every search context), so lookups
+#: must go through ``reliability_floor_objective_index``, never a bare
+#: ``names.index``.
+RELIABILITY_FLOOR_OBJECTIVE = "nyc_delivery_reliability_weekly"
+
+
+def reliability_floor_objective_index(names) -> int:
+    """Index of the reliability objective the floor constraint reads.
+
+    Accepts either spelling of the objective: the base §1 name
+    (``RELIABILITY_FLOOR_OBJECTIVE``) or its annual-unit registry form
+    (via ``src.objectives_ensemble._BASE_TO_ENSEMBLE``), so the lookup works
+    against both the single-trace and the annual-unit registries.
+
+    Args:
+        names: Ordered objective-name list, as returned by ``get_obj_names``.
+
+    Returns:
+        Position of the reliability objective in ``names``.
+
+    Raises:
+        ValueError: If neither spelling is present — the floor cannot be
+            enforced without the objective it reads.
+    """
+    from src.objectives_ensemble import _BASE_TO_ENSEMBLE
+
+    alias = _BASE_TO_ENSEMBLE.get(RELIABILITY_FLOOR_OBJECTIVE)
+    names = list(names)
+    for cand in (RELIABILITY_FLOOR_OBJECTIVE, alias):
+        if cand is not None and cand in names:
+            return names.index(cand)
+    raise ValueError(
+        f"The nyc_reliability_floor constraint requires objective "
+        f"'{RELIABILITY_FLOOR_OBJECTIVE}' (or its annual-unit form "
+        f"'{alias}') in the active set; got {names}. Fix NYCOPT_OBJECTIVES "
+        f"— the floor cannot be enforced without it."
+    )
+
 
 def get_n_constrs() -> int:
-    """Number of formal Borg constraints (same for all FFMP formulations)."""
+    """Number of formal Borg constraints (same for all FFMP formulations).
+
+    Counts BOTH kinds: the DV-space constraints (pre-simulation, see
+    ``DV_CONSTRAINT_NAMES``) and the post-simulation constraints
+    (``POST_SIM_CONSTRAINT_NAMES``).
+    """
     return len(CONSTRAINT_NAMES)
 
 
 def get_constraint_names() -> list:
-    """Ordered list of formal Borg constraint names."""
+    """Ordered list of formal Borg constraint names (DV-space, then post-sim)."""
     return list(CONSTRAINT_NAMES)
 
 
 def make_constraint_function(formulation_name: str = "ffmp"):
-    """Return the constraint-violation callable for a FFMP formulation.
+    """Return the DV-SPACE constraint-violation callable for a FFMP formulation.
 
     The returned callable is pure DV arithmetic (no simulation, no config
     deepcopy) and is safe to call before/instead of the objective function.
+    It covers ONLY the ``DV_CONSTRAINT_NAMES`` entries; the post-simulation
+    constraints (``POST_SIM_CONSTRAINT_NAMES``) need the computed objective
+    vector and are appended by the MM Borg objective wrapper via
+    ``make_post_sim_constraint_function``.
 
     Args:
         formulation_name: "ffmp" or "ffmp_N" (N-zone variable-resolution FFMP).
 
     Returns:
-        Callable: dv_vector -> list of ``get_n_constrs()`` violation floats,
-        ordered per ``CONSTRAINT_NAMES`` (0.0 = feasible).
+        Callable: dv_vector -> list of ``len(DV_CONSTRAINT_NAMES)`` violation
+        floats, ordered per ``DV_CONSTRAINT_NAMES`` (0.0 = feasible).
     """
     from src.simulation import compute_constraint_violations
 
@@ -258,6 +331,65 @@ def make_constraint_function(formulation_name: str = "ffmp"):
         )
 
     return _constraint_fn
+
+
+def make_post_sim_constraint_function(items=None):
+    """Return the POST-SIMULATION constraint-violation callable.
+
+    Consumes the Borg-oriented objective vector produced by
+    ``make_objective_function`` (all values MINIMIZED, i.e. maximize
+    objectives negated by ``compute_for_borg``) and returns the
+    ``POST_SIM_CONSTRAINT_NAMES`` violations. Currently one constraint:
+
+    ``nyc_reliability_floor`` — violation = max(0, floor - reliability) with
+    the reliability recovered on the NATURAL 0-1 scale (the stored Borg value
+    is un-negated using the objective's direction). The floor comes from
+    ``config.NYC_RELIABILITY_FLOOR`` (env ``NYCOPT_NYC_RELIABILITY_FLOOR``),
+    read at factory-call time so per-run env files take effect.
+
+    Failed-simulation convention: penalty objective vectors (1e6/1e10
+    sentinels from the eval wrappers) put the recovered "reliability" far
+    outside [0, 1]. For such vectors the violation is reported as 0.0 —
+    nothing was measured, and fabricating a violation magnitude would distort
+    constraint-dominance ordering among genuinely infeasible solutions. The
+    penalty objectives already guarantee the failed eval is Pareto-dominated
+    by every real solution, so it is feasible-but-maximally-unattractive,
+    matching the wrapper's exception path (see src/mmborg.py).
+
+    Args:
+        items: Objective names defining the active set; None reads
+            ``config.ACTIVE_OBJECTIVES`` (same convention as
+            ``get_obj_names``). The reliability objective is resolved by NAME
+            via ``reliability_floor_objective_index`` (accepts the base §1
+            spelling or its annual-unit registry form).
+
+    Returns:
+        Callable: borg_objective_list -> list of
+        ``len(POST_SIM_CONSTRAINT_NAMES)`` violation floats (0.0 = feasible).
+
+    Raises:
+        ValueError: If the active objective set does not include
+            ``RELIABILITY_FLOOR_OBJECTIVE`` — the floor cannot be enforced
+            without the objective it reads.
+    """
+    from config import NYC_RELIABILITY_FLOOR
+
+    names = get_obj_names(items)
+    directions = get_obj_directions(items)
+    idx = reliability_floor_objective_index(names)
+    # Borg stores maximize objectives negated (+1 direction); un-negate to
+    # recover the natural 0-1 reliability before comparing to the floor.
+    sign = -1.0 if directions[idx] == 1 else 1.0
+    floor = float(NYC_RELIABILITY_FLOOR)
+
+    def _post_sim_fn(borg_objs):
+        reliability = sign * float(borg_objs[idx])
+        if not 0.0 <= reliability <= 1.0:
+            # Penalty sentinel from a failed simulation — see docstring.
+            return [0.0]
+        return [max(0.0, floor - reliability)]
+
+    return _post_sim_fn
 
 
 ###############################################################################

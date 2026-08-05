@@ -8,10 +8,15 @@ stakeholders no matter how well it trades off other objectives, so it is removed
 before any figure or robustness summary is produced.
 
 This is a *screening* filter applied AFTER search, not a new optimization: it
-never changes an objective value, only which solutions are carried forward. When
-a formal reliability constraint is later added to the search (the intended next
-step), ``DEFAULT_STAKEHOLDER_FLOORS`` below is the natural constraint definition,
-so the screen and the eventual constraint stay in one place.
+never changes an objective value, only which solutions are carried forward.
+
+NOTE (2026-08-04): new searches enforce the reliability floor FORMALLY — the
+post-simulation Borg constraint ``nyc_reliability_floor``
+(``src.formulations.make_post_sim_constraint_function``, floor from
+``config.NYC_RELIABILITY_FLOOR`` / env ``NYCOPT_NYC_RELIABILITY_FLOOR``)
+excludes below-floor policies from search and archive via constraint
+dominance. This module is retained for archives produced BEFORE that change;
+keep ``DEFAULT_STAKEHOLDER_FLOORS`` in agreement with the config default.
 
 Orientation
 -----------

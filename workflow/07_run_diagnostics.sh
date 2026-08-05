@@ -1,6 +1,10 @@
 #!/bin/bash
-# Step 7: Run MOEAFramework runtime diagnostics — computes hypervolume,
-# generational distance, and builds the global reference set.
+# Step 7: Run MOEAFramework runtime diagnostics — builds the cross-seed
+# reference set ({slug}_merged.set), per-seed merged sets, and per-island
+# runtime metrics scored against the cross-seed set, then renders the
+# standard post-search figure suite (parallel axes, hypervolume convergence,
+# six-indicator runtime panel) under figures/{scenario}/{slug}/
+# (src/plotting/search_diagnostics.py).
 #
 # By default, runs ffmp + variable-resolution FFMP at each N in
 # FFMP_VR_N_SWEEP in parallel as background jobs. The MOEAFramework CLI

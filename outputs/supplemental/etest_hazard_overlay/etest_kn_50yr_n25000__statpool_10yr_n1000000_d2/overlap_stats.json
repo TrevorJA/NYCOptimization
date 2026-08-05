@@ -1,0 +1,84 @@
+{
+  "etest_slug": "etest_kn_50yr_n25000",
+  "pool_slug": "statpool_10yr_n1000000_d2",
+  "search_slugs": [
+    "hazfill_stat_abs_10yr_n100_d2"
+  ],
+  "axes": [
+    "drought_deficit_volume",
+    "drought_peak_depth",
+    "drought_onset_rate",
+    "drought_recovery_rate",
+    "flood_peak_magnitude",
+    "flood_pulse_duration"
+  ],
+  "n_etest_subwindows": 125000,
+  "per_axis": {
+    "drought_deficit_volume": {
+      "pool_lo": 3.1813358527548368,
+      "pool_hi": 54.19218336800257,
+      "pool_min": 0.0,
+      "pool_max": 115.18821338459495,
+      "pool_p50": 17.574895981004566,
+      "etest_p50": 11.777470664950439,
+      "etest_frac_below_lo": 0.04828,
+      "etest_frac_above_hi": 0.008592,
+      "etest_frac_outside_hull": 8e-06
+    },
+    "drought_peak_depth": {
+      "pool_lo": 1.0253117426037992,
+      "pool_hi": 3.6729344438368274,
+      "pool_min": 0.0,
+      "pool_max": 4.500000000000001,
+      "pool_p50": 1.9160040810675887,
+      "etest_p50": 1.934003640988153,
+      "etest_frac_below_lo": 0.026232,
+      "etest_frac_above_hi": 0.001744,
+      "etest_frac_outside_hull": 0.0
+    },
+    "drought_onset_rate": {
+      "pool_lo": 0.03975073877719851,
+      "pool_hi": 2.000233805786302,
+      "pool_min": 0.0,
+      "pool_max": 3.5243798416455108,
+      "pool_p50": 0.24531200610011217,
+      "etest_p50": 0.4526462232372681,
+      "etest_frac_below_lo": 0.021328,
+      "etest_frac_above_hi": 0.027048,
+      "etest_frac_outside_hull": 1.6e-05
+    },
+    "drought_recovery_rate": {
+      "pool_lo": 0.03939800101685286,
+      "pool_hi": 1.115097433542534,
+      "pool_min": 0.0,
+      "pool_max": 2.994023402206178,
+      "pool_p50": 0.19224397419111333,
+      "etest_p50": 0.31606814508425374,
+      "etest_frac_below_lo": 0.021168,
+      "etest_frac_above_hi": 0.022056,
+      "etest_frac_outside_hull": 0.0
+    },
+    "flood_peak_magnitude": {
+      "pool_lo": 9.856534010899576,
+      "pool_hi": 35.65354535627141,
+      "pool_min": 5.999986519311857,
+      "pool_max": 155.02230227038996,
+      "pool_p50": 17.555797507344927,
+      "etest_p50": 21.561864334913253,
+      "etest_frac_below_lo": 0.001912,
+      "etest_frac_above_hi": 0.06404,
+      "etest_frac_outside_hull": 0.0
+    },
+    "flood_pulse_duration": {
+      "pool_lo": 2.0,
+      "pool_hi": 20.0,
+      "pool_min": 1.0,
+      "pool_max": 54.0,
+      "pool_p50": 5.0,
+      "etest_p50": 6.0,
+      "etest_frac_below_lo": 0.000144,
+      "etest_frac_above_hi": 0.025088,
+      "etest_frac_outside_hull": 0.0
+    }
+  }
+}

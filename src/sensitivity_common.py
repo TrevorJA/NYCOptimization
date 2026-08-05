@@ -22,7 +22,7 @@ They share six kinds of logic, factored here so no script copies another
    because the shard payload differs (flat CSV rows vs. a 3-D HDF5 matrix).
 2. **DV sampling** — ``sample_lhs_dvs`` (Latin-hypercube within ``get_bounds``)
    and ``sample_feasible_dvs`` (uniform on the feasible region via rejection
-   against the formal Borg constraints).
+   against the DV-space formal Borg constraints).
 3. **Objective-set resolution** — ``resolve_objective_names``.
 4. **Rank-correlation diagnostics** — ``kendall_tau_b`` and
    ``spearman_and_flagged`` (the Olden & Poff redundancy screen).
@@ -157,11 +157,13 @@ def sample_feasible_dvs(formulation: str, seed: int, n_samples: int, *,
     """Uniform sample of the constraint-feasible DV region, via rejection.
 
     Draws i.i.d. uniform vectors within ``get_bounds(formulation)`` and keeps
-    only those with zero violation on both formal Borg constraints
+    only those with zero violation on both DV-space formal Borg constraints
     (``src.simulation.compute_constraint_violations`` — pure DV arithmetic, no
-    simulation). Rejection from i.i.d. uniform draws yields an *exactly*
-    uniform distribution on the feasible region, which is the population the
-    Borg archive lives in (constraint-dominance keeps infeasible vectors out
+    simulation; the post-simulation ``nyc_reliability_floor`` constraint
+    cannot be checked without simulating and is not applied here). Rejection
+    from i.i.d. uniform draws yields an *exactly* uniform distribution on the
+    DV-feasible region, which is the population the Borg archive lives in
+    (constraint-dominance keeps infeasible vectors out
     of the archive). Random 36-DV vectors are ~1% feasible (the flood-ordering
     constraint dominates), so expect ~100x oversampling; the constraint check
     costs microseconds per vector after the one-time defaults load.

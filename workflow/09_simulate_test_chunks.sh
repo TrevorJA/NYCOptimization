@@ -54,7 +54,6 @@
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=1
-#SBATCH --exclusive
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/sim_master_chunks_%j.out
 #SBATCH --error=logs/sim_master_chunks_%j.err

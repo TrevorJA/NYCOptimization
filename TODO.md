@@ -63,7 +63,8 @@ must run on the rebased pywrdrb + re-staged inputs first.
   untouched, as scoped); the pre-sync step-05 baseline vector and the
   orphaned `outputs/presim/full_model_baseline.*` +
   `outputs/diagnostics/random_sample_objectives.npz` deleted; full test
-  suite passes (261). **Anvil half DONE 2026-08-03 evening**: historic presim
+  suite passes (261). (Anvil's surviving copies of the
+  `full_model_baseline.*` orphans deleted 2026-08-04 night.) **Anvil half DONE 2026-08-03 evening**: historic presim
   regenerated; both staged pywrdrb-input ensembles (`fixprob_10yr_n100_d0`,
   `hazfill_stat_abs_10yr_n100_d0`) force-re-staged all four inputs (jobs
   19644341/42) — this also closes the Anvil half of the flood-inflow
@@ -122,12 +123,66 @@ ensemble design, ~26 SU each).
   (max |ρ| 0.36).
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
-  (post E_test).
+  (post E_test). The threshold vector it sweeps around is now the measured
+  recommendation below.
 - [ ] **[HPC]** Satisficing criterion values + sweep grid (`_DEFAULT_THRESHOLDS`).
-- [ ] **[local]** E_test hazard-space overlay (simulation-free; **candidate main-text figure**, run as soon as E_test is staged): compute E_test's hazard image and overlay it on the candidate pool AND each realized search ensemble (E_d per design/draw) in the retained axes / p1–p99 box. Answers whether E_test's severe droughts (forced mean reduction) occupy the same hazard coordinates as the pool's natural-variability corners the selector enriches; also feeds the registered hazard-restricted E_test composition-sensitivity checks and the generalization claim. IMPLEMENTED 2026-07-30 (smoke-tested on synthetic data; blocked only on E_test staging): `scripts/main/compute_etest_hazard_image.py` (disjoint 10-yr sub-window image, shard-resumable → `hazard_image_subwindows.npz`) + `scripts/main/plot_etest_hazard_overlay.py` / `src/plotting/etest_hazard_overlay.py` (corner overlay + per-axis containment `overlap_stats.json`).
+  **RECOMMENDATION MEASURED 2026-08-05** (jobs 19675365/19675551, zero
+  simulation; `docs/notes/methods/robustness_threshold_diagnostics.md`,
+  tables+figures under `outputs/supplemental/robustness_threshold_diagnostics/`;
+  code `scripts/supplemental/robustness_threshold_{anchor,figures}.py`,
+  `RTD_*` config section, `tests/test_robustness_threshold_diagnostics.py`
+  13/13 pass). Verdicts from the baseline-on-E_test cube + a recomputed
+  base-metric historic anchor: the three delivery criteria the HISTORIC
+  status quo itself fails are re-anchored at historic attainment rounded
+  stricter (NYC rel 0.95→**0.87**, NYC CVaR90 10→**29**, NJ rel
+  0.95→**0.92**); flood adopts the observed 2000-2023 burden anchor
+  1.0→**1.17** ft·d/yr; Montague rel 0.85 kept (discriminating, frac 0.856);
+  Montague CVaR 25 / Trenton 0.85 / storage 25 kept as non-binding
+  guardrails. Headline preserved and sharpened: baseline still fails NYC
+  rel/CVaR in 84%/67% of E_test SOWs under the merely-maintain-status-quo
+  criteria (the old 0.0005/0.001 fractions were support-outside artifacts).
+  θ-attribution: annual-mean factor m dominates all 8 objectives
+  (|ρ|=0.91-0.98), r1 secondary, r2 inert. REMAINING to close: adopt the
+  vector into `objectives_ensemble._DEFAULT_THRESHOLDS` + `__satNN` labels
+  (checklist §5 of the note), rerun tests, then one wrapper rerun so the SI
+  figures' "current" markers show the adopted values.
+- [x] **DONE 2026-08-04 (all three draws)** E_test hazard-space overlay (simulation-free; **candidate main-text figure**): d0 overlay + containment clean (job 19663001); d1/d2 refreshed post-staging (19673821/22) with identical verdicts — E_test inside the pool hull on all 6 campaign axes for every draw (details on the §5 pools item). Original spec: compute E_test's hazard image and overlay it on the candidate pool AND each realized search ensemble (E_d per design/draw) in the retained axes / p1–p99 box. Answers whether E_test's severe droughts (forced mean reduction) occupy the same hazard coordinates as the pool's natural-variability corners the selector enriches; also feeds the registered hazard-restricted E_test composition-sensitivity checks and the generalization claim. IMPLEMENTED 2026-07-30 (smoke-tested on synthetic data; blocked only on E_test staging): `scripts/main/compute_etest_hazard_image.py` (disjoint 10-yr sub-window image, shard-resumable → `hazard_image_subwindows.npz`) + `scripts/main/plot_etest_hazard_overlay.py` / `src/plotting/etest_hazard_overlay.py` (corner overlay + per-axis containment `overlap_stats.json`).
 
 ## 4. Pipeline shakeout on Anvil (before production submissions)
 
+- [x] **DONE 2026-08-05 — 2-seed historic mm_full shakeout (first search under
+  the `nyc_reliability_floor` constraint)**: job 19677667 (array 1-2,
+  `ffmp_obj8_historic.env`, 5 nodes x 33 ranks, --time=12:00:00). Both seeds
+  COMPLETED clean: seed 1 wall 1:51:15, seed 2 1:50:32 (~29 s/eval, matches
+  the calibration; far under the ~4 h estimate) ≈ 1,187 + 1,179 ≈ **2,366 SU
+  total** (640 cores x wall). Archives
+  (`outputs/historic/ffmp_obj8_mm_full/sets/`): seed 1 = 2,051 members
+  (1.20 MB), seed 2 = 1,990 members (1.16 MB), every row exactly 44 columns
+  (36 DV + 8 obj, no constraint columns). **Constraint wiring VERIFIED**:
+  min NYC weekly reliability across all members = 0.5000 on the natural
+  scale in both archives, zero violations — the front presses against the
+  floor exactly as an active constraint should. Zero `eval exception`
+  warnings, zero fatal signatures in either .err log. Step-07 diagnostics
+  DONE (job 19682073, 3:16 on shared): per-seed merged reference sets
+  (`ffmp_obj8_mm_full_seed{01,02}_merged.set`) + 4 per-island runtime
+  metrics files per seed under `metrics/`; final-row indicators finite and
+  cross-seed consistent (island-0 hypervolume 0.0704 / 0.0672). Step 08/09
+  re-eval NOT run — Trevor inspects the Pareto-approximate sets first.
+  **Standard post-search diagnostics ADDED 2026-08-05 (uncommitted, for
+  review)**: step 07 now (a) merges the CROSS-SEED reference set
+  (`sets/{slug}_merged.set` — the artifact step 08/09 re-evaluates; 7,544
+  members here) before per-seed work, (b) scores every island's runtime
+  metrics against it so indicators are comparable across seeds (Reed et al.
+  2013 convention; the 19682073 metrics were per-seed-referenced and are
+  overwritten), and (c) renders a failure-isolated figure suite
+  (`src/plotting/search_diagnostics.py` → `figures/{scenario}/{slug}/`):
+  seed-overlay parallel axes + FFMP baseline, hypervolume convergence, and
+  the six-indicator runtime panel. Exercised on this run (job 19683608,
+  1:03). Read: seeds consistent on every indicator (HV bands overlap,
+  spacing settled ~1.0, GD → ~0.002), but **hypervolume is still climbing
+  at 12,500 NFE/island on all 8 islands** — 50k NFE/seed has not plateaued
+  on the historic problem; revisit NFE sizing (or rely on multi-seed
+  merging) before campaign submissions.
 - [ ] **[HPC]** End-to-end smoke of `hazard_filling_stationary`: step 06 only (`submit_smoke.sh` = 79 MPI ranks). Local half DONE 2026-07-31 — steps 02→03→04 at P=1000/N=50 exercised wet-exclusion, the robust p1/p99 bounds and the dedupe-only screen; selection ran on the m6 campaign axes (6/6 retained), `axis_screen` + per-axis bounds/clipped fractions + coverage-vs-null persisted in the staged meta, all four pywrdrb inputs staged, and one trimmed-model evaluation on the result returned 8 finite objectives. Untested locally: the MPI fan-out in step 04 (no `mpirun` on the laptop; ran 1 rank).
 - [ ] **[HPC]** `pilot` MOEA config go/no-go run.
 
@@ -211,7 +266,17 @@ answers it); the E_test sub-window hazard job paces 0.386 s/realization.
 
 ## 5. Production gates
 
-- [ ] **[HPC]** Generate production pools (K draws) + `fixed_probabilistic` draws + E_test (step 12 at the locked sizing, then step 04 incl. the one-time full-model presim pass over its 25,000 realizations). P=1e6 draw-0 image already staged (`statpool_10yr_n1000000_d0`; a prefix is an honest pool of any smaller P); draws 1..K−1 still to generate (sharded path: `workflow/supplemental/gen_pool_shards.sh` + `gen_pool_merge.sh`, ~600 core-hours each). **Per-draw gate**: re-confirm the per-axis tail-share adequacy gate (min ≥ ~0.30 on the campaign 6-axis set, N=100) on EACH production draw's hazard image — the P=1e6 draw-0 margin is thin (0.311; per-seed min 0.28–0.35), per the §2 (m, N, P) decision and the battery rerun (both in DONE).
+- [x] **DONE 2026-08-04 night — every production input is staged, verified,
+  and gated.** Pools: d0/d1/d2 all merged, boundary+prefix verified, and
+  adequacy-gated (campaign 6-axis min tail share 0.311 / 0.306 / 0.303).
+  Search ensembles: `fixed_probabilistic` d0-d2 and
+  `hazard_filling_stationary` d0-d2 staged with all four pywrdrb inputs
+  (d0 restoration bit-verified after the step-03 overwrite incident, below).
+  E_test: generated (sharded, bit-identical to serial), all 50 chunks
+  staged, hazard image + per-draw overlays done, baseline-on-E_test matrix
+  in the reeval tag's `baseline/` subdir. Details in the dated records
+  below. Original item:
+  Generate production pools (K draws) + `fixed_probabilistic` draws + E_test (step 12 at the locked sizing, then step 04 incl. the one-time full-model presim pass over its 25,000 realizations). P=1e6 draw-0 image already staged (`statpool_10yr_n1000000_d0`; a prefix is an honest pool of any smaller P); draws 1..K−1 still to generate (sharded path: `workflow/supplemental/gen_pool_shards.sh` + `gen_pool_merge.sh`, ~600 core-hours each). **Per-draw gate**: re-confirm the per-axis tail-share adequacy gate (min ≥ ~0.30 on the campaign 6-axis set, N=100) on EACH production draw's hazard image — the P=1e6 draw-0 margin is thin (0.311; per-seed min 0.28–0.35), per the §2 (m, N, P) decision and the battery rerun (both in DONE).
   **IN FLIGHT 2026-08-03 evening**: draw-1/2 shard arrays running (19640254 /
   19640289, 100 tasks) with merges + 2k-prefix determinism verification
   chained (19640288 / 19640292); run the per-draw adequacy gate on each merged
@@ -315,11 +380,127 @@ answers it); the E_test sub-window hazard job paces 0.386 s/realization.
   When done: move reeval_raw.{parquet,json} into the reeval tag's
   `baseline/` subdir (the location step-08/09 auto-detects for
   improvement_vs_baseline) and give each campaign design's reeval dir a
-  copy/symlink of it at campaign time. E_test lives on
+  copy/symlink of it at campaign time.
+  **OOM + resubmit 2026-08-04 evening**: 19663131 started at 15:34 and died
+  OUT_OF_MEMORY 3 min in (MaxRSS 214G/237G) — root cause `batch=0` in its log
+  header: the pre-hardening copy never set NYCOPT_SEARCH_REALIZATION_BATCH,
+  so each of 32 ranks held a full 500-realization chunk model (the hardened
+  script's submit-time guard only fires above 64 ranks/node). Its job-scoped
+  claim files were pruned (no completed units — resume state clean).
+  RESUBMITTED through the hardened `workflow/09_simulate_test_chunks.sh` as
+  **19667723** (shared, 1 node, 64 ranks x 2 cpus, batch=100,
+  NYCOPT_CHUNK_MERGE=off, NYCOPT_CHUNK_UNIT_SECONDS=9000) with the 09b merge
+  chained as **19667724** — this also exercised the campaign split-merge
+  path once at small scale.
+  **DONE 2026-08-04 19:12**: step 09 completed in 1:07 (50/50 units, ~67
+  min/unit, rss ~2.8 GB/rank at batch=100 — campaign-relevant unit
+  telemetry: T_unit ≈ 4,010 s/policy-chunk on 2 cpus), 09b merge wrote
+  reeval_raw + objectives_summary + the robustness family. The full baseline
+  output (reeval_raw.parquet, reeval_raw_meta.json, summaries, partial/) now
+  lives in the tag's `baseline/` subdir
+  (`outputs/historic/ffmp_obj8_mm_full/reeval/etest_kn_50yr_n25000/baseline/`)
+  — the step-08/09 auto-detect location; the tag top level is left empty for
+  campaign-time artifacts (leftover top-level partial/ would have collided
+  with campaign sol-id resume keys). Matrix verified: 200,000 rows = 1
+  solution x 25,000 realizations x 8 objectives, zero NaN cells. At campaign
+  time give each campaign design's reeval dir a copy/symlink of baseline/. The 09 script's
+  `#SBATCH --exclusive` line was REMOVED (uncommitted) — it blocked every
+  shared-partition submission ("node configuration is not available") and is
+  redundant on wholenode, which is exclusive by partition policy. The
+  hardened path's real-sim gate passed earlier the same day: mini bitcompare
+  19663187, legacy serial vs 4-rank claim path, 32 cells bit-identical.
+  **Search-ensemble draws 1-2, status 2026-08-04 evening**:
+  `fixed_probabilistic` d1/d2 GENERATED + STAGED (19663196/19663199, all
+  four inputs; ~5 min/draw with the vectorized preprocessors).
+  **hazard_filling d1/d2 NOT staged, and d0 needs restoration**: a
+  mis-configured step-03 submission (missing NYCOPT_CANDIDATE_POOL_N=1000000
+  → the script defaulted to the P=2000 smoke pools, and it stages ALL draws
+  in one loop) OVERWROTE `hazfill_stat_abs_10yr_n100_d0`'s selection files
+  (gage/catchment HDF5s, hazard_image.npz, _meta.json) at 15:01 with a
+  2k-pool selection; forensic check (job 19666041) proved the original was a
+  DIFFERENT selection (the P=1e6 production one — its Aug-3 staged pywrdrb
+  inputs are intact and encode the original inflows). The bad d1 dir was
+  deleted; the chained staging was cancelled before running; nothing has
+  consumed the bad d0 files. **RESTORATION (deterministic)**: after the d1
+  pool merge lands, run step 03 ONCE with
+  `--export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=1000000`
+  (stages d0/d1/d2 together from the P=1e6 images; same selector seeds →
+  d0 restores bit-exactly), VERIFY by regenerating presim from the restored
+  d0 inflows and bit-comparing to the Aug-3 staged
+  `presimulated_releases_mgd.hdf5` (the 19666041 forensic script pattern),
+  then step-04 stage d1/d2 (d0's Aug-3 inputs stay valid once selection
+  bit-restores), re-run the per-draw adequacy gates' overlay refresh.
+  **Restoration chain RUNNING 2026-08-04 night** (first submission
+  19667742-45 was dependency-killed by the merge's false FAIL below and
+  resubmitted): **19672618** gate_d1 (saturation-mode battery on
+  statpool_10yr_n1000000_d1; the first resubmit 19672561 died instantly —
+  `sbatch --wrap` runs /bin/sh and `_common.sh` needs bash, so wrap commands
+  must be `bash -c '...'`), **19672562** step-03 all-draws selection at
+  NYCOPT_CANDIDATE_POOL_N=1000000, **19672619** verify_d0 (new
+  `scripts/supplemental/verify_hazfill_d0_restoration.py`: regenerates d0
+  presim in place from the restored inflows and bit-compares every dataset
+  vs the Aug-3 snapshot at
+  `outputs/supplemental/hazfill_d0_restore_check/presimulated_releases_mgd.aug3.hdf5`;
+  on mismatch it restores the snapshot and exits 1, afterok select),
+  **19672620** step-04 array 1-2 staging hazfill d1/d2 (afterok verify).
+  Overlay refresh follows staging.
+  **RESTORATION VERIFIED 2026-08-04 ~19:4x**: step 03 (19672562) staged all
+  three draws from the P=1e6 pools on the campaign 6-axis set (d0's
+  hazard_image.npz back at 72 MB vs the bad run's 147 KB); verify_d0
+  (19672619) **PASS — regenerated presim bit-identical to the Aug-3
+  artifact across all datasets**, proving the d0 selection restored
+  bit-exactly and the Aug-3 staged inputs remain valid. Incident closed.
+  **hazfill d1/d2 STAGED 2026-08-04 19:56** (19672620_1/2, 15 s each on 33
+  ranks — vectorized preprocessors): all four pywrdrb inputs present in both
+  dirs, sizes matching d0's same-shape artifacts.
+  **Per-draw overlays DONE 2026-08-04 ~20:15** (19673821 d1 / 19673822 d2,
+  pool + hazfill + fixprob layers per draw): containment matches d0 on both
+  — E_test fully inside the pool hull on all 6 campaign axes (outside-hull
+  0.000), max 0.064 above p-hi (flood_peak_magnitude), 0.049/0.048 below
+  p-lo (drought_deficit_volume). Generalization claim holds uniformly
+  across draws; outputs under
+  `outputs/supplemental/etest_hazard_overlay/etest_kn_50yr_n25000__statpool_10yr_n1000000_d{1,2}/`.
+  **Draw-1 pool MERGED + VERIFIED 2026-08-04 ~22:30**: shard-43 rerun
+  completed at 8G in 12:35 (19653925_43); merge 19653926 wrote the canonical
+  image and passed the boundary check (5/8 rows exact, 3 within 22-26% of
+  the 1%-range tolerance — same cross-era FP profile as d2) but exited
+  FAILED on the prefix check because the resubmission dropped
+  NYCOPT_NESTEDP_SMOKE_SLUG, so it compared d1 against the d0 smoke pool
+  (different seed domain). Rerun with the correct comparator
+  (statpool_10yr_n2000_d1, job 19672548): **2k prefix bit-identical — d1
+  pool verified**, no re-merge needed.
+  **Draw-1 adequacy gate PASSES 2026-08-04 night (job 19672618): campaign
+  6-axis min tail share 0.306** (worst axis drought_deficit_volume; mean
+  0.414; screen retains 8/8) — all three production draws now clear the
+  gate: d0 0.311 / d1 0.306 / d2 0.303, thin margin consistent across
+  draws. Battery output under
+  `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n1000000_d1/`. E_test lives on
   project space (`/anvil/projects/x-ees260021/NYCOptimization/`, 5 TB, no
   purge) via symlinks under `outputs/synthetic_ensembles/` — the 25 GB home
   quota killed the first generation attempt; keep big artifacts OUT of home.
 - [x] **CLOSED 2026-08-03 (decision)** Trimmed-vs-full agreement check: the historic-trace validation is SUFFICIENT — measured from the 2026-07-29 determinism data, all 28 trimmed-vs-full policy × objective pairs (4 policies × 7 objectives) agree to ≤ 2.5e-13 relative, and the structural argument (boundary releases are policy-independent) is input-independent. The planned E_test-slice half is DROPPED, not deferred; SI S1 reports the historic check only (`scenario_design_methods.md` §5.4 and the S1 outline updated to match).
+- [x] **DONE 2026-08-04 (uncommitted, for review)** NYC reliability
+  stakeholder floor (0.5) promoted from post-hoc Pareto screening
+  (`src/pareto_filter.py`, retained for pre-change archives) to the formal
+  post-simulation Borg constraint `nyc_reliability_floor`: violation =
+  max(0, floor − weekly reliability) on the natural 0-1 scale, floor via
+  `config.NYC_RELIABILITY_FLOOR` (`NYCOPT_NYC_RELIABILITY_FLOOR`, default
+  0.5), objective resolved by NAME in the active set. `get_n_constrs()`
+  2 → 3 (DV-space pair + post-sim floor; composed in
+  `src/mmborg.py::make_borg_objective`); failed evals stay
+  feasible-with-penalty (zero violations). JARs UNAFFECTED — .set/runtime
+  files are feasible-only with no constraint columns, no rebuild. Tests:
+  `tests/test_reliability_floor_constraint.py` + updated
+  `tests/test_constraints.py`; docs: `decision_variables.md`.
+  **REVIEWED + FIXED 2026-08-04 night**: the original implementation
+  resolved the objective by its BASE name (`nyc_delivery_reliability_weekly`)
+  against `get_obj_names()`, which reports the ANNUAL-unit registry names in
+  every wired-design context — the constraint would have raised on first
+  eval. Fixed with `reliability_floor_objective_index()` (accepts the base
+  spelling or its `_BASE_TO_ENSEMBLE` annual form; production + tests both
+  use it). Suites green post-fix: reliability-floor + constraints +
+  sensitivity_common 27/27, objectives_ensemble 35/35 (jobs 19675862,
+  19675*).
 - [ ] **[HPC]** Launch campaign searches.
 
 ## 6. Post-campaign deliverables

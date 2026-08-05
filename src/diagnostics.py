@@ -195,11 +195,12 @@ def run_diagnostics(
     seed: int = 1,
     runtime_dir: Path = None,
     scenario: str = None,
+    reference_file: Path = None,
 ):
     """Run the full diagnostics workflow for a single seed.
 
     Steps:
-        1. Merge all island runtime files into a reference set
+        1. Merge all island runtime files into a per-seed reference set
         2. Compute metrics for each island's runtime file
 
     Args:
@@ -208,9 +209,13 @@ def run_diagnostics(
         runtime_dir: Directory containing .runtime files.
         scenario: Scenario-design name (top-level output partition). Defaults
             to the active scenario design.
+        reference_file: Reference set the metrics are computed against. When
+            None (single-seed / ad-hoc use) each seed is scored against its
+            own merged set; ``run_full_diagnostics`` passes the cross-seed
+            merged set so indicator values are comparable across seeds.
 
     Returns:
-        Tuple of (reference_set_path, list_of_metrics_paths).
+        Tuple of (per_seed_reference_set_path, list_of_metrics_paths).
     """
     if scenario is None:
         scenario = active_scenario_name()
@@ -230,9 +235,10 @@ def run_diagnostics(
     pattern = f"seed_{seed:02d}_{slug}_*.runtime"
     runtime_files = sorted(runtime_dir.glob(pattern))
 
+    metrics_ref = reference_file if reference_file is not None else ref_file
     metrics_files = []
     for rf in runtime_files:
-        mf = compute_metrics(rf, ref_file, slug=slug)
+        mf = compute_metrics(rf, metrics_ref, slug=slug)
         metrics_files.append(mf)
 
     print(f"\n=== Complete ===")
@@ -288,9 +294,27 @@ def run_full_diagnostics(
         print(f"[{scenario}/{slug}] no runtime files found; skipping.")
         return {}
 
+    # Cross-seed merged reference set (sets/{slug}_merged.set): the best-known
+    # front over all seeds. Metrics are computed against it so indicator values
+    # are comparable across seeds (Reed et al. 2013 diagnostics convention),
+    # and it is the reference set step 08/09 re-evaluates.
+    print(f"[{scenario}/{slug}] merging cross-seed reference set...")
+    global_ref = merge_reference_set(slug, runtime_dir=runtime_dir, scenario=scenario)
+
     results = {}
     for seed in seeds:
         results[seed] = run_diagnostics(
             slug, seed=seed, runtime_dir=runtime_dir, scenario=scenario,
+            reference_file=global_ref,
         )
+
+    # Standard post-search figure suite (parallel axes + hypervolume +
+    # runtime-indicator panel); a figure failure never fails the diagnostics.
+    try:
+        from src.plotting.search_diagnostics import render_search_diagnostics
+        print(f"[{scenario}/{slug}] rendering search-diagnostics figures...")
+        render_search_diagnostics(slug, scenario=scenario)
+    except Exception as e:
+        print(f"[{scenario}/{slug}] figure suite FAILED "
+              f"(metrics/sets unaffected): {e}")
     return results

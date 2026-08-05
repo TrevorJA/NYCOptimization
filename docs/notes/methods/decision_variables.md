@@ -101,7 +101,7 @@ policy is operationally valid:
 - Delivery factors: `np.minimum.accumulate` over drought stages — a deeper
   stage never allows more diversion than a milder one (NYC and NJ).
 
-**Formal Borg constraints** (`compute_constraint_violations` in
+**Formal Borg constraints — DV-space** (`compute_constraint_violations` in
 `src/simulation.py`; exposed via `src.formulations.make_constraint_function`
 / `get_n_constrs`) pose the first two conditions as constraint functions
 computed from pure DV arithmetic on the cached default schedules — no
@@ -123,13 +123,34 @@ the zone-shift bounds make crossings common under random sampling, and
 the monotonicity clamp resolves them cleanly at apply time —
 the clamped geometry is the intended policy, not a defect to search away from.
 
+**Formal Borg constraint — post-simulation** (added 2026-08-04;
+`src.formulations.make_post_sim_constraint_function`): a third constraint,
+`nyc_reliability_floor`, enforces the stakeholder floor on NYC weekly
+delivery reliability directly in the search. Unlike the two DV-space
+constraints it reads the COMPUTED objective vector — the MM Borg objective
+wrapper (`src/mmborg.py::make_borg_objective`) appends its violation after
+simulation, un-negating the Borg-minimized reliability objective (resolved
+by name, `nyc_delivery_reliability_weekly`) back to the natural 0–1 scale:
+
+3. **NYC reliability floor** — `max(0, floor − reliability)`; floor from
+   `config.NYC_RELIABILITY_FLOOR` (env `NYCOPT_NYC_RELIABILITY_FLOOR`,
+   default 0.5). A policy delivering below-floor weekly reliability is
+   unacceptable to stakeholders regardless of the rest of the trade-off.
+   Constraint-dominance now excludes such policies from search and archive,
+   replacing the post-hoc Pareto screen (`src/pareto_filter.py`, retained
+   for archives produced before this change).
+
 Borg applies constraint-dominance ahead of Pareto/epsilon dominance: any
 feasible solution dominates every infeasible one, and infeasible solutions
 rank by total |violation|. The MM Borg driver therefore skips simulation
-for infeasible vectors entirely — it returns penalty objectives (1e10) plus
-the violation vector, saving the ~3 min evaluation while giving the search
-a direct gradient toward feasibility. The clamps stay in place, so any
-vector that reaches simulation (feasible by construction) and any policy
+for DV-infeasible vectors entirely — it returns penalty objectives (1e10)
+plus the violation vector (post-sim slot 0.0, nothing measured), saving the
+~3 min evaluation while giving the search a direct gradient toward
+feasibility. Failed simulations likewise return penalty objectives with
+zero violations: feasible-but-maximally-unattractive, so a failure can
+never enter the archive ahead of a real solution while the constraint
+channel stays truthful in magnitude. The clamps stay in place, so any
+vector that reaches simulation (DV-feasible by construction) and any policy
 evaluated outside the search remains operationally valid.
 
 Accounting note: infeasible evaluations consume NFE (`maxEvaluations` is

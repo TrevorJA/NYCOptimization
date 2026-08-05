@@ -1,0 +1,9 @@
+objective,kind,current_threshold,frac_sow_at_current,stringency_of_current,recommended_threshold,basis,frac_sow_at_recommended,headline_impact
+nyc_delivery_reliability_weekly,ge,0.95,0.0,1.0,0.87,historic status-quo anchor (0.8692 rounded stricter),0.161,True
+nyc_delivery_deficit_cvar90_pct,le,10.0,0.0,1.0,29.0,historic status-quo anchor (29.17 rounded stricter),0.325,True
+montague_flow_reliability_weekly,ge,0.85,0.856,0.144,0.85,kept: discriminating at current value (frac 0.856),0.856,False
+montague_flow_deficit_cvar90_pct,le,25.0,1.0,0.0,25.0,kept: non-binding guardrail (baseline SOW-mean max 11.5),1.0,False
+trenton_flow_reliability_weekly,ge,0.85,1.0,0.0,0.85,kept: non-binding guardrail (baseline SOW-mean min 0.954),1.0,False
+downstream_flood_exceedance_minor,le,1.0,0.383,0.617,1.17,observed 2000-2023 flood-burden anchor (1.17 ft-d/yr),0.445,False
+nyc_storage_p5_pct,ge,25.0,1.0,0.0,25.0,"kept: operational floor, non-binding for the status quo",1.0,False
+nj_delivery_reliability_weekly,ge,0.95,0.02,0.98,0.92,historic status-quo anchor (0.9188 rounded stricter),0.214,True

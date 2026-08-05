@@ -36,6 +36,7 @@ Environment overrides (selected):
     NYCOPT_ENSEMBLE_KN_REALIZATIONS -> ENSEMBLE_KN_REALIZATIONS (Step 1 generator)
     NYCOPT_ENSEMBLE_KN_SEED     -> ENSEMBLE_KN_SEED (Step 1 generator)
     NYCOPT_ENSEMBLE_KN_FORCE    -> ENSEMBLE_KN_FORCE (overwrite existing staged ensemble)
+    NYCOPT_NYC_RELIABILITY_FLOOR -> NYC_RELIABILITY_FLOOR (float, default 0.5)
     RUN_SLUG_TAG                -> appended as a free-form suffix to derive_slug()
 """
 
@@ -436,6 +437,16 @@ _DEFAULT_OBJECTIVES = [
 ]
 
 ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
+
+# Stakeholder floor on NYC weekly delivery reliability, enforced during search
+# as the formal post-simulation Borg constraint `nyc_reliability_floor`
+# (violation = max(0, floor - reliability), NATURAL 0-1 scale; see
+# src.formulations.make_post_sim_constraint_function). A policy delivering NYC
+# water below this weekly reliability is unacceptable to stakeholders
+# regardless of the rest of the trade-off. The same 0.5 floor was previously
+# applied only as post-hoc Pareto screening (src/pareto_filter.py, retained
+# for archives produced before the constraint existed).
+NYC_RELIABILITY_FLOOR = _parse_float_env("NYCOPT_NYC_RELIABILITY_FLOOR", 0.5)
 
 
 ###############################################################################

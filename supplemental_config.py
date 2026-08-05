@@ -886,7 +886,7 @@ DETERMINISM_N_REPEATS: int = int(os.environ.get("NYCOPT_DETERMINISM_REPEATS", "5
 DETERMINISM_N_PERTURBED: int = int(os.environ.get("NYCOPT_DETERMINISM_PERTURBED", "3"))
 
 #: Initial per-DV perturbation, as a fraction of each DV's bound range. Random
-#: 36-DV vectors are ~1% feasible under the two formal constraints, so policies
+#: 36-DV vectors are ~1% feasible under the two DV-space formal constraints, so policies
 #: are drawn as small perturbations of the (feasible) baseline and accepted
 #: only when ``compute_constraint_violations`` is exactly [0, 0]; the fraction
 #: halves when acceptance stalls.
@@ -1173,3 +1173,155 @@ def floodobj_table_path(name: str) -> Path:
 def floodobj_figure_path(name: str) -> Path:
     """Path stub for a named figure (extension added by ``save_figure``)."""
     return FLOODOBJ_FIGURES_DIR / name
+
+
+###############################################################################
+# Robustness satisficing-threshold diagnostics
+# (docs/notes/methods/robustness_threshold_diagnostics.md)
+#
+# Places the satisficing thresholds (`objectives_ensemble._DEFAULT_THRESHOLDS`,
+# shipped as placeholders) against measured evidence: the baseline FFMP
+# policy's persisted E_test re-eval cube (step 05 `--reeval`, 1,000 theta-SOWs
+# x 25 realizations), the E_test DU forcing factors, and an apples-to-apples
+# historic-trace anchor recomputed from the persisted baseline HDF5. Zero
+# simulation — two scripts reduce persisted artifacts only:
+#   robustness_threshold_anchor.py   base-metric anchor -> JSON cache
+#   robustness_threshold_figures.py  tables + SI figures + recommendation
+###############################################################################
+
+
+def configure_rtd_env() -> None:
+    """Apply env knobs for the robustness-threshold diagnostics.
+
+    Salinity and temperature LSTMs off (none of the 8 base objectives needs
+    them). Scenario design defaults to ``historic`` so ``config`` imports as a
+    pure lookup; every input below is pinned by absolute path, not resolved
+    through the scenario wiring.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+# ---------------------------------------------------------------------------
+# Inputs (persisted artifacts; nothing here triggers a simulation)
+# ---------------------------------------------------------------------------
+#: Baseline-policy raw re-eval cube on E_test (reeval_raw.parquet + meta),
+#: written by step 05 `run_baseline.py --reeval`.
+RTD_REEVAL_BASELINE_DIR: Path = (
+    _PROJECT_DIR / "outputs" / "historic" / "ffmp_obj8_mm_full" / "reeval"
+    / "etest_kn_50yr_n25000" / "baseline")
+
+#: E_test forcing profiles: theta_params (25000, 3) + theta_param_names
+#: ['m', 'r1', 'r2'] + realization_ids, one theta row per realization.
+RTD_FORCING_NPZ: Path = (
+    _PROJECT_DIR / "outputs" / "synthetic_ensembles" / "etest_kn_50yr_n25000"
+    / "forcing_profiles.npz")
+
+#: Persisted historic-trace baseline simulation (full model) and its
+#: annual-unit objective vector. The CSV is a DIFFERENT metric space from the
+#: cube (search annual-unit objectives vs whole-trace base metrics) and is
+#: carried in the comparison table as reference only.
+RTD_BASELINE_HDF5: Path = _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline.hdf5"
+RTD_BASELINE_ANNUAL_CSV: Path = (
+    _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline_objectives.csv")
+
+# ---------------------------------------------------------------------------
+# Analysis settings
+# ---------------------------------------------------------------------------
+#: Within-SOW collapse for the SOW robustness unit (Triangle-lineage
+#: risk-neutral default; must match the shipped scorer's aggregator).
+RTD_WITHIN_SOW_AGG: str = "mean"
+
+#: Dense points per objective on the natural-unit threshold sweep grid
+#: (extended so the default and every candidate lie exactly on a sample).
+RTD_SWEEP_POINTS: int = 201
+
+#: DU factor names expected in the forcing npz (order-checked at load).
+RTD_THETA_NAMES: tuple = ("m", "r1", "r2")
+
+#: Objectives given theta-plane factor maps (the headline NYC criteria).
+RTD_FACTOR_MAP_OBJECTIVES: tuple = (
+    "nyc_delivery_reliability_weekly",
+    "nyc_delivery_deficit_cvar90_pct",
+)
+
+#: External flood anchors in ft-days/yr (flood_objective_diagnostics.md; also
+#: recorded inline at objectives_ensemble._DEFAULT_THRESHOLDS).
+RTD_FLOOD_ANCHORS: dict = {
+    "observed_2000_2023": 1.17,
+    "simulated_baseline": 0.35,
+}
+
+#: Distribution-feature candidates: quantiles of the baseline SOW-mean
+#: distribution offered as threshold placements.
+RTD_CANDIDATE_QUANTILES: tuple = (0.10, 0.50, 0.90)
+
+#: |delta univariate SOW fraction| (current -> recommended) above which a
+#: recommendation is flagged as changing a headline result; a degenerate
+#: current fraction (<0.01 or >0.99) moving out of degeneracy also flags.
+RTD_HEADLINE_IMPACT_DELTA: float = 0.10
+
+#: FINAL recommended threshold vector, filled AFTER inspecting the pass-1
+#: outputs (two-pass workflow; empty dicts on pass 1 leave the recommendation
+#: columns NaN). Keys are base objective names; basis strings are the short
+#: per-objective justification carried into the summary table.
+#:
+#: Pass-1 verdicts (2026-08-05, robustness_threshold_diagnostics.md §measured
+#: verdicts): the three delivery criteria the HISTORIC status quo itself fails
+#: (NYC rel 0.869 < 0.95, NYC CVaR 29.2 > 10, NJ rel 0.919 < 0.95) are
+#: re-anchored at the historic-trace attainment, rounded to the stricter side;
+#: the flood criterion adopts the observed 2000-2023 burden anchor; the
+#: non-binding guardrails and the discriminating Montague reliability keep
+#: their current values (re-tuning them from the baseline's own E_test
+#: distribution would be baseline-tuning).
+RTD_RECOMMENDED_THRESHOLDS: dict = {
+    "nyc_delivery_reliability_weekly": 0.87,    # historic anchor 0.8692, up
+    "nyc_delivery_deficit_cvar90_pct": 29.0,    # historic anchor 29.17, down
+    "montague_flow_reliability_weekly": 0.85,   # kept
+    "montague_flow_deficit_cvar90_pct": 25.0,   # kept
+    "trenton_flow_reliability_weekly": 0.85,    # kept
+    "downstream_flood_exceedance_minor": 1.17,  # observed 2000-2023 anchor
+    "nyc_storage_p5_pct": 25.0,                 # kept
+    "nj_delivery_reliability_weekly": 0.92,     # historic anchor 0.9188, up
+}
+RTD_RECOMMENDATION_BASIS: dict = {
+    "nyc_delivery_reliability_weekly":
+        "historic status-quo anchor (0.8692 rounded stricter)",
+    "nyc_delivery_deficit_cvar90_pct":
+        "historic status-quo anchor (29.17 rounded stricter)",
+    "montague_flow_reliability_weekly":
+        "kept: discriminating at current value (frac 0.856)",
+    "montague_flow_deficit_cvar90_pct":
+        "kept: non-binding guardrail (baseline SOW-mean max 11.5)",
+    "trenton_flow_reliability_weekly":
+        "kept: non-binding guardrail (baseline SOW-mean min 0.954)",
+    "downstream_flood_exceedance_minor":
+        "observed 2000-2023 flood-burden anchor (1.17 ft-d/yr)",
+    "nyc_storage_p5_pct":
+        "kept: operational floor, non-binding for the status quo",
+    "nj_delivery_reliability_weekly":
+        "historic status-quo anchor (0.9188 rounded stricter)",
+}
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+RTD_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "robustness_threshold_diagnostics"
+RTD_CACHE_DIR: Path = RTD_OUTPUT_ROOT / "cache"
+RTD_TABLES_DIR: Path = RTD_OUTPUT_ROOT / "tables"
+RTD_FIGURES_DIR: Path = RTD_OUTPUT_ROOT / "figures"
+
+#: Historic-anchor base metrics recomputed from RTD_BASELINE_HDF5 (JSON, the
+#: seam that keeps the figures script pywrdrb-free). Refresh with
+#: NYCOPT_RTD_REFRESH=1 on the anchor script.
+RTD_ANCHOR_CACHE: Path = RTD_CACHE_DIR / "historic_anchor_base_metrics.json"
+
+
+def rtd_table_path(name: str) -> Path:
+    """Path for a named table CSV."""
+    return RTD_TABLES_DIR / f"{name}.csv"
+
+
+def rtd_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return RTD_FIGURES_DIR / name

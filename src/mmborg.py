@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import BORG_DIR, get_epsilons, run_output_dir
 from src.moea_config import MOEAConfig
 from src.formulations import (
+    POST_SIM_CONSTRAINT_NAMES,
     get_n_vars,
     get_n_objs,
     get_n_constrs,
@@ -33,7 +34,77 @@ from src.formulations import (
     get_obj_names,
     make_objective_function,
     make_constraint_function,
+    make_post_sim_constraint_function,
 )
+
+
+def make_borg_objective(formulation_name: str):
+    """Build the NFE-aware ``(objectives, constraints)`` callable for Borg.
+
+    Composes the two constraint kinds in ``CONSTRAINT_NAMES`` order:
+
+    - DV-space constraints (``make_constraint_function``): pure DV arithmetic
+      computed BEFORE any Pywr-DRB simulation. Infeasible vectors skip
+      simulation entirely and return penalty objectives — constraint-dominance
+      precedes Pareto dominance in Borg, so their objective values are never
+      consulted against feasible solutions. Their unsimulated post-sim slot
+      reports 0.0 (nothing was measured; the DV violations alone make the
+      solution infeasible).
+    - Post-simulation constraints (``make_post_sim_constraint_function``):
+      read the computed objective vector — currently the NYC weekly delivery
+      reliability floor — and are appended AFTER simulation.
+
+    Constraints must be plain Python lists (borg.py truth-tests them).
+
+    Failure convention: a failed evaluation returns penalty objectives with
+    ZERO constraint violations. It is deliberately feasible-but-maximally-
+    unattractive — the penalty guarantees Pareto domination by every real
+    solution, while a fabricated violation magnitude would distort the
+    |violation|-sum ordering among genuinely infeasible solutions. Two layers
+    share this convention: ``make_objective_function`` catches simulation
+    errors internally (its 1e6 penalty vector is detected by the post-sim
+    constraint's [0, 1] plausibility guard, which then reports 0.0), and the
+    except path here catches anything else — borg.py's innerFunction only
+    catches KeyboardInterrupt, so any other Python exception would propagate
+    through the ctypes C->Python boundary and corrupt the GIL state, causing
+    a fatal Python error on the worker.
+
+    Args:
+        formulation_name: Problem formulation name ("ffmp" / "ffmp_N").
+
+    Returns:
+        Callable ``(vars, NFE) -> (objectives, constraints)`` with
+        ``len(constraints) == get_n_constrs()``.
+    """
+    n_objs = get_n_objs()
+    n_constrs = get_n_constrs()
+    n_post = len(POST_SIM_CONSTRAINT_NAMES)
+    _eval_fn = make_objective_function(formulation_name)
+    _constraint_fn = make_constraint_function(formulation_name)
+    _post_sim_fn = make_post_sim_constraint_function()
+    _penalty = [1e10] * n_objs
+
+    def objective(vars, NFE):
+        try:
+            dv_cons = _constraint_fn(np.array(vars))
+            if any(c > 0.0 for c in dv_cons):
+                return (_penalty, dv_cons + [0.0] * n_post)
+            objs = _eval_fn(np.array(vars))
+            return (objs, dv_cons + _post_sim_fn(objs))
+        except Exception as e:
+            try:
+                from mpi4py import MPI
+                rank = MPI.COMM_WORLD.Get_rank()
+            except Exception:
+                rank = -1
+            sys.stderr.write(
+                f"[Rank {rank}] WARNING: eval exception (returning penalty): "
+                f"{type(e).__name__}: {e}\n"
+            )
+            sys.stderr.flush()
+            return (_penalty, [0.0] * n_constrs)
+
+    return objective
 
 
 def run_mmborg(
@@ -117,41 +188,10 @@ def run_mmborg(
           f"{max_evaluations} NFE/island", flush=True)
 
     # --- Objective function (passNFE branch passes NFE as second arg) ---
-    # Uses make_objective_function() for "ffmp" / "ffmp_N" formulations,
-    # returning (objectives, constraints) tuples. Constraint violations are
-    # pure DV arithmetic computed BEFORE any Pywr-DRB simulation; infeasible
-    # vectors skip simulation entirely and return penalty objectives —
-    # constraint-dominance precedes Pareto dominance in Borg, so their
-    # objective values are never consulted against feasible solutions.
-    # Constraints must be plain Python lists (borg.py truth-tests them).
-    #
-    # IMPORTANT: borg.py's innerFunction only catches KeyboardInterrupt; any
-    # other Python exception propagates through the ctypes C→Python boundary
-    # and corrupts the GIL state, causing a fatal Python error on the worker.
-    # We catch all exceptions here and return a large penalty so Borg keeps
-    # running even if a specific DV combination causes a simulation failure.
-    _eval_fn = make_objective_function(formulation_name)
-    _constraint_fn = make_constraint_function(formulation_name)
-    _penalty = [1e10] * n_objs
-
-    def objective(vars, NFE):
-        try:
-            cons = _constraint_fn(np.array(vars))
-            if any(c > 0.0 for c in cons):
-                return (_penalty, cons)
-            return (_eval_fn(np.array(vars)), cons)
-        except Exception as e:
-            try:
-                from mpi4py import MPI
-                rank = MPI.COMM_WORLD.Get_rank()
-            except Exception:
-                rank = -1
-            sys.stderr.write(
-                f"[Rank {rank}] WARNING: eval exception (returning penalty): "
-                f"{type(e).__name__}: {e}\n"
-            )
-            sys.stderr.flush()
-            return (_penalty, [0.0] * n_constrs)
+    # make_borg_objective composes make_objective_function() with the
+    # DV-space (pre-simulation) and post-simulation constraint functions;
+    # see its docstring for the composition and failure conventions.
+    objective = make_borg_objective(formulation_name)
 
     # --- Borg instance (dict constructor from passNFE_ALH_PyCheckpoint) ---
     lower, upper = get_bounds(formulation_name)

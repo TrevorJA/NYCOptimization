@@ -11,8 +11,9 @@ sweep) is a post-hoc reduction of this cube, so the expensive simulation runs
 exactly once per policy per design.
 See ``docs/notes/methods/epsilon_calibration_experiment.md``.
 
-Feasibility: random DV vectors are ~1% feasible under the two formal Borg
-constraints, and Borg's archive only ever holds feasible solutions
+Feasibility: random DV vectors are ~1% feasible under the two DV-space formal
+Borg constraints (the post-simulation reliability floor needs simulation and
+is not sampled against), and Borg's archive only ever holds feasible solutions
 (constraint-dominance), so the calibration population is drawn uniform on the
 FEASIBLE region via rejection (``sample_feasible_dvs`` — pure DV arithmetic,
 no simulation, so the ~100x oversampling is cheap). The realized acceptance

@@ -1,10 +1,13 @@
-"""Tests for the formal Borg constraint functions.
+"""Tests for the DV-space formal Borg constraint functions.
 
 Covers `compute_constraint_violations` (pure DV arithmetic, no simulation)
 and its registry wiring (`get_n_constrs`, `make_constraint_function`):
 baseline feasibility, hand-computed directional violations, the tolerance
 floor, and the clamp-equivalence property — each violation is positive
 exactly when the corresponding apply-time clamp in `dvs_to_config` fires.
+
+The post-simulation `nyc_reliability_floor` constraint is covered in
+tests/test_reliability_floor_constraint.py.
 
 Zone-curve crossings are deliberately clamp-only (no constraint): the
 monotonicity clamp resolves them at apply time and the clamped geometry is
@@ -22,6 +25,8 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 from src.formulations import (
     CONSTRAINT_NAMES,
+    DV_CONSTRAINT_NAMES,
+    POST_SIM_CONSTRAINT_NAMES,
     get_baseline_values,
     get_bounds,
     get_constraint_names,
@@ -57,13 +62,15 @@ def _flood_date_cols(cfg):
 ###############################################################################
 
 def test_registry():
-    assert get_n_constrs() == 2
+    assert get_n_constrs() == 3
     assert get_constraint_names() == CONSTRAINT_NAMES == [
-        "delivery_monotonicity", "flood_zone_ordering",
+        "delivery_monotonicity", "flood_zone_ordering", "nyc_reliability_floor",
     ]
+    assert CONSTRAINT_NAMES == DV_CONSTRAINT_NAMES + POST_SIM_CONSTRAINT_NAMES
+    # make_constraint_function is DV-space ONLY: two values, no simulation.
     fn = make_constraint_function("ffmp")
     cons = fn(list(get_baseline_values("ffmp")))
-    assert isinstance(cons, list) and len(cons) == 2
+    assert isinstance(cons, list) and len(cons) == len(DV_CONSTRAINT_NAMES) == 2
     assert all(isinstance(c, float) for c in cons)
 
 

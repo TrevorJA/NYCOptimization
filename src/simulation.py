@@ -906,7 +906,7 @@ def _flood_zone_ordering_violation(cfg, params: dict) -> float:
 
 def compute_constraint_violations(dv_vector,
                                   formulation_name: str = "ffmp") -> list:
-    """Compute the formal Borg constraint violations for a DV vector.
+    """Compute the DV-SPACE formal Borg constraint violations for a DV vector.
 
     Pure DV arithmetic on the cached defaults config — no config deepcopy,
     no Pywr-DRB model build or simulation. Each value is a violation
@@ -915,6 +915,12 @@ def compute_constraint_violations(dv_vector,
     apply-time clamps in this module remain in place, so every simulated
     policy is operationally valid regardless; these functions give Borg a
     direct feasibility signal so infeasible vectors can skip simulation.
+
+    This covers only ``src.formulations.DV_CONSTRAINT_NAMES``. The
+    post-simulation constraint (``nyc_reliability_floor``) reads the computed
+    objective vector and lives in
+    ``src.formulations.make_post_sim_constraint_function``; the MM Borg
+    objective wrapper appends it after simulation.
 
     Zone-curve crossings are deliberately NOT a constraint: the zone-shift
     DV bounds make crossings common under random sampling, and the
