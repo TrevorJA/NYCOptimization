@@ -25,6 +25,18 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   vector (re-filtering approximates the archive but ε also steers Borg
   selection/restarts; a 2-seed historic shakeout ≈ 2.4k SU —
   `docs/notes/methods/epsilon_calibration_experiment.md`).
+- [ ] **[local]** Decide the primary robustness unit (SOW-level vs
+  realization-level satisficing) from a focused review of MOEA + robustness
+  conventions; close the manuscript §3.4.2 open item.
+- [ ] **[local]** Explore the archive-level satisficing measure (fraction of
+  each draw's re-evaluated set above a robustness level across the criterion
+  sweep) as a cardinality-robust secondary comparison metric.
+- [ ] **[local]** SI estimator-stability + convergence diagnostics:
+  block-bootstrap effective-sample-size analysis of the annual-unit
+  aggregation (Text S5) and the MOEA runtime convergence content (Text S7).
+- [ ] **[local→HPC]** Flood-axis validity diagnostics for Text S3:
+  downstream-stress correlation as a required build diagnostic plus the
+  selected-ensemble event-seasonality span check.
 
 ## 2. Anvil shakeout (before production submissions)
 
