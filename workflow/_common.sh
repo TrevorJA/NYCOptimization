@@ -299,3 +299,42 @@ assert None not in (mc.n_islands, mc.n_workers_per_island, mc.max_evaluations), 
 print('Pre-flight OK.')
 "
 }
+
+# Run a table of figure "studies" for the SI figure drivers
+# (workflow/supplemental/si_figures_*.sh). Each study is one line on stdin:
+#
+#   <name>|<prerequisite path>|<command>
+#
+# A study whose prerequisite path is missing is SKIPPED with a message rather
+# than failing the driver, so a partially-complete campaign still regenerates
+# every figure it can. SI_ONLY=<comma,list> restricts the run to named studies.
+# Blank lines and lines starting with '#' are ignored.
+#
+# Returns non-zero if any study that actually ran failed.
+nycopt_run_figure_studies() {
+    local tag="${1:-si}"
+    local only="${SI_ONLY:-}"
+    local name prereq cmd rc=0 ran=0 skipped=0
+
+    while IFS='|' read -r name prereq cmd; do
+        [[ -z "${name}" || "${name}" == \#* ]] && continue
+        if [[ -n "${only}" && ",${only}," != *",${name},"* ]]; then
+            continue
+        fi
+        if [[ -n "${prereq}" && ! -e "${prereq}" ]]; then
+            echo "[${tag}] SKIP ${name} — prerequisite missing: ${prereq}"
+            skipped=$(( skipped + 1 ))
+            continue
+        fi
+        echo "[${tag}] RUN  ${name}"
+        if eval "${cmd}"; then
+            ran=$(( ran + 1 ))
+        else
+            echo "[${tag}] FAIL ${name}" >&2
+            rc=1
+        fi
+    done
+
+    echo "[${tag}] ${ran} study/studies run, ${skipped} skipped"
+    return "${rc}"
+}

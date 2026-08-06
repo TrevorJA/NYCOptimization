@@ -49,13 +49,10 @@ def _policy_sow_passfail(raw, solution_id: int, within_sow_agg: str = "mean"
 
 def _load_sow_theta(ensemble_dir) -> tuple[np.ndarray, list]:
     """SOW-level theta factors ``(n_sow, d)`` and their names, from the staged ensemble."""
-    ensemble_dir = Path(ensemble_dir)
-    npz = ensemble_dir / "forcing_profiles.npz"
-    with np.load(npz, allow_pickle=True) as z:
-        theta = np.asarray(z["theta_params"], dtype=float)
-        names = [str(x) for x in z["theta_param_names"]]
-        rpp = int(z["realizations_per_profile"])
-    return theta[::rpp], names
+    from src.plotting.forcing_space import load_etest_sample
+
+    sample = load_etest_sample(ensemble_dir)
+    return sample["theta"], sample["theta_names"]
 
 
 def plot_scenario_discovery(reeval_dir, ensemble_dir, solution_id, out_file,

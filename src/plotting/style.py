@@ -158,6 +158,10 @@ FIGSIZE_SINGLE = (7, 5)
 FIGSIZE_WIDE   = (13, 5)
 FIGSIZE_GRID_2X3 = (12.6, 7.0)
 
+#: Main-manuscript 2x2 panel grid. Square-ish so each panel can be forced square
+#: via ``ax.set_box_aspect(1)`` without the layout squeezing the tick labels.
+FIGSIZE_MANUSCRIPT_2X2 = (11.0, 11.0)
+
 # ---------------------------------------------------------------------------
 # Shared rcParams
 # ---------------------------------------------------------------------------
@@ -184,6 +188,46 @@ def apply_style() -> None:
     })
 
 
+#: Smallest type size permitted in a main-manuscript figure (points). Journal
+#: figures are reduced on the page, so this is a floor on the RENDERED size, and
+#: every entry in :func:`apply_manuscript_style` sits at or above it.
+MANUSCRIPT_MIN_FONTSIZE: int = 12
+
+
+def apply_manuscript_style() -> None:
+    """Apply the main-manuscript figure style (>= 12 pt, no bold weights).
+
+    Separate from :func:`apply_style`, which the ~20 SI/diagnostic scripts rely
+    on at its smaller 10 pt sizing. Call once at the top of a main-figure
+    script, before any plotting call.
+    """
+    fs = MANUSCRIPT_MIN_FONTSIZE
+    plt.rcParams.update({
+        "font.family":        "sans-serif",
+        "font.size":          fs,
+        "font.weight":        "normal",
+        "axes.titlesize":     fs + 1,
+        "axes.titleweight":   "normal",
+        "axes.labelsize":     fs,
+        "axes.labelweight":   "normal",
+        "xtick.labelsize":    fs,
+        "ytick.labelsize":    fs,
+        "legend.fontsize":    fs,
+        "legend.title_fontsize": fs,
+        "figure.titlesize":   fs + 2,
+        "figure.titleweight": "normal",
+        "figure.dpi":         150,
+        "savefig.dpi":        400,
+        "savefig.bbox":       "tight",
+        "axes.spines.top":    False,
+        "axes.spines.right":  False,
+        # Vector text stays editable text (not outlines) in the PDF, which
+        # journal production systems require.
+        "pdf.fonttype":       42,
+        "ps.fonttype":        42,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Shared figure helpers
 # ---------------------------------------------------------------------------
@@ -202,6 +246,31 @@ def save_figure(fig, out_stub) -> None:
     stub = Path(out_stub)
     for ext in FIGURE_FORMATS:
         fig.savefig(stub.with_suffix(f".{ext}"))
+
+
+#: Output formats for main-manuscript figures: a raster copy to look at and a
+#: vector copy to submit.
+MANUSCRIPT_FIGURE_FORMATS: tuple = ("png", "pdf")
+
+
+def save_manuscript_figure(fig, out_stub) -> list:
+    """Save ``fig`` as both PNG and PDF; return the paths written.
+
+    Args:
+        fig: Matplotlib figure.
+        out_stub: Path or str without an extension (any existing suffix is replaced).
+
+    Returns:
+        The written paths, in :data:`MANUSCRIPT_FIGURE_FORMATS` order.
+    """
+    stub = Path(out_stub)
+    stub.parent.mkdir(parents=True, exist_ok=True)
+    written = []
+    for ext in MANUSCRIPT_FIGURE_FORMATS:
+        path = stub.with_suffix(f".{ext}")
+        fig.savefig(path)
+        written.append(path)
+    return written
 
 
 def annotated_corr_heatmap(ax, data, labels, *, label_fn=label_for,
