@@ -189,47 +189,59 @@ def fig_scenario_discovery(reeval_dir, preset, most_robust_id, out_dir):
 # --------------------------------------------------------------------------- #
 # Fig 6: operating rules of representative policies
 # --------------------------------------------------------------------------- #
-def fig_operating_rules(filt, examples, out_dir):
-    from src.plotting.operating_rules import plot_operating_rules
-    policies = [{"label": lbl, "dv": filt.dv[sid], "color": col}
-                for lbl, sid, col in examples]
-    plot_operating_rules(policies, out_dir / "06_operating_rules.png")
-    ids = ", ".join(f"{lbl}=id{sid}" for lbl, sid, _ in examples)
-    print(f"[fig6] {ids} -> 06_operating_rules.png")
+def fig_operating_rules(filt, examples, out_dir, formulation="ffmp"):
+    """One operating-rules panel figure per representative policy."""
+    from src.plotting.policy_rules import plot_policy_rules
+    for sel in examples:
+        stub = out_dir / f"06_operating_rules_{sel.rule}"
+        plot_policy_rules(filt.dv[sel.index], formulation, show_baseline=True,
+                          candidate_label=f"{sel.label} (id {sel.index})",
+                          output_file=stub)
+        plt.close("all")
+    ids = ", ".join(f"{s.label}=id{s.index}" for s in examples)
+    print(f"[fig6] {ids} -> 06_operating_rules_*.png")
 
 
 # --------------------------------------------------------------------------- #
 def _select_examples(filt, scorecard):
     """Pick 3 DISTINCT representative acceptable policies (as solution_ids).
 
-    Returns list of (label, solution_id, color). Order: most-robust, NYC-priority,
-    Montague-priority. Ties/collisions fall through to the next-best candidate.
+    A thin wrapper over :func:`src.solution_selection.select_by_rules`, which
+    owns the ranking + collision fall-through logic. Order: most-robust,
+    NYC-priority, Montague-priority. Solutions screened out by the stakeholder
+    filter score ``-inf`` so they are never chosen.
+
+    Returns:
+        ``(most_robust_solution_id, [Selection, ...])``.
     """
-    accepted = list(int(i) for i in filt.accepted_ids)
+    from src.formulations import resolve_objective_index
+    from src.solution_selection import Selection, select_by_rules
+
     nat = filt.natural_obj
     names = filt.obj_names
-    nyc_k = names.index("nyc_delivery_reliability_weekly")
-    mont_k = names.index("montague_flow_reliability_weekly")
+    eligible = np.asarray(filt.mask, dtype=bool)
+
+    def _eligible_only(scores):
+        return np.where(eligible, np.asarray(scores, dtype=float), -np.inf)
 
     sat = scorecard["sat_multivariate_sow"] if scorecard is not None else None
-    chosen: list[int] = []
+    robustness = np.full(nat.shape[0], -np.inf)
+    if sat is not None:
+        for sid in sat.index:
+            if 0 <= int(sid) < robustness.size:
+                robustness[int(sid)] = float(sat.loc[sid])
 
-    def _pick(score_by_id):
-        for sid in sorted(accepted, key=lambda s: score_by_id(s), reverse=True):
-            if sid not in chosen:
-                chosen.append(sid); return sid
-        return accepted[0]
-
-    most_robust = _pick(lambda s: (float(sat.loc[s]) if sat is not None
-                                   and s in sat.index else -np.inf))
-    nyc_id = _pick(lambda s: nat[s, nyc_k])
-    mont_id = _pick(lambda s: nat[s, mont_k])
-    examples = [
-        ("Most-robust", most_robust, "#2ca25f"),
-        ("NYC-diversion priority", nyc_id, "#1f77b4"),
-        ("Montague-flow priority", mont_id, "#ff7f0e"),
+    rules = [
+        ("Most-robust", "most_robust", _eligible_only(robustness)),
+        ("NYC-diversion priority", "best_nyc_reliability",
+         _eligible_only(nat[:, resolve_objective_index(
+             names, "nyc_delivery_reliability_weekly")])),
+        ("Montague-flow priority", "best_montague_reliability",
+         _eligible_only(nat[:, resolve_objective_index(
+             names, "montague_flow_reliability_weekly")])),
     ]
-    return most_robust, examples
+    examples: list[Selection] = select_by_rules(rules)
+    return examples[0].index, examples
 
 
 def main():
@@ -263,7 +275,8 @@ def main():
         ("du_distributions", lambda: fig_du_distributions(reeval_dir, filt, out_dir)),
         ("robustness", lambda: fig_robustness(reeval_dir, filt, most_robust_id, out_dir)),
         ("scenario_discovery", lambda: fig_scenario_discovery(reeval_dir, args.preset, most_robust_id, out_dir)),
-        ("operating_rules", lambda: fig_operating_rules(filt, examples, out_dir)),
+        ("operating_rules", lambda: fig_operating_rules(filt, examples, out_dir,
+                                                        args.formulation)),
     ]
     ok, fail = [], []
     for name, fn in tasks:

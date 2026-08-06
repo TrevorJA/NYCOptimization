@@ -537,6 +537,26 @@ def _nyc_combined_storage_pct(data: dict) -> pd.Series:
 
 
 ###############################################################################
+# Public aliases of the shared reductions
+###############################################################################
+# The private cores above are the single source of truth for HOW an objective
+# scores a simulation. Post-processing that must AGREE with the objective
+# values it annotates — chiefly the historic-timeseries figure, which marks
+# Decree violations and shades the excluded spin-up — imports these names
+# instead of re-deriving the logic. Re-deriving it is how the two silently
+# disagree: the weekly comparison in `weekly_flow_ok` carries
+# `FLOW_TARGET_TOL_MGD` of headroom precisely because a strict `>=` once
+# flipped 190 exactly-on-target weeks into failures.
+
+metric_window = _metric_window
+weekly_flow_ok = _weekly_flow_ok
+weekly_delivery_ok = _weekly_delivery_ok
+delivery_entitlement = _delivery_entitlement
+nyc_storage_pct_daily = _nyc_storage_pct_daily
+FLOW_TARGET_TOL_MGD = _FLOW_TARGET_TOL_MGD
+
+
+###############################################################################
 # Metric Functions — NYC water supply (1954 Decree right = 800 MGD)
 ###############################################################################
 

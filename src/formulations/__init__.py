@@ -55,6 +55,7 @@ __all__ = [
     "DV_CONSTRAINT_NAMES",
     "POST_SIM_CONSTRAINT_NAMES",
     "RELIABILITY_FLOOR_OBJECTIVE",
+    "resolve_objective_index",
     "reliability_floor_objective_index",
     "get_n_constrs",
     "get_constraint_names",
@@ -258,6 +259,42 @@ CONSTRAINT_NAMES = DV_CONSTRAINT_NAMES + POST_SIM_CONSTRAINT_NAMES
 RELIABILITY_FLOOR_OBJECTIVE = "nyc_delivery_reliability_weekly"
 
 
+def resolve_objective_index(names, objective: str) -> int:
+    """Index of an objective in ``names``, accepting either registry spelling.
+
+    The same underlying metric carries a base §1 name (single-trace registry,
+    ``src.objectives``) and an annual-unit name (``src.objectives_ensemble``,
+    active whenever a scenario design is wired — i.e. every search context).
+    Post-processing that hard-codes one spelling breaks silently against the
+    other, so any lookup by a literal objective name must come through here.
+    The mapping is consulted in both directions, so either spelling resolves
+    against either registry.
+
+    Args:
+        names: Ordered objective-name list, as returned by ``get_obj_names``.
+        objective: Objective name in either spelling.
+
+    Returns:
+        Position of the objective in ``names``.
+
+    Raises:
+        ValueError: If neither spelling is present in ``names``.
+    """
+    from src.objectives_ensemble import _BASE_TO_ENSEMBLE
+
+    names = list(names)
+    ensemble_to_base = {v: k for k, v in _BASE_TO_ENSEMBLE.items()}
+    candidates = [objective, _BASE_TO_ENSEMBLE.get(objective),
+                  ensemble_to_base.get(objective)]
+    for cand in candidates:
+        if cand is not None and cand in names:
+            return names.index(cand)
+    raise ValueError(
+        f"Objective '{objective}' (nor its alternate registry spelling) is "
+        f"in the active set; got {names}."
+    )
+
+
 def reliability_floor_objective_index(names) -> int:
     """Index of the reliability objective the floor constraint reads.
 
@@ -276,19 +313,17 @@ def reliability_floor_objective_index(names) -> int:
         ValueError: If neither spelling is present — the floor cannot be
             enforced without the objective it reads.
     """
-    from src.objectives_ensemble import _BASE_TO_ENSEMBLE
-
-    alias = _BASE_TO_ENSEMBLE.get(RELIABILITY_FLOOR_OBJECTIVE)
-    names = list(names)
-    for cand in (RELIABILITY_FLOOR_OBJECTIVE, alias):
-        if cand is not None and cand in names:
-            return names.index(cand)
-    raise ValueError(
-        f"The nyc_reliability_floor constraint requires objective "
-        f"'{RELIABILITY_FLOOR_OBJECTIVE}' (or its annual-unit form "
-        f"'{alias}') in the active set; got {names}. Fix NYCOPT_OBJECTIVES "
-        f"— the floor cannot be enforced without it."
-    )
+    try:
+        return resolve_objective_index(names, RELIABILITY_FLOOR_OBJECTIVE)
+    except ValueError:
+        from src.objectives_ensemble import _BASE_TO_ENSEMBLE
+        alias = _BASE_TO_ENSEMBLE.get(RELIABILITY_FLOOR_OBJECTIVE)
+        raise ValueError(
+            f"The nyc_reliability_floor constraint requires objective "
+            f"'{RELIABILITY_FLOOR_OBJECTIVE}' (or its annual-unit form "
+            f"'{alias}') in the active set; got {list(names)}. Fix "
+            f"NYCOPT_OBJECTIVES — the floor cannot be enforced without it."
+        ) from None
 
 
 def get_n_constrs() -> int:

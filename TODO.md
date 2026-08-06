@@ -21,10 +21,6 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test re-evaluation of the Pareto sets).
-- [ ] **[HPC]** One confirmatory cheap search under the adopted epsilon
-  vector (re-filtering approximates the archive but ε also steers Borg
-  selection/restarts; a 2-seed historic shakeout ≈ 2.4k SU —
-  `docs/notes/methods/epsilon_calibration_experiment.md`).
 - [ ] **[local]** Decide the primary robustness unit (SOW-level vs
   realization-level satisficing) from a focused review of MOEA + robustness
   conventions; close the manuscript §3.4.2 open item.
@@ -54,7 +50,13 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 4. Post-campaign deliverables
 
-- [ ] **[local]** Results figure plan + the scripts to build them (none exist yet).
+- [ ] **[local]** Results figure plan + the scripts to build them. First
+  tranche landed: `src/solution_selection.py` (dominance / scaling /
+  compromise / diverse selection), `src/plotting/front_overview.py`,
+  `src/plotting/historic_timeseries.py`, driven by
+  `scripts/main/explore_results.py` (+ `workflow/supplemental/sim_selected_policies.sh`
+  for the simulation-dependent panels). Still to come: re-eval / robustness
+  result figures and the manuscript-final styling pass.
 - [ ] **[local]** Manuscript Results / Discussion / Conclusions; SI sections
   beyond S8 are outline-only.
 - [ ] **[local]** Import the manuscript's † references into Zotero before
