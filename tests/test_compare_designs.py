@@ -334,3 +334,187 @@ def test_figures_written(tree):
                 "fig_performance_distributions"):
         p = Path(tree["written"][key])
         assert p.exists() and p.stat().st_size > 0
+
+
+def test_regret_artifacts_absent_without_a_baseline(tree):
+    """No status-quo cube -> no regret tables, and no crash in the satisficing half.
+
+    RQ2 is simply unanswered in that case; the run must say so rather than emit an
+    empty table that reads like a measured null.
+    """
+    assert "design_regret_tolerance_sweep" not in tree["written"]
+    assert "design_regret_by_severity" not in tree["written"]
+
+
+###############################################################################
+# Incumbent-relative regret (RQ2)
+###############################################################################
+# A second synthetic tree, with SOW grouping and a status-quo baseline, using REAL
+# base objective names so the tolerance ladder resolves against the registered
+# epsilons rather than being stubbed.
+
+REG_TAG = "etest_synthetic_regret"
+REG_OBJS = ["nyc_delivery_reliability_weekly", "downstream_flood_exceedance_minor"]
+REG_N_SOW, REG_R, REG_N_SOL = 6, 2, 4
+
+REG_META = {
+    "is_ensemble": True,
+    "base_names": REG_OBJS,
+    "thresholds": {REG_OBJS[0]: 0.87, REG_OBJS[1]: 1.17},
+    "kinds": {REG_OBJS[0]: "ge", REG_OBJS[1]: "le"},
+    "directions": {REG_OBJS[0]: "maximize", REG_OBJS[1]: "minimize"},
+    "realization_indices": list(range(REG_N_SOW * REG_R)),
+    "sow_ids": [s for s in range(REG_N_SOW) for _ in range(REG_R)],
+    "n_sow": REG_N_SOW,
+    "realizations_per_sow": REG_R,
+}
+
+#: The incumbent, flat across every SOW: reliability 0.87, flood 1.0 ft-days/yr.
+REG_BASELINE = (0.87, 1.0)
+
+
+def _write_regret_run(out_dir: Path, harmful_sows: int) -> None:
+    """One run whose solutions harm the incumbent in ``harmful_sows`` of the SOWs.
+
+    Solution ``sid`` harms the first ``max(0, harmful_sows - sid)`` SOWs, so the
+    per-run "best" policy is well defined and designs are separable.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    records = []
+    for sid in range(REG_N_SOL):
+        n_bad = max(0, harmful_sows - sid)
+        for sow in range(REG_N_SOW):
+            bad = sow < n_bad
+            # Worse than the incumbent on BOTH objectives in a harmful SOW.
+            rel = 0.80 if bad else 0.95
+            flood = 1.60 if bad else 0.40
+            for rep in range(REG_R):
+                rid = sow * REG_R + rep
+                records.append((sid, rid, REG_OBJS[0], rel))
+                records.append((sid, rid, REG_OBJS[1], flood))
+    pd.DataFrame(records, columns=["solution_id", "realization_id", "objective",
+                                   "value"]).to_csv(
+        out_dir / "reeval_raw.csv.gz", index=False, compression="gzip")
+    (out_dir / "reeval_raw_meta.json").write_text(json.dumps(
+        dict(REG_META, solution_ids=list(range(REG_N_SOL)),
+             n_solutions=REG_N_SOL, n_realizations=REG_N_SOW * REG_R)))
+
+    bdir = out_dir / "baseline"
+    bdir.mkdir(exist_ok=True)
+    brecords = [(0, sow * REG_R + rep, obj, val)
+                for sow in range(REG_N_SOW)
+                for rep in range(REG_R)
+                for obj, val in zip(REG_OBJS, REG_BASELINE)]
+    pd.DataFrame(brecords, columns=["solution_id", "realization_id", "objective",
+                                    "value"]).to_csv(
+        bdir / "reeval_raw.csv.gz", index=False, compression="gzip")
+    (bdir / "reeval_raw_meta.json").write_text(json.dumps(
+        dict(REG_META, solution_ids=[0], n_solutions=1,
+             n_realizations=REG_N_SOW * REG_R)))
+
+    # Score it exactly as workflow step 08 would, so the scorecard carries the
+    # regret columns the comparison layer and the plane figure read.
+    rob.run(out_dir, baseline_dir=bdir,
+            metrics=("satisficing_multivariate", "satisficing_multivariate_sow",
+                     "regret_magnitudes", "regret_frequencies"))
+
+
+@pytest.fixture(scope="module")
+def regret_tree(tmp_path_factory):
+    root = tmp_path_factory.mktemp("outputs_regret")
+    designs = campaign_designs()[:2]
+    slug = f"{FORMULATION}_obj2"
+    for di, design in enumerate(designs):
+        _write_regret_run(
+            root / design / slug / "reeval" / REG_TAG / "seed_00",
+            harmful_sows=3 - di,          # design 0 harms more often than design 1
+        )
+    runs = cd.discover_runs(FORMULATION, REG_TAG, None, root)
+    return {"root": root, "designs": designs, "runs": runs}
+
+
+def test_regret_sweep_covers_every_run_and_tolerance(regret_tree):
+    sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
+    assert not sweep.empty
+    assert len(sweep) == len(regret_tree["runs"]) * len(cd.REGRET_TAU_GRID)
+    assert set(sweep["tau_k"]) == set(float(k) for k in cd.REGRET_TAU_GRID)
+    assert ((sweep["best"] >= 0) & (sweep["best"] <= 1)).all()
+
+
+def test_no_harm_frequency_is_monotone_in_the_tolerance(regret_tree):
+    """A wider tolerance cannot make FEWER states of the world harm-free."""
+    sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
+    for (design, draw, seed), g in sweep.groupby(["design", "draw", "seed"]):
+        g = g.sort_values("tau_k")
+        assert (g["best"].diff().dropna() >= -1e-12).all(), (
+            f"{design} draw={draw} seed={seed} is non-monotone in tau")
+
+
+def test_regret_separates_designs_at_zero_tolerance(regret_tree):
+    """The design that harms the incumbent in fewer SOWs must score higher.
+
+    Design 0's best policy harms 0 SOWs (sid 3 of a 3-harm run), as does design
+    1's -- so the discriminating statistic here is the MEDIAN over the run's
+    policies, which is exactly why both are carried.
+    """
+    sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
+    at0 = sweep[sweep["tau_k"] == 0.0].set_index("design")
+    d0, d1 = regret_tree["designs"][0], regret_tree["designs"][1]
+    assert at0.loc[d1, "median"] > at0.loc[d0, "median"]
+
+
+def test_tolerance_ladder_uses_the_registered_epsilons(regret_tree):
+    """tau must scale each objective by ITS OWN just-noticeable difference."""
+    from src.objectives import OBJECTIVES
+    tau = rob.tau_ladder(REG_OBJS, k=2.0)
+    assert tau[REG_OBJS[0]] == pytest.approx(2 * OBJECTIVES[REG_OBJS[0]].epsilon)
+    assert tau[REG_OBJS[1]] == pytest.approx(2 * OBJECTIVES[REG_OBJS[1]].epsilon)
+    # The fixture's shortfalls (0.07 reliability, 0.60 ft-days) are far larger than
+    # even k = 10, so the sweep must NOT forgive them everywhere -- otherwise this
+    # suite would be asserting monotonicity on a saturated curve.
+    sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
+    assert sweep[sweep["tau_k"] == float(max(cd.REGRET_TAU_GRID))]["median"].min() < 1.0
+
+
+def test_severity_decomposition_skips_when_no_forcing_is_staged(regret_tree):
+    """No staged forcing profiles -> an empty frame and a warning, never a guess."""
+    class _Spec:
+        inflow_type = "definitely_not_a_staged_ensemble"
+    with pytest.warns(UserWarning):
+        out = cd.regret_by_severity(regret_tree["runs"], _Spec())
+    assert out.empty
+
+
+def test_plane_points_pair_both_axes_from_the_same_policy(regret_tree):
+    """Robustness and no-harm must be read off ONE policy or the claim is empty."""
+    loaded = cd.load_runs(regret_tree["runs"])
+    pts = cd.regret_plane_points(loaded)
+    assert not pts.empty
+    assert {"design", "draw", "seed", "solution_id",
+            "sat_multivariate_sow", "no_harm_freq_tau"} <= set(pts.columns)
+    assert len(pts) == len(regret_tree["runs"]) * REG_N_SOL
+    assert pts["solution_id"].nunique() == REG_N_SOL
+    assert ((pts["no_harm_freq_tau"] >= 0) & (pts["no_harm_freq_tau"] <= 1)).all()
+
+
+def test_regret_figures_render(regret_tree, tmp_path):
+    from src.plotting import regret_summary as rs
+
+    loaded = cd.load_runs(regret_tree["runs"])
+    plane = rs.plot_regret_robustness_plane(
+        cd.regret_plane_points(loaded), tmp_path / "plane", baseline_x=0.5)
+    sweep = rs.plot_regret_tolerance_sweep(
+        cd.regret_tolerance_sweep(regret_tree["runs"]), tmp_path / "sweep")
+    decomp = rs.plot_regret_decomposition(
+        regret_tree["runs"][0].path, tmp_path / "decomp")
+    for p in (plane, sweep, decomp):
+        assert Path(p).exists() and Path(p).stat().st_size > 0
+
+
+def test_pareto_frontier_keeps_only_non_dominated_points():
+    from src.plotting.regret_summary import pareto_frontier
+    # (0.9, 0.1) and (0.5, 0.9) are both non-dominated; (0.4, 0.05) is dominated.
+    x = np.array([0.9, 0.5, 0.4, np.nan])
+    y = np.array([0.1, 0.9, 0.05, 0.5])
+    keep = set(pareto_frontier(x, y).tolist())
+    assert keep == {0, 1}

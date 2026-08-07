@@ -174,13 +174,27 @@ re-simulating.
 
 ## Comparison metrics
 
-The primary endpoint is the re-evaluated **multivariate Starr satisficing fraction** of
-the policies a design produces; the run-level scalar is the maximum satisficing fraction
-attained in the run's re-evaluated set, reported with its per-objective satisficing
-decomposition (the maximum-over-a-set bias is disclosed). Secondary metrics are univariate
-satisficing, the coverage-weighted mean (Laplace), maximin, and signed
-improvement-over-status-quo (a fixed-reference, design-independent quantity, and the only
-regret-type metric used — **no set-relative or perfect-foresight regret is computed**).
+Two families. The RQ1 endpoint is the re-evaluated **multivariate Starr satisficing
+fraction** of the policies a design produces; the run-level scalar is the maximum
+satisficing fraction attained in the run's re-evaluated set, reported with its
+per-objective satisficing decomposition (the maximum-over-a-set bias is disclosed).
+Secondary metrics are univariate satisficing, the coverage-weighted mean (Laplace),
+maximin, and signed improvement-over-status-quo.
+
+The RQ2 endpoint is **incumbent-relative regret**: how much worse a candidate policy is
+than the status-quo 2017 FFMP policy *in the same state of the world*. Magnitudes are
+reported per objective in natural units and never combined; the unit-free harm
+frequencies — per objective, per Decree party, and the joint no-harm frequency at a swept
+tolerance — carry the cross-design summary. It is a fixed, design-independent reference
+that McPhail et al. (2018) license and no published water-resources study formalizes.
+**No set-relative (best-in-set), baseline-SOW, or perfect-foresight regret is computed.**
+The two families are complementary rather than redundant: the satisficing criteria are
+fixed scalars anchored on the incumbent's historic attainment, whereas the regret bar
+moves with the forcing, so regret still discriminates where the domain criterion
+saturates. Together they test the working hypothesis — that hazard filling buys
+robustness without paying the price of robustness (Bartholomew & Kwakkel 2020; Bertsimas
+& Sim 2004) in regret against current operations — with both axes read off the *same*
+policy.
 Ranking agreement across metrics is summarized by Kendall's τ_b. A **criterion sweep**
 reports whether the design difference holds across the range of defensible satisficing
 thresholds rather than at one arbitrary point. Hazard-space coverage statistics are

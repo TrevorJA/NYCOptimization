@@ -173,6 +173,27 @@ def fig_robustness(reeval_dir, filt, most_robust_id, out_dir):
 
 
 # --------------------------------------------------------------------------- #
+# Fig 4b: incumbent-relative regret, per objective, in natural units
+# --------------------------------------------------------------------------- #
+def fig_regret(reeval_dir, filt, out_dir):
+    """Per-objective tail regret and mean gain against the status-quo FFMP policy.
+
+    The RQ2 companion to fig 4: the satisficing figure says how often a policy is
+    acceptable by a fixed standard, this one says how much it takes away from
+    current operations, and from which party.
+    """
+    from src.plotting.regret_summary import plot_regret_decomposition
+    try:
+        out = plot_regret_decomposition(reeval_dir, out_dir / "04b_regret",
+                                        accepted_ids=filt.accepted_ids)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[fig4b] skipped: {exc}")
+        return None
+    print(f"[fig4b] -> {Path(out).name}")
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Fig 5: scenario discovery over DU theta factors
 # --------------------------------------------------------------------------- #
 def fig_scenario_discovery(reeval_dir, preset, most_robust_id, out_dir):
@@ -274,6 +295,7 @@ def main():
         ("hypervolume", lambda: fig_hypervolume(run_dir, args.formulation, out_dir)),
         ("du_distributions", lambda: fig_du_distributions(reeval_dir, filt, out_dir)),
         ("robustness", lambda: fig_robustness(reeval_dir, filt, most_robust_id, out_dir)),
+        ("regret", lambda: fig_regret(reeval_dir, filt, out_dir)),
         ("scenario_discovery", lambda: fig_scenario_discovery(reeval_dir, args.preset, most_robust_id, out_dir)),
         ("operating_rules", lambda: fig_operating_rules(filt, examples, out_dir,
                                                         args.formulation)),

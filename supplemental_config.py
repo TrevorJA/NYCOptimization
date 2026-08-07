@@ -1321,3 +1321,107 @@ def rtd_table_path(name: str) -> Path:
 def rtd_figure_path(name: str) -> Path:
     """Path stub for a named figure (extension added by ``save_figure``)."""
     return RTD_FIGURES_DIR / name
+
+
+###############################################################################
+# Regret-tolerance diagnostics (RTOL)
+# docs/notes/methods/regret_tolerance_diagnostics.md
+###############################################################################
+# Fixes the two free parameters of the incumbent-relative regret comparison
+# BEFORE the campaign result is inspected: the no-harm tolerance
+# ``tau_i = k * eps_i`` and the non-inferiority margin ``delta`` on
+# ``no_harm_freq_tau``. Both are pre-registration quantities, so the admissible
+# anchors are restricted by what they can bias (note section 1):
+#
+#   Tier A  estimator noise / measurement resolution  -> admissible for both
+#   Tier B  external decision increments (Decree, observed record) -> tau only
+#   Tier C  the candidate-policy regret distribution  -> INADMISSIBLE (circular)
+#   Tier D  within-design nuisance variance (seed / draw pairs) -> delta only
+#
+# Tier C is the trap this block exists to prevent, and it is the same trap
+# RTD_CANDIDATE_QUANTILES is reported-but-never-adopted for: a tolerance read off
+# the distribution it is meant to test guarantees its own answer.
+
+#: The incumbent's E_test cube. Same artifact the threshold diagnostics use; the
+#: noise floor (Tier A) is a pure function of it and needs NO policy runs, so
+#: pass A can be run as soon as step 05 lands and long before any search finishes.
+RTOL_REEVAL_BASELINE_DIR: Path = RTD_REEVAL_BASELINE_DIR
+
+#: Multipliers ``k`` on each objective's just-noticeable difference. Must match
+#: ``compare_designs.REGRET_TAU_GRID`` so the diagnostic and the comparison speak
+#: the same coordinate.
+RTOL_TAU_GRID: tuple = (0.0, 0.5, 1.0, 2.0, 5.0, 10.0)
+
+#: Within-SOW collapse; must match the shipped scorer.
+RTOL_WITHIN_SOW_AGG: str = "mean"
+
+#: One-sided normal deviate for the noise floor. 1.645 -> a policy operationally
+#: identical to the incumbent is falsely flagged as harming a given objective in
+#: a given SOW at most 5% of the time.
+RTOL_FALSE_HARM_Z: float = 1.645
+RTOL_TARGET_FALSE_HARM: float = 0.05
+
+#: Split-half null: seed for the within-SOW realization partition, and the number
+#: of independent partitions averaged over.
+RTOL_SPLIT_HALF_SEED: int = 20260806
+RTOL_SPLIT_HALF_REPS: int = 20
+
+#: A tolerance is SATURATED when no_harm_freq_tau exceeds this for every design
+#: (the non-inferiority claim becomes trivially true) and STARVED when it falls
+#: below the lower bound for every design (nothing to compare). The defensible
+#: reporting band lies between them.
+RTOL_SATURATION_HI: float = 0.95
+RTOL_SATURATION_LO: float = 0.05
+
+#: SOW-level bootstrap resamples for the PAIRED between-design difference. The
+#: designs are scored on the same SOWs, so the difference has a smaller standard
+#: error than either margin and must be bootstrapped as a pair, not differenced
+#: from two independent margins.
+RTOL_BOOTSTRAP_N: int = 2000
+RTOL_BOOTSTRAP_SEED: int = 7
+
+#: Positive control for assay sensitivity. A non-inferiority claim is only
+#: meaningful if the comparison could have detected a difference had one existed;
+#: `historic` is the unmatched reference expected to be worse, so failure to
+#: separate it is evidence the metric is insensitive at that tolerance, not
+#: evidence that the designs agree.
+RTOL_ASSAY_CONTROL_DESIGN: str = "historic"
+
+#: The PRE-REGISTERED rules. These are recorded as strings so the note, the code,
+#: and the manuscript cannot drift apart, and so that what was fixed in advance is
+#: legible after the fact.
+RTOL_TAU_RULE: str = (
+    "k_headline = the smallest k on RTOL_TAU_GRID whose tau_i = k * eps_i clears "
+    "the Tier-A noise floor for EVERY objective. Smallest, not largest: the "
+    "hypothesis is a non-inferiority claim, which a loose tolerance flatters, so "
+    "the most discriminating defensible tolerance is the conservative choice. The "
+    "full k-curve is reported regardless; k_headline only fixes which rung carries "
+    "the sentence."
+)
+RTOL_MARGIN_RULE: str = (
+    "delta = max(2 x paired SOW-bootstrap SE of the between-design difference in "
+    "no_harm_freq_tau, the within-design between-DRAW spread of the same quantity). "
+    "The draw is the declared unit of analysis, so the draw-level term is the "
+    "denominator the design contrast must beat. delta is a function of the NUISANCE "
+    "variance only and never of the between-design contrast, so it cannot determine "
+    "the direction of the answer; the pre-registration is of this rule, not of a "
+    "number that could only be computed later."
+)
+
+#: Filled AFTER pass A, from the measured floors. Empty leaves the headline rung
+#: unset and the note's checklist open.
+RTOL_ADOPTED_K: float | None = None
+
+RTOL_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "regret_tolerance_diagnostics"
+RTOL_TABLES_DIR: Path = RTOL_OUTPUT_ROOT / "tables"
+RTOL_FIGURES_DIR: Path = RTOL_OUTPUT_ROOT / "figures"
+
+
+def rtol_table_path(name: str) -> Path:
+    """Path for a named regret-tolerance table CSV."""
+    return RTOL_TABLES_DIR / f"{name}.csv"
+
+
+def rtol_figure_path(name: str) -> Path:
+    """Path stub for a named regret-tolerance figure."""
+    return RTOL_FIGURES_DIR / name

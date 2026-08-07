@@ -294,28 +294,153 @@ T2 = all scenarios, T3 = frequency.
 | **univariate satisficing** | fraction of realizations clearing one objective's criterion | satisfaction / all / frequency | per-objective decomposition of the primary |
 | **Laplace (mean)** | mean performance across realizations | identity / all / mean | risk-neutral reference |
 | **maximin** | worst realization | identity / worst-case / worst-case | risk-averse reference |
-| **improvement over status quo** | per-realization deviation from the **default FFMP policy** on the *same* E_test | regret-vs-baseline / all / mean (max also reported) | "is it better than current operations?" |
+| **improvement over status quo** | per-realization signed deviation from the **default FFMP policy** on the *same* E_test | regret-vs-incumbent / all / mean | "is it better than current operations, on average?" |
 
 *Improvement over status quo* is design-independent and requires no extra
 optimization: the default FFMP baseline is already simulated on E_test by
 workflow step 05, and the reference does not move when designs are added or
-dropped. Precedent: Kasprzyk et al. (2013) percent-deviation-from-baseline.
-(Implementation: `improvement_vs_baseline` in `src/robustness.py`.)
+dropped. (Implementation: `improvement_vs_baseline` in `src/robustness.py`.)
 
 Ranking agreement is summarized with **Kendall's τ_b computed across the *design*
 rankings** these metrics induce — i.e. do the metrics rank the scenario
 designs the same way? (Herman et al. 2015; McPhail et al. 2018, 2020.)
 
+### 3.2b Incumbent-relative regret (co-primary; answers RQ2)
+
+The signed mean above cannot answer RQ2, which asks whether policies improve some
+outcomes *without degrading others below current performance*: a mean can be
+comfortably positive while the policy is badly worse than the status quo in a
+third of futures. The regret family is the one-sided half of the same deviation.
+
+**Reference.** The incumbent 2017 FFMP policy, evaluated **in the same SOW**.
+McPhail et al. (2018) §3.1 license exactly this T1 — "Alternative metrics that are
+based on the relative performance of decision alternatives use some type of
+baseline performance *for a given scenario* instead of the performance of the best
+decision alternative" — but never name, tabulate, or test it, so this study makes
+an admitted variant explicit rather than importing one. It is also Savage regret
+on the action set the Decree parties actually face, `{retain the FFMP, adopt the
+candidate}`: a unanimity-bound renegotiation, not a free choice over an archive.
+
+**Unit and construction** (`src/robustness.py`; SOW unit, `within_sow_agg` default
+`mean`):
+
+- `D_i(x,θ) = σ_i · [ f̄_i(x,θ) − f̄_i(b,θ) ]` — signed, oriented so positive =
+  better than current operations for every objective (`incumbent_advantage`).
+- Magnitudes, in each objective's **own natural units**, never combined across
+  objectives: `regret_mean__`, `regret_q90__` (the Herman R1/R2 tail statistic),
+  `regret_cond__` (mean shortfall *given* a shortfall; NaN when never worse), and
+  `gain_mean__` as the mandatory companion.
+- Frequencies, **unit-free**, which carry the cross-objective and cross-design
+  scalar role: `harm_freq__{obj}`, `party_harm_freq__{party}` (a disjunction over
+  a Decree party's objectives — under unanimity a loss is not compensable, so it
+  is never a sum), `no_harm_freq` (weak Pareto improvement on the incumbent),
+  `no_harm_freq_tau`, and `n_degraded_mean`.
+
+**Restriction to the adverse subset is McPhail's T2, not ad-hoc clipping.** Their
+"undesirable deviations" metric (Kwakkel et al. 2016b) decomposes as T1 = regret
+from median / T2 = worst-half / T3 = sum; ours is that construction with the
+reference changed from the policy's own median to the incumbent. A *mean of a
+clipped quantity over all scenarios* does collapse toward zero when policies
+mostly beat the incumbent — the objection that produced the unclipped signed
+metric — but a statistic computed on the sign-selected subset does not.
+
+**No max regret.** Bonham et al. (2024): regret families need 400+ scenarios and
+never converge on extreme-of-extremes operators. McPhail et al. document the
+tie-degeneracy directly. The 90th percentile over 1,000 SOWs is well resolved.
+
+**Natural units, and no cross-objective magnitude scalar.** Dividing by the
+incumbent's own per-cell value is degenerate for this objective set: flood
+exceedance is exactly 0 in a large share of realizations and both CVaR₉₀ deficits
+are 0 in wet ones, so the cell is NaN'd and *silently dropped* — and the dropped
+cells are the benign ones, biasing the estimator toward the adverse subset.
+Natural units dissolve that rather than patching it. Neither published scale is
+usable: Cohen et al. (2021) normalize on the per-scenario span to a
+perfect-foresight optimum (one MOEA run per scenario, out of budget), and Sunkara
+et al. (2023) rescale over the alternative set, which is design-coupled. Herman
+et al. (2015) hit the same wall — they normalize R2 by the objective's own value
+"because the latter often approaches zero" — and McPhail et al. give no
+normalization guidance at all. An optional fixed scale (`incumbent_spread`, the
+incumbent's q90−q10 over E_test) is implemented as a scoring-time sensitivity so a
+reviewer asking for a dimensionless regret can be answered without re-simulating;
+it is never the reported primary.
+
+**The tolerance ladder.** `τ_i = k · u_i` with the unit `u_i =
+max(ε_i, τ_i^floor)`: `ε_i` is the objective's §1 base-metric epsilon — a
+signal-scale just-noticeable difference (Reed et al. 2013, ≈IQR/10) in exactly the
+whole-trace metric space the re-eval cube lives in — and `τ_i^floor` is the
+measured noise floor of that objective's SOW-mean estimator. Taking the max is
+not cosmetic: one `k` is shared across eight objectives, and an epsilon *below*
+its own noise floor makes every rung fire on Monte Carlo noise for that axis while
+being far outside the noise on the others, so a single rung silently means two
+different things. Flood exceedance is the live case. Provenance disclosure: the
+epsilons were measured on the historic reference trace, not on E_test, and the
+campaign epsilon vector is the separate annual-unit one. `k` is swept
+(`REGRET_TAU_GRID` in `compare_designs.py`) rather than fixed, for the reason the
+satisficing criteria are swept: a single tolerance could manufacture or hide the
+whole RQ2 answer (Quinn et al. 2020).
+
+**Both `k` and the ladder shape are pre-registration quantities**, and the rules
+that fix them — plus the noise floor, the discrimination band, the empirical
+nulls behind the non-inferiority margin, and the assay-sensitivity control — are
+specified in `regret_tolerance_diagnostics.md`. The rule that matters most: no
+anchor may be read off the distribution of candidate-policy regret, because that
+is the quantity under test.
+
+**Why this is not redundant with satisficing.** The satisficing criteria are fixed
+scalars anchored on the incumbent's *historic* attainment
+(`robustness_threshold_diagnostics.md` §0b rule 1); the regret bar is the
+incumbent's performance *in that SOW*, and moves with the forcing. Where the fixed
+criterion drives the domain criterion to 0 for every policy — the status quo
+already fails NYC reliability in ~84 % of E_test SOWs — satisficing ties everything
+(Bonham et al. 2024's saturation failure mode) and regret still separates policies.
+
+**Comparison rule.** Robustness and regret are read off the **same** policy, or
+the claim "more robust without more regret" is about nothing. Reported as: the
+draw-level endpoint policy's regret; the full `(sat_multivariate_sow,
+no_harm_freq_tau)` cloud; the per-design non-dominated frontier in that plane; and
+the per-objective natural-unit drill-down. This is the study's analogue of
+Bartholomew & Kwakkel's (2020) price-of-robustness measurement, but against a
+fixed external incumbent per SOW rather than by hypervolume against reference
+scenarios, which would reintroduce the pooled-reference-set bias rejected in §4.3.
+A **severity decomposition** over terciles of the dominant forcing factor `m`
+(|ρ_S| = 0.91–0.98 on all eight objectives) tests whether any price is paid in the
+benign futures — an insurance premium, which is a finding, not a failure.
+
+**Degeneracy guard.** A policy scores zero regret by *being* the incumbent, which
+is reachable because the FFMP baseline lies inside the searched DV space. Regret is
+therefore never reported without `gain_mean` beside it.
+
 ### 3.3 Metrics deliberately excluded
 
-Three measures are deliberately NOT computed. **Best-in-set regret** is
-set-relative and design-coupled (dropping one design changes every other
-design's score), and Bonham et al. (2024) show it converges far more slowly
-than satisficing — never, on max-over-time objectives like our P99 deficit
-operators. **Cohen et al. (2021) baseline regret** would require one
-perfect-foresight MOEA run per scenario; no perfect-foresight optimization is
-performed anywhere in this study, and Cohen is cited as motivation only. A
-**search-vs-test "overfitting gap"** is likewise not computed: Brodeur et al.
+Regret has four possible references. Exactly one is computed here, and naming all
+four is the cleanest way to state what is excluded and why — no published paper
+lays them side by side.
+
+| Reference | Question it answers | Status here |
+|---|---|---|
+| The incumbent policy, per SOW | "How much worse off than under current rules?" | **computed** (§3.2b) |
+| The best policy in the evaluated set, per SOW (Savage; Herman R2) | "Did we pick the wrong policy from the archive?" | excluded |
+| The same policy in a baseline SOW (Herman R1; Kasprzyk et al. 2013) | "How wrong were our assumptions about the future?" | not computed |
+| A perfect-foresight optimum, per scenario (Cohen et al. 2021) | "What did imperfect information cost?" | not computed |
+
+**Best-in-set regret** is set-relative and design-coupled (dropping one design
+changes every other design's score), and Bonham et al. (2024) show it converges
+far more slowly than satisficing — never, on max-over-time objectives like our P99
+deficit operators. Herman et al. (2015) found their two regret metrics "tended to
+agree with each other", so it is also likely to be largely redundant with the
+incumbent-referenced metric we do compute. **Herman R1 / Kasprzyk et al. (2013)
+percent deviation** is a *within-policy, across-SOW* sensitivity measure — their
+Eq. (9) reference is the same solution's value in a baseline *state of the world*,
+not a status-quo policy — and it answers a different question from RQ2; note that
+this note and the manuscript previously miscited it as the precedent for the
+status-quo comparison, which it is not (the correct chain is McPhail et al. 2018
+§3.1 for the reference, Herman et al. 2015 for the functional shape, Kwakkel et
+al. 2016b for the adverse-subset construction). **Cohen et al. (2021) baseline
+regret** would require one perfect-foresight MOEA run per scenario; no
+perfect-foresight optimization is performed anywhere in this study, and Cohen is
+cited as motivation only.
+
+A **search-vs-test "overfitting gap"** is likewise not computed: Brodeur et al.
 (2020) diagnose overfitting graphically and define no gap metric, and a
 coverage-weighted in-sample term minus a measure-weighted out-of-sample term
 measures the measure change, not overfitting. (`src/robustness.py`
@@ -469,7 +594,16 @@ independent verification ensemble.
 | Expectation can mask floods (P99 variant registered) | §2 #6 | Quinn et al. 2017 |
 | Multivariate satisficing / domain criterion (PRIMARY re-eval metric) | §3.1 | Starr 1962; Herman et al. 2014, 2015; Trindade et al. 2017; Gold et al. 2022, 2023 |
 | T1/T2/T3 decomposition; Laplace / maximin secondaries | §0, §3.2 | McPhail et al. 2018; Giuliani & Castelletti 2016 |
-| Percent-deviation-from-baseline (improvement over status quo) | §3.2 | Kasprzyk et al. 2013 |
+| A baseline decision alternative is a licensed regret reference, per scenario | §3.2b | McPhail et al. 2018 §3.1 |
+| Regret shape: per-objective deviation → 90th percentile over SOWs | §3.2b | Herman et al. 2015 (R1/R2, Eqs. 3–6) |
+| Restriction to the adverse subset (T2 = worst-half) | §3.2b | Kwakkel et al. 2016b (undesirable deviations) |
+| Savage regret on the realized action set {retain, adopt} | §3.2b | Savage 1951 |
+| Weak dominance over the status quo as a decision condition | §3.2b | Cohen et al. 2021 (applied as a filter) |
+| Ratio normalization fails when the reference approaches zero | §3.2b | Herman et al. 2015; Eker & Kwakkel 2018 |
+| Compensatory aggregation hides party-level failure → disjunction | §3.2b | Sunkara et al. 2023 |
+| Multi-objective robustness resists a single scalar | §3.2b | Watson & Kasprzyk 2017 |
+| The price of robustness (search-phase robustness costs elsewhere) | §3.2b | Bartholomew & Kwakkel 2020; Bertsimas & Sim 2004 |
+| Extreme training scenarios can skew multi-objective trade-offs | §3.2b, §5 | Huang et al. 2025 |
 | Kendall's τ_b for ranking agreement across metrics | §3.2 | Herman et al. 2015; McPhail et al. 2018, 2020 |
 | Satisficing converges fastest; regret-from-best does not | §3.3 | Bonham et al. 2024 |
 | Perfect-foresight-per-scenario regret is unscalable (motivation only) | §3.3 | Cohen et al. 2021 |

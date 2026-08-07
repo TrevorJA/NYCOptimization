@@ -273,6 +273,81 @@ def failure_matrix(raw: rob.RawCube) -> np.ndarray:
     return ~rob._satisfaction_cube(raw).all(axis=2)
 
 
+#: Which label the classifier is fit to. ``satisficing`` (default) is the
+#: all-criteria conjunction, negated -- "where does this policy fail an absolute
+#: standard?". ``regret`` is the incumbent-relative label -- "where would the
+#: Decree parties REGRET having adopted this policy rather than keeping the FFMP?".
+#: They are different questions and can localise in different hazard regions; the
+#: second is the one a Decree party asks. Set via NYCOPT_SD_LABEL (no CLI flag).
+SD_LABEL = os.environ.get("NYCOPT_SD_LABEL", "satisficing")
+
+
+def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
+                  tau: dict | None = None) -> np.ndarray:
+    """Boolean ``(S, R)`` regret matrix: some objective is worse than the incumbent.
+
+    A realization is labelled REGRET for a solution when at least one objective is
+    degraded by more than its tolerance ``tau_i`` relative to the status-quo FFMP
+    policy on that same realization -- the complement of the ``no_harm`` condition
+    in ``robustness.regret_frequencies``.
+
+    **Unit, stated because it differs from the reported metric.** The reported
+    regret family is on the SOW unit, because the incumbent's bar moves with the
+    forcing and the deeply-uncertain state is the decision-relevant unit. Discovery
+    here is on the REALIZATION unit, because the hazard coordinates being regressed
+    on are a property of an individual realized sequence and exist one-per-
+    realization. That is a necessary consequence of the space discovery runs in,
+    not a silent substitution; report it as such.
+
+    Args:
+        raw: The design's re-eval cube on E_test.
+        baseline: The status-quo cube on the same ensemble.
+        tau: Per-objective tolerance in natural units; defaults to
+            ``robustness.tau_ladder`` at the configured ``k``.
+
+    Returns:
+        Boolean ``(S, R)``; True where the policy harms the incumbent's position.
+        Non-finite values count as regret, mirroring the non-finite-as-unsatisfied
+        rule of the satisficing label.
+    """
+    D = rob.incumbent_advantage(raw, baseline, unit="realization")     # (S, R, M)
+    tau = rob.tau_ladder(raw.base_names) if tau is None else tau
+    tau_vec = np.array([float(tau[n]) for n in raw.base_names], dtype=float)
+    finite = np.isfinite(D)
+    return ((~finite) | (D < -tau_vec[None, None, :])).any(axis=2)
+
+
+def _label_matrix(raw: rob.RawCube, baseline: rob.RawCube | None) -> np.ndarray:
+    """The ``(S, R)`` label the classifier is fit to, per :data:`SD_LABEL`.
+
+    Raises:
+        SystemExit: If the regret label is requested without a status-quo cube.
+            Falling back to the satisficing label would answer a different question
+            under the same figure caption.
+    """
+    if SD_LABEL == "satisficing":
+        return failure_matrix(raw)
+    if SD_LABEL != "regret":
+        sys.exit(f"[scenario_discovery] unknown NYCOPT_SD_LABEL={SD_LABEL!r}; "
+                 f"expected 'satisficing' or 'regret'.")
+    if baseline is None:
+        sys.exit(
+            "[scenario_discovery] NYCOPT_SD_LABEL=regret needs the status-quo "
+            "re-eval cube beside the run (workflow step 05 with the SAME "
+            "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08). Refusing to fall back to "
+            "the satisficing label -- that answers a different question."
+        )
+    return regret_matrix(raw, baseline)
+
+
+def _load_baseline(reeval_dir: Path) -> rob.RawCube | None:
+    """Load the status-quo cube written beside a re-eval dir, or None."""
+    bdir = Path(reeval_dir) / "baseline"
+    if any((bdir / f).exists() for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+        return rob.load_raw(bdir)
+    return None
+
+
 def _normalized_mean_objectives(raw: rob.RawCube) -> np.ndarray:
     """``(S, M)`` mean re-evaluated objectives, oriented so 0 = ideal, 1 = worst.
 
@@ -896,7 +971,8 @@ def align_hazard_to_cube(raw: rob.RawCube, image: dict,
 
 
 def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
-                        screen: dict, draw: int = 0) -> DesignResult:
+                        screen: dict, draw: int = 0,
+                        baseline: rob.RawCube | None = None) -> DesignResult:
     """Run scenario discovery + the mechanism test for one design.
 
     Args:
@@ -905,6 +981,8 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
         etest: E_test's hazard image.
         screen: Output of :func:`screen_hazard_axes` on E_test's image.
         draw: Ensemble-draw index for resolving the search ensemble.
+        baseline: The status-quo cube, required when :data:`SD_LABEL` is
+            ``"regret"`` and ignored otherwise.
 
     Returns:
         A :class:`DesignResult`.
@@ -915,7 +993,7 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
     X = cdf_transform(H, H_ref)                                        # rank space
 
     compromise = select_compromise(raw)
-    y = failure_matrix(raw)[compromise["index"]]                       # (R,)
+    y = _label_matrix(raw, baseline)[compromise["index"]]              # (R,)
 
     model = fit_failure_classifier(X, y, axes)
     shifts = hazard_shift_stats(H, y, axes)
@@ -947,8 +1025,10 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
             deficit = coverage_deficit(X, cdf_transform(H_search, H_ref))
             stats, bins = deficit_association(deficit, y, X_test=X, n_search=n_search)
 
+    # The label is recorded next to every number it produced: a factor map fit to
+    # regret and one fit to satisficing look identical and mean different things.
     stats = {"design": design_name, "solution_id": compromise["solution_id"],
-             "n_search": n_search, **stats}
+             "label": SD_LABEL, "n_search": n_search, **stats}
     return DesignResult(
         design=design_name, solution_id=compromise["solution_id"],
         compromise=compromise, model=model, shifts=shifts, stats=stats, bins=bins,
@@ -1131,14 +1211,16 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
                           f"failure labels are undefined per realization -- skipping.")
             continue
         try:
-            res = discover_for_design(name, raw, etest, screen, draw=draw)
+            res = discover_for_design(name, raw, etest, screen, draw=draw,
+                                      baseline=_load_baseline(rdir))
         except (KeyError, ValueError) as exc:
             warnings.warn(f"[{name}] scenario discovery failed: {exc}")
             continue
         results.append(res)
         plot_factor_map(res, slug)
+        label_word = "regret SOWs" if SD_LABEL == "regret" else "failures"
         print(f"[scenario_discovery] {name}: solution {res.solution_id}, "
-              f"failures {int(res.y.sum())}/{len(res.y)} | "
+              f"{label_word} {int(res.y.sum())}/{len(res.y)} | "
               f"top axis '{res.model.axes[int(np.argmax(res.model.importances))]}' | "
               f"{res.stats.get('verdict')}")
 

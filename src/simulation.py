@@ -442,8 +442,13 @@ def _apply_ffmp_params(config, params: dict):
 
     # Delivery constraints
     # update_delivery_constraints(max_nyc_delivery, drought_factors_nyc, drought_factors_nj, ...)
-    # drought_factors arrays have 7 elements for levels: 1a, 1b, 1c, 2, 3, 4, 5
-    # We only optimize L3, L4, L5; levels 1a, 1b, 1c, 2 use defaults from config.
+    # drought_factors arrays have 7 elements for levels: 1a, 1b, 1c, 2, 3, 4, 5.
+    # The DVs are stage-wise allocation reductions: each is the ADDITIONAL
+    # fractional reduction applied on entry to that stage, so the effective
+    # delivery factor is 1 minus the running sum of reductions (NYC L3-L5,
+    # NJ L4-L5). Non-negative DV bounds make the factor arrays
+    # non-increasing by construction — stage monotonicity is structural,
+    # with no clamp and no Borg constraint.
     #
     # IMPORTANT: NYC L1a-L2 defaults are 1,000,000 (effectively unconstrained),
     # NOT 1.0. NJ L1a-L3 defaults are 1.0 (no reduction). These must come from
@@ -467,29 +472,29 @@ def _apply_ffmp_params(config, params: dict):
                 f"{sorted(k for k in defaults if 'factor_delivery' in k)}"
             )
 
+    nyc_l3 = 1.0 - params["nyc_allocation_reduction_L3"]
+    nyc_l4 = nyc_l3 - params["nyc_allocation_reduction_L4"]
+    nyc_l5 = nyc_l4 - params["nyc_allocation_reduction_L5"]
     nyc_factors = np.array([
         float(defaults["level1a_factor_delivery_nyc"]),  # 1,000,000 (unconstrained)
         float(defaults["level1b_factor_delivery_nyc"]),  # 1,000,000
         float(defaults["level1c_factor_delivery_nyc"]),  # 1,000,000
         float(defaults["level2_factor_delivery_nyc"]),   # 1,000,000
-        params["nyc_drought_factor_L3"],
-        params["nyc_drought_factor_L4"],
-        params["nyc_drought_factor_L5"],
+        nyc_l3,
+        nyc_l4,
+        nyc_l5,
     ])
+    nj_l4 = 1.0 - params["nj_allocation_reduction_L4"]
+    nj_l5 = nj_l4 - params["nj_allocation_reduction_L5"]
     nj_factors = np.array([
         float(defaults["level1a_factor_delivery_nj"]),   # 1.0
         float(defaults["level1b_factor_delivery_nj"]),   # 1.0
         float(defaults["level1c_factor_delivery_nj"]),   # 1.0
         float(defaults["level2_factor_delivery_nj"]),    # 1.0
         float(defaults["level3_factor_delivery_nj"]),    # 1.0
-        params["nj_drought_factor_L4"],
-        params["nj_drought_factor_L5"],
+        nj_l4,
+        nj_l5,
     ])
-    # Monotonicity clamp: a deeper drought stage can never allow MORE
-    # diversion than a milder one (mirrors the zone-curve and flood-zone
-    # clamps).
-    nyc_factors = np.minimum.accumulate(nyc_factors)
-    nj_factors = np.minimum.accumulate(nj_factors)
     # The NYC diversion cap is Decree-fixed (800 MGD), not a DV.
     config.update_delivery_constraints(
         max_nyc_delivery=NYC_DECREE_DIVERSION_CAP_MGD,
@@ -533,21 +538,34 @@ def _apply_nzone_ffmp_params(config, params: dict):
     # MRF baselines fixed at defaults; Montague/Trenton targets Decree-fixed
     # (as in the base path).
 
-    # Delivery constraints — build factor arrays from defaults + DV overrides
+    # Delivery constraints — decode stage-wise allocation reductions into
+    # factor arrays (see _apply_ffmp_params). A level is reduction-decoded
+    # iff its interpolated default factor is below the party's unconstrained
+    # gate — the same rule generate_ffmp_formulation uses to emit DVs — and
+    # a missing DV key falls back to the level's default increment.
     drought_levels, storage_levels_nz = _config_levels(config)
-    nyc_factors = np.array([
-        params.get(f"nyc_drought_factor_{level}",
-                   float(config.constants[f"{level}_factor_delivery_nyc"]))
-        for level in drought_levels
-    ])
-    nj_factors = np.array([
-        params.get(f"nj_drought_factor_{level}",
-                   float(config.constants[f"{level}_factor_delivery_nj"]))
-        for level in drought_levels
-    ])
-    # Monotonicity clamp (see _apply_ffmp_params).
-    nyc_factors = np.minimum.accumulate(nyc_factors)
-    nj_factors = np.minimum.accumulate(nj_factors)
+
+    def _reduced_factors(party: str, gate: float) -> np.ndarray:
+        factors = []
+        prev_default = 1.0
+        prev_factor = 1.0
+        for level in drought_levels:
+            default = float(config.constants[f"{level}_factor_delivery_{party}"])
+            if default >= gate:
+                factors.append(default)
+                continue
+            default = min(default, 1.0)
+            reduction = float(params.get(
+                f"{party}_allocation_reduction_{level}",
+                prev_default - default,
+            ))
+            prev_factor = prev_factor - reduction
+            factors.append(prev_factor)
+            prev_default = default
+        return np.array(factors)
+
+    nyc_factors = _reduced_factors("nyc", 100.0)
+    nj_factors = _reduced_factors("nj", 1.0)
     config.update_delivery_constraints(
         max_nyc_delivery=NYC_DECREE_DIVERSION_CAP_MGD,
         drought_factors_nyc=nyc_factors,
@@ -800,71 +818,6 @@ def _constraint_defaults(formulation_name: str):
     )
 
 
-def _delivery_factor_arrays(cfg, params: dict, formulation_name: str):
-    """Assemble the NYC/NJ delivery-factor arrays a DV vector implies.
-
-    Mirrors the array construction in ``_apply_ffmp_params`` (standard FFMP:
-    explicit L3-L5 / L4-L5 DV names atop the config.constants defaults) and
-    ``_apply_nzone_ffmp_params`` (N-zone: per-level DV names with default
-    fallback), BEFORE the ``np.minimum.accumulate`` clamp.
-
-    Args:
-        cfg: Pristine defaults NYCOperationsConfig for the formulation.
-        params: DV name -> value mapping.
-        formulation_name: "ffmp" or "ffmp_N".
-
-    Returns:
-        Tuple (nyc_factors, nj_factors) as float arrays over drought levels.
-    """
-    defaults = cfg.constants
-    if formulation_name == "ffmp":
-        nyc = np.array([
-            float(defaults["level1a_factor_delivery_nyc"]),
-            float(defaults["level1b_factor_delivery_nyc"]),
-            float(defaults["level1c_factor_delivery_nyc"]),
-            float(defaults["level2_factor_delivery_nyc"]),
-            params["nyc_drought_factor_L3"],
-            params["nyc_drought_factor_L4"],
-            params["nyc_drought_factor_L5"],
-        ])
-        nj = np.array([
-            float(defaults["level1a_factor_delivery_nj"]),
-            float(defaults["level1b_factor_delivery_nj"]),
-            float(defaults["level1c_factor_delivery_nj"]),
-            float(defaults["level2_factor_delivery_nj"]),
-            float(defaults["level3_factor_delivery_nj"]),
-            params["nj_drought_factor_L4"],
-            params["nj_drought_factor_L5"],
-        ])
-    else:
-        drought_levels, _ = _config_levels(cfg)
-        nyc = np.array([
-            params.get(f"nyc_drought_factor_{level}",
-                       float(defaults[f"{level}_factor_delivery_nyc"]))
-            for level in drought_levels
-        ])
-        nj = np.array([
-            params.get(f"nj_drought_factor_{level}",
-                       float(defaults[f"{level}_factor_delivery_nj"]))
-            for level in drought_levels
-        ])
-    return nyc, nj
-
-
-def _delivery_monotonicity_violation(cfg, params: dict,
-                                     formulation_name: str) -> float:
-    """Sum of positive adjacent increments in the delivery-factor arrays.
-
-    Zero exactly when the ``np.minimum.accumulate`` clamp is a no-op: a
-    deeper drought stage never allows more diversion than a milder one
-    (NYC L3 >= L4 >= L5 and NJ L4 >= L5 under the standard bounds).
-    Units: fraction.
-    """
-    nyc, nj = _delivery_factor_arrays(cfg, params, formulation_name)
-    return float(np.clip(np.diff(nyc), 0.0, None).sum()
-                 + np.clip(np.diff(nj), 0.0, None).sum())
-
-
 def _flood_zone_ordering_violation(cfg, params: dict) -> float:
     """Worst-day exceedance of effective L1b over L1a, summed over reservoirs.
 
@@ -913,9 +866,12 @@ def compute_constraint_violations(dv_vector,
     ``src.formulations.make_post_sim_constraint_function``; the MM Borg
     objective wrapper appends it after simulation.
 
-    Zone-curve crossings are deliberately NOT a constraint: the zone-shift
-    DV bounds make crossings common under random sampling, and the
-    cross-curve monotonicity clamp resolves them cleanly at apply
+    Delivery-stage monotonicity is deliberately NOT a constraint: the
+    allocation-reduction DVs are non-negative stage increments, so a deeper
+    drought stage can never allow more diversion than a milder one by
+    construction. Zone-curve crossings are likewise NOT a constraint: the
+    zone-shift DV bounds make crossings common under random sampling, and
+    the cross-curve monotonicity clamp resolves them cleanly at apply
     time — the clamped geometry is the intended policy, not a defect.
 
     Args:
@@ -923,14 +879,12 @@ def compute_constraint_violations(dv_vector,
         formulation_name: "ffmp" or "ffmp_N".
 
     Returns:
-        List of two floats, ordered [delivery_monotonicity,
-        flood_zone_ordering]. Violations at or below
+        Single-element list [flood_zone_ordering]. Violations at or below
         ``_CONSTRAINT_VIOLATION_TOL`` are returned as exact 0.0.
     """
     cfg = _constraint_defaults(formulation_name)
     params = dict(zip(get_var_names(formulation_name), dv_vector))
     violations = [
-        _delivery_monotonicity_violation(cfg, params, formulation_name),
         _flood_zone_ordering_violation(cfg, params),
     ]
     return [0.0 if v <= _CONSTRAINT_VIOLATION_TOL else float(v)

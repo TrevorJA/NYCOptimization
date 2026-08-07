@@ -54,9 +54,35 @@ $E_{\text{test}}$ is sampled by **LHS, not i.i.d.** The i.i.d. rule applies only
 
 **Robustness.** Performance of a policy across the re-evaluation ensemble, computed with explicitly named metrics (satisficing, regret, percentile), since metric choice changes rankings (Herman et al. 2015; McPhail et al. 2018, *Earth's Future*).
 
+**Regret.** Never write "regret" unqualified — it has four incompatible references in this literature, and conflating two of them is a mistake this project has already made once. Use the qualified names:
+
+- **Incumbent regret** (the one computed). The amount by which a candidate policy is worse than the **status-quo 2017 FFMP policy** evaluated *in the same state of the world*, in the objective's own natural units, oriented so that positive advantage means better than current operations. Reference: McPhail et al. (2018) §3.1 for the licensed T1; Herman et al. (2015) R1/R2 for the per-objective → tail-quantile shape; Kwakkel et al. (2016b) for the adverse-subset restriction. Its unit-free companions are the **harm frequencies** and the **no-harm frequency** $\Pi_\tau$.
+- **Best-in-set regret** (excluded). Savage regret against the best policy in the evaluated set, per SOW — set-relative and design-coupled.
+- **Baseline-SOW regret** (not computed). Herman et al. (2015) R1 / Kasprzyk et al. (2013) percent deviation: the *same* policy's deviation from its own performance in a reference state of the world. A sensitivity measure, not a comparison against a policy.
+- **Perfect-foresight regret** (not computed). Cohen et al. (2021): the gap between a baseline policy and a per-scenario perfect-foresight optimum. Cited as motivation only; it requires one optimization per scenario.
+
+**No-harm frequency** ($\Pi_\tau$). The fraction of re-evaluation SOWs in which a policy degrades **no** objective by more than its tolerance $\tau_i$ relative to the incumbent. $\Pi_0$ is a weak Pareto improvement on the status quo. It is a Starr domain criterion whose threshold vector is the incumbent's own per-SOW performance, and it is the literal operationalization of the second research question. Say "no-harm frequency", not "regret rate".
+
+**Price of robustness.** Bertsimas & Sim (2004), via Bartholomew & Kwakkel (2020): the performance given up in individual conditions in exchange for robustness across them. Use it for the trade-off itself; do not use it as a name for any metric.
+
 **Stress test.** Systematic evaluation of a policy across a designed condition space, per the bottom-up tradition (Brown et al. 2012, decision scaling, *WRR*; Fowler et al. 2024).
 
 **Deep uncertainty / well-characterized uncertainty.** Standard DMDU usage (Maier et al. 2016, *EMS*; Marchau et al. 2019). Input-space parameter ranges are treated as deeply uncertain. Within a single parameter set, generator output is well-characterized.
+
+## Decision variables
+
+**Allocation reduction.** A diversion decision variable
+(`{nyc,nj}_allocation_reduction_*`): the *additional* fractional reduction of
+the party's Decree allocation applied on entry to a drought stage. Stage-wise
+increments, not absolute factors — the effective delivery factor at a stage is
+1 minus the running sum of reductions, so monotone curtailment across stages
+holds by construction.
+
+**Delivery factor.** The absolute multiplier on the Decree allocation that the
+Pywr-DRB model consumes per drought level (model parameters
+`{level}_factor_delivery_{nyc,nj}`). A *decoded* quantity, never a decision
+variable: the simulation wrapper converts allocation reductions to delivery
+factors before handoff. Do not call the DVs "factors".
 
 ## Style rules
 

@@ -7,8 +7,8 @@ group structure with zone-indexed names.
 
 | Group | DVs | Names | Baseline | Bounds | Units |
 |---|---|---|---|---|---|
-| NYC drought delivery factors (L3–L5) | 3 | `nyc_drought_factor_L{3,4,5}` | 0.85 / 0.70 / 0.65 | [0.70,1.0] / [0.55,0.85] / [0.50,0.80] | fraction |
-| NJ drought delivery factors (L4–L5) | 2 | `nj_drought_factor_L{4,5}` | 0.90 / 0.80 | [0.75,1.0] / [0.65,0.95] | fraction |
+| NYC allocation reductions (L3–L5) | 3 | `nyc_allocation_reduction_L{3,4,5}` | 0.15 / 0.15 / 0.05 | [0, 0.20] / [0, 0.20] / [0, 0.10] | fraction (stage-wise reduction) |
+| NJ allocation reductions (L4–L5) | 2 | `nj_allocation_reduction_L{4,5}` | 0.10 / 0.10 | [0, 0.20] / [0, 0.15] | fraction (stage-wise reduction) |
 | Storage-zone low-plateau (void) shifts | 6 | `zone_vshift_{level}_lower` | 0.0 | L1b [-0.10,0.025]; L1c–L5 [-0.10,0.10] | fraction of capacity |
 | Storage-zone high-plateau (refill) shifts (L3–L5 only) | 3 | `zone_vshift_{level}_upper` | 0.0 | [-0.10, 0.10] | fraction of capacity |
 | Storage-zone temporal shifts (one per curve) | 6 | `zone_tshift_{level}` | 0.0 | [-30, 30] | days |
@@ -27,6 +27,18 @@ and timing. Splitting the vertical shift by plateau decouples void depth from
 the refill target while preserving the trapezoidal shape; each knob maps to a
 visible flat segment, so the change stays stakeholder-legible.
 
+The allocation-reduction DVs are **stage-wise increments**, not absolute
+factors: each is the ADDITIONAL fractional reduction of the party's Decree
+allocation applied on entry to that drought stage, and the effective
+delivery factor at a stage is 1 minus the running sum of reductions
+(`_apply_ffmp_params` in `src/simulation.py`). Baseline increments decode
+to the negotiated FFMP factors exactly (NYC 0.85 / 0.70 / 0.65 at
+L3/L4/L5; NJ 0.90 / 0.80 at L4/L5). Because the increments are
+non-negative, a deeper stage can never allow more diversion than a milder
+one — stage monotonicity is structural, with no clamp and no Borg
+constraint. NYC L1a–L2 and NJ L1a–L3 remain effectively unconstrained
+(model defaults).
+
 Fixed (never decision variables): the reservoir MRF baselines (122.8 /
 64.63 / 48.47 MGD — the FFMP Table 4a base rates; operational variation is
 carried by the seasonal profile scales), the 1954 Decree quantities
@@ -43,14 +55,22 @@ and spillway.
   0.8 floor keeps releases near the negotiated Table 4a base rates — the
   only protection for the tailwater fishery (no habitat objective is
   active).
-- **NYC + NJ delivery factors (one symmetric rule)**: bounds = negotiated
-  FFMP factor ± 0.15, clipped at 1.0. Both Decree parties may be curtailed —
-  or relieved — to the same depth around their negotiated values, each
-  guarded by its own reliability objective, and every searched policy stays a
-  renegotiation-scale perturbation of the FFMP (no near-total curtailment of
-  either party, no waiver of NYC curtailment in declared drought). The FFMP
-  default is the center of every factor box. `ffmp_N` applies the same rule
-  to its interpolated baselines.
+- **NYC + NJ allocation reductions (one depth-preserving rule)**: lower
+  bound 0 on every stage increment; upper bound = negotiated FFMP increment
+  + headroom, with each party's total headroom allocated in clean 0.05
+  steps so the summed uppers equal the audited worst-case cumulative
+  curtailment (`NYC_MAX_TOTAL_REDUCTION` = 0.50, `NJ_MAX_TOTAL_REDUCTION`
+  = 0.35 in `src/formulations/ffmp.py` — i.e. delivery factors bottom out
+  at 0.50 for NYC and 0.65 for NJ, exactly the depth the prior
+  factor-space envelope allowed). Both Decree parties may be curtailed to
+  renegotiation-scale depth, each guarded by its own reliability
+  objective, and no searched policy approaches near-total curtailment of
+  either party. Zero reductions (full delivery at every stage) are
+  reachable by design: whether curtailment earns its keep is measured by
+  the reliability-vs-storage trade-off in the objectives, not imposed by
+  the bounds. Every baseline increment is strictly interior to its box.
+  `ffmp_N` applies the same rule to its interpolated baselines, with the
+  residual headroom split uniformly across its stages.
 - **Flood L1a uppers (1.35 / 1.20 / 1.55)**: maximum controlled release
   observed 2000–2021 (2,062 / 842 / 303 cfs — demonstrated release-works
   capacity) divided by the L1a schedule rates (1,500 / 700 / 190 cfs).
@@ -91,28 +111,29 @@ and spillway.
 
 ## Feasibility clamps and Borg constraints
 
-Three feasibility conditions are enforced twice, deliberately:
+Feasibility is handled three ways, matched to where each condition lives:
 
-**Apply-time clamps** (`src/simulation.py`) guarantee every simulated
-policy is operationally valid:
+- **Structural (by construction)** — delivery-stage monotonicity: the
+  allocation-reduction DVs are non-negative stage increments, so the
+  decoded delivery-factor arrays are non-increasing for every in-bounds
+  vector. No clamp, no constraint, no feasibility signal needed.
+- **Apply-time clamps** (`src/simulation.py`) guarantee every simulated
+  policy is operationally valid:
+  - Storage-zone curves: monotonic ordering enforced after shifts.
+  - Flood zones: effective L1b ≤ L1a; effective rates capped at Table 5.
+- **Formal Borg constraints** — the flood-zone condition is additionally
+  posed to the optimizer, and a post-simulation reliability floor is
+  appended after evaluation (below).
 
-- Storage-zone curves: monotonic ordering enforced after shifts.
-- Flood zones: effective L1b ≤ L1a; effective rates capped at Table 5.
-- Delivery factors: `np.minimum.accumulate` over drought stages — a deeper
-  stage never allows more diversion than a milder one (NYC and NJ).
-
-**Formal Borg constraints — DV-space** (`compute_constraint_violations` in
+**Formal Borg constraint — DV-space** (`compute_constraint_violations` in
 `src/simulation.py`; exposed via `src.formulations.make_constraint_function`
-/ `get_n_constrs`) pose the first two conditions as constraint functions
+/ `get_n_constrs`) poses the flood-zone condition as a constraint function
 computed from pure DV arithmetic on the cached default schedules — no
-Pywr-DRB simulation. Each value is a violation magnitude (0 = feasible,
+Pywr-DRB simulation. The value is a violation magnitude (0 = feasible,
 positive scales linearly with the degree of violation; magnitudes at or
 below 1e-9 floor to exact 0 so float noise cannot flag infeasibility):
 
-1. **Delivery monotonicity** — sum of positive adjacent increments in the
-   NYC and NJ delivery-factor arrays (NYC L3 ≥ L4 ≥ L5, NJ L4 ≥ L5 under
-   the audited bounds). Units: fraction.
-2. **Flood-zone ordering** — per reservoir, the worst-day exceedance of the
+1. **Flood-zone ordering** — per reservoir, the worst-day exceedance of the
    effective L1b schedule over L1a (default factor rows × scale DVs, Table 5
    cap applied), normalized by the reservoir MRF baseline and summed over
    reservoirs. Dimensionless; in the binding Apr 16 – Jun 15 equal-rate
@@ -124,15 +145,15 @@ the monotonicity clamp resolves them cleanly at apply time —
 the clamped geometry is the intended policy, not a defect to search away from.
 
 **Formal Borg constraint — post-simulation**
-(`src.formulations.make_post_sim_constraint_function`): a third constraint,
+(`src.formulations.make_post_sim_constraint_function`): a second constraint,
 `nyc_reliability_floor`, enforces the stakeholder floor on NYC weekly
-delivery reliability directly in the search. Unlike the two DV-space
-constraints it reads the COMPUTED objective vector — the MM Borg objective
+delivery reliability directly in the search. Unlike the DV-space
+constraint it reads the COMPUTED objective vector — the MM Borg objective
 wrapper (`src/mmborg.py::make_borg_objective`) appends its violation after
 simulation, un-negating the Borg-minimized reliability objective (resolved
 by name, `nyc_delivery_reliability_weekly`) back to the natural 0–1 scale:
 
-3. **NYC reliability floor** — `max(0, floor − reliability)`; floor from
+2. **NYC reliability floor** — `max(0, floor − reliability)`; floor from
    `config.NYC_RELIABILITY_FLOOR` (env `NYCOPT_NYC_RELIABILITY_FLOOR`,
    default 0.5). A policy delivering below-floor weekly reliability is
    unacceptable to stakeholders regardless of the rest of the trade-off.
@@ -156,7 +177,10 @@ evaluated outside the search remains operationally valid.
 Accounting note: infeasible evaluations consume NFE (`maxEvaluations` is
 per island) but essentially zero compute and zero simulated scenario-years;
 the budget→NFE derivation must account for the feasible fraction of
-evaluations.
+evaluations. With delivery monotonicity structural, only flood-zone
+ordering can reject a vector pre-simulation, so the DV-infeasible fraction
+under random sampling is far smaller than under the retired factor-space
+parameterization.
 
 The MOEAFramework problem JARs (workflow step 00) deliberately declare
 **zero** constraints: every file they parse (solveMPI runtime snapshots,

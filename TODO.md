@@ -27,12 +27,33 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 - [ ] **[local]** Explore the archive-level satisficing measure (fraction of
   each draw's re-evaluated set above a robustness level across the criterion
   sweep) as a cardinality-robust secondary comparison metric.
+- [ ] **[HPC→local]** Regret-tolerance pass A, the moment the step-05 incumbent
+  cube lands and **before any re-evaluated policy set is inspected**:
+  `workflow/supplemental/regret_tolerance_diagnostics.sh`. It measures the
+  per-objective noise floor, picks the ladder SHAPE (`max(eps, floor)` — the
+  synthetic check already shows the flood epsilon sitting ~7x under its floor)
+  and the headline rung `k`. Adopt both into `RTOL_ADOPTED_K` /
+  `NYCOPT_REGRET_TAU_K` (or `NYCOPT_REGRET_TAU` for an explicit vector).
+  Rules and the SI plan: `docs/notes/methods/regret_tolerance_diagnostics.md`.
+  Also confirm the §1 base-metric epsilons in `src/objectives.py` are current —
+  their *ratios* across objectives are load-bearing for the ladder in a way they
+  never were for Borg archiving.
+- [ ] **[local]** Regret-tolerance pass B after step 08: discrimination band,
+  seed/draw empirical nulls, paired SOW bootstrap, and the assay-sensitivity
+  control against `historic`. It derives the non-inferiority margin `delta` and
+  refuses to run before a rung is adopted.
 - [ ] **[local]** SI estimator-stability + convergence diagnostics:
   block-bootstrap effective-sample-size analysis of the annual-unit
   aggregation (Text S5) and the MOEA runtime convergence content (Text S7).
 - [ ] **[local→HPC]** Flood-axis validity diagnostics for Text S3:
   downstream-stress correlation as a required build diagnostic plus the
   selected-ensemble event-seasonality span check.
+
+- [ ] **[HPC]** DV re-parameterization ripple (allocation-reduction DVs,
+  2026-08-06): rebuild the problem JARs (step 00 — new bounds) and rerun the
+  step-05 baseline (same policy, new DV encoding in the persisted matrix).
+  Prior `.set`/`.ref` archives and re-eval matrices use the retired
+  factor encoding — never mix them with new runs.
 
 ## 2. Anvil shakeout (before production submissions)
 
@@ -61,7 +82,15 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   beyond S8 are outline-only.
 - [ ] **[local]** Import the manuscript's † references into Zotero before
   submission, plus the five persistence-literature DOIs listed in
-  `docs/notes/literature/persistence_and_low_frequency_variability.md`.
+  `docs/notes/literature/persistence_and_low_frequency_variability.md`, plus the
+  regret-methodology references absent from the library: Savage 1951
+  (10.1080/01621459.1951.10500768), Bertsimas & Sim 2004
+  (10.1287/opre.1030.0065), Kwakkel/Eker/Pruyt 2016 (the undesirable-deviations
+  chapter — verify the DOI), McPhail et al. 2021
+  (10.1016/j.envsoft.2021.105059), Starr (resolve the 1962-vs-1963 year
+  discrepancy between Herman 2015 and McPhail 2018), Schneller & Sphicas 1983,
+  Popper et al. 2009. Also fetch McPhail et al. (2018) Supporting Information
+  S1, which holds the metric equations the article body omits.
 
 ## Parked (scope decisions, not blockers)
 

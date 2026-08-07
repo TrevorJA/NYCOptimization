@@ -284,6 +284,13 @@ def _zone_shift_specs(levels, lower_cap_by_level, upper_fixed_levels):
         }
     return specs
 
+#: Worst-case cumulative curtailment (fraction of the Decree allocation)
+#: reachable through the stage-wise allocation-reduction DVs. These anchor
+#: the depth-preserving upper bounds for the base formulation and all
+#: ffmp_N variants: summed reduction uppers per party equal these depths.
+NYC_MAX_TOTAL_REDUCTION = 0.50
+NJ_MAX_TOTAL_REDUCTION = 0.35
+
 # FFMP decision variable specification.
 # Each entry: {"baseline": <default value>, "bounds": [lo, hi], "units": <str>}
 FFMP_FORMULATION = {
@@ -299,36 +306,47 @@ FFMP_FORMULATION = {
         # config.MONTAGUE_DECREE_TARGET_MGD, TRENTON_DECREE_TARGET_MGD,
         # and NYC_DECREE_DIVERSION_CAP_MGD.
 
-        # --- NYC + NJ drought delivery factors ---
-        # One rule for both Decree parties: bounds = negotiated FFMP factor
-        # ± 0.15, clipped at 1.0 (no factor exceeds full delivery). Each
-        # party's interest is guarded by its own reliability objective; the
-        # symmetric envelope keeps every searched policy a renegotiation-scale
-        # perturbation of the FFMP. L1a-L2 factors are effectively
-        # unconstrained (set to large values).
-        "nyc_drought_factor_L3": {
-            "baseline": 0.85,
-            "bounds": [0.70, 1.0],
+        # --- NYC + NJ stage-wise allocation reductions ---
+        # Each DV is the ADDITIONAL fractional reduction of the party's
+        # Decree allocation applied on entry to that drought stage; the
+        # effective delivery factor is 1 minus the running sum of reductions
+        # (decoded in simulation._apply_ffmp_params). Non-negative increments
+        # make stage monotonicity structural — a deeper stage can never allow
+        # more diversion than a milder one — so no delivery constraint is
+        # posed to the optimizer. One depth-preserving rule for both Decree
+        # parties: lower bound 0 everywhere (a policy may waive a stage's
+        # reduction; each party's reliability objective measures whether
+        # curtailment earns its keep), and upper bound = negotiated FFMP
+        # increment + headroom, with each party's total headroom allocated in
+        # clean 0.05 steps so the worst-case cumulative curtailment equals
+        # the audited envelope (NYC_MAX_TOTAL_REDUCTION /
+        # NJ_MAX_TOTAL_REDUCTION). Baselines reproduce the negotiated FFMP
+        # factors exactly (NYC 0.85/0.70/0.65 at L3/L4/L5, NJ 0.90/0.80 at
+        # L4/L5). L1a-L2 factors remain effectively unconstrained (set to
+        # large values).
+        "nyc_allocation_reduction_L3": {
+            "baseline": 0.15,
+            "bounds": [0.0, 0.20],
             "units": "fraction",
         },
-        "nyc_drought_factor_L4": {
-            "baseline": 0.70,
-            "bounds": [0.55, 0.85],
+        "nyc_allocation_reduction_L4": {
+            "baseline": 0.15,
+            "bounds": [0.0, 0.20],
             "units": "fraction",
         },
-        "nyc_drought_factor_L5": {
-            "baseline": 0.65,
-            "bounds": [0.50, 0.80],
+        "nyc_allocation_reduction_L5": {
+            "baseline": 0.05,
+            "bounds": [0.0, 0.10],
             "units": "fraction",
         },
-        "nj_drought_factor_L4": {
-            "baseline": 0.90,
-            "bounds": [0.75, 1.0],
+        "nj_allocation_reduction_L4": {
+            "baseline": 0.10,
+            "bounds": [0.0, 0.20],
             "units": "fraction",
         },
-        "nj_drought_factor_L5": {
-            "baseline": 0.80,
-            "bounds": [0.65, 0.95],
+        "nj_allocation_reduction_L5": {
+            "baseline": 0.10,
+            "bounds": [0.0, 0.15],
             "units": "fraction",
         },
 
@@ -402,8 +420,9 @@ def generate_ffmp_formulation(n_zones=None):
     With n_zones=N, generates an N-zone variant where:
     - N storage zone boundary curves are optimized (zone_1..zone_N)
     - N+1 drought levels (zone_0=normal, zone_1..zone_N=drought)
-    - Delivery factors only included for levels where interpolated
-      baseline is < the unconstrained threshold (< 100 for NYC, < 1.0 for NJ)
+    - Allocation-reduction DVs only included for levels where the
+      interpolated factor baseline is < the unconstrained threshold
+      (< 100 for NYC, < 1.0 for NJ)
     - N=6 is equivalent to the standard 7-level FFMP in zone count
 
     Args:
@@ -442,26 +461,40 @@ def generate_ffmp_formulation(n_zones=None):
     _upper_fixed = set(storage_levels[:3])
     dvs.update(_zone_shift_specs(storage_levels, _lower_cap, _upper_fixed))
 
-    # NYC / NJ delivery factors: the base formulation's symmetric rule —
-    # bounds = interpolated FFMP factor ± 0.15, clipped at 1.0 — applied to
-    # each variant's own interpolated baselines. NYC DVs exist only for
-    # levels below the unconstrained threshold; NJ DVs only where the
-    # interpolated baseline < 1.0.
-    def _factor_spec(baseline: float) -> dict:
-        b = float(np.clip(baseline, 0.0, 1.0))
-        return {
-            "baseline": b,
-            "bounds": [round(max(b - 0.15, 0.0), 6),
-                       round(min(b + 0.15, 1.0), 6)],
-            "units": "fraction",
-        }
+    # NYC / NJ stage-wise allocation reductions: the base formulation's
+    # depth-preserving rule applied to each variant's own interpolated
+    # baselines. Each DV is the additional fractional reduction applied on
+    # entry to that stage (effective factor = 1 - running sum, decoded in
+    # simulation._apply_nzone_ffmp_params), so stage monotonicity is
+    # structural. DVs exist for the same levels the factors constrained:
+    # NYC below the unconstrained threshold, NJ where the interpolated
+    # baseline < 1.0. Lowers = 0; uppers = baseline increment + uniform
+    # residual headroom so the worst-case cumulative curtailment matches
+    # the party's audited envelope.
+    def _reduction_specs(interp, gate, max_total):
+        constrained = [(lvl, min(float(v), 1.0))
+                       for lvl, v in zip(drought_levels, interp) if v < gate]
+        baselines = []
+        prev = 1.0
+        for _, factor in constrained:
+            baselines.append(prev - factor)
+            prev = factor
+        headroom = (max_total - sum(baselines)) / len(constrained)
+        return OrderedDict(
+            (lvl, {
+                "baseline": round(b, 6),
+                "bounds": [0.0, round(b + headroom, 6)],
+                "units": "fraction",
+            })
+            for (lvl, _), b in zip(constrained, baselines)
+        )
 
-    for i, level in enumerate(drought_levels):
-        if interp_nyc[i] < 100:
-            dvs[f"nyc_drought_factor_{level}"] = _factor_spec(interp_nyc[i])
-    for i, level in enumerate(drought_levels):
-        if interp_nj[i] < 1.0:
-            dvs[f"nj_drought_factor_{level}"] = _factor_spec(interp_nj[i])
+    for level, spec in _reduction_specs(
+            interp_nyc, 100, NYC_MAX_TOTAL_REDUCTION).items():
+        dvs[f"nyc_allocation_reduction_{level}"] = spec
+    for level, spec in _reduction_specs(
+            interp_nj, 1.0, NJ_MAX_TOTAL_REDUCTION).items():
+        dvs[f"nj_allocation_reduction_{level}"] = spec
 
     # Flood-zone spill-mitigation release scaling (same DV names across all
     # N-zone variants; mapped to the two flood levels — indices below

@@ -480,3 +480,283 @@ def test_ranking_stability_square_unit_diagonal(raw):
     tau = rob.ranking_stability(scorecard, hb)
     assert tau.shape[0] == tau.shape[1] == scorecard.shape[1]
     assert np.allclose(np.diag(tau.to_numpy()), 1.0)
+
+
+# ---------------------------------------------------------------------------
+# Incumbent-relative regret
+# ---------------------------------------------------------------------------
+# Two solutions, two SOWs of two realizations each, two objectives. SOW means are
+# whole numbers so every expected value below is hand-computed, not read off the
+# implementation.
+#
+#   incumbent (both SOWs):  A = 0.80   B = 10.0
+#   sol 0:  SOW0  A = 0.90  B =  5.0   -> better on both
+#           SOW1  A = 0.70  B = 13.0   -> WORSE on both
+#   sol 1:  both  A = 1.00  B =  1.0   -> better on both, everywhere
+#
+# A maximizes and B minimizes, so D = sign * (policy - incumbent) is
+#   sol0: SOW0 (+0.10, +5.0)   SOW1 (-0.10, -3.0)
+#   sol1: both (+0.20, +9.0)
+
+_REG_RECORDS = [
+    (0, 0, "A", 0.90), (0, 0, "B", 4.0),
+    (0, 1, "A", 0.90), (0, 1, "B", 6.0),      # SOW0 mean B = 5.0
+    (0, 2, "A", 0.70), (0, 2, "B", 12.0),
+    (0, 3, "A", 0.70), (0, 3, "B", 14.0),     # SOW1 mean B = 13.0
+    (1, 0, "A", 1.00), (1, 0, "B", 1.0),
+    (1, 1, "A", 1.00), (1, 1, "B", 1.0),
+    (1, 2, "A", 1.00), (1, 2, "B", 1.0),
+    (1, 3, "A", 1.00), (1, 3, "B", 1.0),
+]
+
+_REG_BASE_RECORDS = [
+    (0, r, obj, val)
+    for r in (0, 1, 2, 3)
+    for obj, val in (("A", 0.80), ("B", 10.0))
+]
+
+_REG_TAU = {"A": 0.15, "B": 4.0}
+
+
+def _regret_fixture(tmp_path, base_records=None):
+    _write_raw(tmp_path, _REG_RECORDS, _SOW_META)
+    bdir = tmp_path / "baseline"
+    bdir.mkdir()
+    _write_raw(bdir, base_records or _REG_BASE_RECORDS, _SOW_META)
+    return rob.load_raw(tmp_path), rob.load_raw(bdir)
+
+
+def test_incumbent_advantage_is_oriented_positive_means_better(tmp_path):
+    """D is signed so positive = better than current operations, both directions."""
+    raw, base = _regret_fixture(tmp_path)
+    D = rob.incumbent_advantage(raw, base)          # (S, n_sow, M)
+    assert D.shape == (2, 2, 2)
+    # sol0, SOW0: A up 0.10 (maximize), B down 5.0 (minimize) -> BOTH positive.
+    assert D[0, 0, 0] == pytest.approx(0.10)
+    assert D[0, 0, 1] == pytest.approx(5.0)
+    # sol0, SOW1: worse on both -> BOTH negative, whatever the direction.
+    assert D[0, 1, 0] == pytest.approx(-0.10)
+    assert D[0, 1, 1] == pytest.approx(-3.0)
+
+
+def test_regret_magnitudes_are_hand_computable_natural_units(tmp_path):
+    raw, base = _regret_fixture(tmp_path)
+    df = rob.regret_magnitudes(raw, base)
+
+    # sol0 is worse in exactly one of two SOWs, by 0.10 (A) and 3.0 (B).
+    assert df.loc[0, "regret_mean__A"] == pytest.approx(0.05)     # mean(0, 0.10)
+    assert df.loc[0, "regret_mean__B"] == pytest.approx(1.5)      # mean(0, 3.0)
+    assert df.loc[0, "gain_mean__A"] == pytest.approx(0.05)       # mean(0.10, 0)
+    assert df.loc[0, "gain_mean__B"] == pytest.approx(2.5)        # mean(5.0, 0)
+    # Conditional regret is the mean over the ADVERSE subset only (McPhail T2).
+    assert df.loc[0, "regret_cond__A"] == pytest.approx(0.10)
+    assert df.loc[0, "regret_cond__B"] == pytest.approx(3.0)
+    # numpy's linear interpolation on [0, 0.10] at q=0.90.
+    assert df.loc[0, "regret_q90__A"] == pytest.approx(0.09)
+
+
+def test_regret_cond_is_nan_when_never_worse_not_zero(tmp_path):
+    """"Never worse" and "worse by zero" are different facts and must read differently."""
+    raw, base = _regret_fixture(tmp_path)
+    df = rob.regret_magnitudes(raw, base)
+    # sol1 beats the incumbent in every SOW on every objective.
+    assert df.loc[1, "regret_mean__A"] == pytest.approx(0.0)
+    assert df.loc[1, "regret_q90__B"] == pytest.approx(0.0)
+    assert np.isnan(df.loc[1, "regret_cond__A"])
+    assert np.isnan(df.loc[1, "regret_cond__B"])
+    # ...and the gain side is what actually carries sol1's signal.
+    assert df.loc[1, "gain_mean__A"] == pytest.approx(0.20)
+    assert df.loc[1, "gain_mean__B"] == pytest.approx(9.0)
+
+
+def test_regret_frequencies_are_unit_free_and_hand_computable(tmp_path):
+    raw, base = _regret_fixture(tmp_path)
+    df = rob.regret_frequencies(raw, base, tau=_REG_TAU)
+
+    # sol0 is worse in 1 of 2 SOWs on each objective, and both losses land in the
+    # SAME SOW -- so the joint no-harm frequency is 0.5, not 0.
+    assert df.loc[0, "harm_freq__A"] == pytest.approx(0.5)
+    assert df.loc[0, "harm_freq__B"] == pytest.approx(0.5)
+    assert df.loc[0, "no_harm_freq"] == pytest.approx(0.5)
+    assert df.loc[0, "n_degraded_mean"] == pytest.approx(1.0)     # (0 + 2) / 2
+
+    # sol1 never harms anyone.
+    assert df.loc[1, "harm_freq__A"] == pytest.approx(0.0)
+    assert df.loc[1, "no_harm_freq"] == pytest.approx(1.0)
+    assert df.loc[1, "n_degraded_mean"] == pytest.approx(0.0)
+
+
+def test_no_harm_tolerance_is_monotone_in_tau(tmp_path):
+    """Pi_tau must be non-decreasing in tau; a wide enough tolerance forgives sol0."""
+    raw, base = _regret_fixture(tmp_path)
+    strict = rob.regret_frequencies(raw, base, tau={"A": 0.0, "B": 0.0})
+    loose = rob.regret_frequencies(raw, base, tau=_REG_TAU)
+    wider = rob.regret_frequencies(raw, base, tau={"A": 10.0, "B": 100.0})
+
+    assert strict.loc[0, "no_harm_freq_tau"] == pytest.approx(0.5)
+    # sol0's shortfalls (0.10, 3.0) both sit inside the tolerance (0.15, 4.0).
+    assert loose.loc[0, "no_harm_freq_tau"] == pytest.approx(1.0)
+    for a, b in ((strict, loose), (loose, wider)):
+        assert (b["no_harm_freq_tau"] >= a["no_harm_freq_tau"] - 1e-12).all()
+
+    # tau = 0 is exactly the strict weak-Pareto-improvement form.
+    assert strict["no_harm_freq_tau"].equals(strict["no_harm_freq"])
+
+
+def test_party_harm_is_a_disjunction_never_a_sum(tmp_path):
+    """Under unanimity a party's loss is not compensable, so the party form unions.
+
+    Summing would double-count sol0's single bad SOW (worse on BOTH objectives at
+    once) and report a party harm frequency of 1.0 where the truth is 0.5.
+    """
+    raw, base = _regret_fixture(tmp_path)
+    df = rob.regret_frequencies(raw, base, tau=_REG_TAU,
+                                parties={"both": ("A", "B")})
+    assert df.loc[0, "party_harm_freq__both"] == pytest.approx(0.5)
+    summed = df.loc[0, "harm_freq__A"] + df.loc[0, "harm_freq__B"]
+    assert summed == pytest.approx(1.0)          # the wrong answer, pinned
+    assert df.loc[0, "party_harm_freq__both"] < summed
+
+
+def test_gain_minus_regret_reproduces_the_signed_improvement(tmp_path):
+    """mean(P) - mean(G) IS the signed improvement. Ties the new family to the old."""
+    raw, base = _regret_fixture(tmp_path)
+    D = rob.incumbent_advantage(raw, base, unit="realization")
+    gain = np.nanmean(np.maximum(0.0, D), axis=1)
+    regret = np.nanmean(np.maximum(0.0, -D), axis=1)
+    signed = rob.improvement_vs_baseline(raw, base, normalize="none")
+    for k, name in enumerate(raw.base_names):
+        assert np.allclose(gain[:, k] - regret[:, k],
+                           signed[f"vs_baseline__{name}"].to_numpy())
+
+
+def test_natural_units_keep_the_sows_a_zero_baseline_would_drop(tmp_path):
+    """Regression test for the defect that motivated dropping the ratio form.
+
+    Where the incumbent's value is 0 the RELATIVE metric divides by zero, NaNs the
+    cell and silently drops it from the mean -- and the dropped cells are the
+    benign ones, so the estimator is biased toward the adverse subset. Natural
+    units have no denominator, so every SOW contributes.
+    """
+    zero_base = [
+        (0, r, obj, val)
+        for r in (0, 1, 2, 3)
+        # B is 10.0 in SOW0 (realizations 0, 1) and EXACTLY 0 in SOW1 (2, 3),
+        # exactly as flood exceedance behaves in a year with no flooding.
+        for obj, val in (("A", 0.80), ("B", 10.0 if r in (0, 1) else 0.0))
+    ]
+    raw, base = _regret_fixture(tmp_path, base_records=zero_base)
+
+    # The legacy ratio form sees only the two realizations with a non-zero
+    # denominator: sol0's B is 4.0 and 6.0 there, against a baseline of 10.0.
+    legacy = rob.improvement_vs_baseline(raw, base, normalize="best")
+    assert legacy.loc[0, "vs_baseline__B"] == pytest.approx(
+        np.mean([(10.0 - 4.0) / 10.0, (10.0 - 6.0) / 10.0]))
+
+    # Natural units use ALL of them: +5.0 in SOW0, -13.0 in SOW1.
+    mags = rob.regret_magnitudes(raw, base)
+    freqs = rob.regret_frequencies(raw, base, tau=_REG_TAU)
+    assert mags.loc[0, "regret_mean__B"] == pytest.approx(6.5)    # mean(0, 13.0)
+    assert mags.loc[0, "gain_mean__B"] == pytest.approx(2.5)      # mean(5.0, 0)
+    assert freqs.loc[0, "harm_freq__B"] == pytest.approx(0.5)
+    assert np.isfinite(mags.loc[:, mags.columns.str.startswith(
+        ("regret_mean__", "regret_q90__", "gain_mean__"))].to_numpy()).all()
+
+
+def test_regret_is_design_independent(tmp_path):
+    """Dropping a solution must not move any other solution's regret.
+
+    This is the property best-in-set regret lacks and the reason it is excluded;
+    the incumbent reference is external and fixed, so it holds by construction --
+    but it is the property the whole design rests on, so it is pinned.
+    """
+    raw_all, base = _regret_fixture(tmp_path)
+    full_mag = rob.regret_magnitudes(raw_all, base)
+    full_freq = rob.regret_frequencies(raw_all, base, tau=_REG_TAU)
+
+    sub = tmp_path / "subset"
+    sub.mkdir()
+    _write_raw(sub, [r for r in _REG_RECORDS if r[0] != 1], _SOW_META)
+    raw_sub = rob.load_raw(sub)
+    sub_mag = rob.regret_magnitudes(raw_sub, base)
+    sub_freq = rob.regret_frequencies(raw_sub, base, tau=_REG_TAU)
+
+    for col in full_mag.columns:
+        assert sub_mag.loc[0, col] == pytest.approx(full_mag.loc[0, col],
+                                                    nan_ok=True)
+    for col in full_freq.columns:
+        assert sub_freq.loc[0, col] == pytest.approx(full_freq.loc[0, col])
+
+
+def test_sow_unit_regret_needs_a_grouping_on_both_cubes(tmp_path):
+    """The realization unit is a DIFFERENT quantity and is never substituted."""
+    _write_raw(tmp_path, _REG_RECORDS, _META)          # no sow_ids
+    raw = rob.load_raw(tmp_path)
+    bdir = tmp_path / "baseline"
+    bdir.mkdir()
+    _write_raw(bdir, _REG_BASE_RECORDS, _META)
+    base = rob.load_raw(bdir)
+    with pytest.raises(ValueError, match="sow_ids"):
+        rob.incumbent_advantage(raw, base, unit="sow")
+    # ...and the realization unit still works, explicitly asked for.
+    assert rob.incumbent_advantage(raw, base, unit="realization").shape[1] == 4
+
+
+def test_regret_columns_are_na_without_a_sow_grouping(tmp_path):
+    """The scorecard NaNs the regret block rather than falling back to realizations."""
+    _write_raw(tmp_path, _REG_RECORDS, _META)          # no sow_ids
+    raw = rob.load_raw(tmp_path)
+    bdir = tmp_path / "baseline"
+    bdir.mkdir()
+    _write_raw(bdir, _REG_BASE_RECORDS, _META)
+    scorecard, _ = rob.score_robustness(raw, rob.load_raw(bdir),
+                                        metrics=("regret_magnitudes",))
+    assert "regret_mean__A" in scorecard.columns
+    assert scorecard["regret_mean__A"].isna().all()
+
+
+def test_scorecard_orients_regret_low_and_gain_high(tmp_path):
+    """A wrong orientation flag silently inverts the metric in every ranking."""
+    raw, base = _regret_fixture(tmp_path)
+    _, higher = rob.score_robustness(
+        raw, base, metrics=("regret_magnitudes", "regret_frequencies"))
+    assert higher["regret_mean__A"] is False
+    assert higher["regret_q90__B"] is False
+    assert higher["gain_mean__A"] is True
+    assert higher["no_harm_freq"] is True
+    assert higher["harm_freq__A"] is False
+
+
+def test_tau_ladder_refuses_to_default_an_unknown_objective_to_zero(tmp_path):
+    """A missing epsilon must raise, not silently harden the criterion to tau = 0."""
+    with pytest.raises(KeyError):
+        rob.tau_ladder(["A", "B"])
+
+
+def test_tau_ladder_scales_the_registered_epsilon():
+    from src.objectives import OBJECTIVES
+    name = "nyc_delivery_reliability_weekly"
+    assert rob.tau_ladder([name], k=2.0)[name] == pytest.approx(
+        2.0 * OBJECTIVES[name].epsilon)
+    assert rob.tau_ladder([name], k=0.0)[name] == pytest.approx(0.0)
+
+
+def test_incumbent_spread_rejects_a_degenerate_scale(tmp_path):
+    """The optional normalization must refuse a zero denominator, not emit infinities."""
+    raw, base = _regret_fixture(tmp_path)
+    with pytest.raises(ValueError, match="spread is zero"):
+        rob.incumbent_spread(base)      # the incumbent is constant in this fixture
+
+
+def test_run_records_the_regret_tolerance(tmp_path):
+    """tau moves no_harm_freq_tau, so it is recorded next to the numbers."""
+    raw, base = _regret_fixture(tmp_path)
+    rob.run(tmp_path, baseline_dir=tmp_path / "baseline",
+            metrics=("regret_magnitudes", "regret_frequencies"))
+    meta = json.loads((tmp_path / "robustness_meta.json").read_text())
+    assert meta["regret_unit"] == "sow"
+    assert meta["regret_available"] is True
+    assert meta["regret_tau_k"] == rob.REGRET_TAU_K
+    # Synthetic objective names are not in the registry, so the ladder is None and
+    # the tau column is gated off rather than silently computed at tau = 0.
+    assert meta["regret_tau"] is None

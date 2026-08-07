@@ -154,12 +154,11 @@ def test_penalty_sentinel_reports_zero_violation(penalty):
 ###############################################################################
 
 def _infeasible_dv():
-    # Delivery-monotonicity violation (same construction as test_constraints).
+    # Flood-zone ordering violation (same construction as test_constraints).
     names = get_var_names("ffmp")
     dv = get_baseline_values("ffmp").copy()
-    dv[names.index("nyc_drought_factor_L3")] = 0.60
-    dv[names.index("nyc_drought_factor_L4")] = 0.95
-    dv[names.index("nyc_drought_factor_L5")] = 0.90
+    dv[names.index("flood_release_scale_l1a_cannonsville")] = 0.5
+    dv[names.index("flood_release_scale_l1b_cannonsville")] = 2.0
     return dv
 
 
@@ -181,9 +180,9 @@ def test_wrapper_returns_full_constraint_list(monkeypatch):
     objective = mmborg.make_borg_objective("ffmp")
     objs, cons = objective(list(get_baseline_values("ffmp")), 0)
     assert len(calls) == 1
-    assert len(cons) == get_n_constrs() == 3
-    assert cons[:2] == [0.0, 0.0]                 # baseline is DV-feasible
-    assert cons[2] == pytest.approx(0.1)          # reliability 0.4 vs 0.5
+    assert len(cons) == get_n_constrs() == 2
+    assert cons[:1] == [0.0]                      # baseline is DV-feasible
+    assert cons[1] == pytest.approx(0.1)          # reliability 0.4 vs 0.5
     assert objs == _borg_vector(0.4)
 
 
@@ -194,7 +193,7 @@ def test_wrapper_feasible_when_above_floor(monkeypatch):
     )
     objective = mmborg.make_borg_objective("ffmp")
     _, cons = objective(list(get_baseline_values("ffmp")), 0)
-    assert cons == [0.0] * 3
+    assert cons == [0.0] * 2
 
 
 def test_wrapper_dv_infeasible_skips_simulation(monkeypatch):
@@ -207,9 +206,9 @@ def test_wrapper_dv_infeasible_skips_simulation(monkeypatch):
     objs, cons = objective(list(_infeasible_dv()), 0)
     assert calls == []                            # no simulation ran
     assert all(o == 1e10 for o in objs)
-    assert cons[0] > 0.0                          # delivery monotonicity
-    assert cons[2] == 0.0                         # post-sim slot: unmeasured
-    assert len(cons) == 3
+    assert cons[0] > 0.0                          # flood-zone ordering
+    assert cons[1] == 0.0                         # post-sim slot: unmeasured
+    assert len(cons) == 2
 
 
 def test_wrapper_failed_eval_is_feasible_with_penalty(monkeypatch):
@@ -221,7 +220,7 @@ def test_wrapper_failed_eval_is_feasible_with_penalty(monkeypatch):
     )
     objective = mmborg.make_borg_objective("ffmp")
     objs, cons = objective(list(get_baseline_values("ffmp")), 0)
-    assert cons == [0.0] * 3
+    assert cons == [0.0] * 2
     assert all(o == 1e6 for o in objs)
 
     # Layer 2: an exception anywhere in the wrapper returns the 1e10 penalty
@@ -234,4 +233,4 @@ def test_wrapper_failed_eval_is_feasible_with_penalty(monkeypatch):
     objective = mmborg.make_borg_objective("ffmp")
     objs, cons = objective(list(get_baseline_values("ffmp")), 0)
     assert objs == [1e10] * len(get_obj_names())
-    assert cons == [0.0] * 3
+    assert cons == [0.0] * 2

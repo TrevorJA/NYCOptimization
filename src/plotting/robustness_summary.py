@@ -102,8 +102,10 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
                 label=f"most-robust policy = {mr_val:.2f}")
     axA.axvline(float(np.median(a_multi)), color="0.35", lw=1.4, ls=":",
                 label=f"median = {np.median(a_multi):.2f}")
-    axA.set_xlabel("Multivariate satisficing (SOW unit)\n"
-                   "fraction of 50 SOWs meeting ALL 7 thresholds")
+    # Counts come from the cube, never hardcoded: they were both stale (7
+    # objectives, 50 SOWs) against the campaign's 8 objectives and 1,000 SOWs.
+    axA.set_xlabel(f"Multivariate satisficing (SOW unit)\n"
+                   f"fraction of {raw.n_sow} SOWs meeting ALL {len(names)} thresholds")
     axA.set_ylabel("number of Pareto policies")
     axA.set_title("A. Primary robustness — Starr domain criterion\n"
                   "(Herman 2015; Gold 2023)")
@@ -142,8 +144,9 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
     axB.get_yticklabels()[0].set_color("firebrick")
     axB.get_yticklabels()[0].set_fontweight("bold")
 
-    fig.suptitle("DU robustness on held-out E_test (50 SOWs x 4 reps, wide DU box) — "
-                 "acceptable policies vs status-quo FFMP", fontsize=12)
+    fig.suptitle(f"DU robustness on the held-out test ensemble "
+                 f"({raw.n_sow} SOWs x {raw.realizations_per_sow} reps, wide DU box) "
+                 f"— acceptable policies vs status-quo FFMP", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(out_file, dpi=200, bbox_inches="tight")
     plt.close(fig)

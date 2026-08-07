@@ -7,8 +7,9 @@ all 36 FFMP decision variables:
       zone_tshift_* DVs: a void-plateau shift and a temporal shift per curve,
       plus a refill-plateau shift for L3-L5 only — the L1b/L1c/L2 refill
       plateaus are fixed at capacity)
-    - Zone-dependent diversion limits            (5 drought-factor DVs; the
-      NYC cap itself is Decree-fixed)
+    - Zone-dependent diversion limits            (5 allocation-reduction DVs,
+      decoded to per-level delivery factors; the NYC cap itself is
+      Decree-fixed)
     - Time-dependent minimum-release schedules   (4 mrf_profile_scale_* DVs;
       the mrf_{res} baselines are fixed FFMP constants)
     - Zone-dependent downstream flow

@@ -56,7 +56,16 @@ RETIRED_TERMS: dict[str, str] = {
     "fixed_probabilistic_short": "fixed_probabilistic",
     "fixed_probabilistic_long": "deleted from the campaign",
     "regret_from_best": "deleted -- set-relative and design-coupled",
-    "regret_from_baseline": "improvement_vs_baseline (signed, positive = better)",
+    # The NAME stays retired even though incumbent-relative regret is now computed.
+    # "Regret from baseline" is ambiguous in exactly the way that produced the
+    # miscitation this project shipped: Herman et al. (2015)'s R1 is regret from a
+    # baseline STATE OF THE WORLD (same policy, reference SOW), while what we
+    # compute is regret from a baseline POLICY (the incumbent, per SOW). The live
+    # names say which: incumbent_advantage / regret_magnitudes / regret_frequencies.
+    "regret_from_baseline": "incumbent_advantage + regret_magnitudes / "
+                            "regret_frequencies (regret from the incumbent POLICY, "
+                            "per SOW) -- the old name conflated that with Herman's "
+                            "R1, regret from a baseline STATE OF THE WORLD",
     "overfitting gap": "deleted -- undefined in Brodeur (2020) and invalid "
                        "under a measure change",
     "ensemble objective-sensitivity experiment":
@@ -73,6 +82,18 @@ RETIRED_TERMS: dict[str, str] = {
         "the two diagnostic axis sets: campaign (config.HAZARD_SELECTION_AXES) "
         "vs the full retained set. The m4/m6 diagnostic nestings were retired "
         "2026-07-30 (assess_m6_axis_sets.py and its launcher deleted).",
+    "nyc_drought_factor":
+        "nyc_allocation_reduction_* (stage-wise ADDITIONAL reduction DVs, "
+        "decoded to delivery factors by cumulative subtraction from 1.0; "
+        "re-parameterized 2026-08-06). Pywr-DRB's model-side "
+        "drought_factor_delivery_* / {level}_factor_delivery_* parameter "
+        "names are unaffected.",
+    "nj_drought_factor":
+        "nj_allocation_reduction_* (see nyc_drought_factor)",
+    "delivery_monotonicity":
+        "deleted -- monotonicity is structural under the non-negative "
+        "allocation-reduction DVs; flood_zone_ordering is the only DV-space "
+        "Borg constraint",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.
@@ -156,6 +177,26 @@ METRIC_CONTRACT = {
     "laplace__": ("mean performance, natural units, own direction", None),
     "maximin__": ("worst realization, natural units, own direction", None),
     "vs_baseline__": ("signed improvement over status quo; positive = better", True),
+    # Incumbent-relative regret. The magnitude columns are in each objective's OWN
+    # natural units and are never compared across objectives; the frequency columns
+    # are unit-free and are what the cross-objective comparison actually uses.
+    "regret_mean__": ("mean shortfall vs the incumbent over SOWs, natural units",
+                      False),
+    "regret_q90__": ("90th-percentile shortfall vs the incumbent over SOWs, "
+                     "natural units", False),
+    "regret_cond__": ("mean shortfall GIVEN a shortfall, natural units; NaN when "
+                      "the policy is never worse than the incumbent", False),
+    "gain_mean__": ("mean improvement over the incumbent, natural units; the "
+                    "degeneracy companion to regret", True),
+    "harm_freq__": ("fraction of SOWs in which this objective is worse than the "
+                    "incumbent", False),
+    "party_harm_freq__": ("fraction of SOWs in which ANY objective of this Decree "
+                          "party is worse than the incumbent (a disjunction, never "
+                          "a sum)", False),
+    "no_harm_freq": ("fraction of SOWs in which NO objective is degraded (beyond "
+                     "tolerance, for the _tau column)", True),
+    "n_degraded_mean": ("mean number of objectives simultaneously worse than the "
+                        "incumbent", False),
 }
 
 

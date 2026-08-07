@@ -47,7 +47,7 @@ def test_sample_feasible_dvs_returns_feasible_in_bounds():
     assert dvs.shape == (4, len(lows))
     assert (dvs >= lows).all() and (dvs <= highs).all()
     for dv in dvs:
-        assert compute_constraint_violations(dv, "ffmp") == [0.0, 0.0]
+        assert compute_constraint_violations(dv, "ffmp") == [0.0]
     assert info["n_draws"] >= 4
     assert 0.0 < info["acceptance_rate"] <= 1.0
 

@@ -46,7 +46,12 @@ The finalized metric set. **No perfect-foresight optimization appears anywhere.*
     policy on the *same* ensemble, oriented so **positive = better** for every
     objective. A FIXED external reference (it does not move when designs are added
     or dropped), costing one policy simulation that workflow step 05 already
-    performs. Precedent: Kasprzyk et al. (2013).
+    performs.
+  - **Incumbent-relative regret** — the one-sided (adverse) half of that same
+    deviation, in NATURAL UNITS, plus the unit-free harm frequencies. This is the
+    metric that answers "what would the Decree parties give up by adopting?", and
+    it discriminates exactly where the domain criterion saturates. See the
+    "Incumbent-relative regret" section below.
   - **Threshold spectrum** — satisficing vs the magnitude threshold. Robustness is
     threshold-dependent (Hadjimichael et al. 2020), and rank agreement ACROSS
     scenario designs degrades as the criterion tightens (Quinn et al. 2020), so a
@@ -74,6 +79,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -537,8 +543,18 @@ def improvement_vs_baseline(raw: RawCube, baseline: RawCube,
 
     The status quo, by contrast, is a FIXED external reference: it does not move
     when designs are added or removed, and it costs one extra policy simulation
-    that workflow step 05 already performs. Precedent: Kasprzyk et al. (2013)
-    percent-deviation-from-baseline.
+    that workflow step 05 already performs. The reference is licensed by McPhail
+    et al. (2018) §3.1, whose regret T1 admits "some type of baseline performance
+    for a given scenario instead of the performance of the best decision
+    alternative".
+
+    NOT Kasprzyk et al. (2013). Their Eq. (9) percent deviation is
+    ``(f_i,90 - f_i,base) / f_i,base`` where ``base`` is the SAME solution's value
+    in the baseline STATE OF THE WORLD and the percentile runs over the SOW
+    ensemble -- a within-policy, across-SOW sensitivity measure (Herman et al.
+    2015's R1), not a comparison against a status-quo POLICY. It was miscited here
+    as the precedent for exactly that. Kasprzyk remains the precedent for R1, and
+    R1 is not computed in this study.
 
     **SIGNED, not clipped, and the sign convention is the point.** The value is
 
@@ -588,6 +604,384 @@ def improvement_vs_baseline(raw: RawCube, baseline: RawCube,
         out, index=pd.Index(raw.solution_ids, name="solution_id"),
         columns=[f"vs_baseline__{n}" for n in raw.base_names],
     )
+
+
+###############################################################################
+# Incumbent-relative regret
+###############################################################################
+# WHAT THIS IS, in the McPhail et al. (2018) T1/T2/T3 scheme:
+#
+#   T1 = regret from a fixed BASELINE DECISION ALTERNATIVE, evaluated per
+#        scenario. McPhail license this reference explicitly -- "Alternative
+#        metrics that are based on the relative performance of decision
+#        alternatives use some type of baseline performance for a given scenario
+#        instead of the performance of the best decision alternative" -- but never
+#        name, tabulate, or test it. Making it explicit is the contribution; it is
+#        not a new metric family.
+#   T2 = the ADVERSE SUBSET (the scenarios in which the policy is worse than the
+#        incumbent). This is not ad-hoc clipping: it is exactly the subset
+#        selection of McPhail's "undesirable deviations" metric (Kwakkel et al.
+#        2016b: T1 = regret from median, T2 = worst-half, T3 = sum), with the
+#        reference changed from the policy's own median to the incumbent.
+#   T3 = mean / 90th percentile over SOWs. The 90th percentile follows Herman et
+#        al. (2015) R1/R2, "intended to reflect the tail end of poor performance
+#        while reducing susceptibility to outliers".
+#
+# WHY IT IS NOT REDUNDANT WITH SATISFICING. The satisficing criteria are fixed
+# scalars anchored on the incumbent's HISTORIC attainment; the regret reference is
+# the incumbent's performance in THAT SOW, a bar that moves with the forcing.
+# Where the fixed criterion drives the domain criterion to 0 for every policy
+# (the status quo already fails NYC reliability in ~84% of E_test SOWs),
+# satisficing ties everything -- Bonham et al. (2024)'s saturation failure mode --
+# and regret still separates policies.
+#
+# WHY NATURAL UNITS, AND NO CROSS-OBJECTIVE SCALAR. Dividing by the baseline's own
+# per-cell value (what `improvement_vs_baseline` does) is degenerate for this
+# objective set: flood exceedance is EXACTLY 0 in a large share of realizations
+# and both CVaR90 deficits are 0 in wet ones, so the cell is NaN'd and silently
+# dropped -- and the dropped cells are precisely the benign ones, biasing the
+# estimator toward the flood-active subset. Working in natural units dissolves
+# that rather than patching it: no denominator, no dropped cell, every SOW
+# contributes. Herman et al. (2015) hit the same wall and say so ("normalized by
+# the objective value itself rather than the best value because the latter often
+# approaches zero"); Eker & Kwakkel (2018) add +1 to both terms for the same
+# reason; McPhail et al. (2018) give no normalization guidance at all. The two
+# published scales are both unusable here -- Cohen et al. (2021) normalize on the
+# per-scenario span to a PERFECT-FORESIGHT optimum (one MOEA run per scenario, out
+# of budget), and Sunkara et al. (2023) rescale over the ALTERNATIVE SET, which is
+# design-coupled and so carries the exact defect that disqualifies best-in-set
+# regret. The cost of natural units is that there is no cross-objective regret
+# scalar; the unit-free harm FREQUENCIES below carry that role instead.
+#
+# NO MAX REGRET. Bonham et al. (2024): regret families need 400+ scenarios and
+# never converge on extreme-of-extremes operators. McPhail et al. document the
+# tie-degeneracy directly ("many of the decision alternatives have a reliability
+# of 0% in the worst-case scenario ... the maximin metric ... ranks many of the
+# decision alternatives as equal").
+
+#: Decree-party grouping of the base objectives, for the party-level harm
+#: frequencies. The DRB renegotiation is unanimity-bound, so one party's loss is
+#: NOT compensable by another's gain -- which is why the party summary is a
+#: FREQUENCY over a disjunction and never a summed or averaged party score.
+#: Sunkara et al. (2023) document what the compensating form costs: their
+#: all-actor metric looks stable only because "the water supply sector may fail in
+#: certain scenarios, but those failures are in aggregate countered by increasing
+#: levels of success for the ecology-MEF sector".
+#: Judgment call recorded: NYC aggregate storage sits under `nyc` because the
+#: objective is NYC's own supply security, though the same storage also underwrites
+#: downstream release capability.
+DECREE_PARTY_OBJECTIVES: dict[str, tuple[str, ...]] = {
+    "nyc": (
+        "nyc_delivery_reliability_weekly",
+        "nyc_delivery_deficit_cvar90_pct",
+        "nyc_storage_p5_pct",
+    ),
+    "nj": (
+        "nj_delivery_reliability_weekly",
+    ),
+    "downstream_flow": (
+        "montague_flow_reliability_weekly",
+        "montague_flow_deficit_cvar90_pct",
+        "trenton_flow_reliability_weekly",
+    ),
+    "flood_exposed": (
+        "downstream_flood_exceedance_minor",
+        "downstream_flood_days_minor",
+    ),
+}
+
+#: Multiplier ``k`` on the per-objective just-noticeable difference that defines
+#: the no-harm tolerance ``tau_i = k * eps_i``. MUST be declared before results are
+#: inspected (the manuscript pre-specifies its other endpoints); override with
+#: ``NYCOPT_REGRET_TAU_K``. k = 0 is the strict weak-Pareto-improvement form.
+REGRET_TAU_K: float = float(os.environ.get("NYCOPT_REGRET_TAU_K", "1"))
+
+
+def _regret_unit(raw: RawCube, baseline: RawCube, unit: str,
+                 within_sow_agg: str) -> tuple[np.ndarray, np.ndarray, str]:
+    """Align policy and incumbent onto a common unit axis.
+
+    Both cubes are reduced independently -- the policy cube by its own SOW
+    grouping, the incumbent cube by its own -- and then joined on the unit LABEL
+    (SOW id or realization id), never on position. A cube whose labels do not
+    cover the other's contributes NaN for the missing units rather than a silent
+    mis-pairing.
+
+    Args:
+        raw: The policy re-eval cube.
+        baseline: The status-quo cube on the same ensemble (``S == 1``).
+        unit: ``"sow"`` or ``"realization"``.
+        within_sow_agg: Within-SOW risk attitude, when ``unit == "sow"``.
+
+    Returns:
+        ``(policy, incumbent, unit_name)`` where ``policy`` is ``(S, U, M)`` and
+        ``incumbent`` is ``(U, M)``, both in natural units.
+
+    Raises:
+        ValueError: If ``unit`` is unknown, or the SOW unit is requested for a
+            cube that carries no SOW grouping.
+    """
+    if unit not in ("sow", "realization"):
+        raise ValueError(f"unit must be 'sow' or 'realization', got {unit!r}")
+
+    if unit == "sow":
+        if raw.sow_ids is None or baseline.sow_ids is None:
+            raise ValueError(
+                "SOW-unit regret needs sow_ids on BOTH the policy and the "
+                "baseline cube. Do NOT substitute the realization unit -- it is a "
+                "different quantity."
+            )
+        pol, pol_labels = collapse_within_sow(raw, within_sow_agg)
+        base, base_labels = collapse_within_sow(baseline, within_sow_agg)
+    else:
+        pol, pol_labels = raw.cube, list(raw.realization_ids)
+        base, base_labels = baseline.cube, list(baseline.realization_ids)
+
+    # The incumbent cube holds ONE policy; collapse its solution axis (nanmean is
+    # an identity for S == 1 and averages any accidental duplicates).
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        base_vec = np.nanmean(base, axis=0)                       # (U_base, M)
+
+    by_label = {lab: base_vec[j, :] for j, lab in enumerate(base_labels)}
+    aligned = np.full((pol.shape[1], pol.shape[2]), np.nan, dtype=float)
+    for j, lab in enumerate(pol_labels):
+        row = by_label.get(lab)
+        if row is not None:
+            aligned[j, :] = row
+    return pol, aligned, unit
+
+
+def incumbent_advantage(raw: RawCube, baseline: RawCube, unit: str = "sow",
+                        within_sow_agg: str = "mean") -> np.ndarray:
+    """Signed advantage over the status quo, ``(S, U, M)``, in NATURAL UNITS.
+
+    ``D_i(x, u) = sign_i * (f_i(x, u) - f_i(b, u))`` where ``sign_i`` is +1 for a
+    maximize objective and -1 for a minimize one, so **positive always means
+    BETTER than current operations** whatever the objective's own direction.
+
+    This is the substrate every other quantity in this section is a view of; it is
+    a pure function of two cubes that already exist, so nothing needs persisting.
+    """
+    pol, base, _ = _regret_unit(raw, baseline, unit, within_sow_agg)
+    signs = raw.direction_signs()
+    return signs[None, None, :] * (pol - base[None, :, :])
+
+
+def regret_magnitudes(raw: RawCube, baseline: RawCube, unit: str = "sow",
+                      within_sow_agg: str = "mean") -> pd.DataFrame:
+    """Per-objective regret and gain magnitudes, in each objective's OWN units.
+
+    Reads directly: "1.8 more failing weeks per year", "0.4 more ft-days/yr above
+    minor flood stage". These columns are never summed, averaged, or compared
+    ACROSS objectives -- see the section header for why there is no scalar.
+
+    Columns, per base objective:
+      - ``regret_mean__``  mean over units of ``max(0, -D)``  (risk-neutral)
+      - ``regret_q90__``   90th percentile of ``max(0, -D)``  (tail; Herman R1/R2)
+      - ``regret_cond__``  mean regret GIVEN a shortfall, i.e. ``mean(-D | D < 0)``;
+        **NaN when the policy is never worse than the incumbent** on that
+        objective, which is a real distinction from a shortfall of size zero and
+        is why it is not filled with 0. Read it beside ``harm_freq__``.
+      - ``gain_mean__``    mean over units of ``max(0, +D)``; the degeneracy
+        companion, because a policy scores zero regret by BEING the incumbent.
+    """
+    D = incumbent_advantage(raw, baseline, unit, within_sow_agg)   # (S, U, M)
+    G = np.where(np.isfinite(D), np.maximum(0.0, -D), np.nan)
+    P = np.where(np.isfinite(D), np.maximum(0.0, D), np.nan)
+    adverse = np.where(np.isfinite(D) & (D < 0), -D, np.nan)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN slices -> NaN
+        cols = {}
+        for k, name in enumerate(raw.base_names):
+            cols[f"regret_mean__{name}"] = np.nanmean(G[:, :, k], axis=1)
+            cols[f"regret_q90__{name}"] = np.nanquantile(G[:, :, k], 0.90, axis=1)
+            cols[f"regret_cond__{name}"] = np.nanmean(adverse[:, :, k], axis=1)
+            cols[f"gain_mean__{name}"] = np.nanmean(P[:, :, k], axis=1)
+
+    ordered = [f"{pre}__{n}"
+               for n in raw.base_names
+               for pre in ("regret_mean", "regret_q90", "regret_cond", "gain_mean")]
+    return pd.DataFrame(
+        {c: cols[c] for c in ordered},
+        index=pd.Index(raw.solution_ids, name="solution_id"),
+    )
+
+
+def tau_ladder(base_names: list, k: float = None, floors: dict = None) -> dict:
+    """Per-objective no-harm tolerance in natural units: ``tau_i = k * u_i``.
+
+    The tolerance UNIT ``u_i`` is:
+
+    - the objective's §1 base-metric epsilon from ``src.objectives.OBJECTIVES`` --
+      a signal-scale just-noticeable difference (Reed et al. 2013: ~IQR/10 over
+      random DV policies), calibrated in exactly the whole-trace metric space the
+      re-eval cube lives in, so the ladder reads "no objective degraded by more
+      than k just-noticeable differences";
+    - ``max(eps_i, floor_i)`` when ``floors`` is supplied, where ``floor_i`` is the
+      measured noise floor of that objective's SOW-mean estimator.
+
+    **Why floors exist.** An epsilon BELOW its objective's noise floor makes every
+    rung meaningless on that axis -- the criterion fires on Monte Carlo noise
+    rather than on harm -- and because one ``k`` is shared across objectives, a
+    single such axis silently sets what every rung means. Flood exceedance is the
+    live case: its epsilon (0.01 ft-days/yr) sits an order of magnitude under its
+    floor. Taking the max keeps epsilon where resolution binds and the floor where
+    noise binds, so ``k`` means the same thing on every axis. Floors are measured
+    by ``scripts/supplemental/regret_tolerance_diagnostics.py`` (pass A) and are a
+    property of the incumbent alone, so using them is not circular.
+
+    Provenance caveat for the methods text: the §1 epsilons were measured on the
+    historic reference trace, not on E_test, and the CAMPAIGN epsilon vector is the
+    separate annual-unit one in ``src.objectives_ensemble``. They are the right
+    SPACE and the right ORDER; they are not an E_test-derived quantity.
+
+    Env override ``NYCOPT_REGRET_TAU`` (JSON ``{base_name: tau}``) replaces the
+    WHOLE vector, for the case where an adopted vector is recorded rather than
+    derived. It must cover every objective: a partial override would leave the rest
+    on a different tolerance basis without saying so.
+
+    Args:
+        base_names: Base objective names, in cube column order.
+        k: Multiplier; defaults to :data:`REGRET_TAU_K`. ``k = 0`` gives the strict
+            weak-Pareto-improvement form.
+        floors: Optional ``{base_name: noise_floor}`` in natural units.
+
+    Returns:
+        ``{base_name: tau}``.
+
+    Raises:
+        KeyError: If a base name has neither a registered epsilon nor an override
+            -- a silent 0 would turn a tolerance into a strict criterion without
+            saying so -- or if the env override is partial or names a stranger.
+    """
+    from src.objectives import OBJECTIVES
+
+    raw = os.environ.get("NYCOPT_REGRET_TAU", "").strip()
+    if raw:
+        override = json.loads(raw)
+        unknown = [n for n in override if n not in base_names]
+        if unknown:
+            raise KeyError(
+                f"NYCOPT_REGRET_TAU names objectives absent from this cube: {unknown}"
+            )
+        absent = [n for n in base_names if n not in override]
+        if absent:
+            raise KeyError(
+                f"NYCOPT_REGRET_TAU is a WHOLE-vector override but omits {absent}; a "
+                f"partial vector would leave those objectives on a different "
+                f"tolerance basis than the rest."
+            )
+        return {n: float(override[n]) for n in base_names}
+
+    k = REGRET_TAU_K if k is None else float(k)
+    missing = [n for n in base_names if n not in OBJECTIVES]
+    if missing:
+        raise KeyError(
+            f"no registered base objective for {missing}, so no epsilon to build a "
+            f"tolerance from. Pass an explicit tau dict instead of defaulting to 0, "
+            f"which would silently harden the criterion."
+        )
+    floors = floors or {}
+    return {n: k * max(float(OBJECTIVES[n].epsilon), float(floors.get(n, 0.0)))
+            for n in base_names}
+
+
+def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
+                       unit: str = "sow", within_sow_agg: str = "mean",
+                       parties: dict = None) -> pd.DataFrame:
+    """Unit-free harm frequencies. These carry the scalar role.
+
+    Because the magnitudes above stay in natural units, the cross-objective and
+    cross-policy summaries are frequencies, which need no normalization at all.
+
+    Columns:
+      - ``harm_freq__{obj}``        fraction of units with ``D_i < 0``
+      - ``party_harm_freq__{party}``  fraction of units in which ANY objective of
+        that Decree party is worse off (a disjunction, never a sum -- see
+        :data:`DECREE_PARTY_OBJECTIVES`)
+      - ``no_harm_freq``            fraction of units with ``D_i >= 0`` for ALL i:
+        a weak Pareto improvement on the incumbent. Cohen et al. (2021) apply this
+        exact condition as a hard FILTER ("solutions that will at a minimum
+        outperform the status quo in all re-evaluations"); reporting it as a graded
+        frequency keeps the policies whose trade-off against the incumbent is the
+        interesting part of the question.
+      - ``no_harm_freq_tau``        fraction of units with ``D_i >= -tau_i`` for
+        ALL i -- the literal reading of "improves some outcomes without degrading
+        others below current performance".
+      - ``n_degraded_mean``         mean number of objectives simultaneously worse
+        off, the informative decomposition of ``no_harm_freq`` (which is small by
+        construction when there are 8 objectives with genuine trade-offs).
+
+    A non-finite ``D`` counts as HARM, mirroring the non-finite-as-unsatisfied rule
+    of the satisficing path: a degenerate unit must not read as "no harm".
+    """
+    D = incumbent_advantage(raw, baseline, unit, within_sow_agg)   # (S, U, M)
+    tau = tau_ladder(raw.base_names) if tau is None else tau
+    missing = [n for n in raw.base_names if n not in tau]
+    if missing:
+        raise KeyError(f"no tolerance supplied for {missing}")
+    tau_vec = np.array([float(tau[n]) for n in raw.base_names], dtype=float)
+
+    finite = np.isfinite(D)
+    harm = (~finite) | (D < 0)                                     # (S, U, M)
+    harm_tau = (~finite) | (D < -tau_vec[None, None, :])
+
+    index = pd.Index(raw.solution_ids, name="solution_id")
+    out = pd.DataFrame(index=index)
+    for k, name in enumerate(raw.base_names):
+        out[f"harm_freq__{name}"] = harm[:, :, k].mean(axis=1)
+
+    parties = DECREE_PARTY_OBJECTIVES if parties is None else parties
+    col_of = {n: k for k, n in enumerate(raw.base_names)}
+    for party, members in parties.items():
+        idx = [col_of[n] for n in members if n in col_of]
+        if not idx:
+            continue
+        out[f"party_harm_freq__{party}"] = harm[:, :, idx].any(axis=2).mean(axis=1)
+
+    out["no_harm_freq"] = (~harm).all(axis=2).mean(axis=1)
+    out["no_harm_freq_tau"] = (~harm_tau).all(axis=2).mean(axis=1)
+    out["n_degraded_mean"] = harm.sum(axis=2).mean(axis=1)
+    return out
+
+
+def incumbent_spread(baseline: RawCube, within_sow_agg: str = "mean") -> dict:
+    """Per-objective ``q90 - q10`` of the incumbent over the ensemble.
+
+    The OPTIONAL normalization scale, offered so a reviewer asking for a
+    dimensionless regret can be answered without re-simulating -- and so rank
+    agreement between the natural-unit and normalized orderings can be checked with
+    Kendall's tau_b. It is never the reported primary (see the section header).
+
+    Unlike a per-cell baseline denominator it is a single fixed vector: non-zero by
+    construction (the incumbent's performance varies across the DU box), publishable
+    as a table, and independent of which policies or designs are in the comparison.
+    It is the simulation-free stand-in for Cohen et al. (2021)'s achievable span.
+
+    Raises:
+        ValueError: If any objective's spread is zero -- silently dividing by it
+            would produce infinities that read as catastrophic regret.
+    """
+    if baseline.sow_ids is not None:
+        vals, _ = collapse_within_sow(baseline, within_sow_agg)
+    else:
+        vals = baseline.cube
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        flat = np.nanmean(vals, axis=0)                            # (U, M)
+        hi = np.nanquantile(flat, 0.90, axis=0)
+        lo = np.nanquantile(flat, 0.10, axis=0)
+    spread = hi - lo
+    dead = [n for n, s in zip(baseline.base_names, spread)
+            if not np.isfinite(s) or s <= 0]
+    if dead:
+        raise ValueError(
+            f"the incumbent's q90-q10 spread is zero/non-finite for {dead}, so it "
+            f"cannot serve as a regret scale. Report natural units for these."
+        )
+    return {n: float(s) for n, s in zip(baseline.base_names, spread)}
 
 
 ###############################################################################
@@ -771,6 +1165,14 @@ _DEFAULT_METRICS = (
     "laplace_mean",                 # McPhail T3 = mean   (risk-neutral anchor)
     "maximin",                      # McPhail T3 = worst  (risk-averse anchor)
     "improvement_vs_baseline",      # fixed external reference; no optimization
+    "regret_magnitudes",            # incumbent-relative regret, natural units
+    "regret_frequencies",           # its unit-free harm frequencies (the scalars)
+)
+
+#: Metrics that need the status-quo cube. Requested without one they are skipped
+#: with a warning rather than silently returning zeros.
+_BASELINE_METRICS = (
+    "improvement_vs_baseline", "regret_magnitudes", "regret_frequencies",
 )
 
 
@@ -782,8 +1184,9 @@ def score_robustness(raw: RawCube, baseline: Optional[RawCube] = None,
 
     Args:
         raw: The re-eval cube.
-        baseline: Status-quo cube on the SAME ensemble (enables
-            ``improvement_vs_baseline``).
+        baseline: Status-quo cube on the SAME ensemble (enables every metric in
+            :data:`_BASELINE_METRICS` — the signed improvement and the
+            incumbent-relative regret family).
         metrics: Metric ids to compute.
         thresholds: Optional threshold override (the meta's are used otherwise).
         within_sow_agg: Within-SOW risk attitude for ``satisficing_multivariate_sow``
@@ -864,24 +1267,64 @@ def score_robustness(raw: RawCube, baseline: Optional[RawCube] = None,
         {f"maximin__{n}": signs[k] > 0 for k, n in enumerate(raw.base_names)},
     )
 
-    if "improvement_vs_baseline" in metrics:
-        if baseline is None:
-            warnings.warn(
-                "improvement_vs_baseline requested but no baseline re-eval was "
-                "found; skipping. The baseline must be simulated on the SAME "
-                "re-eval ensemble (workflow step 05 with the same "
-                "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08), or it lands under a "
-                "different reeval tag and auto-detection silently finds nothing."
-            )
-        else:
-            _add(
-                "improvement_vs_baseline",
-                lambda: improvement_vs_baseline(raw, baseline),
-                [f"vs_baseline__{n}" for n in raw.base_names],
-                # Signed and direction-oriented, so HIGHER IS BETTER for every
-                # objective regardless of its own direction.
-                {f"vs_baseline__{n}": True for n in raw.base_names},
-            )
+    wanted_baseline = [m for m in metrics if m in _BASELINE_METRICS]
+    if wanted_baseline and baseline is None:
+        warnings.warn(
+            f"{', '.join(wanted_baseline)} requested but no baseline re-eval was "
+            "found; skipping. The baseline must be simulated on the SAME "
+            "re-eval ensemble (workflow step 05 with the same "
+            "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08), or it lands under a "
+            "different reeval tag and auto-detection silently finds nothing."
+        )
+    elif baseline is not None:
+        _add(
+            "improvement_vs_baseline",
+            lambda: improvement_vs_baseline(raw, baseline),
+            [f"vs_baseline__{n}" for n in raw.base_names],
+            # Signed and direction-oriented, so HIGHER IS BETTER for every
+            # objective regardless of its own direction.
+            {f"vs_baseline__{n}": True for n in raw.base_names},
+        )
+
+        # The regret family is defined on the SOW unit (the incumbent's bar moves
+        # with the forcing, so the unit must be the deeply-uncertain state), and is
+        # gated off when either cube carries no SOW grouping -- never silently
+        # recomputed on realizations, which is a different quantity.
+        no_regret_sow = no_sow or baseline.sow_ids is None
+        mag_cols = [f"{pre}__{n}"
+                    for n in raw.base_names
+                    for pre in ("regret_mean", "regret_q90",
+                                "regret_cond", "gain_mean")]
+        _add(
+            "regret_magnitudes",
+            lambda: regret_magnitudes(raw, baseline, within_sow_agg=within_sow_agg),
+            mag_cols,
+            # Regret is a loss: lower is better. Gain is the mirror.
+            {c: c.startswith("gain_mean__") for c in mag_cols},
+            gated=no_regret_sow,
+        )
+
+        party_cols = [f"party_harm_freq__{p}" for p, members in
+                      DECREE_PARTY_OBJECTIVES.items()
+                      if any(n in raw.base_names for n in members)]
+        freq_cols = ([f"harm_freq__{n}" for n in raw.base_names] + party_cols
+                     + ["no_harm_freq", "no_harm_freq_tau", "n_degraded_mean"])
+        # The tolerance ladder is resolved HERE, once, so a cube whose objectives
+        # are not in the registry (synthetic fixtures) gates the whole block off
+        # instead of half-computing it. tau_ladder itself still raises, because a
+        # caller supplying a real cube deserves the error rather than a silent 0.
+        try:
+            tau = tau_ladder(raw.base_names)
+        except KeyError:
+            tau = None
+        _add(
+            "regret_frequencies",
+            lambda: regret_frequencies(raw, baseline, tau=tau,
+                                       within_sow_agg=within_sow_agg),
+            freq_cols,
+            {c: c.startswith("no_harm_freq") for c in freq_cols},
+            gated=no_regret_sow or tau is None,
+        )
 
     scorecard = pd.concat(pieces, axis=1) if pieces else pd.DataFrame(index=index)
 
@@ -916,9 +1359,10 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS,
     out = reeval_dir / "robustness_scorecard.csv"
     scorecard.to_csv(out)
 
-    # The within-SOW aggregator is a methodological choice that MOVES the SOW column,
-    # so it is recorded next to the numbers rather than left implicit in a default.
-    (reeval_dir / "robustness_meta.json").write_text(json.dumps({
+    # Every scoring-time choice that MOVES a number is recorded next to the numbers
+    # rather than left implicit in a default: the within-SOW aggregator, and the
+    # no-harm tolerance ladder that defines `no_harm_freq_tau`.
+    meta = {
         "metrics": list(metrics),
         "n_solutions": len(raw.solution_ids),
         "n_realizations": raw.n_realizations,
@@ -926,7 +1370,16 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS,
         "realizations_per_sow": raw.realizations_per_sow,
         "within_sow_aggregator": within_sow_agg if raw.sow_ids is not None else None,
         "sow_metrics_available": raw.sow_ids is not None,
-    }, indent=2))
+        "regret_available": baseline is not None and raw.sow_ids is not None
+                            and baseline.sow_ids is not None,
+        "regret_unit": "sow",
+        "regret_tau_k": REGRET_TAU_K,
+    }
+    try:
+        meta["regret_tau"] = tau_ladder(raw.base_names)
+    except KeyError:
+        meta["regret_tau"] = None
+    (reeval_dir / "robustness_meta.json").write_text(json.dumps(meta, indent=2))
 
     ranking_stability(scorecard, higher_better).to_csv(
         reeval_dir / "robustness_ranking_stability.csv")

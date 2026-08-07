@@ -280,19 +280,38 @@ class LoadedRun:
     directions: dict
 
 
+#: Scorecard prefixes whose orientation is FIXED by what the column means, not by
+#: the underlying objective's own direction. Regret is a loss whichever way its
+#: objective points; gain and the no-harm frequencies are the mirror. Getting one
+#: of these wrong silently inverts that metric in every design ranking, which is
+#: the failure mode ``tests/test_terminology.py`` exists to catch.
+_FIXED_ORIENTATION: tuple[tuple[str, bool], ...] = (
+    ("vs_baseline__", False),
+    ("regret_mean__", False),
+    ("regret_q90__", False),
+    ("regret_cond__", False),
+    ("gain_mean__", True),
+    ("party_harm_freq__", False),
+    ("harm_freq__", False),
+    ("no_harm_freq", True),
+    ("n_degraded_mean", False),
+)
+
+
 def _orientations(directions: dict, columns: Iterable[str]) -> dict:
     """Map every scorecard column to whether larger = more robust.
 
-    Satisficing fractions are higher-better; ``vs_baseline__*`` is a shortfall
-    (lower-better); ``laplace__*`` / ``maximin__*`` are in natural units, so they
-    follow their objective's own direction.
+    Satisficing fractions are higher-better; the regret family's orientation is
+    fixed by :data:`_FIXED_ORIENTATION`; ``laplace__*`` / ``maximin__*`` are in
+    natural units, so they follow their objective's own direction.
     """
     hb: dict = {}
     for col in columns:
+        fixed = next((v for p, v in _FIXED_ORIENTATION if col.startswith(p)), None)
         if col == PRIMARY_METRIC or col.startswith("sat_uni__"):
             hb[col] = True
-        elif col.startswith("vs_baseline__"):
-            hb[col] = False
+        elif fixed is not None:
+            hb[col] = fixed
         elif "__" in col:
             _, name = col.split("__", 1)
             hb[col] = directions.get(name) == "maximize"
@@ -677,6 +696,226 @@ def rank_agreement(sweep: pd.DataFrame) -> pd.DataFrame:
             rows.append({"statistic": statistic, "stringency": float(s),
                          "n_designs": int(len(common)), "tau_b_vs_default": tau})
     return pd.DataFrame(rows)
+
+
+###############################################################################
+# 2b. Incumbent-relative regret: tolerance sweep + severity decomposition
+###############################################################################
+# These answer RQ2 and, jointly with the satisficing sweep above, the working
+# hypothesis: that hazard filling buys robustness WITHOUT paying the price of
+# robustness (Bertsimas & Sim 2004) in regret against current operations.
+# Bartholomew & Kwakkel (2020) supply both halves of the expectation -- "the more
+# robustness is considered in the search phase ... the higher the robustness
+# attainment ... during re-evaluation", and, in their section 5.2, "optimizing for
+# robustness comes in general at the expense of attainable hypervolume in any
+# given reference scenario". Measuring the second half against a FIXED external
+# incumbent per SOW, rather than by hypervolume against reference scenarios,
+# avoids the pooled-reference-set and cardinality biases this study rejects
+# (objective_definitions.md section 4.3).
+
+#: Multipliers ``k`` on each objective's just-noticeable difference, defining the
+#: no-harm tolerance ``tau_i = k * eps_i``. k = 0 is the strict weak-Pareto-
+#: improvement form. Override with NYCOPT_COMPARE_REGRET_K.
+REGRET_TAU_GRID: tuple[float, ...] = _parse_float_list_env(
+    "NYCOPT_COMPARE_REGRET_K", (0.0, 0.5, 1.0, 2.0, 5.0, 10.0),
+)
+
+#: Number of quantile bins on the forcing-severity axis for the mechanism split.
+SEVERITY_BINS = int(os.environ.get("NYCOPT_COMPARE_SEVERITY_BINS", "3"))
+
+#: The DU forcing coordinate the severity split is taken on. ``m`` is the
+#: annual-mean amplitude of the harmonic forcing parameterization (axis labels are
+#: ``[m, r1, r2]`` under the campaign's fixed-phase sampling), and it dominates
+#: every objective in this box (|rho_S| = 0.91-0.98 across all eight;
+#: robustness_threshold_diagnostics.md section 3), so it is the axis on which
+#: "benign vs severe future" is actually defined here.
+SEVERITY_AXIS = os.environ.get("NYCOPT_COMPARE_SEVERITY_AXIS", "m")
+
+
+def _baseline_cube(run: ReevalRun):
+    """Load the status-quo cube written beside a run by workflow step 05.
+
+    Returns ``None`` (with a warning) rather than raising, so a comparison over
+    runs that predate the baseline still produces its satisficing half. The regret
+    half is simply absent, and says so.
+    """
+    bdir = run.path / "baseline"
+    if not any((bdir / f).exists() for f in
+               ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+        warnings.warn(
+            f"[compare] {run.design} draw={run.draw} seed={run.seed}: no baseline "
+            f"re-eval under {bdir}; regret metrics skipped for this run. Step 05 "
+            f"must have run with the SAME NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08."
+        )
+        return None
+    return rob.load_raw(bdir)
+
+
+def regret_tolerance_sweep(runs: list[ReevalRun],
+                           grid: Iterable[float] = REGRET_TAU_GRID,
+                           ) -> pd.DataFrame:
+    """No-harm frequency vs the tolerance ladder, per run.
+
+    ``Pi_tau`` is the fraction of E_test states of the world in which a policy
+    degrades NO objective by more than ``tau_i = k * eps_i`` relative to the
+    incumbent -- the literal reading of RQ2's "without degrading others below
+    current performance". Sweeping ``k`` reports the tolerance at which the claim
+    holds rather than asserting it at one arbitrary point, the same discipline the
+    satisficing criterion sweep applies (Quinn et al. 2020).
+
+    Returns:
+        Tidy frame: design, draw, seed, tau_k, best, median, n_solutions.
+        Empty when no run carries a baseline.
+    """
+    grid = list(grid)
+    rows = []
+    for r in runs:
+        raw = rob.load_raw(r.path)
+        base = _baseline_cube(r)
+        if base is None or raw.sow_ids is None or base.sow_ids is None:
+            continue
+        for k in grid:
+            tau = rob.tau_ladder(raw.base_names, k=k)
+            v = rob.regret_frequencies(raw, base, tau=tau)["no_harm_freq_tau"]
+            v = v.to_numpy(dtype=float)
+            rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
+                         "tau_k": float(k), "best": _best(v, True),
+                         "median": _median(v),
+                         "n_solutions": int(np.isfinite(v).sum())})
+    return pd.DataFrame(rows)
+
+
+def _severity_terciles(spec, n_sow: int, bins: int = SEVERITY_BINS):
+    """Quantile bin index of each SOW on the forcing-severity axis.
+
+    Returns ``(labels, edges, axis_name)`` with ``labels`` of length ``n_sow``, or
+    ``None`` when the ensemble stages no forcing profiles (a stationary ensemble
+    has no severity axis, and inventing one would be worse than omitting the
+    decomposition).
+    """
+    try:
+        from src.ensembles import staged_ensemble_dir
+        from src.plotting.forcing_space import load_etest_sample
+        staged = load_etest_sample(staged_ensemble_dir(spec.inflow_type))
+    except Exception as exc:                                   # noqa: BLE001
+        warnings.warn(f"[compare] no staged forcing profiles ({exc}); "
+                      f"severity decomposition skipped.")
+        return None
+    names = list(staged["theta_names"])
+    if SEVERITY_AXIS not in names:
+        warnings.warn(
+            f"[compare] severity axis {SEVERITY_AXIS!r} not among the staged "
+            f"forcing coordinates {names}; severity decomposition skipped."
+        )
+        return None
+    theta = np.asarray(staged["theta"], dtype=float)[:, names.index(SEVERITY_AXIS)]
+    if theta.shape[0] != n_sow:
+        warnings.warn(
+            f"[compare] staged forcing has {theta.shape[0]} SOWs but the re-eval "
+            f"cube has {n_sow}; severity decomposition skipped rather than aligned "
+            f"by position."
+        )
+        return None
+    edges = np.quantile(theta, np.linspace(0.0, 1.0, bins + 1))
+    labels = np.clip(np.searchsorted(edges[1:-1], theta, side="right"), 0, bins - 1)
+    return labels, edges, SEVERITY_AXIS
+
+
+def regret_by_severity(runs: list[ReevalRun], spec,
+                       bins: int = SEVERITY_BINS) -> pd.DataFrame:
+    """Robustness and regret within quantile bins of the forcing-severity axis.
+
+    The mechanism test for the price of robustness. Giuliani & Castelletti (2016)
+    predict that a policy searched under a severity-shifted measure and scored
+    under the test measure is systematically penalised; if hazard filling pays that
+    price, it should land in the BENIGN futures. The structure to look for is a
+    robustness gain concentrated in the driest bin and a no-harm loss concentrated
+    in the wettest -- an insurance premium, which is a finding, not a failure.
+
+    Formally this is McPhail et al. (2018)'s T2 (scenario subset selection) applied
+    deliberately, on the same cube, at no simulation cost.
+
+    Returns:
+        Tidy frame: design, draw, seed, severity_bin, bin_lo, bin_hi, n_sow,
+        sat_best, no_harm_best, no_harm_tau_best, plus each objective's mean regret.
+        Empty when the ensemble carries no forcing profiles.
+    """
+    split = _severity_terciles(spec, _first_n_sow(runs), bins)
+    if split is None:
+        return pd.DataFrame()
+    labels, edges, axis = split
+
+    rows = []
+    for r in runs:
+        raw = rob.load_raw(r.path)
+        base = _baseline_cube(r)
+        if base is None or raw.sow_ids is None or base.sow_ids is None:
+            continue
+        D = rob.incumbent_advantage(raw, base)                  # (S, n_sow, M)
+        sat = rob._satisfy(rob.collapse_within_sow(raw)[0], raw.base_names,
+                           raw.thresholds, raw.kinds).all(axis=2)   # (S, n_sow)
+        tau = rob.tau_ladder(raw.base_names)
+        tau_vec = np.array([tau[n] for n in raw.base_names], dtype=float)
+        finite = np.isfinite(D)
+        harm = (~finite) | (D < 0)
+        harm_tau = (~finite) | (D < -tau_vec[None, None, :])
+
+        for b in range(bins):
+            sel = labels == b
+            if not sel.any():
+                continue
+            row = {
+                "design": r.design, "draw": r.draw, "seed": r.seed,
+                "severity_axis": axis, "severity_bin": b,
+                "bin_lo": float(edges[b]), "bin_hi": float(edges[b + 1]),
+                "n_sow": int(sel.sum()),
+                "sat_best": _best(sat[:, sel].mean(axis=1), True),
+                "no_harm_best": _best((~harm[:, sel, :]).all(axis=2).mean(axis=1),
+                                      True),
+                "no_harm_tau_best": _best(
+                    (~harm_tau[:, sel, :]).all(axis=2).mean(axis=1), True),
+            }
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                for k, name in enumerate(raw.base_names):
+                    g = np.maximum(0.0, -D[:, sel, k])
+                    row[f"regret_mean__{name}"] = _median(np.nanmean(g, axis=1))
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def regret_plane_points(loaded: Iterable[LoadedRun],
+                        x: str = "sat_multivariate_sow",
+                        y: str = "no_harm_freq_tau") -> pd.DataFrame:
+    """One row per re-evaluated policy: its robustness and its no-harm frequency.
+
+    Both axes come from the SAME policy, which is the load-bearing detail: reading
+    "more robust" off one policy and "no more regret" off another would not be a
+    claim about anything. Both are unit-free, so the plane needs no normalization.
+
+    Returns:
+        Tidy frame: design, draw, seed, solution_id, ``x``, ``y``. Empty when no
+        run carries both columns (no baseline, or no SOW grouping).
+    """
+    rows = []
+    for lr in loaded:
+        if x not in lr.scorecard.columns or y not in lr.scorecard.columns:
+            continue
+        sc = lr.scorecard[[x, y]].dropna()
+        for sid, r in sc.iterrows():
+            rows.append({"design": lr.run.design, "draw": lr.run.draw,
+                         "seed": lr.run.seed, "solution_id": int(sid),
+                         x: float(r[x]), y: float(r[y])})
+    return pd.DataFrame(rows)
+
+
+def _first_n_sow(runs: Iterable[ReevalRun]) -> int:
+    """SOW count of the first loadable run; 0 when none carry a grouping."""
+    for r in runs:
+        raw = rob.load_raw(r.path)
+        if raw.n_sow:
+            return int(raw.n_sow)
+    return 0
 
 
 ###############################################################################
@@ -1136,6 +1375,22 @@ def run_comparison(formulation: str = "ffmp", reeval_tag: Optional[str] = None,
     written["design_rank_agreement"] = table_dir / "design_rank_agreement.csv"
     agreement.to_csv(written["design_rank_agreement"], index=False)
 
+    # --- 2b. incumbent-relative regret (RQ2) --------------------------------
+    # Absent when step 05 did not stage a baseline on the SAME re-eval ensemble;
+    # the satisficing half of the comparison still completes, and the report says
+    # the regret half is missing rather than quietly omitting it.
+    regret_sweep = regret_tolerance_sweep(runs)
+    if not regret_sweep.empty:
+        written["design_regret_tolerance_sweep"] = (
+            table_dir / "design_regret_tolerance_sweep.csv")
+        regret_sweep.to_csv(written["design_regret_tolerance_sweep"], index=False)
+
+        severity = regret_by_severity(runs, config.REEVAL_ENSEMBLE_SPEC)
+        if not severity.empty:
+            written["design_regret_by_severity"] = (
+                table_dir / "design_regret_by_severity.csv")
+            severity.to_csv(written["design_regret_by_severity"], index=False)
+
     # --- 3. raw distributions + degeneracy screen --------------------------
     perf = performance_distributions(loaded)
     written["design_performance_quantiles"] = table_dir / "design_performance_quantiles.csv"
@@ -1157,15 +1412,44 @@ def run_comparison(formulation: str = "ffmp", reeval_tag: Optional[str] = None,
         written["fig_performance_distributions"] = fig_performance_distributions(
             perf, thresholds, fig_dir)
 
-    _report(runs, sweep, agreement, flags, attain, table_dir, fig_dir)
+    if not regret_sweep.empty:
+        from src.plotting import regret_summary as rs
+
+        points = regret_plane_points(loaded)
+        if not points.empty:
+            written["fig_regret_robustness_plane"] = rs.plot_regret_robustness_plane(
+                points, fig_dir / "regret_robustness_plane")
+        written["fig_regret_tolerance_sweep"] = rs.plot_regret_tolerance_sweep(
+            regret_sweep, fig_dir / "regret_tolerance_sweep")
+
+    _report(runs, sweep, agreement, flags, attain, regret_sweep,
+            table_dir, fig_dir)
     return written
 
 
-def _report(runs, sweep, agreement, flags, attain, table_dir, fig_dir) -> None:
+def _report(runs, sweep, agreement, flags, attain, regret_sweep,
+            table_dir, fig_dir) -> None:
     """Print the headline findings the caller must not miss."""
     designs = sorted({r.design for r in runs})
     print(f"[compare] {len(runs)} run(s) across {len(designs)} design(s): "
           f"{', '.join(designs)}")
+
+    # The working hypothesis is two-sided, so a robustness result reported without
+    # its regret companion is half an answer. Say so loudly when the half is absent.
+    if regret_sweep is None or regret_sweep.empty:
+        print("[compare] NO REGRET RESULTS: no run carries a status-quo baseline on "
+              "this re-eval ensemble, so RQ2 (improvement over current operations "
+              "without degrading other outcomes) is UNANSWERED here. Re-run step 05 "
+              "with the same NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08.")
+    else:
+        at0 = regret_sweep[regret_sweep["tau_k"] == 0.0]
+        if not at0.empty:
+            by_design = at0.groupby("design")["best"].mean().sort_values(
+                ascending=False)
+            head = ", ".join(f"{d}={v:.3f}" for d, v in by_design.items())
+            print(f"[compare] NO-HARM FREQUENCY at tau = 0 (strict Pareto improvement "
+                  f"on the status quo), best policy per design, mean over runs: "
+                  f"{head}")
 
     tb = agreement[agreement["statistic"] == "best"]["tau_b_vs_default"]
     if tb.notna().any() and float(tb.min()) < 0.975:

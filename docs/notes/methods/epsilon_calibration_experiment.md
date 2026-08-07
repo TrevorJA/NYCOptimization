@@ -100,9 +100,7 @@ table (`tables/epsilon_recommendation_*.csv`) into `_ANNUAL_REGISTRY_SPEC`
   the FFMP baseline bold; shows the adopted resolution thins the set
   without collapsing any tradeoff axis's span).
 
-## Post-shakeout revision diagnostics (2026-08-05)
-
-The firs## Converged-front re-filter sweep and the adopted vector
+## Converged-front re-filter sweep and the adopted vector
 
 A complementary diagnostic re-filters CONVERGED search archives under
 candidate epsilon vectors: `scripts/supplemental/epsilon_refilter_sweep.py`

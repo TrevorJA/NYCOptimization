@@ -222,15 +222,17 @@ def get_obj_directions(items=None) -> list:
 
 #: DV-space formal Borg constraints (violation magnitude convention: 0.0 =
 #: feasible, positive scales linearly with the degree of violation). Computed
-#: from pure DV arithmetic BEFORE any simulation. The same conditions are also
-#: enforced by the apply-time clamps in src/simulation.py — the constraints
-#: give Borg a direct pre-simulation feasibility signal; the clamps remain as
-#: intentional redundancy.
+#: from pure DV arithmetic BEFORE any simulation. Flood-zone ordering is also
+#: enforced by the apply-time clamp in src/simulation.py — the constraint
+#: gives Borg a direct pre-simulation feasibility signal; the clamp remains
+#: as intentional redundancy.
+#: Delivery-stage monotonicity needs NO constraint: the allocation-reduction
+#: DVs are non-negative stage increments, so the decoded factor arrays are
+#: non-increasing by construction.
 #: Zone-curve crossings are clamp-only (not a constraint): the monotonicity
 #: clamp resolves them at apply time and the clamped geometry is the
 #: intended policy.
 DV_CONSTRAINT_NAMES = [
-    "delivery_monotonicity",
     "flood_zone_ordering",
 ]
 

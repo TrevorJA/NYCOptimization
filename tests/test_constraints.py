@@ -3,8 +3,14 @@
 Covers `compute_constraint_violations` (pure DV arithmetic, no simulation)
 and its registry wiring (`get_n_constrs`, `make_constraint_function`):
 baseline feasibility, hand-computed directional violations, the tolerance
-floor, and the clamp-equivalence property — each violation is positive
-exactly when the corresponding apply-time clamp in `dvs_to_config` fires.
+floor, and the clamp-equivalence property — the flood-zone violation is
+positive exactly when the corresponding apply-time clamp in `dvs_to_config`
+fires.
+
+Delivery-stage monotonicity is structural, not constrained: the
+allocation-reduction DVs are non-negative stage increments, so the decoded
+delivery-factor arrays are non-increasing for every in-bounds vector
+(covered by `test_delivery_factors_structurally_monotone`).
 
 The post-simulation `nyc_reliability_floor` constraint is covered in
 tests/test_reliability_floor_constraint.py.
@@ -36,6 +42,7 @@ from src.formulations import (
 )
 from src.simulation import (
     _CFS_TO_MGD,
+    _config_levels,
     _get_cached_defaults,
     compute_constraint_violations,
     dvs_to_config,
@@ -62,15 +69,15 @@ def _flood_date_cols(cfg):
 ###############################################################################
 
 def test_registry():
-    assert get_n_constrs() == 3
+    assert get_n_constrs() == 2
     assert get_constraint_names() == CONSTRAINT_NAMES == [
-        "delivery_monotonicity", "flood_zone_ordering", "nyc_reliability_floor",
+        "flood_zone_ordering", "nyc_reliability_floor",
     ]
     assert CONSTRAINT_NAMES == DV_CONSTRAINT_NAMES + POST_SIM_CONSTRAINT_NAMES
-    # make_constraint_function is DV-space ONLY: two values, no simulation.
+    # make_constraint_function is DV-space ONLY: one value, no simulation.
     fn = make_constraint_function("ffmp")
     cons = fn(list(get_baseline_values("ffmp")))
-    assert isinstance(cons, list) and len(cons) == len(DV_CONSTRAINT_NAMES) == 2
+    assert isinstance(cons, list) and len(cons) == len(DV_CONSTRAINT_NAMES) == 1
     assert all(isinstance(c, float) for c in cons)
 
 
@@ -83,7 +90,7 @@ def test_baseline_is_exactly_feasible(formulation):
     cons = compute_constraint_violations(
         get_baseline_values(formulation), formulation
     )
-    assert cons == [0.0, 0.0]
+    assert cons == [0.0]
 
 
 def test_zone_crossings_are_not_constrained():
@@ -93,24 +100,49 @@ def test_zone_crossings_are_not_constrained():
             zone_vshift_level1b_lower=-0.10, zone_tshift_level1c=30.0),
         "ffmp",
     )
-    assert cons == [0.0, 0.0]
+    assert cons == [0.0]
+
+
+###############################################################################
+# Structural delivery monotonicity (no constraint, no clamp — by construction)
+###############################################################################
+
+@pytest.mark.parametrize("formulation", ["ffmp", "ffmp_10"])
+def test_delivery_factors_structurally_monotone(formulation):
+    # Non-negative allocation-reduction DVs decode to non-increasing
+    # delivery-factor arrays for EVERY in-bounds vector — monotonicity needs
+    # no feasibility signal.
+    lower, upper = get_bounds(formulation)
+    rng = np.random.default_rng(7)
+    for _ in range(25):
+        dv = lower + rng.uniform(size=lower.size) * (upper - lower)
+        cfg = dvs_to_config(dv, formulation)
+        drought_levels, _ = _config_levels(cfg)
+        for party in ("nyc", "nj"):
+            factors = np.array([
+                float(cfg.constants[f"{lvl}_factor_delivery_{party}"])
+                for lvl in drought_levels
+            ])
+            constrained = factors[factors <= 1.0]
+            assert constrained.size > 0
+            assert np.all(np.diff(constrained) <= 1e-12), dv
+
+
+def test_delivery_extreme_reductions_stay_in_envelope():
+    # Max reductions bottom out exactly at the audited depth envelope.
+    dv = _dv(nyc_allocation_reduction_L3=0.20, nyc_allocation_reduction_L4=0.20,
+             nyc_allocation_reduction_L5=0.10,
+             nj_allocation_reduction_L4=0.20, nj_allocation_reduction_L5=0.15)
+    cfg = dvs_to_config(dv, "ffmp")
+    assert float(cfg.constants["level5_factor_delivery_nyc"]) == pytest.approx(0.50)
+    assert float(cfg.constants["level5_factor_delivery_nj"]) == pytest.approx(0.65)
+    # And the flood/reliability machinery still sees a feasible vector.
+    assert compute_constraint_violations(dv, "ffmp") == [0.0]
 
 
 ###############################################################################
 # Hand-computed directional violations
 ###############################################################################
-
-def test_delivery_violation_value():
-    # NYC: L4 (0.95) > L3 (0.60) and NJ: L5 (1.0) > L4 (0.80).
-    cons = compute_constraint_violations(
-        _dv(nyc_drought_factor_L3=0.60, nyc_drought_factor_L4=0.95,
-            nyc_drought_factor_L5=0.90,
-            nj_drought_factor_L4=0.80, nj_drought_factor_L5=1.0),
-        "ffmp",
-    )
-    assert cons[0] == pytest.approx((0.95 - 0.60) + (1.0 - 0.80))
-    assert cons[1] == 0.0
-
 
 def test_flood_violation_value():
     # 2.0 x L1b vs 0.5 x L1a violates even outside the equal-rate window
@@ -132,8 +164,7 @@ def test_flood_violation_value():
     eff_b = np.minimum(f_b * baseline * 2.0, cap)
     expected = max(0.0, float((eff_b - eff_a).max())) / baseline
     assert expected > 0.0
-    assert cons[1] == pytest.approx(expected)
-    assert cons[0] == 0.0
+    assert cons[0] == pytest.approx(expected)
 
 
 def test_flood_equal_multipliers_feasible():
@@ -142,7 +173,7 @@ def test_flood_equal_multipliers_feasible():
             flood_release_scale_l1b_pepacton=1.2),
         "ffmp",
     )
-    assert cons[1] == 0.0
+    assert cons[0] == 0.0
 
 
 ###############################################################################
@@ -150,15 +181,16 @@ def test_flood_equal_multipliers_feasible():
 ###############################################################################
 
 def test_tiny_violation_floors_to_exact_zero():
-    dv = _dv(nyc_drought_factor_L3=0.85,
-             nyc_drought_factor_L4=0.85 + 1e-12,
-             nyc_drought_factor_L5=0.65)
+    # A vanishingly small L1b > L1a excess (equal multipliers plus 1e-13)
+    # must floor to exact 0.0 rather than leak into the feasibility signal.
+    dv = _dv(flood_release_scale_l1a_pepacton=1.2,
+             flood_release_scale_l1b_pepacton=1.2 + 1e-13)
     cons = compute_constraint_violations(dv, "ffmp")
     assert cons[0] == 0.0
 
 
 ###############################################################################
-# Clamp equivalence: c_i > 0 iff the corresponding apply-time clamp fires
+# Clamp equivalence: c > 0 iff the flood apply-time clamp fires
 ###############################################################################
 
 @pytest.mark.parametrize("formulation", ["ffmp"])
@@ -173,22 +205,7 @@ def test_clamp_equivalence_on_random_vectors(formulation):
         cons = compute_constraint_violations(dv, formulation)
         cfg = dvs_to_config(dv, formulation)
 
-        # c1 <-> delivery minimum.accumulate clamp changed the factor arrays
-        # (leading L1a-L2/L3 defaults never bind under the audited bounds).
-        nyc_pre = [params["nyc_drought_factor_L3"],
-                   params["nyc_drought_factor_L4"],
-                   params["nyc_drought_factor_L5"]]
-        nj_pre = [params["nj_drought_factor_L4"],
-                  params["nj_drought_factor_L5"]]
-        nyc_post = [float(cfg.constants[f"level{i}_factor_delivery_nyc"])
-                    for i in (3, 4, 5)]
-        nj_post = [float(cfg.constants[f"level{i}_factor_delivery_nj"])
-                   for i in (4, 5)]
-        clamped = not (np.allclose(nyc_pre, nyc_post, rtol=0, atol=1e-12)
-                       and np.allclose(nj_pre, nj_post, rtol=0, atol=1e-12))
-        assert (cons[0] > 0.0) == clamped, dv
-
-        # c2 <-> the L1b <= L1a clamp changed an applied flood factor row.
+        # c1 <-> the L1b <= L1a clamp changed an applied flood factor row.
         date_cols = _flood_date_cols(cfg)
         flood_clamped = False
         defaults = _get_cached_defaults()
@@ -204,4 +221,4 @@ def test_clamp_equivalence_on_random_vectors(formulation):
                 f"level1b_factor_mrf_{res}", date_cols].values.astype(float)
             if not np.allclose(post_row, preclamp_row, rtol=0, atol=1e-12):
                 flood_clamped = True
-        assert (cons[1] > 0.0) == flood_clamped, dv
+        assert (cons[0] > 0.0) == flood_clamped, dv
