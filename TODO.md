@@ -49,7 +49,7 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   2026-08-06): rebuild the problem JARs (step 00 — new bounds) and rerun the
   step-05 baseline (same policy, new DV encoding in the persisted matrix).
   Prior `.set`/`.ref` archives and re-eval matrices use the retired
-  factor encoding — never mix them with new runs.
+  factor encoding — never mix them with new runs but also don't delete them until the next optimizaiton is run.
 
 ## 2. Anvil shakeout (before production submissions)
 
