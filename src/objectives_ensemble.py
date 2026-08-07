@@ -528,10 +528,11 @@ def _resolve_failure_k() -> dict[str, int]:
 # Per-BASE-objective satisficing levels applied to the PER-REALIZATION §1
 # metrics of the persisted re-eval matrix (reeval_core summary derivation and
 # robustness threshold/kind metadata). Labels use the `<base>__sat<thr>` form;
-# they are threshold labels, not objective names. Final values await adoption
-# per docs/notes/methods/robustness_threshold_diagnostics.md (measured
-# recommendations in supplemental_config.RTD_RECOMMENDED_THRESHOLDS); override
-# via NYCOPT_SAT_THRESHOLDS.
+# they are threshold labels, not objective names. THESE ARE PLACEHOLDERS: the
+# diagnostic that places them has not yet been run against a valid re-evaluation
+# cube, so no measured recommendation exists. Run + adopt per the checklist in
+# docs/notes/methods/robustness_threshold_diagnostics.md §5; override via
+# NYCOPT_SAT_THRESHOLDS.
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
     "nyc_delivery_reliability_weekly__sat95":     0.95,

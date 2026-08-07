@@ -175,9 +175,15 @@ re-simulating.
 ## Comparison metrics
 
 Two families. The RQ1 endpoint is the re-evaluated **multivariate Starr satisficing
-fraction** of the policies a design produces; the run-level scalar is the maximum
-satisficing fraction attained in the run's re-evaluated set, reported with its
-per-objective satisficing decomposition (the maximum-over-a-set bias is disclosed).
+fraction** of the policies a design produces, counted on the **SOW unit**: the 25
+realizations sharing a forcing point are collapsed by their mean, and the
+all-criteria conjunction is counted over the 1,000 states. This keeps the designed
+DU box and the fitted stochastic generator from being integrated into one number,
+matches the precision the SOW count supports, and puts RQ1 on the same unit as the
+regret family below; the pooled realization unit is co-reported as a sensitivity.
+The run-level scalar is the maximum satisficing fraction attained in the run's
+re-evaluated set, reported with its per-objective satisficing decomposition (the
+maximum-over-a-set bias is disclosed).
 Secondary metrics are univariate satisficing, the coverage-weighted mean (Laplace),
 maximin, and signed improvement-over-status-quo.
 

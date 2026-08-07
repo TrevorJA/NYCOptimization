@@ -170,9 +170,13 @@ def test_retired_term_is_not_a_live_claim(term, replacement):
 #: Every metric column must be reachable from this table, so a new metric cannot
 #: be added without declaring what it means.
 METRIC_CONTRACT = {
-    "sat_multivariate": ("fraction of realizations meeting ALL criteria", True),
+    # The SOW-unit pair is the ADOPTED PRIMARY and its decomposition; the
+    # realization-unit pair is the co-reported unit sensitivity.
     "sat_multivariate_sow": ("fraction of SOWs whose within-SOW-collapsed performance "
-                             "meets ALL criteria", True),
+                             "meets ALL criteria [PRIMARY]", True),
+    "sat_uni_sow__": ("fraction of SOWs whose within-SOW-collapsed performance meets "
+                      "one criterion", True),
+    "sat_multivariate": ("fraction of realizations meeting ALL criteria", True),
     "sat_uni__": ("fraction of realizations meeting one criterion", True),
     "laplace__": ("mean performance, natural units, own direction", None),
     "maximin__": ("worst realization, natural units, own direction", None),

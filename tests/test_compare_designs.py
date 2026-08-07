@@ -63,8 +63,16 @@ cd = _load_compare_designs()
 FORMULATION = "ffmp"
 SLUG_BASE = f"{FORMULATION}_obj2"
 TAG = "etest_synthetic"
-N_SOL, N_REAL = 8, 30
+N_SOL, N_REAL = 8, 45
 DRAWS, SEEDS = (0, 1), (0, 1)
+#: The synthetic cube is NESTED, like E_test: N_SOW states x R realizations each.
+#: The primary metric is the SOW unit, so a flat fixture could not exercise it.
+N_SOW, R_PER_SOW = 15, 3
+#: Between-SOW (deep-uncertainty) spread and within-SOW (natural-variability)
+#: spread. BOTH are needed: with i.i.d. realizations the within-SOW mean collapse
+#: annihilates the only variance present, every SOW lands on the same side of the
+#: criterion, and the primary metric saturates at 1.0 for every run.
+SOW_SPREAD, REAL_SPREAD = 0.30, 0.15
 
 #: A: maximize / "ge"; B: minimize / "le". Thresholds sit mid-distribution so the
 #: stringency sweep spans both saturated and starved ends.
@@ -75,6 +83,9 @@ META = {
     "kinds": {"A": "ge", "B": "le"},
     "directions": {"A": "maximize", "B": "minimize"},
     "realization_indices": list(range(N_REAL)),
+    "sow_ids": [s for s in range(N_SOW) for _ in range(R_PER_SOW)],
+    "n_sow": N_SOW,
+    "realizations_per_sow": R_PER_SOW,
 }
 
 
@@ -82,25 +93,32 @@ def _write_run(out_dir: Path, rng: np.random.Generator, quality: float) -> None:
     """Write one run's raw matrix + meta, then score it with src.robustness.
 
     ``quality`` shifts the design's whole cube, so designs are separable and the
-    design ranking is well-defined.
+    design ranking is well-defined. Within a run the cube is nested: a per-SOW
+    forcing offset (shared by that SOW's realizations, and mirrored across the two
+    objectives because one state of the world is good or bad for both) plus
+    independent within-SOW natural variability.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
+    sow_shift = rng.normal(0.0, SOW_SPREAD, size=N_SOW)
     records = []
     for sid in range(N_SOL):
         # A spread across solutions so "best" and "median" solutions differ.
         a_loc = quality + 0.06 * sid
         b_loc = 1.0 - quality - 0.06 * sid
         for rid in range(N_REAL):
-            records.append((sid, rid, "A", float(np.clip(rng.normal(a_loc, 0.15), 0, 1))))
-            records.append((sid, rid, "B", float(np.clip(rng.normal(b_loc, 0.15), 0, 1))))
+            shift = float(sow_shift[rid // R_PER_SOW])
+            a = rng.normal(a_loc + shift, REAL_SPREAD)
+            b = rng.normal(b_loc - shift, REAL_SPREAD)
+            records.append((sid, rid, "A", float(np.clip(a, 0, 1))))
+            records.append((sid, rid, "B", float(np.clip(b, 0, 1))))
     pd.DataFrame(records, columns=["solution_id", "realization_id", "objective",
                                    "value"]).to_csv(
         out_dir / "reeval_raw.csv.gz", index=False, compression="gzip")
     meta = dict(META, solution_ids=list(range(N_SOL)), n_solutions=N_SOL,
                 n_realizations=N_REAL)
     (out_dir / "reeval_raw_meta.json").write_text(json.dumps(meta))
-    rob.run(out_dir, metrics=("satisficing_multivariate", "satisficing_univariate",
-                              "laplace_mean", "maximin"))
+    rob.run(out_dir, metrics=("satisficing_multivariate_sow", "satisficing_multivariate",
+                              "satisficing_univariate", "laplace_mean", "maximin"))
 
 
 @pytest.fixture(scope="module")
@@ -200,6 +218,34 @@ def test_default_thresholds_located_on_the_stringency_axis(tree):
     d = _read(tree, "default_thresholds")
     assert set(d["objective"]) == {"A", "B"}
     assert d["default_stringency"].between(0.0, 1.0).all()
+
+
+def test_primary_metric_is_the_sow_unit():
+    """The adopted robustness unit, pinned so it cannot drift silently.
+
+    Realizations sharing a theta are not independent and E_test carries no
+    probability measure over the forcing space, so the headline count is over
+    STATES, not over pooled realizations (objective_definitions.md §3.1).
+    """
+    assert cd.PRIMARY_METRIC == "sat_multivariate_sow"
+
+
+def test_threshold_sweep_refuses_a_cube_without_a_sow_grouping(tmp_path):
+    """No SOW grouping -> raise. Sweeping the realization unit under the primary
+    metric's name would trace a different quantity than the headline."""
+    flat_meta = {k: v for k, v in META.items()
+                 if k not in ("sow_ids", "n_sow", "realizations_per_sow")}
+    records = [(0, rid, obj, 0.6) for rid in range(N_REAL) for obj in ("A", "B")]
+    pd.DataFrame(records, columns=["solution_id", "realization_id", "objective",
+                                   "value"]).to_csv(
+        tmp_path / "reeval_raw.csv.gz", index=False, compression="gzip")
+    (tmp_path / "reeval_raw_meta.json").write_text(json.dumps(
+        dict(flat_meta, solution_ids=[0], n_solutions=1, n_realizations=N_REAL)))
+
+    run = cd.ReevalRun(design="d", slug=SLUG_BASE, draw=0, seed=0, path=tmp_path)
+    with pytest.raises(ValueError, match="no sow_ids"):
+        cd.threshold_sweep([run], {"A": np.array([0.5])}, {"A": "ge"},
+                           grid=(0.5,))
 
 
 ###############################################################################

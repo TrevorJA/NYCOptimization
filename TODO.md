@@ -10,23 +10,19 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 1. Remaining method closures
 
-- [ ] **[HPC]** Adopt the measured satisficing-threshold vector
-  (`supplemental_config.RTD_RECOMMENDED_THRESHOLDS`) into
-  `objectives_ensemble._DEFAULT_THRESHOLDS` + the `__satNN` labels
-  (adoption checklist in
-  `docs/notes/methods/robustness_threshold_diagnostics.md` §5), rerun the
-  affected tests, then one wrapper rerun so the SI figures' "current"
-  markers show the adopted values. Also set the stringency-sweep grid
-  centre/span around the adopted vector.
+- [ ] **[HPC]** Run the satisficing-threshold diagnostic for real, then adopt.
+  The earlier recommendation was measured against a placeholder cube and has
+  been deleted (`RTD_RECOMMENDED_THRESHOLDS` is empty again); do NOT resurrect
+  those numbers. Pass 1: run
+  `workflow/supplemental/robustness_threshold_diagnostics.sh` against the
+  genuine step-05 `--reeval` baseline cube on E_test, verifying its meta
+  carries `n_sow` = 1000 / `realizations_per_sow` = 25 first. Pass 2: adopt per
+  the checklist in `docs/notes/methods/robustness_threshold_diagnostics.md` §5
+  (registry vector + `__satNN` label renames + tests + one wrapper rerun), and
+  set the stringency-sweep grid centre/span around the adopted vector.
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test re-evaluation of the Pareto sets).
-- [ ] **[local]** Decide the primary robustness unit (SOW-level vs
-  realization-level satisficing) from a focused review of MOEA + robustness
-  conventions; close the manuscript §3.4.2 open item.
-- [ ] **[local]** Explore the archive-level satisficing measure (fraction of
-  each draw's re-evaluated set above a robustness level across the criterion
-  sweep) as a cardinality-robust secondary comparison metric.
 - [ ] **[HPC→local]** Regret-tolerance pass A, the moment the step-05 incumbent
   cube lands and **before any re-evaluated policy set is inspected**:
   `workflow/supplemental/regret_tolerance_diagnostics.sh`. It measures the

@@ -18,8 +18,8 @@ What it produces, and why each piece exists
    analysis that renders the comparison credible. The per-run
    ``robustness_threshold_spectrum.csv`` cannot answer this: it is univariate,
    and the primary metric is the MULTIVARIATE (all-criteria conjunction) Starr
-   domain criterion. So the sweep is recomputed from the raw cube
-   (``robustness.load_raw`` + ``robustness.satisficing_multivariate`` with a
+   domain criterion on the SOW unit. So the sweep is recomputed from the raw cube
+   (``robustness.load_raw`` + ``robustness.satisficing_multivariate_sow`` with a
    swept threshold dict).
 
    The sweep is driven by ONE scalar stringency knob ``s``: each objective's
@@ -128,8 +128,11 @@ STRINGENCY_GRID: tuple[float, ...] = _parse_float_list_env(
     tuple(round(float(s), 2) for s in np.arange(0.10, 0.901, 0.05)),
 )
 
-#: The primary robustness metric (Starr multivariate domain criterion).
-PRIMARY_METRIC = "sat_multivariate"
+#: The primary robustness metric: the Starr multivariate domain criterion on the
+#: SOW UNIT -- the R realizations within each theta are collapsed by the
+#: within-SOW aggregator first, then the all-criteria conjunction is counted over
+#: the N_theta deeply-uncertain states (objective_definitions.md §3.1).
+PRIMARY_METRIC = "sat_multivariate_sow"
 
 #: Saturation bounds for the degeneracy screen. An objective whose satisficing
 #: fraction sits outside these for EVERY design cannot discriminate designs
@@ -643,26 +646,45 @@ def default_stringency(pooled: dict[str, np.ndarray], thresholds: dict,
 def threshold_sweep(runs: list[ReevalRun], pooled: dict[str, np.ndarray],
                     kinds: dict, grid: Iterable[float] = STRINGENCY_GRID,
                     ) -> pd.DataFrame:
-    """Multivariate satisficing vs stringency, per run.
+    """Multivariate satisficing vs stringency, per run, on the SOW unit.
 
     Recomputed from the raw cube because the per-run
     ``robustness_threshold_spectrum.csv`` is univariate and the primary metric is
     the all-criteria conjunction.
 
+    Uses :data:`PRIMARY_METRIC`'s unit -- the within-SOW collapse followed by the
+    Starr criterion across states -- so the swept curve and the headline number
+    are the same quantity at different criteria.
+
+    Raises:
+        ValueError: If any run's cube carries no SOW grouping. Falling back to the
+            realization unit would silently sweep a different quantity than the
+            headline metric.
+
     Returns:
         Tidy frame: design, draw, seed, stringency, is_default, best, median.
     """
     grid = list(grid)
+    agg = config.REEVALUATION_SETTINGS["within_sow_aggregator"]
     thr_by_s = {s: thresholds_at(s, pooled, kinds) for s in grid}
     rows = []
     for r in runs:
         raw = rob.load_raw(r.path)
+        if raw.sow_ids is None:
+            raise ValueError(
+                f"re-eval cube {r.path} carries no sow_ids, so the primary "
+                f"(SOW-unit) metric is undefined for it. The stringency sweep "
+                f"will not substitute the realization unit -- they are different "
+                f"quantities."
+            )
         for s in grid:
-            v = rob.satisficing_multivariate(raw, thresholds=thr_by_s[s]).to_numpy()
+            v = rob.satisficing_multivariate_sow(
+                raw, thresholds=thr_by_s[s], within_sow_agg=agg).to_numpy()
             rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
                          "stringency": s, "is_default": False,
                          "best": _best(v, True), "median": _median(v)})
-        v = rob.satisficing_multivariate(raw).to_numpy()   # registry defaults
+        v = rob.satisficing_multivariate_sow(   # registry defaults
+            raw, within_sow_agg=agg).to_numpy()
         rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
                      "stringency": np.nan, "is_default": True,
                      "best": _best(v, True), "median": _median(v)})
@@ -984,7 +1006,11 @@ def degeneracy_flags(summary: pd.DataFrame, perf: pd.DataFrame,
 
     med = design_level(summary, "median")
     for name in kinds:
-        col = f"sat_uni__{name}"
+        # The PRIMARY's own decomposition (SOW unit); the realization-unit column
+        # is the fallback for a cube with no SOW grouping.
+        col = f"sat_uni_sow__{name}"
+        if col not in med.columns:
+            col = f"sat_uni__{name}"
         if col not in med.columns:
             continue
         v = med[col].dropna()

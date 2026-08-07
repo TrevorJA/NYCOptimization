@@ -17,13 +17,27 @@ The test ensemble E_test is ``N_theta`` deeply-uncertain states of the world (SO
 — LHS points in the forcing space) x ``R`` stochastic realizations each. That gives
 two legitimate units for a satisficing criterion, and they are different quantities:
 
+  - the **SOW unit [ADOPTED PRIMARY]** — the R realizations sharing a theta are
+    collapsed FIRST (an explicit risk attitude within the state of the world), and
+    the criterion is then applied across the ``N_theta`` SOWs. This is the
+    Triangle-lineage construction (Herman et al. 2014, 2015; Trindade et al. 2017,
+    2019; Gold et al. 2023), stated as a convention by Bartholomew & Kwakkel (2020);
   - the **realization unit** — every one of the ``N_theta x R`` realizations is a
-    scenario, and the criterion is applied across all of them;
-  - the **SOW unit** — the R realizations sharing a theta are collapsed FIRST (an
-    explicit risk attitude within the state of the world), and the criterion is then
-    applied across the ``N_theta`` SOWs. This is the Triangle-lineage construction
-    (Herman et al. 2014; Trindade et al. 2017; Gold et al. 2022, 2023), and a
-    reviewer from that school expects it.
+    scenario, and the criterion is applied across all of them (Hadjimichael et al.
+    2020; Quinn et al. 2020). Co-reported as the unit sensitivity.
+
+Why the SOW unit is primary here: E_test carries no probability measure over the
+forcing space (Lamontagne et al. 2018), so a pooled-realization fraction would
+integrate a DESIGNED LHS box and a FITTED stochastic generator into one number.
+Collapsing first keeps the two layers separate — natural variability inside a state
+is handled by a named risk attitude (``within_sow_agg``), deep uncertainty across
+states by a count over the design. It also puts the satisficing and the
+incumbent-regret families on the SAME unit: both consume the within-SOW collapse
+``f_bar_i(x, theta)``. Both units are computable here because our base metrics are
+WHOLE-TRACE scalars, definable on one realization; the Triangle papers collapse by
+necessity (their objectives are themselves realization-ensemble statistics), so the
+choice is justified rather than inherited. Full argument:
+``docs/notes/methods/objective_definitions.md`` §3.1.
 
 Both are reported. The SOW path needs ``sow_ids`` in the meta (persisted by
 ``src.reeval_core.sow_grouping``); without it the SOW metrics are N/A, never a
@@ -31,12 +45,15 @@ silent fallback to the realization unit.
 
 The finalized metric set. **No perfect-foresight optimization appears anywhere.**
 
-  - **Multivariate (Starr 1962) domain criterion [PRIMARY]** — fraction of
-    realizations meeting *all* thresholds jointly. The standard measure of the
-    Herman (2014/2015) / Trindade (2017) / Gold (2022, 2023) lineage. Converges at
-    50-300 scenarios (Bonham 2024).
-  - **The same criterion on the SOW unit** (``sat_multivariate_sow``) — the R
-    realizations within each theta collapsed first, then Starr across SOWs.
+  - **Multivariate (Starr 1962) domain criterion on the SOW unit [PRIMARY]**
+    (``sat_multivariate_sow``) — the R realizations within each theta collapsed
+    first, then the fraction of SOWs meeting *all* thresholds jointly. The standard
+    measure of the Herman (2014/2015) / Trindade (2017, 2019) / Gold (2023) lineage.
+    Ranking converges at 50-300 *distinct* scenarios (Bonham 2024 — measured on a
+    FLAT ensemble, so it bounds N_theta, not R).
+  - **The same criterion on the realization unit** (``sat_multivariate``) — the
+    pooled ``N_theta x R`` fraction (Hadjimichael 2020; Quinn 2020). Co-reported as
+    the unit sensitivity, never as the headline.
   - **Univariate satisficing** — its per-objective decomposition.
   - **Laplace / mean** (McPhail T3 = mean) — the risk-neutral anchor.
   - **Maximin** (McPhail T3 = worst-case) — the risk-averse anchor. Both are free,
@@ -348,14 +365,15 @@ def satisficing_univariate(raw: RawCube, thresholds: dict = None,
 def satisficing_multivariate(raw: RawCube, thresholds: dict = None,
                              kinds: dict = None) -> pd.Series:
     """Starr (1962) domain criterion: fraction of realizations meeting ALL
-    thresholds jointly. The PRIMARY robustness measure (Herman et al. 2015).
+    thresholds jointly. The pooled REALIZATION unit (Hadjimichael et al. 2020;
+    Quinn et al. 2020), co-reported here as the unit sensitivity.
 
     A non-finite value in any objective fails that realization's joint criterion,
     mirroring the univariate non-finite-as-unsatisfied rule.
 
-    The unit here is the REALIZATION. For the SOW unit — the Triangle-lineage
-    construction, in which the stochastic traces within a deeply-uncertain state of
-    the world are collapsed first — see :func:`satisficing_multivariate_sow`.
+    This is NOT the adopted primary measure. The primary is
+    :func:`satisficing_multivariate_sow` — the same criterion on the SOW unit,
+    which is what the headline comparison reports.
     """
     sat = _satisfaction_cube(raw, thresholds, kinds)
     joint = sat.all(axis=2).mean(axis=1)  # (S,)
@@ -425,7 +443,7 @@ def collapse_within_sow(raw: RawCube, within_sow_agg: str = "mean"
 def satisficing_multivariate_sow(raw: RawCube, thresholds: dict = None,
                                  kinds: dict = None,
                                  within_sow_agg: str = "mean") -> pd.Series:
-    """Starr domain criterion on the SOW unit: two stages, in this order.
+    """Starr domain criterion on the SOW unit [THE ADOPTED PRIMARY]: two stages.
 
     1. **Collapse** the R realizations within each theta into one performance vector
        per SOW (:func:`collapse_within_sow`; ``mean`` = risk-neutral by default,
@@ -444,6 +462,17 @@ def satisficing_multivariate_sow(raw: RawCube, thresholds: dict = None,
     sharpens each SOW's collapsed estimate but adds no new states of the world; only
     more thetas do. That is why the theta count is the sizing knob that matters.
     """
+    sat, _ = _sow_satisfaction_cube(raw, thresholds, kinds, within_sow_agg)
+    joint = sat.all(axis=2).mean(axis=1)                          # (S,)
+    return pd.Series(
+        joint, index=pd.Index(raw.solution_ids, name="solution_id"),
+        name="sat_multivariate_sow",
+    )
+
+
+def _sow_satisfaction_cube(raw: RawCube, thresholds: dict, kinds: dict,
+                           within_sow_agg: str) -> tuple[np.ndarray, list]:
+    """``(S, n_sow, M)`` boolean satisfaction on the collapsed SOW cube."""
     cube_sow, sow_labels = collapse_within_sow(raw, within_sow_agg)
     thresholds = thresholds if thresholds is not None else raw.thresholds
     kinds = kinds if kinds is not None else raw.kinds
@@ -454,12 +483,27 @@ def satisficing_multivariate_sow(raw: RawCube, thresholds: dict = None,
             f"No satisficing threshold/kind for {missing}; the multivariate criterion "
             f"is a conjunction, so a missing column would zero the metric silently."
         )
-    sat = _satisfy(cube_sow, raw.base_names, thresholds, kinds)   # (S, n_sow, M)
-    joint = sat.all(axis=2).mean(axis=1)                          # (S,)
-    del sow_labels
-    return pd.Series(
-        joint, index=pd.Index(raw.solution_ids, name="solution_id"),
-        name="sat_multivariate_sow",
+    return _satisfy(cube_sow, raw.base_names, thresholds, kinds), sow_labels
+
+
+def satisficing_univariate_sow(raw: RawCube, thresholds: dict = None,
+                               kinds: dict = None,
+                               within_sow_agg: str = "mean") -> pd.DataFrame:
+    """Per-objective satisficing fraction on the SOW unit.
+
+    The per-objective decomposition OF THE PRIMARY metric: same unit, same
+    collapse, conjunction dropped. The realization-unit
+    :func:`satisficing_univariate` is retained beside it as the unit sensitivity —
+    a decomposition computed on a different index set than the metric it
+    decomposes would not add up.
+
+    Returns:
+        ``(S x M)`` DataFrame of ``sat_uni_sow__{name}`` columns.
+    """
+    sat, _ = _sow_satisfaction_cube(raw, thresholds, kinds, within_sow_agg)
+    return pd.DataFrame(
+        sat.mean(axis=1), index=pd.Index(raw.solution_ids, name="solution_id"),
+        columns=[f"sat_uni_sow__{n}" for n in raw.base_names],
     )
 
 
@@ -1159,9 +1203,10 @@ def ranking_stability(scorecard: pd.DataFrame,
 ###############################################################################
 
 _DEFAULT_METRICS = (
-    "satisficing_multivariate",     # PRIMARY (Starr domain criterion, realization unit)
-    "satisficing_multivariate_sow", # the same criterion on the SOW unit
-    "satisficing_univariate",       # its per-objective decomposition
+    "satisficing_multivariate_sow", # PRIMARY (Starr domain criterion, SOW unit)
+    "satisficing_univariate_sow",   # the PRIMARY's per-objective decomposition
+    "satisficing_multivariate",     # the same criterion pooled over realizations
+    "satisficing_univariate",       # its decomposition (realization unit)
     "laplace_mean",                 # McPhail T3 = mean   (risk-neutral anchor)
     "maximin",                      # McPhail T3 = worst  (risk-averse anchor)
     "improvement_vs_baseline",      # fixed external reference; no optimization
@@ -1244,6 +1289,14 @@ def score_robustness(raw: RawCube, baseline: Optional[RawCube] = None,
             raw, thresholds, within_sow_agg=within_sow_agg).to_frame(),
         ["sat_multivariate_sow"],
         {"sat_multivariate_sow": True},
+        gated=no_sow,
+    )
+    _add(
+        "satisficing_univariate_sow",
+        lambda: satisficing_univariate_sow(
+            raw, thresholds, within_sow_agg=within_sow_agg),
+        [f"sat_uni_sow__{n}" for n in raw.base_names],
+        {f"sat_uni_sow__{n}": True for n in raw.base_names},
         gated=no_sow,
     )
     _add(

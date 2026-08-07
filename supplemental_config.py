@@ -1262,42 +1262,14 @@ RTD_HEADLINE_IMPACT_DELTA: float = 0.10
 #: columns NaN). Keys are base objective names; basis strings are the short
 #: per-objective justification carried into the summary table.
 #:
-#: Pass-1 measured verdicts (robustness_threshold_diagnostics.md):
-#: the three delivery criteria the HISTORIC status quo itself fails
-#: (NYC rel 0.869 < 0.95, NYC CVaR 29.2 > 10, NJ rel 0.919 < 0.95) are
-#: re-anchored at the historic-trace attainment, rounded to the stricter side;
-#: the flood criterion adopts the observed 2000-2023 burden anchor; the
-#: non-binding guardrails and the discriminating Montague reliability keep
-#: their current values (re-tuning them from the baseline's own E_test
-#: distribution would be baseline-tuning).
-RTD_RECOMMENDED_THRESHOLDS: dict = {
-    "nyc_delivery_reliability_weekly": 0.87,    # historic anchor 0.8692, up
-    "nyc_delivery_deficit_cvar90_pct": 29.0,    # historic anchor 29.17, down
-    "montague_flow_reliability_weekly": 0.85,   # kept
-    "montague_flow_deficit_cvar90_pct": 25.0,   # kept
-    "trenton_flow_reliability_weekly": 0.85,    # kept
-    "downstream_flood_exceedance_minor": 1.17,  # observed 2000-2023 anchor
-    "nyc_storage_p5_pct": 25.0,                 # kept
-    "nj_delivery_reliability_weekly": 0.92,     # historic anchor 0.9188, up
-}
-RTD_RECOMMENDATION_BASIS: dict = {
-    "nyc_delivery_reliability_weekly":
-        "historic status-quo anchor (0.8692 rounded stricter)",
-    "nyc_delivery_deficit_cvar90_pct":
-        "historic status-quo anchor (29.17 rounded stricter)",
-    "montague_flow_reliability_weekly":
-        "kept: discriminating at current value (frac 0.856)",
-    "montague_flow_deficit_cvar90_pct":
-        "kept: non-binding guardrail (baseline SOW-mean max 11.5)",
-    "trenton_flow_reliability_weekly":
-        "kept: non-binding guardrail (baseline SOW-mean min 0.954)",
-    "downstream_flood_exceedance_minor":
-        "observed 2000-2023 flood-burden anchor (1.17 ft-d/yr)",
-    "nyc_storage_p5_pct":
-        "kept: operational floor, non-binding for the status quo",
-    "nj_delivery_reliability_weekly":
-        "historic status-quo anchor (0.9188 rounded stricter)",
-}
+#: EMPTY, and pass 1 has NOT been run against a valid cube. An earlier
+#: recommendation was measured on a placeholder re-evaluation cube and is void;
+#: it was deleted rather than carried, because a threshold vector is only as
+#: good as the baseline distribution it is placed against. Run the wrapper on
+#: the real status-quo cube at RTD_REEVAL_DIR first, then fill this in per the
+#: checklist in docs/notes/methods/robustness_threshold_diagnostics.md §5.
+RTD_RECOMMENDED_THRESHOLDS: dict = {}
+RTD_RECOMMENDATION_BASIS: dict = {}
 
 # ---------------------------------------------------------------------------
 # Output tree (gitignored, regenerable)

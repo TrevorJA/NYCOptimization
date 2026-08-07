@@ -265,10 +265,18 @@ def failure_matrix(raw: rob.RawCube) -> np.ndarray:
     """Boolean ``(S, R)`` failure matrix: the all-criteria conjunction, negated.
 
     A realization FAILS for a solution when the joint (all-objective) satisficing
-    conjunction is False — the multivariate Starr (1962) domain criterion, which
-    is also the primary robustness metric (``robustness.satisficing_multivariate``).
+    conjunction is False — the multivariate Starr (1962) domain criterion.
     Discovery therefore inherits exactly the robustness criteria; that is standard
     practice and must be stated when the result is reported.
+
+    **The unit here is the REALIZATION, deliberately, and this is the one place it
+    is not the SOW.** The headline metric counts over SOWs because it lives in the
+    deeply-uncertain forcing space, where theta is the design unit. Discovery lives
+    in HAZARD space, where the features are the per-realization hazard descriptors
+    (:func:`align_hazard_to_cube`) and every realization is a distinct point with
+    its own coordinates. Collapsing within theta first would average away exactly
+    the coordinates being mapped. The unit follows the space, and the difference is
+    reported, never silently assumed.
     """
     return ~rob._satisfaction_cube(raw).all(axis=2)
 
@@ -390,7 +398,16 @@ def select_compromise(raw: rob.RawCube, rule: str = COMPROMISE_RULE) -> dict:
             f"unknown compromise rule {rule!r}; expected 'best_satisficing' or "
             f"'min_dist_ideal' (set NYCOPT_SD_COMPROMISE_RULE)."
         )
-    sat = rob.satisficing_multivariate(raw).to_numpy(dtype=float)   # (S,)
+    # The PRIMARY (SOW-unit) metric, so the analyzed policy is the one the headline
+    # comparison favors. Cubes without a SOW grouping fall back to the realization
+    # unit HERE ONLY -- this is a policy CHOICE, not a reported robustness number.
+    if raw.sow_ids is None:
+        sat = rob.satisficing_multivariate(raw).to_numpy(dtype=float)   # (S,)
+    else:
+        sat = rob.satisficing_multivariate_sow(
+            raw,
+            within_sow_agg=config.REEVALUATION_SETTINGS["within_sow_aggregator"],
+        ).to_numpy(dtype=float)                                         # (S,)
     dist = np.linalg.norm(_normalized_mean_objectives(raw), axis=1)  # (S,)
 
     alive = np.any(np.isfinite(raw.cube), axis=(1, 2))

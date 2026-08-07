@@ -704,17 +704,19 @@ REEVALUATION_SETTINGS = {
     # 2020, and structurally invalid when the in-sample term is coverage-weighted
     # and the out-of-sample term is measure-weighted). See src/robustness.py.
     "robustness_metrics": [
-        "satisficing_multivariate",      # PRIMARY: Starr domain criterion, realization unit
-        "satisficing_multivariate_sow",  # the same criterion on the SOW unit
-        "satisficing_univariate",        # per-objective decomposition
+        "satisficing_multivariate_sow",  # PRIMARY: Starr domain criterion, SOW unit
+        "satisficing_univariate_sow",    # the PRIMARY's per-objective decomposition
+        "satisficing_multivariate",      # the same criterion pooled over realizations
+        "satisficing_univariate",        # its decomposition (realization unit)
         "laplace_mean",                  # McPhail T3 = mean  (risk-neutral anchor)
         "maximin",                       # McPhail T3 = worst (risk-averse anchor)
         "improvement_vs_baseline",       # fixed external reference; no optimization
     ],
     # Risk attitude applied to the R realizations WITHIN one deeply-uncertain state of
-    # the world, before the Starr criterion is applied ACROSS states
-    # (satisficing_multivariate_sow, the Herman 2014 / Trindade 2017 / Gold 2022
-    # lineage). "mean" is risk-neutral (what those papers do); "worst" is the
+    # the world, before the Starr criterion is applied ACROSS states. This is the
+    # collapse of the PRIMARY metric (satisficing_multivariate_sow, the Herman 2014 /
+    # Trindade 2017 / Gold 2023 lineage), and the same collapse the incumbent-regret
+    # family consumes. "mean" is risk-neutral (what those papers do); "worst" is the
     # risk-averse sensitivity. It is a real methodological choice, it moves the
     # number, and it is recorded in robustness_meta.json next to the scores.
     "within_sow_aggregator": _parse_str_env("NYCOPT_WITHIN_SOW_AGG", "mean"),
