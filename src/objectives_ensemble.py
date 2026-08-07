@@ -528,28 +528,32 @@ def _resolve_failure_k() -> dict[str, int]:
 # Per-BASE-objective satisficing levels applied to the PER-REALIZATION §1
 # metrics of the persisted re-eval matrix (reeval_core summary derivation and
 # robustness threshold/kind metadata). Labels use the `<base>__sat<thr>` form;
-# they are threshold labels, not objective names. THESE ARE PLACEHOLDERS: the
-# diagnostic that places them has not yet been run against a valid re-evaluation
-# cube, so no measured recommendation exists. Run + adopt per the checklist in
-# docs/notes/methods/robustness_threshold_diagnostics.md §5; override via
-# NYCOPT_SAT_THRESHOLDS.
+# they are threshold labels, not objective names. ADOPTED 2026-08-07 from the
+# satisficing-threshold diagnostic run against the genuine status-quo E_test
+# cube (docs/notes/methods/robustness_threshold_diagnostics.md §0b rules;
+# per-objective basis in supplemental_config.RTD_RECOMMENDATION_BASIS).
+# Override via NYCOPT_SAT_THRESHOLDS. Already-persisted reeval_raw_meta.json
+# files keep their snapshotted pre-adoption thresholds by design.
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
-    "nyc_delivery_reliability_weekly__sat95":     0.95,
-    "nyc_delivery_deficit_cvar90_pct__sat10":     10.0,
+    # Rule 1 (maintain-status-quo re-anchors, stricter side): historic-trace
+    # anchors 0.8692 / 29.17 / 0.9188.
+    "nyc_delivery_reliability_weekly__sat87":     0.87,
+    "nyc_delivery_deficit_cvar90_pct__sat29":     29.0,
     "montague_flow_reliability_weekly__sat85":    0.85,
     "montague_flow_deficit_cvar90_pct__sat25":    25.0,
     "trenton_flow_reliability_weekly__sat85":     0.85,
-    "nj_delivery_reliability_weekly__sat95":      0.95,
+    "nj_delivery_reliability_weekly__sat92":      0.92,
     # Flood threshold in ft-days/yr (the base metric is mean annual flood
-    # exceedance); external anchor: observed WY2001-2023 = 1.17 ft-days/yr
-    # (supplemental_config.RTD_FLOOD_ANCHORS, provenance recorded there). The
-    # simulated-baseline anchor is the RTD anchor script's recomputed
-    # base-metric value, not a hardcoded number.
-    "downstream_flood_exceedance_minor__sat1":      1.0,
-    # DIAGNOSTIC counterpart in days/yr (the retired count metric).
+    # exceedance): rule 2 external goalpost — the observed WY2001-2023
+    # exceedance (supplemental_config.RTD_FLOOD_ANCHORS, provenance there).
+    "downstream_flood_exceedance_minor__sat1p17":   1.17,
+    # DIAGNOSTIC counterpart in days/yr (the retired count metric; not in the
+    # re-eval cube, untouched by the diagnostic).
     "downstream_flood_days_minor__sat1":          1.0,
-    "nyc_storage_p5_pct__sat25":                  25.0,
+    # Rule 2: the FFMP drought-emergency (L5) boundary's seasonal floor, 26%
+    # of combined capacity, replaces the round 25.
+    "nyc_storage_p5_pct__sat26":                  26.0,
 }
 
 
@@ -574,9 +578,9 @@ def _resolve_thresholds() -> dict[str, float]:
 # (maximize-base -> "ge", minimize-base -> "le").
 _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
     ("nyc_delivery_reliability_weekly",
-     "nyc_delivery_reliability_weekly__sat95",   "ge"),
+     "nyc_delivery_reliability_weekly__sat87",   "ge"),
     ("nyc_delivery_deficit_cvar90_pct",
-     "nyc_delivery_deficit_cvar90_pct__sat10",   "le"),
+     "nyc_delivery_deficit_cvar90_pct__sat29",   "le"),
     ("montague_flow_reliability_weekly",
      "montague_flow_reliability_weekly__sat85",  "ge"),
     ("montague_flow_deficit_cvar90_pct",
@@ -584,13 +588,13 @@ _REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
     ("trenton_flow_reliability_weekly",
      "trenton_flow_reliability_weekly__sat85",   "ge"),
     ("nj_delivery_reliability_weekly",
-     "nj_delivery_reliability_weekly__sat95",    "ge"),
+     "nj_delivery_reliability_weekly__sat92",    "ge"),
     ("downstream_flood_exceedance_minor",
-     "downstream_flood_exceedance_minor__sat1",    "le"),
+     "downstream_flood_exceedance_minor__sat1p17", "le"),
     ("downstream_flood_days_minor",
      "downstream_flood_days_minor__sat1",        "le"),
     ("nyc_storage_p5_pct",
-     "nyc_storage_p5_pct__sat25",                "ge"),
+     "nyc_storage_p5_pct__sat26",                "ge"),
 ]
 
 

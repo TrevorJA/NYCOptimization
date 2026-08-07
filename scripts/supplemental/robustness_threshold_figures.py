@@ -818,7 +818,7 @@ def fig_sow_cdfs(raw, base_names, sow_values_by_name, anchor) -> None:
 
         sow_v = sow_values_by_name[name]
         frac = float(sweep_fractions(sow_v, [thr], kind)[0])
-        ax.set_title(f"{label_for(name)}  [pass {frac:.2f}]", fontsize=9)
+        ax.set_title(f"{label_for(name)}\npass {frac:.2f}", fontsize=9)
         ax.set_xlim(xlo, xhi)
         ax.set_ylim(-0.02, 1.02)
         if k % 4 == 0:
@@ -968,7 +968,7 @@ def fig_factor_maps(raw, base_names, sow_values_by_name, theta,
             m_star = critical_m(theta[:, i], ok, scfg.RTD_CRITICAL_M_WINDOW)
             if np.isfinite(m_star):
                 ax.axvline(m_star, color="0.3", lw=1.0, ls="--")
-        ax.set_title(f"{label_for(name)}  [pass {ok.mean():.2f}]", fontsize=8.5)
+        ax.set_title(f"{label_for(name)}\npass {ok.mean():.2f}", fontsize=8.5)
     for ax in axes[-1, :]:
         ax.set_xlabel(THETA_LABELS[theta_names[i]], fontsize=8)
     for ax in axes[:, 0]:

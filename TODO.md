@@ -10,16 +10,6 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 1. Remaining method closures
 
-- [ ] **[HPC]** Run the satisficing-threshold diagnostic for real, then adopt.
-  The earlier recommendation was measured against a placeholder cube and has
-  been deleted (`RTD_RECOMMENDED_THRESHOLDS` is empty again); do NOT resurrect
-  those numbers. Pass 1: run
-  `workflow/supplemental/robustness_threshold_diagnostics.sh` against the
-  genuine step-05 `--reeval` baseline cube on E_test, verifying its meta
-  carries `n_sow` = 1000 / `realizations_per_sow` = 25 first. Pass 2: adopt per
-  the checklist in `docs/notes/methods/robustness_threshold_diagnostics.md` §5
-  (registry vector + `__satNN` label renames + tests + one wrapper rerun), and
-  set the stringency-sweep grid centre/span around the adopted vector.
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test re-evaluation of the Pareto sets).

@@ -1307,14 +1307,49 @@ RTD_NEAR_HISTORIC_K: int = 25
 #: columns NaN). Keys are base objective names; basis strings are the short
 #: per-objective justification carried into the summary table.
 #:
-#: EMPTY, and pass 1 has NOT been run against a valid cube. An earlier
-#: recommendation was measured on a placeholder re-evaluation cube and is void;
-#: it was deleted rather than carried, because a threshold vector is only as
-#: good as the baseline distribution it is placed against. Run the wrapper on
-#: the real status-quo cube at RTD_REEVAL_DIR first, then fill this in per the
-#: checklist in docs/notes/methods/robustness_threshold_diagnostics.md §5.
-RTD_RECOMMENDED_THRESHOLDS: dict = {}
-RTD_RECOMMENDATION_BASIS: dict = {}
+#: ADOPTED 2026-08-07 from pass 1 against the genuine status-quo cube (job
+#: 19729980; meta gate + objectives_summary equality check both passed), per
+#: the §0b rules of docs/notes/methods/robustness_threshold_diagnostics.md.
+#: The same vector is pasted into objectives_ensemble._DEFAULT_THRESHOLDS
+#: (with the __satNN label renames). Already-persisted reeval_raw_meta.json
+#: files keep their snapshotted PRE-adoption thresholds by design (the McPhail
+#: guard); new metas snapshot these values on the next step-05/08 run.
+RTD_RECOMMENDED_THRESHOLDS: dict = {
+    "nyc_delivery_reliability_weekly":   0.87,
+    "nyc_delivery_deficit_cvar90_pct":   29.0,
+    "montague_flow_reliability_weekly":  0.85,
+    "montague_flow_deficit_cvar90_pct":  25.0,
+    "trenton_flow_reliability_weekly":   0.85,
+    "downstream_flood_exceedance_minor": 1.17,
+    "nyc_storage_p5_pct":                26.0,
+    "nj_delivery_reliability_weekly":    0.92,
+}
+RTD_RECOMMENDATION_BASIS: dict = {
+    "nyc_delivery_reliability_weekly":
+        "rule 1: status quo fails 0.95 on the observed record; re-anchored at "
+        "maintain-status-quo (anchor 0.8692 -> 0.87, stricter side)",
+    "nyc_delivery_deficit_cvar90_pct":
+        "rule 1: re-anchored at maintain-status-quo (anchor 29.17 -> 29.0, "
+        "stricter side); ~ the sustained L4 restriction depth (30%)",
+    "montague_flow_reliability_weekly":
+        "kept: binding and non-degenerate (SOW frac 0.856); status quo passes "
+        "on the observed record",
+    "montague_flow_deficit_cvar90_pct":
+        "rule 3: all-pass guardrail kept (margin 4.2 IQR); re-anchoring "
+        "measured near-degenerate (frac 0.055)",
+    "trenton_flow_reliability_weekly":
+        "rule 3: all-pass guardrail kept (margin 8.2 IQR); anchor 0.9945 "
+        "rounds stricter to an ill-posed 1.00",
+    "downstream_flood_exceedance_minor":
+        "rule 2: observed WY2001-2023 exceedance (A_sim_vs_obs C4_max_ft obs "
+        "= 1.17) beats the round number",
+    "nyc_storage_p5_pct":
+        "rule 2: FFMP drought-emergency (L5) boundary seasonal floor (26% of "
+        "capacity) replaces the round 25; stricter, still all-pass",
+    "nj_delivery_reliability_weekly":
+        "rule 1: re-anchored at maintain-status-quo (anchor 0.9188 -> 0.92, "
+        "stricter side)",
+}
 
 # ---------------------------------------------------------------------------
 # Output tree (gitignored, regenerable)

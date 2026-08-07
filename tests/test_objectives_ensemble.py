@@ -356,7 +356,7 @@ def test_env_threshold_override(monkeypatch):
     """The re-eval satisficing layer keeps its NYCOPT_SAT_THRESHOLDS override."""
     monkeypatch.setenv(
         "NYCOPT_SAT_THRESHOLDS",
-        json.dumps({"nyc_delivery_reliability_weekly__sat95": 0.80}),
+        json.dumps({"nyc_delivery_reliability_weekly__sat87": 0.80}),
     )
     importlib.reload(obj_ens)
     try:

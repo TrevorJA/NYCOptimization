@@ -1,0 +1,17 @@
+vector,objective,pass_frac_sow,m_star
+current,nyc_delivery_reliability_weekly,0.0,
+current,nyc_delivery_deficit_cvar90_pct,0.0,
+current,montague_flow_reliability_weekly,0.856,-0.08344961136135938
+current,montague_flow_deficit_cvar90_pct,1.0,
+current,trenton_flow_reliability_weekly,1.0,
+current,downstream_flood_exceedance_minor,0.383,0.010858439305862137
+current,nyc_storage_p5_pct,1.0,
+current,nj_delivery_reliability_weekly,0.02,
+recommended,nyc_delivery_reliability_weekly,0.161,0.20319241818141645
+recommended,nyc_delivery_deficit_cvar90_pct,0.325,0.13029366476964274
+recommended,montague_flow_reliability_weekly,0.856,-0.08344961136135938
+recommended,montague_flow_deficit_cvar90_pct,1.0,
+recommended,trenton_flow_reliability_weekly,1.0,
+recommended,downstream_flood_exceedance_minor,0.445,0.034640425957483706
+recommended,nyc_storage_p5_pct,1.0,
+recommended,nj_delivery_reliability_weekly,0.214,0.1884906583205894

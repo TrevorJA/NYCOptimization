@@ -13,8 +13,10 @@ figures), configuration in `supplemental_config.py` (`RTD_*`), wrapper
 `tests/test_robustness_threshold_diagnostics.py`. Outputs under
 `outputs/supplemental/robustness_threshold_diagnostics/{cache,tables,figures}/`.
 Citations author-year, resolved via `docs/notes/literature/` (primarily
-`objective_and_robustness_formulations.md`). **The diagnostic has NOT yet been
-run against a valid cube; there is no recommendation. Run it per §5.***
+`objective_and_robustness_formulations.md`). **Pass 1 was run 2026-08-07
+against the genuine status-quo cube (job 19729980; meta gate + equality check
+passed) and the vector in §6 was ADOPTED into
+`objectives_ensemble._DEFAULT_THRESHOLDS` the same day.**
 
 ---
 
@@ -85,13 +87,15 @@ time). This is a hard check inside the run, not a result to be quoted here.
 
 ---
 
-## 0b. Placement rules (declared; NOT yet applied)
+## 0b. Placement rules (declared BEFORE the numbers; applied in §6)
 
-No recommendation exists. A pass-1 recommendation measured against a
-placeholder cube was deleted, results and all, because a threshold vector is
-only meaningful against the baseline distribution it is placed on. These are
-the rules the run in §5 must apply, in this order, and they are declared here
-BEFORE the numbers exist so the placement cannot be fitted to them.
+An earlier pass-1 recommendation measured against a placeholder cube was
+deleted, results and all, because a threshold vector is only meaningful
+against the baseline distribution it is placed on. These are the rules the §5
+run applies, in this order, and they were declared here BEFORE the numbers
+existed so the placement could not be fitted to them. (They were applied to
+the genuine pass-1 outputs on 2026-08-07; the resulting vector and its one
+disclosed rule-2/rule-3 seam are recorded in §6.)
 
 1. *A criterion the historically-observed status quo itself fails is not an
    "acceptable-performance" line.* Where the accepted, operating FFMP policy on
@@ -238,7 +242,7 @@ placements cannot:
 
 ---
 
-## 5. Run, then adopt (NEITHER done)
+## 5. Run, then adopt (BOTH done 2026-08-07; record in §6)
 
 **Pass 1 — measure.** Run `workflow/supplemental/robustness_threshold_diagnostics.sh`
 against the REAL status-quo re-evaluation cube (step 05 `--reeval` on
@@ -270,6 +274,65 @@ rules to the measured placements — the rules first, then the numbers.
 5. Set the stringency-sweep grid centre/span around the adopted vector, and
    close the TODO item; the sibling OAT-stringency / ranking-criticality item
    (framing diagnostic 3) stays open and then has its threshold vector.
+
+## 6. Adopted vector (2026-08-07)
+
+Pass 1: job 19729980 on the genuine cube; both gates passed. §0b rules applied
+in order; adopted into `_DEFAULT_THRESHOLDS` (labels renamed) and mirrored in
+`supplemental_config.RTD_RECOMMENDED_THRESHOLDS` / `RTD_RECOMMENDATION_BASIS`.
+
+| Objective (kind) | Old | Adopted | SOW frac at adopted | Rule |
+|---|---|---|---|---|
+| NYC delivery reliability (≥) | 0.95 | **0.87** | 0.169 | 1 (anchor 0.8692) |
+| NYC delivery deficit CVaR90 (≤) | 10.0 | **29.0** | 0.325 | 1 (anchor 29.17; ≈ sustained L4 depth) |
+| NJ delivery reliability (≥) | 0.95 | **0.92** | 0.221 | 1 (anchor 0.9188) |
+| Flood exceedance (≤) | 1.0 | **1.17** | 0.445 | 2 (observed WY2001–23) |
+| NYC storage p5 (≥) | 25.0 | **26.0** | 1.000 | 2 (FFMP L5 boundary seasonal floor) |
+| Montague flow reliability (≥) | 0.85 | 0.85 | 0.856 | kept (binding, non-degenerate) |
+| Montague flow deficit CVaR90 (≤) | 25.0 | 25.0 | 1.000 | 3 (guardrail; re-anchor measured 0.055) |
+| Trenton flow reliability (≥) | 0.85 | 0.85 | 1.000 | 3 (guardrail; anchor rounds to ill-posed 1.00) |
+
+Disclosures carried into the SI text:
+
+1. *Guardrails kept on measured evidence.* Re-anchoring the all-pass criteria
+   at maintain-status-quo would flip Montague deficit to 0.055 and Trenton to
+   0.142 — from non-binding past binding into near-degenerate, because the
+   SOW-mean distributions are steep at the anchor (E_test is harsher than the
+   observed record), and no intermediate placement exists that is not a
+   distribution feature (rule 4). With all objectives rank-correlated
+   |ρ| ≥ 0.91 through m, tightening them would only double-count mean-flow
+   decline inside the conjunction. Their ranking-criticality for the policy
+   population is framing diagnostic 3's question.
+2. *The storage move is rule 2 applied after pass 1.* 25 → 26 replaces a round
+   number with the FFMP drought-emergency (L5) boundary's seasonal floor (26%
+   of combined capacity; pywrdrb `ffmp_reservoir_operation_daily_profiles.csv`,
+   level5 min) — an institutional quantity independent of E_test, stricter, and
+   still all-pass (worst SOW-mean ≈ 29.1). Disclosed as adopted after the
+   pass-1 numbers were seen, not pre-registered.
+3. *Near-historic caveat.* The historic-trace anchor lies outside the spread of
+   the 25 nearest-to-θ=0 SOWs on all 8 objectives, mostly on the
+   better-performance side: the generator's no-change worlds are harsher than
+   the observed record, so rule-1 re-anchors err strict — the direction §0b
+   requires.
+4. *Snapshot guard.* Persisted `reeval_raw_meta.json` files keep the
+   pre-adoption thresholds; the adopted vector becomes "current" in new metas
+   on the next step-05/08 run. The stringency sweep (`compare_designs.py`)
+   reads the live registry at run time, so adoption re-centers it
+   automatically.
+5. *The incumbent's joint Starr fraction is 0.000 at the ADOPTED vector too —
+   and that is a finding, not a placement failure.* Every adopted marginal is
+   non-degenerate (0.161–1.000), but the pass-2 conjunction shows a NEGATIVE
+   co-occurrence gap (joint 0.000 < independence 0.004 < comonotone 0.161):
+   the supply criteria pass only in wet worlds (m ≳ 0.15) while the flood
+   criterion passes only in dry-to-neutral worlds (m ≲ 0.03), and for the
+   status-quo FFMP the two acceptable regions do not intersect anywhere in the
+   E_test box — flood is the modal SOLE failure (0.16 of SOWs) under the
+   adopted vector. The motivation reading for the manuscript: no state of the
+   world lets current operations be simultaneously acceptable on supply and
+   flood terms; whether any candidate policy can create such a world is
+   exactly what the campaign's Starr metric and the attainability screen test
+   (and where satisficing saturates at 0, the incumbent-regret family carries
+   the discrimination — `src/robustness.py`).
 
 ## Citations
 

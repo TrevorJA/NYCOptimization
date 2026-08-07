@@ -1,0 +1,17 @@
+vector,rank,failing_criteria,n_failing,count,frac
+current,1,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + downstream_flood_exceedance_minor + nj_delivery_reliability_weekly,4,585,0.585
+current,2,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + nj_delivery_reliability_weekly,3,251,0.251
+current,3,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + montague_flow_reliability_weekly + nj_delivery_reliability_weekly,4,132,0.132
+current,4,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + downstream_flood_exceedance_minor,3,20,0.02
+current,5,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + montague_flow_reliability_weekly + downstream_flood_exceedance_minor + nj_delivery_reliability_weekly,5,12,0.012
+current,0,(none),0,0,0.0
+recommended,1,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + nj_delivery_reliability_weekly,3,291,0.291
+recommended,2,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + downstream_flood_exceedance_minor + nj_delivery_reliability_weekly,4,240,0.24
+recommended,3,downstream_flood_exceedance_minor,1,161,0.161
+recommended,4,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + montague_flow_reliability_weekly + nj_delivery_reliability_weekly,4,139,0.139
+recommended,5,nyc_delivery_reliability_weekly + downstream_flood_exceedance_minor + nj_delivery_reliability_weekly,3,98,0.098
+recommended,6,nyc_delivery_reliability_weekly + downstream_flood_exceedance_minor,2,51,0.051
+recommended,7,nyc_delivery_reliability_weekly + nj_delivery_reliability_weekly,2,13,0.013
+recommended,8,nyc_delivery_reliability_weekly + nyc_delivery_deficit_cvar90_pct + montague_flow_reliability_weekly + downstream_flood_exceedance_minor + nj_delivery_reliability_weekly,5,5,0.005
+recommended,9,(other combinations),-1,2,0.002
+recommended,0,(none),0,0,0.0
