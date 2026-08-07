@@ -542,8 +542,10 @@ _DEFAULT_THRESHOLDS: dict[str, float] = {
     "trenton_flow_reliability_weekly__sat85":     0.85,
     "nj_delivery_reliability_weekly__sat95":      0.95,
     # Flood threshold in ft-days/yr (the base metric is mean annual flood
-    # exceedance); anchors: observed 2000-2023 = 1.17, simulated baseline =
-    # 0.35 ft-days/yr (flood_objective_diagnostics.md).
+    # exceedance); external anchor: observed WY2001-2023 = 1.17 ft-days/yr
+    # (supplemental_config.RTD_FLOOD_ANCHORS, provenance recorded there). The
+    # simulated-baseline anchor is the RTD anchor script's recomputed
+    # base-metric value, not a hardcoded number.
     "downstream_flood_exceedance_minor__sat1":      1.0,
     # DIAGNOSTIC counterpart in days/yr (the retired count metric).
     "downstream_flood_days_minor__sat1":          1.0,

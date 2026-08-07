@@ -1235,17 +1235,35 @@ RTD_SWEEP_POINTS: int = 201
 #: DU factor names expected in the forcing npz (order-checked at load).
 RTD_THETA_NAMES: tuple = ("m", "r1", "r2")
 
-#: Objectives given theta-plane factor maps (the headline NYC criteria).
+#: Objectives given theta-plane factor maps: all 8 criteria, in the single
+#: informative plane (RTD_FACTOR_MAP_PLANE). The pass/fail boundary is
+#: near-monotone in m for every objective and r2 is inert, so one plane per
+#: criterion beats three planes for two criteria.
 RTD_FACTOR_MAP_OBJECTIVES: tuple = (
     "nyc_delivery_reliability_weekly",
     "nyc_delivery_deficit_cvar90_pct",
+    "montague_flow_reliability_weekly",
+    "montague_flow_deficit_cvar90_pct",
+    "trenton_flow_reliability_weekly",
+    "downstream_flood_exceedance_minor",
+    "nyc_storage_p5_pct",
+    "nj_delivery_reliability_weekly",
 )
 
-#: External flood anchors in ft-days/yr (flood_objective_diagnostics.md; also
-#: recorded inline at objectives_ensemble._DEFAULT_THRESHOLDS).
+#: The theta plane the factor maps are drawn in (names from RTD_THETA_NAMES).
+RTD_FACTOR_MAP_PLANE: tuple = ("m", "r1")
+
+#: External flood anchor in ft-days/yr: the observed basin experience, WY2001-2023
+#: (outputs/supplemental/flood_objective/tables/A_sim_vs_obs.csv, row C4_max_ft,
+#: column obs = 1.1722 -- the revealed-tolerated level of realized history).
+#: The former "simulated_baseline": 0.35 anchor was REMOVED 2026-08-07: it traced
+#: to outputs/baseline/ffmp_baseline_objectives.csv::downstream_flood_exceedance_annual
+#: (0.3467), an ANNUAL-UNIT search-space value -- the metric-space mixing the
+#: rtd_historic_anchor_comparison table exists to prevent -- and the correct
+#: base-metric simulated baseline is already the anchor script's runtime-recomputed
+#: historic anchor.
 RTD_FLOOD_ANCHORS: dict = {
     "observed_2000_2023": 1.17,
-    "simulated_baseline": 0.35,
 }
 
 #: Distribution-feature candidates: quantiles of the baseline SOW-mean
@@ -1254,8 +1272,35 @@ RTD_CANDIDATE_QUANTILES: tuple = (0.10, 0.50, 0.90)
 
 #: |delta univariate SOW fraction| (current -> recommended) above which a
 #: recommendation is flagged as changing a headline result; a degenerate
-#: current fraction (<0.01 or >0.99) moving out of degeneracy also flags.
+#: current fraction (< RTD_DEGENERACY_LIMIT or > 1 - RTD_DEGENERACY_LIMIT)
+#: moving out of degeneracy also flags.
 RTD_HEADLINE_IMPACT_DELTA: float = 0.10
+
+#: A satisficing fraction within this distance of 0 or 1 is DEGENERATE: the
+#: criterion is not discriminating on E_test (all-fail voids the Starr
+#: conjunction; all-pass is a non-binding guardrail). Shared by the
+#: recommendation table's degeneracy-exit flag and the figure shading.
+RTD_DEGENERACY_LIMIT: float = 0.01
+
+#: Confidence level for the Wilson score intervals on SOW-unit satisficing
+#: fractions (n = 1,000 independent LHS draws). The pooled realization unit
+#: gets NO interval: its 25,000 draws are correlated within SOWs, so a binomial
+#: interval would overstate precision ~5x (objective_definitions.md 3.1).
+RTD_CI_CONFIDENCE: float = 0.95
+
+#: Failure combinations reported individually in rtd_failure_combinations.csv
+#: (the rest are pooled into a remainder row).
+RTD_TOP_FAILURE_COMBOS: int = 8
+
+#: Centered rolling-window width (in SOWs, odd) for the critical-m boundary:
+#: local pass rate over the m-sorted SOWs; the boundary is the median m of the
+#: 0.5-crossings. NaN when the criterion is degenerate.
+RTD_CRITICAL_M_WINDOW: int = 101
+
+#: Near-historic neighborhood size: the K SOWs closest to theta = 0 (per-factor
+#: standardized distance) used to check the historic-trace anchor's consistency
+#: with the generator at near-zero forcing change.
+RTD_NEAR_HISTORIC_K: int = 25
 
 #: FINAL recommended threshold vector, filled AFTER inspecting the pass-1
 #: outputs (two-pass workflow; empty dicts on pass 1 leave the recommendation

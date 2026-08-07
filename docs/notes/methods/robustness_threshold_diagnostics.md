@@ -1,6 +1,6 @@
 # Robustness Satisficing-Threshold Diagnostics (SI)
 
-*Last updated: 2026-08-06. Procedure for placing the satisficing criterion
+*Last updated: 2026-08-07. Procedure for placing the satisficing criterion
 vector (`src/objectives_ensemble.py::_DEFAULT_THRESHOLDS`, shipped as
 placeholders "pending the satisficing-criterion diagnostics") against the
 status-quo FFMP baseline's persisted $E_{\text{test}}$ re-evaluation cube.
@@ -48,9 +48,15 @@ collapsed with the within-SOW mean (`collapse_within_sow`, the shipped
 risk-neutral default) and fractions are counted over the 1,000 SOW-mean values.
 Every table co-reports the pooled realization unit (n = 25,000) as the unit
 sensitivity. Worst-case Monte-Carlo standard error of a SOW fraction is
-$0.5/\sqrt{1000}$ ≈ ±1.6 pp (`scenario_design_methods.md` §5.4). Because $E_{\text{test}}$ is an
-LHS-designed DU box, a satisficing fraction is a coverage-weighted count over
-the box, not a probability (Lamontagne et al. 2018).
+$0.5/\sqrt{1000}$ ≈ ±1.6 pp (`scenario_design_methods.md` §5.4); every
+reported SOW fraction additionally carries a Wilson 95% score interval
+(n = 1,000 independent LHS draws), which reduces to that convention at
+$p = 0.5$ and stays honest at the degenerate edges. The pooled realization
+unit gets NO interval: its draws are correlated within SOWs, so a binomial
+interval would overstate precision ~5× (`objective_definitions.md` §3.1).
+Because $E_{\text{test}}$ is an LHS-designed DU box, a satisficing fraction is
+a coverage-weighted count over the box, not a probability (Lamontagne et al.
+2018).
 
 **One equivalence, stated openly.** The threshold-sensitivity curve *is* the
 SOW-mean distribution: for a ≥-criterion the satisficing fraction at
@@ -119,52 +125,116 @@ BEFORE the numbers exist so the placement cannot be fitted to them.
 ## 1. Distributions and anchors (`S_rtd_baseline_sow_cdfs`)
 
 Per-objective ECDFs of the 1,000 SOW-means with the pooled 25,000-realization
-ECDF as a grey underlay; vertical lines: current threshold, historic-trace
-anchor (dashed), NYC stakeholder floor 0.5
-(`src/pareto_filter.py::DEFAULT_STAKEHOLDER_FLOORS`, dotted) and the two
-flood anchors. The threshold-margin-CDF presentation follows Gold et al.
-(2023, Fig. 5), specified for this project in
-`framing_convention_diagnostics.md` §3. The pooled underlay is what shows how
-much the within-SOW mean collapse discards: the gap between the two curves is
-within-SOW natural variability, and it is reported rather than assumed small.
-Numeric companion: `rtd_sow_mean_summary.csv`.
+ECDF as a grey underlay; vertical references: current threshold (black, pass
+side lightly shaded, SOW pass fraction in the panel title), historic-trace
+anchor (dashed, its own color — never the fail color), NYC stakeholder floor
+0.5 (`src/pareto_filter.py::DEFAULT_STAKEHOLDER_FLOORS`, dotted) and the
+observed flood anchor (dash-dot). Axes are capped to the data support: a
+reference beyond it appears as an edge chevron rather than stretching the
+panel until the distribution is unreadable (its exact value is in the
+tables). The threshold-margin-CDF presentation follows Gold et al. (2023,
+Fig. 5), specified for this project in `framing_convention_diagnostics.md`
+§3. The pooled underlay is what shows how much the within-SOW mean collapse
+discards: the gap between the two curves is within-SOW natural variability,
+and it is reported rather than assumed small. Figures carry no in-panel text
+annotations; numeric companions: `rtd_sow_mean_summary.csv`,
+`rtd_default_stringency.csv`.
 
 ## 2. Threshold sensitivity (`S_rtd_threshold_sensitivity`)
 
 Satisficing fraction vs threshold per objective (dense natural-unit grid,
 201+ points, defaults and candidates lying exactly on grid samples), x-axis
-flipped for ≤-criteria so stringency increases rightward on every panel;
-candidates annotated with their fractions; the realization unit dashed for
-unit-sensitivity. The threshold-dependence presentation follows Hadjimichael
-et al. (2020); the stringency coordinate in the tables
-(`rtd_default_stringency.csv`, `rtd_threshold_sweep.csv`) uses the
-`compare_designs.default_stringency` convention (fraction failing
-marginally: strict inequality side), so this diagnostic and the step-10
-cross-design sweep speak the same coordinate.
+flipped for ≤-criteria so stringency increases rightward on every panel; the
+SOW curve carries its Wilson 95% band and the degenerate zones (fraction
+within `RTD_DEGENERACY_LIMIT` of 0/1) are shaded; the realization unit dashed
+for unit-sensitivity. Candidate placements are marked by class (current /
+historic anchor / floor & external anchor / SOW quantile), with the fractions
+themselves in `rtd_candidate_placements.csv` — per §0b rule 4 the
+distribution-feature quantiles stay on the figure as report-only markers. The
+threshold-dependence presentation follows Hadjimichael et al. (2020); the
+stringency coordinate in the tables (`rtd_default_stringency.csv`,
+`rtd_threshold_sweep.csv`) uses the `compare_designs.default_stringency`
+convention (fraction failing marginally: strict inequality side), so this
+diagnostic and the step-10 cross-design sweep speak the same coordinate.
 
-## 3. θ-attribution (`S_rtd_theta_spearman`, `S_rtd_factor_maps_nyc`)
+## 3. θ-attribution (`S_rtd_theta_spearman`, `S_rtd_factor_maps`)
 
 Spearman rank correlations over the 1,000 SOWs between the 8 SOW-mean
-objectives and the DU factors, plus pass/fail factor maps in the three
-θ-planes for the two NYC criteria (Bryant & Lempert 2010 scenario-discovery
-factor mapping; a visual, single-policy analogue of the
-`scenario_discovery.py` machinery). Reported per objective from
-`rtd_theta_spearman.csv`: which DU factors order the SOW-mean performance, and
-where the pass/fail boundary falls in each θ-plane at the current thresholds
-and at whatever the §0b rules recommend. A criterion whose factor map is
-uniformly "fail" is the visual form of the degeneracy those rules screen for.
+objectives and the DU factors. The figure shows only the 8-objective × 3-θ
+block — the question is which factors order performance, and the full
+(8+3)×(8+3) matrix (objective–objective redundancy included) stays in
+`rtd_theta_spearman.csv`. Pass/fail factor maps cover ALL 8 criteria in the
+single informative plane (`RTD_FACTOR_MAP_PLANE`, m × r₁): the boundary is
+near-monotone in m for every objective and r₂ is inert, so one plane per
+criterion beats three planes for two criteria (Bryant & Lempert 2010
+scenario-discovery factor mapping; a visual, single-policy analogue of the
+`scenario_discovery.py` machinery). Each panel carries its pass fraction and
+the m at which the local pass rate crosses 0.5 (`rtd_critical_m.csv`) — the
+hydrologic reading of the placement: "this criterion fails once the mean-flow
+change exceeds m*". A panel that is uniformly "fail" is the visual form of
+the degeneracy the §0b rules screen for.
 
 ## 4. Historic-anchor comparison (`rtd_historic_anchor_comparison.csv`)
 
 Each objective's recomputed base-metric anchor with its quantile position in
-the SOW-mean distribution, alongside the annual-unit CSV rows
-(`metric_space = search_annual_csv`) which are a DIFFERENT metric space and
-carried for reference only — an annual-unit search objective is not comparable
-to the weekly base metric the thresholds act on, and the table's
-`metric_space` column exists to stop the two being read off one axis.
-Whether the historic trace lies inside the $E_{\text{test}}$ SOW-mean support
-decides whether a status-quo anchor is discriminating or degenerate, so the
-quantile position of each anchor is the reported quantity.
+the SOW-mean distribution, an explicit `in_sow_support` flag with the
+distance outside the support, and a near-historic consistency check: the
+anchor's percentile within the `RTD_NEAR_HISTORIC_K` SOWs closest to θ = 0,
+which guards the §0b rule-1 re-anchoring against generator bias (the historic
+trace should be consistent with what the generator produces at near-zero
+forcing change). Alongside sit the annual-unit CSV rows
+(`metric_space = search_annual_csv`), a DIFFERENT metric space carried for
+reference only — an annual-unit search objective is not comparable to the
+weekly base metric the thresholds act on, and the table's `metric_space`
+column exists to stop the two being read off one axis. Whether the historic
+trace lies inside the $E_{\text{test}}$ SOW-mean support decides whether a
+status-quo anchor is discriminating or degenerate, so the quantile position
+of each anchor is the reported quantity.
+
+**Flood anchor provenance (recorded 2026-08-07).** The external flood anchor
+is the observed basin experience, WY2001–2023: 1.17 ft·days/yr
+(`outputs/supplemental/flood_objective/tables/A_sim_vs_obs.csv`, row
+`C4_max_ft`, column `obs`) — the revealed-tolerated level of realized
+history, the §0b rule-2 goalpost. A former second anchor
+("simulated_baseline" = 0.35) was REMOVED: it traced to
+`outputs/baseline/ffmp_baseline_objectives.csv::downstream_flood_exceedance_annual`
+(0.3467), an ANNUAL-UNIT search-space value — exactly the metric-space mixing
+this table exists to prevent — and the correct base-metric simulated baseline
+is already the anchor script's runtime-recomputed historic value.
+
+## 4b. Conjunction and estimator diagnostics
+
+Zero-simulation companions that answer the two questions the marginal
+placements cannot:
+
+- **Starr conjunction decomposition** (`rtd_joint_satisficing.csv`,
+  `rtd_failure_combinations.csv`, `rtd_failing_count_distribution.csv`,
+  `S_rtd_conjunction`). The multivariate metric is a conjunction, so the
+  marginals may not tell its story. The observed joint SOW fraction is
+  bracketed by its two limiting benchmarks — the independence product
+  ∏ᵢ(marginal fracᵢ) and the comonotone bound minᵢ(marginal fracᵢ) — plus
+  the binding criterion, the most frequent failing-criteria combinations,
+  and each criterion's sole- vs co-failure attribution (observed ≈ min says
+  failures nest inside the binding criterion; observed ≈ product says they
+  accumulate independently). Same construction as the regret-side
+  `joint_vs_independent`; cites Starr (1962), Herman et al. (2015) —
+  multivariate satisficing exposes stakeholder conflict — and Bonham et al.
+  (2024) saturation. The joint fraction at the current (and, pass 2,
+  recommended) vector is also the final row of
+  `rtd_threshold_recommendation.csv`.
+- **Unit-collapse dispersion** (`rtd_unit_collapse.csv`). Per objective: the
+  median within-SOW SD, the SE of the SOW-mean (σ/√25), the between-SOW SD,
+  and their ratio — is the SOW-mean estimator precise enough that placement
+  is not blurred by realization noise? — plus the SOW fraction at the current
+  threshold under the risk-averse `worst` collapse beside the risk-neutral
+  `mean` (the declared co-reported sensitivity, `objective_definitions.md`
+  §3.1).
+- **Critical-m boundaries** (`rtd_critical_m.csv`, overlaid on the factor
+  maps). Licensed by the measured near-monotonicity in m; translates each
+  threshold into the bottom-up, scenario-neutral coordinate.
+- **Guardrail margins** (columns of `rtd_default_stringency.csv`): distance
+  from each threshold to the worst SOW-mean, natural units and IQR multiples
+  — the measured form of §0b rule 3's "kept, not re-tuned".
 
 ---
 

@@ -46,17 +46,50 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   selected-ensemble event-seasonality span check.
 
 - [ ] **[HPC]** DV re-parameterization ripple (allocation-reduction DVs,
-  2026-08-06): rebuild the problem JARs (step 00 — new bounds) and rerun the
-  step-05 baseline (same policy, new DV encoding in the persisted matrix).
-  Prior `.set`/`.ref` archives and re-eval matrices use the retired
-  factor encoding — never mix them with new runs but also don't delete them until the next optimizaiton is run.
+  2026-08-06): rerun the step-05 baseline (same policy, new DV encoding in the
+  persisted matrix; the staged one is 2026-08-03 and uses the retired factor
+  encoding). Prior `.set`/`.ref` archives and re-eval matrices also use the
+  retired encoding — never mix them with new runs, but don't delete them until
+  the next optimization is run.
+  No JAR rebuild is required: step 00 bakes only `nvars`/`nobjs` and a
+  hardcoded `RealVariable(-1e6, 1e6)` into the problem class — the real DV
+  bounds live in Python and never reach the JAR. Verified 2026-08-07 that the
+  built JARs (36/45/55/64 vars, 8 objs) still match `get_n_vars`/`get_n_objs`.
+  Rebuild only when a DV or objective is added/removed.
 
 ## 2. Anvil shakeout (before production submissions)
 
 - [ ] **[HPC]** End-to-end smoke of `hazard_filling_stationary`: step 06 only
-  (`submit_smoke.sh` = 79 MPI ranks). The local half is done; the MPI
-  fan-out in step 04 is still untested (laptop ran 1 rank).
+  (`submit_smoke.sh` = 79 MPI ranks). This is also the first exercise of the
+  2026-08-06 allocation-reduction DV decode inside a real Borg search — no
+  optimization output predates it. Step 04's MPI fan-out is already verified
+  (33 ranks on Anvil, 2026-08-04, both campaign designs — see
+  `logs/prep_pywrdrb_inputs_19663199_1.out`).
 - [ ] **[HPC]** `pilot` MOEA config go/no-go run.
+- [ ] **[local]** Finalize the `mm_moderate` parallel scheme (rank geometry) to
+  maximize parallel efficiency, SU, and wall-clock — before any moderate-scale
+  submission. `mm_moderate` inherits the Hopper-shaped 165 ranks = 5 nodes x 33
+  (`NYCOPT_RANKS_PER_NODE=33` in `workflow/_common.sh`, mirrored in step 06's
+  SBATCH header). Anvil's `wholenode` partition is node-EXCLUSIVE at 128
+  cores/node, so that layout idles ~74% of every node it bills. The campaign
+  cost surface already measures the dense packing
+  (`outputs/supplemental/ensemble_cost_experiment/tables/campaign_projection.csv`:
+  `search_ranks_per_node=128`, 173.8 s/eval at N=100/L=10, efficiency 0.729),
+  and `production` is already sized that way — `mm_moderate` is the straggler.
+  Projected at 20k NFE per design (t_eval 173.8 s, eff 0.729):
+
+  | geometry                       | wall  | SU/run |
+  |--------------------------------|-------|--------|
+  | 5 nodes x 33 (165 ranks, now)  | 8.3 h | ~5,300 |
+  | 4 nodes x 128 (511 ranks)      | 2.6 h | ~1,340 |
+
+  Decide the island/worker split too (511 ranks = 1 + 2x(254+1); the scaling
+  supplement found island partitioning throughput-free at fixed slot count, so
+  it is a search-reliability choice, not a throughput one). Re-check the
+  33/node memory-bandwidth rationale against the 128/node cost-surface cells
+  before committing — the two were calibrated on different machines. Then
+  update `src/moea_config.py` and step 06's `--nodes`/`--ntasks-per-node`
+  together so `nycopt_check_allocation` stays consistent.
 
 ## 3. Production gates
 

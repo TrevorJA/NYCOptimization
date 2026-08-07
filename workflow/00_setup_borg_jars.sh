@@ -8,8 +8,13 @@
 # `src.formulations.get_n_objs()`. Keeps the JARs in lock-step with the
 # active config (e.g., salinity-on adds an obj; salt-front DVs add DVs).
 #
+# Only the DV/objective COUNTS reach the JAR — the problem class hardcodes
+# RealVariable(-1e6, 1e6) and the real per-DV bounds live in Python. Changing a
+# DV's bounds, name, or meaning therefore needs NO rebuild; only adding or
+# removing a DV or objective does.
+#
 # Constraint count is DELIBERATELY 0 even though the Borg search itself uses
-# formal constraints (src.formulations.get_n_constrs() == 3): every file this
+# formal constraints (src.formulations.get_n_constrs() == 2): every file this
 # problem definition parses — solveMPI runtime snapshots and .set files — is
 # written via BORG_Archive_append semantics (feasible solutions only, columns
 # = variables + objectives, never constraints). Declaring constraints here

@@ -14,11 +14,18 @@ or the live threshold registry):
   4. sweep_grid: contains the default and every candidate exactly;
   5. theta_for_sows: id-keyed join (shuffled realization ids still land),
      non-constant theta within a SOW raises, missing realization raises;
-  6. candidate_menu: the NYC stakeholder floor and flood anchors are attached
-     only to their own objectives;
+  6. candidate_menu: the NYC stakeholder floor and the external flood anchor
+     are attached only to their own objectives;
   7. build_recommendation_table: NaN recommendation columns on pass 1, the
      headline flag fires on a large fraction delta and on degeneracy-exit,
-     and stays quiet for a small move.
+     stays quiet for a small move, and appends the joint Starr row;
+  8. wilson_ci: contains the point fraction, pins to [0, 1] at the edges,
+     narrows with n;
+  9. the conjunction helpers (satisfaction_matrix, joint_satisficing_stats,
+     failure_combinations, sole_cofailure, failing_count_distribution):
+     hand-computed toy matrices, non-finite counts as fail;
+ 10. within_between_sd, critical_m, nearest_to_zero_theta: hand-computed
+     dispersion, boundary recovery on a clean step, degenerate -> NaN.
 
 Run:
     venv/bin/python -m pytest tests/test_robustness_threshold_diagnostics.py -v
@@ -159,7 +166,9 @@ def test_theta_for_sows_missing_realization_raises():
 def test_candidate_menu_floor_and_anchor_routing():
     v = np.linspace(0.0, 1.0, 101)
     floors = {"nyc_delivery_reliability_weekly": 0.5}
-    flood = {"observed_2000_2023": 1.17, "simulated_baseline": 0.35}
+    # Single external flood anchor since 2026-08-07: the simulated baseline is
+    # the anchor script's recomputed value, never a hardcoded number.
+    flood = {"observed_2000_2023": 1.17}
 
     nyc = rtd.candidate_menu("nyc_delivery_reliability_weekly", "ge", v, 0.95,
                              anchor_val=0.8, floors=floors, flood_anchors=flood,
@@ -174,7 +183,7 @@ def test_candidate_menu_floor_and_anchor_routing():
                             anchor_val=0.35, floors=floors, flood_anchors=flood,
                             quantiles=(0.5,))
     assert fl["anchor_observed_2000_2023"] == 1.17
-    assert fl["anchor_simulated_baseline"] == 0.35
+    assert "anchor_simulated_baseline" not in fl
     assert "stakeholder_floor" not in fl
 
     other = rtd.candidate_menu("nj_delivery_reliability_weekly", "ge", v, 0.95,
@@ -233,3 +242,122 @@ def test_recommendation_small_move_not_flagged():
                                         recommended={"obj_a": 0.52},
                                         basis={}, headline_delta=0.10)
     assert not bool(df.iloc[0]["headline_impact"])
+
+
+def test_recommendation_appends_joint_starr_row():
+    # Single objective: the joint conjunction equals the marginal fraction.
+    names, kinds, current, sow_vals = _one_obj_inputs(np.linspace(0, 1, 101))
+    df = rtd.build_recommendation_table(names, kinds, current, sow_vals,
+                                        recommended={}, basis={},
+                                        headline_delta=0.10)
+    assert len(df) == 2
+    joint = df.iloc[-1]
+    assert joint["objective"] == "ALL__joint_starr"
+    assert joint["frac_sow_at_current"] == pytest.approx(
+        df.iloc[0]["frac_sow_at_current"])
+    # Wilson CI columns bracket the point fraction
+    assert (df.iloc[0]["frac_sow_at_current_ci_lo"]
+            <= df.iloc[0]["frac_sow_at_current"]
+            <= df.iloc[0]["frac_sow_at_current_ci_hi"])
+
+
+# ---------------------------------------------------------------------------
+# wilson_ci
+# ---------------------------------------------------------------------------
+
+def test_wilson_ci_brackets_and_edges():
+    lo, hi = rtd.wilson_ci(0.5, 1000, conf=0.95)
+    assert lo < 0.5 < hi
+    # symmetric around 0.5 and roughly the +/-1.6pp convention wide
+    assert (0.5 - lo) == pytest.approx(hi - 0.5)
+    assert 0.02 < (hi - lo) < 0.08
+    # p = 0 pins the lower bound to exactly 0; p = 1 the upper to exactly 1
+    lo0, hi0 = rtd.wilson_ci(0.0, 100)
+    assert lo0 == pytest.approx(0.0, abs=1e-12) and hi0 > 0.0
+    lo1, hi1 = rtd.wilson_ci(1.0, 100)
+    assert hi1 == pytest.approx(1.0, abs=1e-12) and lo1 < 1.0
+
+
+def test_wilson_ci_narrows_with_n():
+    lo_s, hi_s = rtd.wilson_ci(0.3, 100)
+    lo_l, hi_l = rtd.wilson_ci(0.3, 10000)
+    assert (hi_l - lo_l) < (hi_s - lo_s)
+
+
+# ---------------------------------------------------------------------------
+# Conjunction helpers
+# ---------------------------------------------------------------------------
+
+#: 4 units x 2 criteria (A, B): rows are (pass, pass), (fail, pass),
+#: (fail, pass), (fail, fail) -> marginals A 0.25, B 0.75; joint 0.25.
+_TOY_SAT = np.array([
+    [True, True],
+    [False, True],
+    [False, True],
+    [False, False],
+])
+
+
+def test_satisfaction_matrix_nan_fails():
+    vals = {"a": [1.0, np.nan], "b": [0.0, 5.0]}
+    sat = rtd.satisfaction_matrix(vals, ["a", "b"],
+                                  {"a": 0.5, "b": 1.0}, {"a": "ge", "b": "le"})
+    np.testing.assert_array_equal(sat, [[True, True], [False, False]])
+
+
+def test_joint_satisficing_stats_hand_computed():
+    stats = rtd.joint_satisficing_stats(_TOY_SAT, ["A", "B"])
+    assert stats["joint_frac"] == pytest.approx(1 / 4)
+    assert stats["comonotone_benchmark"] == pytest.approx(1 / 4)   # min marginal
+    assert stats["independence_benchmark"] == pytest.approx(0.25 * 0.75)
+    assert stats["co_occurrence_gap"] == pytest.approx(1 / 4 - 0.1875)
+    assert stats["binding_criterion"] == "A"
+    assert stats["binding_marginal_frac"] == pytest.approx(1 / 4)
+
+
+def test_failure_combinations_counts_and_pooling():
+    df = rtd.failure_combinations(_TOY_SAT, ["A", "B"], top_k=1)
+    top = df.iloc[0]
+    assert top["failing_criteria"] == "A" and top["count"] == 2
+    assert top["frac"] == pytest.approx(2 / 4)
+    other = df[df["failing_criteria"] == "(other combinations)"].iloc[0]
+    assert other["count"] == 1                                     # the A+B row
+    none = df[df["failing_criteria"] == "(none)"].iloc[0]
+    assert none["count"] == 1 and none["n_failing"] == 0
+    assert df["count"].sum() == len(_TOY_SAT)
+
+
+def test_sole_cofailure_and_count_distribution():
+    sole, co = rtd.sole_cofailure(_TOY_SAT)
+    np.testing.assert_allclose(sole, [2 / 4, 0.0])
+    np.testing.assert_allclose(co, [1 / 4, 1 / 4])
+    # sole + co reproduces the marginal failure fraction
+    np.testing.assert_allclose(sole + co, (~_TOY_SAT).mean(axis=0))
+    dist = rtd.failing_count_distribution(_TOY_SAT)
+    np.testing.assert_allclose(dist, [1 / 4, 2 / 4, 1 / 4])
+
+
+# ---------------------------------------------------------------------------
+# within_between_sd / critical_m / nearest_to_zero_theta
+# ---------------------------------------------------------------------------
+
+def test_within_between_sd_hand_computed():
+    v = np.array([[0.0, 2.0], [4.0, 8.0]])   # within SDs sqrt(2), 2*sqrt(2)
+    med_within, between = rtd.within_between_sd(v)
+    assert med_within == pytest.approx((np.sqrt(2) + 2 * np.sqrt(2)) / 2)
+    assert between == pytest.approx(np.std([1.0, 6.0], ddof=1))
+
+
+def test_critical_m_recovers_step_and_nan_when_degenerate():
+    m = np.linspace(0.0, 1.0, 400)
+    boundary = rtd.critical_m(m, m > 0.5, window=51)
+    assert boundary == pytest.approx(0.5, abs=0.02)
+    assert np.isnan(rtd.critical_m(m, np.ones_like(m, dtype=bool), window=51))
+    with pytest.raises(ValueError, match="window"):
+        rtd.critical_m(m[:10], m[:10] > 0.5, window=51)
+
+
+def test_nearest_to_zero_theta():
+    theta = np.array([[0.0, 0.0], [1.0, 1.0], [0.1, 0.0], [5.0, 5.0]])
+    idx = rtd.nearest_to_zero_theta(theta, 2)
+    assert set(idx.tolist()) == {0, 2}
