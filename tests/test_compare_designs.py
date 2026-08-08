@@ -1,9 +1,10 @@
 """tests/test_compare_designs.py - Cross-design comparison machinery.
 
 Builds a small SYNTHETIC multi-design re-eval tree in ``tmp_path`` -- several
-campaign designs x draws x seeds, each with its own raw (S, R, M) matrix -- runs
-``src.robustness`` over it to produce the per-run artifacts exactly as workflow
-step 08 would, then drives ``scripts/main/compare_designs.run_comparison`` on it.
+campaign designs x draws x seeds, each with its own per-SOW (S, G, M) matrix in
+the unified-metric-currency long format -- runs ``src.robustness`` over it to
+produce the per-run artifacts exactly as workflow step 08 would, then drives
+``scripts/main/compare_designs.run_comparison`` on it.
 
 Asserts that the deliverables are produced with the right shapes:
   1. the satisficing-threshold sweep (one row per run per stringency level, plus
@@ -12,11 +13,12 @@ Asserts that the deliverables are produced with the right shapes:
   3. the cross-design scorecard aggregation + design-ranking stability matrix;
   4. the nested variance components, with the DRAW as the unit of analysis
      (effective n = K, not K*S);
-  5. the raw performance distributions, degeneracy flags and pooled attainability.
+  5. the raw performance distributions, degeneracy flags and pooled attainability
+     (per E_test SOW).
 
 Also covers the two traps the machinery must not fall into: the stringency knob
-must be monotone (a tighter criterion cannot make more realizations satisfice),
-and a design with no outputs must warn and be skipped rather than crash.
+must be monotone (a tighter criterion cannot make more SOWs satisfice), and a
+design with no outputs must warn and be skipped rather than crash.
 
 Run:
     venv/bin/python -m pytest tests/test_compare_designs.py -v
@@ -63,40 +65,39 @@ cd = _load_compare_designs()
 FORMULATION = "ffmp"
 SLUG_BASE = f"{FORMULATION}_obj2"
 TAG = "etest_synthetic"
-N_SOL, N_REAL = 8, 45
+N_SOL = 8
 DRAWS, SEEDS = (0, 1), (0, 1)
-#: The synthetic cube is NESTED, like E_test: N_SOW states x R realizations each.
-#: The primary metric is the SOW unit, so a flat fixture could not exercise it.
+#: The cube's rows are per-SOW annual-unit objective values: N_SOW deeply
+#: uncertain states, each the pool of R_PER_SOW realizations' unit-years (the
+#: pooling already happened at persist time; the scorer only sees the SOWs).
 N_SOW, R_PER_SOW = 15, 3
-#: Between-SOW (deep-uncertainty) spread and within-SOW (natural-variability)
-#: spread. BOTH are needed: with i.i.d. realizations the within-SOW mean collapse
-#: annihilates the only variance present, every SOW lands on the same side of the
-#: criterion, and the primary metric saturates at 1.0 for every run.
-SOW_SPREAD, REAL_SPREAD = 0.30, 0.15
+#: Between-SOW (deep-uncertainty) spread and residual per-SOW estimator noise.
+#: The SOW spread must straddle the criterion, or every state lands on the same
+#: side of it and the primary metric saturates at 1.0 for every run.
+SOW_SPREAD, CELL_NOISE = 0.30, 0.10
 
 #: A: maximize / "ge"; B: minimize / "le". Thresholds sit mid-distribution so the
 #: stringency sweep spans both saturated and starved ends.
 META = {
     "is_ensemble": True,
-    "base_names": ["A", "B"],
+    "obj_names": ["A", "B"],
     "thresholds": {"A": 0.50, "B": 0.50},
     "kinds": {"A": "ge", "B": "le"},
     "directions": {"A": "maximize", "B": "minimize"},
-    "realization_indices": list(range(N_REAL)),
-    "sow_ids": [s for s in range(N_SOW) for _ in range(R_PER_SOW)],
+    "sow_labels": list(range(N_SOW)),
     "n_sow": N_SOW,
     "realizations_per_sow": R_PER_SOW,
+    "substrate": "sow_annual_unit",
 }
 
 
 def _write_run(out_dir: Path, rng: np.random.Generator, quality: float) -> None:
-    """Write one run's raw matrix + meta, then score it with src.robustness.
+    """Write one run's per-SOW matrix + meta, then score it with src.robustness.
 
     ``quality`` shifts the design's whole cube, so designs are separable and the
-    design ranking is well-defined. Within a run the cube is nested: a per-SOW
-    forcing offset (shared by that SOW's realizations, and mirrored across the two
-    objectives because one state of the world is good or bad for both) plus
-    independent within-SOW natural variability.
+    design ranking is well-defined. Each SOW carries a forcing offset shared by
+    both objectives (one state of the world is good or bad for both) plus a
+    small independent estimator noise per cell.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     sow_shift = rng.normal(0.0, SOW_SPREAD, size=N_SOW)
@@ -105,20 +106,21 @@ def _write_run(out_dir: Path, rng: np.random.Generator, quality: float) -> None:
         # A spread across solutions so "best" and "median" solutions differ.
         a_loc = quality + 0.06 * sid
         b_loc = 1.0 - quality - 0.06 * sid
-        for rid in range(N_REAL):
-            shift = float(sow_shift[rid // R_PER_SOW])
-            a = rng.normal(a_loc + shift, REAL_SPREAD)
-            b = rng.normal(b_loc - shift, REAL_SPREAD)
-            records.append((sid, rid, "A", float(np.clip(a, 0, 1))))
-            records.append((sid, rid, "B", float(np.clip(b, 0, 1))))
-    pd.DataFrame(records, columns=["solution_id", "realization_id", "objective",
+        for g in range(N_SOW):
+            shift = float(sow_shift[g])
+            a = rng.normal(a_loc + shift, CELL_NOISE)
+            b = rng.normal(b_loc - shift, CELL_NOISE)
+            records.append((sid, g, "A", float(np.clip(a, 0, 1))))
+            records.append((sid, g, "B", float(np.clip(b, 0, 1))))
+    pd.DataFrame(records, columns=["solution_id", "sow_id", "objective",
                                    "value"]).to_csv(
         out_dir / "reeval_raw.csv.gz", index=False, compression="gzip")
     meta = dict(META, solution_ids=list(range(N_SOL)), n_solutions=N_SOL,
-                n_realizations=N_REAL)
+                n_realizations=N_SOW * R_PER_SOW)
     (out_dir / "reeval_raw_meta.json").write_text(json.dumps(meta))
-    rob.run(out_dir, metrics=("satisficing_multivariate_sow", "satisficing_multivariate",
-                              "satisficing_univariate", "laplace_mean", "maximin"))
+    rob.run(out_dir, metrics=("satisficing_multivariate_sow",
+                              "satisficing_univariate_sow",
+                              "laplace_mean", "maximin"))
 
 
 @pytest.fixture(scope="module")
@@ -195,7 +197,7 @@ def test_stringency_matrix_shape(tree):
 
 
 def test_sweep_is_monotone_in_stringency(tree):
-    """A tighter criterion can never let MORE realizations satisfice."""
+    """A tighter criterion can never let MORE SOWs satisfice."""
     mat = _read(tree, "design_stringency_matrix")
     mat = mat[mat["statistic"] == "best"]
     qcols = sorted((c for c in mat.columns if c not in ("design", "statistic")),
@@ -225,27 +227,29 @@ def test_primary_metric_is_the_sow_unit():
 
     Realizations sharing a theta are not independent and E_test carries no
     probability measure over the forcing space, so the headline count is over
-    STATES, not over pooled realizations (objective_definitions.md §3.1).
+    STATES: each SOW's realizations pool their unit-years through the §2 unit
+    operators and the criterion counts SOWs (objective_definitions.md §3).
     """
     assert cd.PRIMARY_METRIC == "sat_multivariate_sow"
 
 
-def test_threshold_sweep_refuses_a_cube_without_a_sow_grouping(tmp_path):
-    """No SOW grouping -> raise. Sweeping the realization unit under the primary
-    metric's name would trace a different quantity than the headline."""
-    flat_meta = {k: v for k, v in META.items()
-                 if k not in ("sow_ids", "n_sow", "realizations_per_sow")}
-    records = [(0, rid, obj, 0.6) for rid in range(N_REAL) for obj in ("A", "B")]
-    pd.DataFrame(records, columns=["solution_id", "realization_id", "objective",
+def test_threshold_sweep_refuses_a_single_trace_cube(tmp_path):
+    """A cube with no SOW axis (single-trace re-eval) -> raise. The primary
+    metric is a fraction of SOWs, so sweeping it over one trace would trace a
+    different quantity than the headline."""
+    st_meta = dict(META, is_ensemble=False, sow_labels=[0], n_sow=1,
+                   realizations_per_sow=None)
+    records = [(0, 0, obj, 0.6) for obj in ("A", "B")]
+    pd.DataFrame(records, columns=["solution_id", "sow_id", "objective",
                                    "value"]).to_csv(
         tmp_path / "reeval_raw.csv.gz", index=False, compression="gzip")
     (tmp_path / "reeval_raw_meta.json").write_text(json.dumps(
-        dict(flat_meta, solution_ids=[0], n_solutions=1, n_realizations=N_REAL)))
+        dict(st_meta, solution_ids=[0], n_solutions=1, n_realizations=1)))
 
     run = cd.ReevalRun(design="d", slug=SLUG_BASE, draw=0, seed=0, path=tmp_path)
-    with pytest.raises(ValueError, match="no sow_ids"):
-        cd.threshold_sweep([run], {"A": np.array([0.5])}, {"A": "ge"},
-                           grid=(0.5,))
+    with pytest.raises(ValueError, match="no SOW axis"):
+        cd.threshold_sweep([run], {"A": np.array([0.5]), "B": np.array([0.5])},
+                           {"A": "ge", "B": "le"}, grid=(0.5,))
 
 
 ###############################################################################
@@ -334,16 +338,17 @@ def test_saturated_objective_is_flagged(tmp_path):
         d.mkdir(parents=True)
         records = []
         for sid in range(4):
-            for rid in range(N_REAL):
+            for g in range(N_SOW):
                 # A is always far above its threshold -> saturated.
-                records.append((sid, rid, "A", float(rng.uniform(0.95, 1.0))))
-                records.append((sid, rid, "B", float(rng.uniform(0.0, 1.0))))
-        pd.DataFrame(records, columns=["solution_id", "realization_id",
+                records.append((sid, g, "A", float(rng.uniform(0.95, 1.0))))
+                records.append((sid, g, "B", float(rng.uniform(0.0, 1.0))))
+        pd.DataFrame(records, columns=["solution_id", "sow_id",
                                        "objective", "value"]).to_csv(
             d / "reeval_raw.csv.gz", index=False, compression="gzip")
         (d / "reeval_raw_meta.json").write_text(
             json.dumps(dict(META, solution_ids=list(range(4)))))
-        rob.run(d, metrics=("satisficing_multivariate", "satisficing_univariate",
+        rob.run(d, metrics=("satisficing_multivariate_sow",
+                            "satisficing_univariate_sow",
                             "laplace_mean", "maximin"))
     written = cd.run_comparison(
         formulation=FORMULATION, reeval_tag=TAG, outputs_root=root,
@@ -362,13 +367,18 @@ def test_attainability_has_a_pooled_row(tree):
     assert len(a) == len(tree["designs"]) + 1
     assert "POOLED_ALL_DESIGNS" in set(a["design"])
     pooled = a[a["design"] == "POOLED_ALL_DESIGNS"].iloc[0]
-    assert pooled["n_realizations"] == N_REAL
+    assert pooled["n_sow"] == N_SOW          # the attainability unit is the SOW
     assert 0.0 <= pooled["frac_attainable"] <= 1.0
     assert pooled["frac_unwinnable"] == pytest.approx(1 - pooled["frac_attainable"])
-    # Pooling across designs can only ADD attainable realizations.
+    # Pooling across designs can only ADD attainable SOWs.
     per_design = a[a["design"] != "POOLED_ALL_DESIGNS"]
     assert pooled["n_attainable"] >= per_design["n_attainable"].max()
     assert {"unmet__A", "unmet__B"} <= set(a.columns)
+    # The per-run artifact the aggregation reads is keyed by sow_id.
+    some_run = cd.discover_runs(FORMULATION, TAG, outputs_root=tree["root"])[0]
+    per_run = pd.read_csv(some_run.path / "robustness_attainability.csv")
+    assert "sow_id" in per_run.columns
+    assert list(per_run["sow_id"]) == list(range(N_SOW))
 
 
 ###############################################################################
@@ -395,28 +405,36 @@ def test_regret_artifacts_absent_without_a_baseline(tree):
 ###############################################################################
 # Incumbent-relative regret (RQ2)
 ###############################################################################
-# A second synthetic tree, with SOW grouping and a status-quo baseline, using REAL
-# base objective names so the tolerance ladder resolves against the registered
-# epsilons rather than being stubbed.
+# A second synthetic tree, with a status-quo baseline, using REAL annual-unit
+# objective names so the tolerance ladder resolves against the registered
+# ANNUAL epsilons rather than being stubbed.
 
 REG_TAG = "etest_synthetic_regret"
-REG_OBJS = ["nyc_delivery_reliability_weekly", "downstream_flood_exceedance_minor"]
+REG_OBJS = ["nyc_delivery_reliability_annual", "downstream_flood_exceedance_annual"]
 REG_N_SOW, REG_R, REG_N_SOL = 6, 2, 4
 
 REG_META = {
     "is_ensemble": True,
-    "base_names": REG_OBJS,
+    "obj_names": REG_OBJS,
     "thresholds": {REG_OBJS[0]: 0.87, REG_OBJS[1]: 1.17},
     "kinds": {REG_OBJS[0]: "ge", REG_OBJS[1]: "le"},
     "directions": {REG_OBJS[0]: "maximize", REG_OBJS[1]: "minimize"},
-    "realization_indices": list(range(REG_N_SOW * REG_R)),
-    "sow_ids": [s for s in range(REG_N_SOW) for _ in range(REG_R)],
+    "sow_labels": list(range(REG_N_SOW)),
     "n_sow": REG_N_SOW,
     "realizations_per_sow": REG_R,
+    "substrate": "sow_annual_unit",
 }
 
 #: The incumbent, flat across every SOW: reliability 0.87, flood 1.0 ft-days/yr.
 REG_BASELINE = (0.87, 1.0)
+
+#: Per-SOW values of a harmful vs a benign SOW. The shortfalls against the
+#: incumbent (0.27 reliability, 3.5 ft-days) exceed even k = 10 tolerance
+#: rungs on the ANNUAL epsilons (10 * 0.02 = 0.2; 10 * 0.3 = 3.0), so the
+#: tolerance sweep cannot saturate and its monotonicity is tested on a live
+#: curve.
+REG_BAD = (0.60, 4.50)
+REG_GOOD = (0.95, 0.40)
 
 
 def _write_regret_run(out_dir: Path, harmful_sows: int) -> None:
@@ -430,15 +448,11 @@ def _write_regret_run(out_dir: Path, harmful_sows: int) -> None:
     for sid in range(REG_N_SOL):
         n_bad = max(0, harmful_sows - sid)
         for sow in range(REG_N_SOW):
-            bad = sow < n_bad
             # Worse than the incumbent on BOTH objectives in a harmful SOW.
-            rel = 0.80 if bad else 0.95
-            flood = 1.60 if bad else 0.40
-            for rep in range(REG_R):
-                rid = sow * REG_R + rep
-                records.append((sid, rid, REG_OBJS[0], rel))
-                records.append((sid, rid, REG_OBJS[1], flood))
-    pd.DataFrame(records, columns=["solution_id", "realization_id", "objective",
+            rel, flood = REG_BAD if sow < n_bad else REG_GOOD
+            records.append((sid, sow, REG_OBJS[0], rel))
+            records.append((sid, sow, REG_OBJS[1], flood))
+    pd.DataFrame(records, columns=["solution_id", "sow_id", "objective",
                                    "value"]).to_csv(
         out_dir / "reeval_raw.csv.gz", index=False, compression="gzip")
     (out_dir / "reeval_raw_meta.json").write_text(json.dumps(
@@ -447,11 +461,10 @@ def _write_regret_run(out_dir: Path, harmful_sows: int) -> None:
 
     bdir = out_dir / "baseline"
     bdir.mkdir(exist_ok=True)
-    brecords = [(0, sow * REG_R + rep, obj, val)
+    brecords = [(0, sow, obj, val)
                 for sow in range(REG_N_SOW)
-                for rep in range(REG_R)
                 for obj, val in zip(REG_OBJS, REG_BASELINE)]
-    pd.DataFrame(brecords, columns=["solution_id", "realization_id", "objective",
+    pd.DataFrame(brecords, columns=["solution_id", "sow_id", "objective",
                                     "value"]).to_csv(
         bdir / "reeval_raw.csv.gz", index=False, compression="gzip")
     (bdir / "reeval_raw_meta.json").write_text(json.dumps(
@@ -461,7 +474,7 @@ def _write_regret_run(out_dir: Path, harmful_sows: int) -> None:
     # Score it exactly as workflow step 08 would, so the scorecard carries the
     # regret columns the comparison layer and the plane figure read.
     rob.run(out_dir, baseline_dir=bdir,
-            metrics=("satisficing_multivariate", "satisficing_multivariate_sow",
+            metrics=("satisficing_multivariate_sow", "satisficing_univariate_sow",
                      "regret_magnitudes", "regret_frequencies"))
 
 
@@ -509,15 +522,19 @@ def test_regret_separates_designs_at_zero_tolerance(regret_tree):
     assert at0.loc[d1, "median"] > at0.loc[d0, "median"]
 
 
-def test_tolerance_ladder_uses_the_registered_epsilons(regret_tree):
-    """tau must scale each objective by ITS OWN just-noticeable difference."""
-    from src.objectives import OBJECTIVES
+def test_tolerance_ladder_uses_the_registered_annual_epsilons(regret_tree):
+    """tau must scale each objective by ITS OWN annual-unit just-noticeable
+    difference (ENSEMBLE_OBJECTIVES epsilons -- the search calibration)."""
+    from src.objectives_ensemble import ENSEMBLE_OBJECTIVES
     tau = rob.tau_ladder(REG_OBJS, k=2.0)
-    assert tau[REG_OBJS[0]] == pytest.approx(2 * OBJECTIVES[REG_OBJS[0]].epsilon)
-    assert tau[REG_OBJS[1]] == pytest.approx(2 * OBJECTIVES[REG_OBJS[1]].epsilon)
-    # The fixture's shortfalls (0.07 reliability, 0.60 ft-days) are far larger than
-    # even k = 10, so the sweep must NOT forgive them everywhere -- otherwise this
-    # suite would be asserting monotonicity on a saturated curve.
+    assert tau[REG_OBJS[0]] == pytest.approx(
+        2 * ENSEMBLE_OBJECTIVES[REG_OBJS[0]].epsilon)
+    assert tau[REG_OBJS[1]] == pytest.approx(
+        2 * ENSEMBLE_OBJECTIVES[REG_OBJS[1]].epsilon)
+    # The fixture's shortfalls (0.27 reliability, 3.5 ft-days) are larger than
+    # even k = 10 on the annual epsilons, so the sweep must NOT forgive them
+    # everywhere -- otherwise this suite would be asserting monotonicity on a
+    # saturated curve.
     sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
     assert sweep[sweep["tau_k"] == float(max(cd.REGRET_TAU_GRID))]["median"].min() < 1.0
 

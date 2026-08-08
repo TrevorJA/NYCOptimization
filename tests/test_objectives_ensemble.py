@@ -47,7 +47,6 @@ from src.objectives_ensemble import (
     FailureFrequencyOp,
     PooledMeanOp,
     PooledPercentileOp,
-    SatisficingAgg,
     build_ensemble_objective_set,
     water_year_unit_slices,
 )
@@ -356,14 +355,17 @@ def test_env_threshold_override(monkeypatch):
     """The re-eval satisficing layer keeps its NYCOPT_SAT_THRESHOLDS override."""
     monkeypatch.setenv(
         "NYCOPT_SAT_THRESHOLDS",
-        json.dumps({"nyc_delivery_reliability_weekly__sat87": 0.80}),
+        json.dumps({"nyc_delivery_reliability_annual__sat65": 0.80}),
     )
     importlib.reload(obj_ens)
     try:
-        agg = obj_ens.ENSEMBLE_OBJECTIVES[
-            "nyc_delivery_reliability_annual"].aggregator
-        assert isinstance(agg, obj_ens.SatisficingAgg)
-        assert agg.threshold == pytest.approx(0.80)
+        obj = obj_ens.ENSEMBLE_OBJECTIVES["nyc_delivery_reliability_annual"]
+        assert obj.sat_threshold == pytest.approx(0.80)
+        assert obj.sat_kind == "ge"      # follows the direction, not the override
+        # Other objectives keep their registry defaults.
+        other = obj_ens.ENSEMBLE_OBJECTIVES["nyc_storage_min_p01_pct"]
+        assert other.sat_threshold == pytest.approx(
+            obj_ens._DEFAULT_THRESHOLDS["nyc_storage_min_p01_pct__sat26"])
     finally:
         monkeypatch.delenv("NYCOPT_SAT_THRESHOLDS", raising=False)
         importlib.reload(obj_ens)
@@ -433,12 +435,12 @@ def test_base_names_resolve_to_active_annual_set():
     assert obj_set.directions == [1, -1, 1, -1, 1, -1, 1, 1]
     # The diagnostic P99 flood variant is NOT reachable via base names.
     assert "downstream_flood_days_annual_p99" not in obj_set.names
-    # Every objective carries the re-eval layer (base + aggregator). Compare
-    # against the live module attribute: earlier env-override tests reload
-    # obj_ens, so the top-level class import may be a stale identity.
+    # Every ACTIVE objective carries the re-eval satisficing criterion (a
+    # non-None threshold; its kind derived from the objective's own direction).
     for o in obj_set:
         assert o.base.name in ACTIVE_BASE_NAMES
-        assert isinstance(o.aggregator, obj_ens.SatisficingAgg)
+        assert o.sat_threshold is not None
+        assert o.sat_kind == ("ge" if o.direction == "maximize" else "le")
 
 
 def test_build_ensemble_set_rejects_unknown_name():
@@ -456,7 +458,7 @@ def _fake_annual_objective(direction: str, unit_operator) -> AnnualUnitObjective
         annual_metric=lambda data: np.asarray(data["units"], dtype=float),
         unit_operator=unit_operator,
         base=OBJECTIVES["nyc_delivery_reliability_weekly"],
-        aggregator=SatisficingAgg(threshold=0.95, kind="ge"),
+        sat_threshold=0.95,
     )
 
 
@@ -504,3 +506,47 @@ def test_registry_frequency_objectives_are_fractions():
         assert isinstance(obj.unit_operator, FailureFrequencyOp)
         val = obj.unit_operator([0.0, 5.0, float("nan")])
         assert 0.0 <= val <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# 6. Re-eval satisficing criterion (sat_threshold / sat_kind)
+# ---------------------------------------------------------------------------
+
+def test_registry_thresholds_resolve_from_the_default_table():
+    """Each objective's sat_threshold is its _DEFAULT_THRESHOLDS entry, resolved
+    through the `<annual name>__sat<thr>` label."""
+    for name, label in obj_ens._SAT_LABELS.items():
+        obj = ENSEMBLE_OBJECTIVES[name]
+        assert obj.sat_threshold == pytest.approx(
+            obj_ens._DEFAULT_THRESHOLDS[label]), name
+
+
+def test_sat_kind_follows_the_objectives_own_direction():
+    """maximize -> 'ge', minimize -> 'le'; the criterion direction is DERIVED,
+    never stored, so it cannot disagree with the objective."""
+    for obj in ENSEMBLE_OBJECTIVES.values():
+        assert obj.sat_kind == ("ge" if obj.direction == "maximize" else "le")
+
+
+def test_every_active_objective_carries_a_satisficing_threshold():
+    """The multivariate criterion is a conjunction over the ACTIVE set, so a
+    missing threshold would silently zero the primary robustness metric."""
+    obj_set = build_ensemble_objective_set(ACTIVE_BASE_NAMES)
+    for o in obj_set:
+        assert o.sat_threshold is not None, o.name
+
+
+def test_diagnostic_p99_flood_variant_has_no_satisficing_role():
+    assert ENSEMBLE_OBJECTIVES["downstream_flood_days_annual_p99"].sat_threshold \
+        is None
+
+
+def test_sat_threshold_defaults_to_none_on_hand_built_objectives():
+    obj = AnnualUnitObjective(
+        name="fake", direction="minimize", epsilon=0.1, description="synthetic",
+        annual_metric=lambda data: np.asarray(data["units"], dtype=float),
+        unit_operator=PooledMeanOp(worst_value=1.0),
+        base=OBJECTIVES["nyc_delivery_reliability_weekly"],
+    )
+    assert obj.sat_threshold is None
+    assert obj.sat_kind == "le"

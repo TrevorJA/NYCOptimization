@@ -18,14 +18,14 @@ What it produces, and why each piece exists
    analysis that renders the comparison credible. The per-run
    ``robustness_threshold_spectrum.csv`` cannot answer this: it is univariate,
    and the primary metric is the MULTIVARIATE (all-criteria conjunction) Starr
-   domain criterion on the SOW unit. So the sweep is recomputed from the raw cube
-   (``robustness.load_raw`` + ``robustness.satisficing_multivariate_sow`` with a
-   swept threshold dict).
+   domain criterion over the per-SOW annual-unit objective values. So the sweep
+   is recomputed from the raw cube (``robustness.load_raw`` +
+   ``robustness.satisficing_multivariate_sow`` with a swept threshold dict).
 
    The sweep is driven by ONE scalar stringency knob ``s``: each objective's
-   threshold is the ``s``-quantile of the *pooled across designs* E_test cell
-   distribution (oriented, so ``s`` = the marginal fraction of pooled cells the
-   criterion excludes). Pooling across designs is load-bearing -- a per-design
+   threshold is the ``s``-quantile of the *pooled across designs* per-SOW value
+   distribution (oriented, so ``s`` = the marginal fraction of pooled SOW values
+   the criterion excludes). Pooling across designs is load-bearing -- a per-design
    quantile would make "the same stringency" a different magnitude for each
    design and the comparison at fixed ``s`` would be meaningless. The
    registry-default thresholds are located on the same axis and marked.
@@ -52,10 +52,10 @@ What it produces, and why each piece exists
    and degeneracy flags are printed loudly.
 
 5. **Attainability screen.** Pooling the cubes of ALL designs answers "is this
-   E_test realization winnable by ANY policy from ANY design?". Shavazipour et
-   al. (2021) found 23% of their test scenarios unwinnable by any feasible
-   policy; without this you cannot separate "this design searched badly" from
-   "this test realization is impossible".
+   E_test state of the world winnable by ANY policy from ANY design?".
+   Shavazipour et al. (2021) found 23% of their test scenarios unwinnable by any
+   feasible policy; without this you cannot separate "this design searched
+   badly" from "this test state is impossible".
 
 Inputs (per design, per moea slug, per re-eval tag, optionally per seed):
     outputs/{design}/{moea_slug}/reeval/{reeval_tag}[/seed_NN]/
@@ -128,10 +128,11 @@ STRINGENCY_GRID: tuple[float, ...] = _parse_float_list_env(
     tuple(round(float(s), 2) for s in np.arange(0.10, 0.901, 0.05)),
 )
 
-#: The primary robustness metric: the Starr multivariate domain criterion on the
-#: SOW UNIT -- the R realizations within each theta are collapsed by the
-#: within-SOW aggregator first, then the all-criteria conjunction is counted over
-#: the N_theta deeply-uncertain states (objective_definitions.md §3.1).
+#: The primary robustness metric: the Starr multivariate domain criterion over
+#: SOWs -- each theta's R realizations pool their unit-years through the §2 unit
+#: operators (the search objectives recomputed per state), then the all-criteria
+#: conjunction is counted over the N_theta deeply-uncertain states
+#: (objective_definitions.md §3).
 PRIMARY_METRIC = "sat_multivariate_sow"
 
 #: Saturation bounds for the degeneracy screen. An objective whose satisficing
@@ -289,7 +290,6 @@ class LoadedRun:
 #: of these wrong silently inverts that metric in every design ranking, which is
 #: the failure mode ``tests/test_terminology.py`` exists to catch.
 _FIXED_ORIENTATION: tuple[tuple[str, bool], ...] = (
-    ("vs_baseline__", False),
     ("regret_mean__", False),
     ("regret_q90__", False),
     ("regret_cond__", False),
@@ -311,7 +311,7 @@ def _orientations(directions: dict, columns: Iterable[str]) -> dict:
     hb: dict = {}
     for col in columns:
         fixed = next((v for p, v in _FIXED_ORIENTATION if col.startswith(p)), None)
-        if col == PRIMARY_METRIC or col.startswith("sat_uni__"):
+        if col == PRIMARY_METRIC or col.startswith("sat_uni_sow__"):
             hb[col] = True
         elif fixed is not None:
             hb[col] = fixed
@@ -338,14 +338,14 @@ def load_runs(runs: Iterable[ReevalRun]) -> list[LoadedRun]:
             continue
         sc = pd.read_csv(sc_path, index_col="solution_id")
         meta = json.loads((r.path / "reeval_raw_meta.json").read_text())
-        base = list(meta["base_names"])
+        names = list(meta["obj_names"])
         loaded.append(LoadedRun(
             run=r,
             scorecard=sc,
             higher_better=_orientations(meta.get("directions", {}), sc.columns),
-            thresholds={k: meta.get("thresholds", {}).get(k) for k in base},
-            kinds={k: meta.get("kinds", {}).get(k) for k in base},
-            directions={k: meta.get("directions", {}).get(k) for k in base},
+            thresholds={k: meta.get("thresholds", {}).get(k) for k in names},
+            kinds={k: meta.get("kinds", {}).get(k) for k in names},
+            directions={k: meta.get("directions", {}).get(k) for k in names},
         ))
     return loaded
 
@@ -575,7 +575,7 @@ def _mixedlm_rows(df: pd.DataFrame, n_obs: int, n_draws: int) -> list[dict]:
 ###############################################################################
 
 def pooled_cells(runs: Iterable[ReevalRun]) -> dict[str, np.ndarray]:
-    """Pool every design's finite E_test cells, per base objective.
+    """Pool every design's finite per-SOW objective values, per objective.
 
     The pooled distribution is the common yardstick the stringency knob is
     defined against. It MUST be pooled across designs: a per-design quantile
@@ -586,7 +586,7 @@ def pooled_cells(runs: Iterable[ReevalRun]) -> dict[str, np.ndarray]:
     acc: dict[str, list[np.ndarray]] = {}
     for r in runs:
         raw = rob.load_raw(r.path)
-        for k, name in enumerate(raw.base_names):
+        for k, name in enumerate(raw.obj_names):
             v = raw.cube[:, :, k]
             v = v[np.isfinite(v)]
             if v.size > POOL_SAMPLE_PER_RUN:
@@ -652,39 +652,34 @@ def threshold_sweep(runs: list[ReevalRun], pooled: dict[str, np.ndarray],
     ``robustness_threshold_spectrum.csv`` is univariate and the primary metric is
     the all-criteria conjunction.
 
-    Uses :data:`PRIMARY_METRIC`'s unit -- the within-SOW collapse followed by the
-    Starr criterion across states -- so the swept curve and the headline number
-    are the same quantity at different criteria.
+    Uses :data:`PRIMARY_METRIC`'s construction -- the Starr criterion over the
+    per-SOW annual-unit objective values -- so the swept curve and the headline
+    number are the same quantity at different criteria.
 
     Raises:
-        ValueError: If any run's cube carries no SOW grouping. Falling back to the
-            realization unit would silently sweep a different quantity than the
-            headline metric.
+        ValueError: If any run's cube is single-trace (no SOW axis), for which
+            the primary metric is undefined.
 
     Returns:
         Tidy frame: design, draw, seed, stringency, is_default, best, median.
     """
     grid = list(grid)
-    agg = config.REEVALUATION_SETTINGS["within_sow_aggregator"]
     thr_by_s = {s: thresholds_at(s, pooled, kinds) for s in grid}
     rows = []
     for r in runs:
         raw = rob.load_raw(r.path)
-        if raw.sow_ids is None:
+        if not raw.is_ensemble or raw.n_sow <= 1:
             raise ValueError(
-                f"re-eval cube {r.path} carries no sow_ids, so the primary "
-                f"(SOW-unit) metric is undefined for it. The stringency sweep "
-                f"will not substitute the realization unit -- they are different "
-                f"quantities."
+                f"re-eval cube {r.path} has no SOW axis (single-trace re-eval), "
+                f"so the primary metric is undefined for it."
             )
         for s in grid:
             v = rob.satisficing_multivariate_sow(
-                raw, thresholds=thr_by_s[s], within_sow_agg=agg).to_numpy()
+                raw, thresholds=thr_by_s[s]).to_numpy()
             rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
                          "stringency": s, "is_default": False,
                          "best": _best(v, True), "median": _median(v)})
-        v = rob.satisficing_multivariate_sow(   # registry defaults
-            raw, within_sow_agg=agg).to_numpy()
+        v = rob.satisficing_multivariate_sow(raw).to_numpy()  # registry defaults
         rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
                      "stringency": np.nan, "is_default": True,
                      "best": _best(v, True), "median": _median(v)})
@@ -794,10 +789,10 @@ def regret_tolerance_sweep(runs: list[ReevalRun],
     for r in runs:
         raw = rob.load_raw(r.path)
         base = _baseline_cube(r)
-        if base is None or raw.sow_ids is None or base.sow_ids is None:
+        if base is None:
             continue
         for k in grid:
-            tau = rob.tau_ladder(raw.base_names, k=k)
+            tau = rob.tau_ladder(raw.obj_names, k=k)
             v = rob.regret_frequencies(raw, base, tau=tau)["no_harm_freq_tau"]
             v = v.to_numpy(dtype=float)
             rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
@@ -871,13 +866,12 @@ def regret_by_severity(runs: list[ReevalRun], spec,
     for r in runs:
         raw = rob.load_raw(r.path)
         base = _baseline_cube(r)
-        if base is None or raw.sow_ids is None or base.sow_ids is None:
+        if base is None:
             continue
         D = rob.incumbent_advantage(raw, base)                  # (S, n_sow, M)
-        sat = rob._satisfy(rob.collapse_within_sow(raw)[0], raw.base_names,
-                           raw.thresholds, raw.kinds).all(axis=2)   # (S, n_sow)
-        tau = rob.tau_ladder(raw.base_names)
-        tau_vec = np.array([tau[n] for n in raw.base_names], dtype=float)
+        sat = rob._satisfaction_cube(raw).all(axis=2)           # (S, n_sow)
+        tau = rob.tau_ladder(raw.obj_names)
+        tau_vec = np.array([tau[n] for n in raw.obj_names], dtype=float)
         finite = np.isfinite(D)
         harm = (~finite) | (D < 0)
         harm_tau = (~finite) | (D < -tau_vec[None, None, :])
@@ -899,7 +893,7 @@ def regret_by_severity(runs: list[ReevalRun], spec,
             }
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                for k, name in enumerate(raw.base_names):
+                for k, name in enumerate(raw.obj_names):
                     g = np.maximum(0.0, -D[:, sel, k])
                     row[f"regret_mean__{name}"] = _median(np.nanmean(g, axis=1))
             rows.append(row)
@@ -1006,11 +1000,7 @@ def degeneracy_flags(summary: pd.DataFrame, perf: pd.DataFrame,
 
     med = design_level(summary, "median")
     for name in kinds:
-        # The PRIMARY's own decomposition (SOW unit); the realization-unit column
-        # is the fallback for a cube with no SOW grouping.
-        col = f"sat_uni_sow__{name}"
-        if col not in med.columns:
-            col = f"sat_uni__{name}"
+        col = f"sat_uni_sow__{name}"  # the PRIMARY's own decomposition
         if col not in med.columns:
             continue
         v = med[col].dropna()
@@ -1061,23 +1051,22 @@ def degeneracy_flags(summary: pd.DataFrame, perf: pd.DataFrame,
 ###############################################################################
 
 def attainability(runs: list[ReevalRun]) -> pd.DataFrame:
-    """Per-design and POOLED attainability of the E_test realizations.
+    """Per-design and POOLED attainability of the E_test states of the world.
 
-    A realization is attainable for a design if ANY of that design's re-evaluated
+    A SOW is attainable for a design if ANY of that design's re-evaluated
     solutions meets all criteria jointly; the POOLED row ORs across every design,
-    answering "is this realization winnable by ANY policy from ANY design?" The
+    answering "is this state winnable by ANY policy from ANY design?" The
     complement is structurally unwinnable -- Shavazipour et al. (2021) found 23%
     of their test scenarios in that class, and without the screen a design that
-    searched badly is indistinguishable from a test realization that is
-    impossible.
+    searched badly is indistinguishable from a test state that is impossible.
 
     This is an EMPIRICAL bound, not a true ceiling: it says no policy *in this
-    pooled set* wins the realization, not that none exists.
+    pooled set* wins the SOW, not that none exists.
 
     Returns:
-        Frame: design ("POOLED_ALL_DESIGNS" for the pooled row), n_realizations,
+        Frame: design ("POOLED_ALL_DESIGNS" for the pooled row), n_sow,
         n_attainable, frac_attainable, plus ``unmet__{objective}`` = the fraction
-        of realizations no solution could satisfy on that criterion alone (which
+        of SOWs no solution could satisfy on that criterion alone (which
         criterion is binding where nothing attains the joint criterion).
     """
     per_design: dict[str, pd.DataFrame] = {}
@@ -1085,12 +1074,12 @@ def attainability(runs: list[ReevalRun]) -> pd.DataFrame:
         path = r.path / "robustness_attainability.csv"
         if not path.exists():
             continue
-        a = pd.read_csv(path).set_index("realization_id")
+        a = pd.read_csv(path).set_index("sow_id")
         bool_cols = [c for c in a.columns if c == "attainable" or c.startswith("anysat__")]
         a = a[bool_cols].astype(bool)
         cur = per_design.get(r.design)
-        # OR across a design's runs (draws/seeds): a realization is attainable for
-        # the design if any of its replicates produced a policy that wins it.
+        # OR across a design's runs (draws/seeds): a SOW is attainable for the
+        # design if any of its replicates produced a policy that wins it.
         per_design[r.design] = a if cur is None else (
             cur.reindex(cur.index.union(a.index), fill_value=False)
             | a.reindex(cur.index.union(a.index), fill_value=False))
@@ -1112,7 +1101,7 @@ def attainability(runs: list[ReevalRun]) -> pd.DataFrame:
 def _attain_row(design: str, a: pd.DataFrame) -> dict:
     n = len(a)
     n_att = int(a["attainable"].sum())
-    row = {"design": design, "n_realizations": n, "n_attainable": n_att,
+    row = {"design": design, "n_sow": n, "n_attainable": n_att,
            "frac_attainable": n_att / n if n else np.nan,
            "frac_unwinnable": 1 - n_att / n if n else np.nan}
     for c in a.columns:
@@ -1206,8 +1195,10 @@ def fig_threshold_sweep(sweep: pd.DataFrame, agreement: pd.DataFrame,
 
 #: Display prefix for each robustness-metric family.
 _METRIC_FAMILY = {
-    "sat_uni": "satisficing", "laplace": "mean", "maximin": "worst-case",
-    "vs_baseline": "vs status quo",
+    "sat_uni_sow": "satisficing", "laplace": "mean", "maximin": "worst-case",
+    "regret_mean": "mean regret", "regret_q90": "q90 regret",
+    "regret_cond": "conditional regret", "gain_mean": "mean gain",
+    "harm_freq": "harm freq", "party_harm_freq": "party harm freq",
 }
 
 

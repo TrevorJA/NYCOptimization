@@ -10,21 +10,23 @@ search produces policies that are more robust on the held-out test ensemble
 
 so the script does two things, per scenario design:
 
-1. **Scenario discovery.** Label each E_test realization success/failure for the
-   design's compromise policy (the multivariate Starr domain criterion — the
-   same all-criteria conjunction that defines the primary robustness metric, so
+1. **Scenario discovery.** Label each E_test state of the world (SOW)
+   success/failure for the design's compromise policy (the multivariate Starr
+   domain criterion on the per-SOW annual-unit objective values — the same
+   all-criteria conjunction that defines the primary robustness metric, so
    discovery inherits exactly the robustness criteria, as is standard), then fit
-   a gradient-boosted classifier of failure on the realization's HAZARD
-   coordinates. Reports factor importances, a 2-D factor map, and the
-   failure/success distributional shift per axis (two-sample KS).
+   a gradient-boosted classifier of failure on the SOW's HAZARD coordinates
+   (the within-SOW mean of its realizations' realized-sequence descriptors).
+   Reports factor importances, a 2-D factor map, and the failure/success
+   distributional shift per axis (two-sample KS).
 
-2. **The mechanism test.** For each E_test realization, compute the
-   **coverage deficit** — the distance, in the E_test hazard image's
-   empirical-CDF/rank space, to the nearest member of that design's SEARCH
-   ensemble — and test whether failure probability is POSITIVELY associated with
-   it (AUC of deficit as a failure predictor, its excess over a RANDOM-COVERAGE
-   null, an empirical p-value, the logistic slope, and failure rate by deficit
-   decile). Hazard-filling designs, having filled the space, should show NO excess
+2. **The mechanism test.** For each E_test SOW, compute the **coverage
+   deficit** — the distance, in the E_test hazard image's empirical-CDF/rank
+   space, to the nearest member of that design's SEARCH ensemble — and test
+   whether failure probability is POSITIVELY associated with it (AUC of deficit
+   as a failure predictor, its excess over a RANDOM-COVERAGE null, an empirical
+   p-value, the logistic slope, and failure rate by deficit decile).
+   Hazard-filling designs, having filled the space, should show NO excess
    association; ``historic`` / ``fixed_probabilistic`` should show failures
    concentrating where their ensembles left hazard space unsampled. A null is a
    real, reportable result and is written as such.
@@ -262,21 +264,15 @@ def screen_hazard_axes(H: np.ndarray, axes: list[str],
 ###############################################################################
 
 def failure_matrix(raw: rob.RawCube) -> np.ndarray:
-    """Boolean ``(S, R)`` failure matrix: the all-criteria conjunction, negated.
+    """Boolean ``(S, G)`` failure matrix: the all-criteria conjunction, negated.
 
-    A realization FAILS for a solution when the joint (all-objective) satisficing
-    conjunction is False — the multivariate Starr (1962) domain criterion.
-    Discovery therefore inherits exactly the robustness criteria; that is standard
-    practice and must be stated when the result is reported.
-
-    **The unit here is the REALIZATION, deliberately, and this is the one place it
-    is not the SOW.** The headline metric counts over SOWs because it lives in the
-    deeply-uncertain forcing space, where theta is the design unit. Discovery lives
-    in HAZARD space, where the features are the per-realization hazard descriptors
-    (:func:`align_hazard_to_cube`) and every realization is a distinct point with
-    its own coordinates. Collapsing within theta first would average away exactly
-    the coordinates being mapped. The unit follows the space, and the difference is
-    reported, never silently assumed.
+    A SOW FAILS for a solution when the joint (all-objective) satisficing
+    conjunction on its per-SOW annual-unit objective values is False — the
+    multivariate Starr (1962) domain criterion. Discovery therefore inherits
+    exactly the robustness criteria AND the robustness unit (the SOW); that is
+    standard practice and must be stated when the result is reported. The SOW's
+    hazard coordinates are the within-SOW mean of its realizations' descriptors
+    (:func:`align_hazard_to_cube`).
     """
     return ~rob._satisfaction_cube(raw).all(axis=2)
 
@@ -292,20 +288,13 @@ SD_LABEL = os.environ.get("NYCOPT_SD_LABEL", "satisficing")
 
 def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
                   tau: dict | None = None) -> np.ndarray:
-    """Boolean ``(S, R)`` regret matrix: some objective is worse than the incumbent.
+    """Boolean ``(S, G)`` regret matrix: some objective is worse than the incumbent.
 
-    A realization is labelled REGRET for a solution when at least one objective is
-    degraded by more than its tolerance ``tau_i`` relative to the status-quo FFMP
-    policy on that same realization -- the complement of the ``no_harm`` condition
-    in ``robustness.regret_frequencies``.
-
-    **Unit, stated because it differs from the reported metric.** The reported
-    regret family is on the SOW unit, because the incumbent's bar moves with the
-    forcing and the deeply-uncertain state is the decision-relevant unit. Discovery
-    here is on the REALIZATION unit, because the hazard coordinates being regressed
-    on are a property of an individual realized sequence and exist one-per-
-    realization. That is a necessary consequence of the space discovery runs in,
-    not a silent substitution; report it as such.
+    A SOW is labelled REGRET for a solution when at least one per-SOW objective
+    is degraded by more than its tolerance ``tau_i`` relative to the status-quo
+    FFMP policy in that same state -- the complement of the ``no_harm`` condition
+    in ``robustness.regret_frequencies``, on the same unit as the reported regret
+    family.
 
     Args:
         raw: The design's re-eval cube on E_test.
@@ -314,13 +303,13 @@ def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
             ``robustness.tau_ladder`` at the configured ``k``.
 
     Returns:
-        Boolean ``(S, R)``; True where the policy harms the incumbent's position.
+        Boolean ``(S, G)``; True where the policy harms the incumbent's position.
         Non-finite values count as regret, mirroring the non-finite-as-unsatisfied
         rule of the satisficing label.
     """
-    D = rob.incumbent_advantage(raw, baseline, unit="realization")     # (S, R, M)
-    tau = rob.tau_ladder(raw.base_names) if tau is None else tau
-    tau_vec = np.array([float(tau[n]) for n in raw.base_names], dtype=float)
+    D = rob.incumbent_advantage(raw, baseline)                         # (S, G, M)
+    tau = rob.tau_ladder(raw.obj_names) if tau is None else tau
+    tau_vec = np.array([float(tau[n]) for n in raw.obj_names], dtype=float)
     finite = np.isfinite(D)
     return ((~finite) | (D < -tau_vec[None, None, :])).any(axis=2)
 
@@ -398,16 +387,9 @@ def select_compromise(raw: rob.RawCube, rule: str = COMPROMISE_RULE) -> dict:
             f"unknown compromise rule {rule!r}; expected 'best_satisficing' or "
             f"'min_dist_ideal' (set NYCOPT_SD_COMPROMISE_RULE)."
         )
-    # The PRIMARY (SOW-unit) metric, so the analyzed policy is the one the headline
-    # comparison favors. Cubes without a SOW grouping fall back to the realization
-    # unit HERE ONLY -- this is a policy CHOICE, not a reported robustness number.
-    if raw.sow_ids is None:
-        sat = rob.satisficing_multivariate(raw).to_numpy(dtype=float)   # (S,)
-    else:
-        sat = rob.satisficing_multivariate_sow(
-            raw,
-            within_sow_agg=config.REEVALUATION_SETTINGS["within_sow_aggregator"],
-        ).to_numpy(dtype=float)                                         # (S,)
+    # The PRIMARY metric, so the analyzed policy is the one the headline
+    # comparison favors.
+    sat = rob.satisficing_multivariate_sow(raw).to_numpy(dtype=float)  # (S,)
     dist = np.linalg.norm(_normalized_mean_objectives(raw), axis=1)  # (S,)
 
     alive = np.any(np.isfinite(raw.cube), axis=(1, 2))
@@ -572,20 +554,20 @@ def hazard_shift_stats(H: np.ndarray, y: np.ndarray, axes: list[str]) -> pd.Data
 ###############################################################################
 
 def coverage_deficit(X_test: np.ndarray, X_search: np.ndarray) -> np.ndarray:
-    """Distance from each E_test realization to the nearest SEARCH-ensemble member.
+    """Distance from each E_test SOW to the nearest SEARCH-ensemble member.
 
     Both point sets must already be in the SAME normalized hazard space (E_test's
-    empirical-CDF/rank space — see :func:`cdf_transform`). This is the
-    per-realization operationalization of "the design under-covered this part of
-    hazard space": large deficit = no search scenario resembled this test
-    realization, hazard-wise.
+    empirical-CDF/rank space — see :func:`cdf_transform`). This is the per-SOW
+    operationalization of "the design under-covered this part of hazard space":
+    large deficit = no search scenario resembled this state's typical realized
+    hazard.
 
     Args:
-        X_test: ``(R, m)`` E_test hazard coordinates, normalized.
+        X_test: ``(G, m)`` E_test SOW hazard coordinates, normalized.
         X_search: ``(n, m)`` search-ensemble hazard coordinates, normalized.
 
     Returns:
-        Length-``R`` array of nearest-neighbor distances.
+        Length-``G`` array of nearest-neighbor distances.
     """
     dist, _ = cKDTree(np.atleast_2d(X_search)).query(np.atleast_2d(X_test), k=1)
     return np.asarray(dist, dtype=float).ravel()
@@ -702,7 +684,7 @@ def deficit_association(deficit: np.ndarray, y: np.ndarray,
     y = np.asarray(y).astype(bool)
     n_fail, n_ok = int(y.sum()), int((~y).sum())
     stats: dict = {
-        "n_realizations": int(y.size),
+        "n_sow": int(y.size),
         "n_fail": n_fail,
         "failure_rate": float(y.mean()) if y.size else float("nan"),
         "deficit_mean": float(np.mean(deficit)),
@@ -715,7 +697,7 @@ def deficit_association(deficit: np.ndarray, y: np.ndarray,
         "p_vs_null": float("nan"),
         "mannwhitney_p": float("nan"),
         "logistic_slope": float("nan"),
-        "verdict": "no discrimination (all realizations same class)",
+        "verdict": "no discrimination (all SOWs same class)",
     }
     if n_fail == 0 or n_ok == 0:
         return stats, pd.DataFrame()
@@ -951,40 +933,52 @@ class DesignResult:
     shifts: pd.DataFrame
     stats: dict
     bins: pd.DataFrame
-    X: np.ndarray          # (R, m) E_test hazard coords, rank space
-    H: np.ndarray          # (R, m) E_test hazard coords, raw units
-    y: np.ndarray          # (R,) failure labels
+    X: np.ndarray          # (G, m) E_test SOW hazard coords, rank space
+    H: np.ndarray          # (G, m) E_test SOW hazard coords, raw units
+    y: np.ndarray          # (G,) failure labels
     deficit: np.ndarray | None
     n_search: int
 
 
 def align_hazard_to_cube(raw: rob.RawCube, image: dict,
                          axis_idx: list[int]) -> np.ndarray:
-    """Join the hazard image to the re-eval cube ON ``realization_id``.
+    """SOW-level hazard coordinates aligned to the re-eval cube's SOW axis.
 
-    Never positionally: the cube's realization axis is the sorted union of ids
-    actually simulated, which need not be the image's row order (and will not be
-    if any re-eval batch failed). A positional join here would silently attach the
-    wrong hazard coordinates to every failure label and quietly invalidate the
-    entire mechanism test.
+    The hazard image carries one row per REALIZATION (a realized sequence's
+    drought/flood descriptors); the cube's unit is the SOW. Each SOW's
+    coordinate is the MEAN over its realizations' descriptors — the natural
+    variability inside the state collapses, matching how the objective values
+    themselves pool the state's realizations. The join is on
+    ``realization_id // realizations_per_sow == sow_id``, never positional: a
+    positional join would silently attach the wrong hazard coordinates to every
+    failure label and quietly invalidate the entire mechanism test.
 
     Returns:
-        ``(R_cube, len(axis_idx))`` raw hazard coordinates aligned to
-        ``raw.realization_ids``.
+        ``(G_cube, len(axis_idx))`` raw hazard coordinates aligned to
+        ``raw.sow_labels``.
 
     Raises:
-        KeyError: If a re-evaluated realization has no hazard coordinates.
+        KeyError: If a re-evaluated SOW has no hazard coordinates.
+        ValueError: If the cube carries no ``realizations_per_sow``.
     """
-    rid_to_row = {int(r): i for i, r in enumerate(image["realization_ids"])}
-    missing = [r for r in raw.realization_ids if int(r) not in rid_to_row]
+    rps = raw.realizations_per_sow
+    if not rps:
+        raise ValueError(
+            "the re-eval cube records no realizations_per_sow, so the hazard "
+            "image's realization rows cannot be grouped into its SOWs."
+        )
+    H = np.asarray(image["H"], dtype=float)[:, axis_idx]
+    by_sow: dict[int, list[int]] = {}
+    for i, rid in enumerate(image["realization_ids"]):
+        by_sow.setdefault(int(rid) // int(rps), []).append(i)
+    missing = [g for g in raw.sow_labels if int(g) not in by_sow]
     if missing:
         raise KeyError(
-            f"{len(missing)} re-evaluated realization(s) have no hazard "
-            f"coordinates in the E_test hazard image (e.g. {missing[:5]}). The "
-            f"hazard image and the re-eval ensemble are not the same ensemble."
+            f"{len(missing)} re-evaluated SOW(s) have no hazard coordinates in "
+            f"the E_test hazard image (e.g. {missing[:5]}). The hazard image "
+            f"and the re-eval ensemble are not the same ensemble."
         )
-    rows = [rid_to_row[int(r)] for r in raw.realization_ids]
-    return np.asarray(image["H"], dtype=float)[np.ix_(rows, axis_idx)]
+    return np.vstack([H[by_sow[int(g)], :].mean(axis=0) for g in raw.sow_labels])
 
 
 def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
@@ -1006,11 +1000,13 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
     """
     axes = screen["retained"]
     H = align_hazard_to_cube(raw, etest, screen["retained_idx"])       # raw units
-    H_ref = np.asarray(etest["H"], dtype=float)[:, screen["retained_idx"]]
+    # The CDF reference is the SOW-level E_test cloud itself, so the SOW points
+    # and the search-ensemble members land in one common rank space.
+    H_ref = H
     X = cdf_transform(H, H_ref)                                        # rank space
 
     compromise = select_compromise(raw)
-    y = _label_matrix(raw, baseline)[compromise["index"]]              # (R,)
+    y = _label_matrix(raw, baseline)[compromise["index"]]              # (G,)
 
     model = fit_failure_classifier(X, y, axes)
     shifts = hazard_shift_stats(H, y, axes)
@@ -1223,9 +1219,9 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
                           f"outputs/{name}/{slug}/reeval/{tag} -- skipping.")
             continue
         raw = rob.load_raw(rdir)
-        if not raw.is_ensemble or raw.n_realizations <= 1:
-            warnings.warn(f"[{name}] single-trace re-eval (R={raw.n_realizations}): "
-                          f"failure labels are undefined per realization -- skipping.")
+        if not raw.is_ensemble or raw.n_sow <= 1:
+            warnings.warn(f"[{name}] single-trace re-eval (G={raw.n_sow}): "
+                          f"per-SOW failure labels are undefined -- skipping.")
             continue
         try:
             res = discover_for_design(name, raw, etest, screen, draw=draw,

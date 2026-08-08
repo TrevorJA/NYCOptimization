@@ -1,17 +1,20 @@
 """robustness_threshold_anchor.py - Historic-trace anchor for the threshold diagnostics.
 
-Recomputes the 8 whole-trace BASE objective values (weekly reliabilities,
-deficit CVaR %, flood exceedance ft·days/yr, storage p5 %) for the default
-FFMP policy on the persisted historic baseline simulation
-(outputs/baseline/ffmp_baseline.hdf5) and caches them as JSON. Zero
-simulation: the HDF5 is loaded through the same ``pywrdrb.Data()`` path that
-``run_baseline.py`` scores from, and each metric is ``objective.base.compute``
-— byte-identical to the per-realization metrics in the E_test re-eval cube.
+Recomputes the 8 ANNUAL-UNIT objective values (the search objectives:
+reliability fractions, deficit P99 %, expected annual flood exceedance
+ft-days/yr, storage min P01 %) for the default FFMP policy on the persisted
+historic baseline simulation (outputs/baseline/ffmp_baseline.hdf5) and caches
+them as JSON. Zero simulation: the HDF5 is loaded through the same
+``pywrdrb.Data()`` path that ``run_baseline.py`` scores from, and each value
+is ``obj.compute([data])`` — the single historic trace's unit-years pooled
+through the objective's own §2 unit operator, byte-identical to the metric
+formula behind the per-SOW values in the E_test re-eval cube (the N = 1 case).
 
-The persisted ``outputs/baseline/ffmp_baseline_objectives.csv`` is in the
-ANNUAL-UNIT search-objective space and cannot anchor the base-metric
-satisficing thresholds; this cache is the apples-to-apples anchor. It is the
-seam that keeps ``robustness_threshold_figures.py`` pywrdrb-free.
+This is the apples-to-apples anchor for the satisficing thresholds, which act
+on per-SOW annual-unit objective values. It is the seam that keeps
+``robustness_threshold_figures.py`` pywrdrb-free. The persisted
+``outputs/baseline/ffmp_baseline_objectives.csv`` lives in the SAME metric
+space and serves as a cross-check in the comparison table.
 
 Configuration lives in supplemental_config.py (RTD_* section) — no CLI value
 flags. Env:
@@ -47,15 +50,30 @@ def load_meta() -> dict:
     if not meta_path.exists():
         sys.exit(f"[rtd-anchor] missing {meta_path} — run step 05 --reeval first.")
     with open(meta_path) as f:
-        return json.load(f)
+        meta = json.load(f)
+    if "obj_names" not in meta:
+        sys.exit(
+            f"[rtd-anchor] {meta_path} predates the per-SOW annual-unit "
+            "substrate (no 'obj_names'); re-run step 05 --reeval to regenerate "
+            "the baseline cube."
+        )
+    return meta
 
 
-def compute_historic_anchor(base_names: list) -> dict:
-    """Whole-trace base metrics of the default policy on the historic trace.
+def compute_historic_anchor(obj_names: list) -> dict:
+    """Annual-unit objective values of the default policy on the historic trace.
 
-    Builds the ensemble objective set from the cube's own ``base_names`` (the
-    moving-measuring-stick guard: the anchor is scored for exactly the metric
-    columns the cube carries, not whatever the live registry currently lists).
+    Builds the ensemble objective set from the cube's own ``obj_names`` (the
+    moving-measuring-stick guard: the anchor is scored for exactly the
+    objective columns the cube carries, not whatever the live registry
+    currently lists) and pools the single trace's unit-years through each
+    objective's §2 unit operator (``obj.compute([data])``, the N = 1 case).
+
+    Args:
+        obj_names: Annual objective names in cube column order.
+
+    Returns:
+        ``{annual_objective_name: value}`` in natural units.
     """
     from src.objectives_ensemble import build_ensemble_objective_set  # noqa: E402
     from src.simulation import _load_results_from_hdf5  # noqa: E402
@@ -67,16 +85,16 @@ def compute_historic_anchor(base_names: list) -> dict:
     print(f"[rtd-anchor] loading {scfg.RTD_BASELINE_HDF5}", flush=True)
     data = _load_results_from_hdf5(scfg.RTD_BASELINE_HDF5)
 
-    objs = list(build_ensemble_objective_set(base_names))
-    got = [o.base.name for o in objs]
-    if got != list(base_names):
-        sys.exit(f"[rtd-anchor] base-name order mismatch: {got} != {base_names}")
+    objs = list(build_ensemble_objective_set(obj_names))
+    got = [o.name for o in objs]
+    if got != list(obj_names):
+        sys.exit(f"[rtd-anchor] objective-name order mismatch: {got} != {obj_names}")
 
     anchor = {}
     for o in objs:
-        val = float(o.base.compute(data))
-        anchor[o.base.name] = val
-        print(f"[rtd-anchor]   {o.base.name} = {val:.6f}", flush=True)
+        val = float(o.compute([data]))
+        anchor[o.name] = val
+        print(f"[rtd-anchor]   {o.name} = {val:.6f}", flush=True)
     return anchor
 
 
@@ -88,8 +106,8 @@ def main() -> None:
         return
 
     meta = load_meta()
-    base_names = meta["base_names"]
-    anchor = compute_historic_anchor(base_names)
+    obj_names = meta["obj_names"]
+    anchor = compute_historic_anchor(obj_names)
 
     bad = [k for k, v in anchor.items() if not (v == v)]  # NaN check
     if bad:
@@ -98,7 +116,7 @@ def main() -> None:
     scfg.RTD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "anchor": anchor,
-        "base_names": list(base_names),
+        "obj_names": list(obj_names),
         "source_hdf5": str(scfg.RTD_BASELINE_HDF5),
         "source_mtime": scfg.RTD_BASELINE_HDF5.stat().st_mtime,
         "computed": date.today().isoformat(),

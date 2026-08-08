@@ -10,10 +10,14 @@ within a chunk, freeing timeseries per batch; (3) work is distributed across MPI
 Design (reusing the re-evaluation stack):
 - Work units are ``(solution, chunk)`` pairs. Ranks coordinate through marker/claim files, not
   flaky MPI collectives.
-- Each unit reduces to a ``(S_chunk, M)`` base-metric matrix via :func:`src.simulation.evaluate_raw`
-  (recorder -> ``/dev/null``); rows are re-keyed from the chunk's local ids to the ensemble's **global**
-  realization ids — so persistence layout, scheduling, and merge placement provably cannot change
-  the merged cube (``tests/test_chunk_reeval.py`` asserts equality across all of them).
+- Each unit reduces to the chunk's per-SOW annual-unit objective rows: the chunk's realizations
+  are reduced to their stage-(i) annual metrics via :func:`src.simulation.evaluate_annual_units`
+  (recorder -> ``/dev/null``) and each SOW's unit-years are pooled through the §2 unit operators
+  (:func:`src.reeval_core.sow_objective_matrix`). A chunk holds WHOLE SOWs by construction
+  (``chunk_size`` is a multiple of ``realizations_per_profile``; asserted in ``src.etest``), so
+  rows are keyed by the ensemble's **global** SOW ids and persistence layout, scheduling, and
+  merge placement provably cannot change the merged cube (``tests/test_chunk_reeval.py`` asserts
+  equality across all of them).
 - **Incremental mode** (``NYCOPT_CHUNK_INCREMENTAL=1``, default): each completed unit is flushed
   atomically to ``partial/units/chunk{j:03d}/sol{sid:05d}.parquet``; a failed unit leaves a
   ``.failed`` sidecar (its rows stay NaN, exactly like the one-shot no-rows semantics). Restarting
@@ -24,7 +28,7 @@ Design (reusing the re-evaluation stack):
   ``interleave`` = static strided; ``contiguous`` = static s-major ``np.array_split``.
 - **One-shot mode** (``NYCOPT_CHUNK_INCREMENTAL=0``): each rank accumulates its rows and writes one
   long-format parquet partial at the end (the original path, kept as the reference).
-- Merge: rank 0 reassembles per-solution ``(N_M, M)`` matrices and reuses
+- Merge: rank 0 reassembles per-solution ``(n_sow, M)`` matrices and reuses
   :func:`src.reeval_core.persist_reeval_raw` (so ``reeval_raw.parquet`` / ``reeval_raw_meta.json`` /
   ``objectives_summary.csv`` are byte-compatible with the normal re-eval path) then
   :func:`src.robustness.run`. With ``NYCOPT_CHUNK_MERGE=off`` the simulate job skips the merge
@@ -80,38 +84,45 @@ def _evaluate_unit(
     obj_set,
     chunks: list[tuple[object, list[int]]],
     realization_batch: int | None,
+    r_per_sow: int,
 ) -> tuple[pd.DataFrame | None, str | None]:
     """Simulate one (solution, chunk) unit; return (long rows, None) or (None, error).
 
     The row construction is the single source of truth for unit payloads — both
     the one-shot per-rank accumulation and the incremental per-unit flush go
-    through it, so the two persistence layouts carry identical rows.
+    through it, so the two persistence layouts carry identical rows. Rows are
+    the chunk's per-SOW annual-unit objective values, keyed by GLOBAL SOW id
+    (``global_realization_id // r_per_sow``; a chunk holds whole SOWs).
     """
-    from src.simulation import evaluate_raw
+    from src.reeval_core import sow_objective_matrix
+    from src.simulation import evaluate_annual_units
 
     chunk_spec, global_ids = chunks[chunk_idx]
     sid = solution_ids[sol_idx]
     t0 = time.perf_counter()
     try:
-        base_matrix, base_names = evaluate_raw(
+        units, obj_names = evaluate_annual_units(
             dvs[sol_idx], formulation_name=formulation,
             objective_set=obj_set, ensemble_spec=chunk_spec,
             realization_batch=realization_batch,
         )
+        sow_ids = [int(g) // int(r_per_sow)
+                   for g in global_ids[:units.shape[0]]]
+        sow_matrix, sow_labels = sow_objective_matrix(units, obj_set, sow_ids)
     except Exception as exc:  # noqa: BLE001 - a failed unit contributes no rows
         err = f"{type(exc).__name__}: {exc}"
         print(f"[chunk-reeval] solution {sid} x chunk {chunk_idx} failed: {err}")
         return None, err
     _print_unit_line(sid, chunk_idx, t0)
-    # Vectorized long rows (row-major over local realization, objective),
-    # re-keyed from the chunk's local ids to the ensemble's global ids.
-    arr = np.asarray(base_matrix, dtype=float)
-    r_i, m_i = arr.shape
-    gid_row = np.asarray(global_ids[:r_i], dtype=int)
+    # Vectorized long rows (row-major over SOW, objective), keyed by the
+    # ensemble's global SOW ids.
+    arr = np.asarray(sow_matrix, dtype=float)
+    g_i, m_i = arr.shape
+    sow_row = np.asarray(sow_labels, dtype=int)
     return pd.DataFrame({
-        "solution_id": np.full(r_i * m_i, int(sid), dtype=int),
-        "realization_id": np.repeat(gid_row, m_i),
-        "objective": np.tile(np.asarray(base_names, dtype=object), r_i),
+        "solution_id": np.full(g_i * m_i, int(sid), dtype=int),
+        "sow_id": np.repeat(sow_row, m_i),
+        "objective": np.tile(np.asarray(obj_names, dtype=object), g_i),
         "value": arr.reshape(-1),
     }), None
 
@@ -119,7 +130,7 @@ def _evaluate_unit(
 def _empty_long_frame() -> pd.DataFrame:
     return pd.DataFrame({
         "solution_id": np.array([], dtype=int),
-        "realization_id": np.array([], dtype=int),
+        "sow_id": np.array([], dtype=int),
         "objective": np.array([], dtype=object),
         "value": np.array([], dtype=float),
     })
@@ -133,12 +144,14 @@ def _rank_long_rows(
     obj_set,
     chunks: list[tuple[object, list[int]]],
     realization_batch: int | None,
+    r_per_sow: int,
 ) -> pd.DataFrame:
     """One-shot driver: simulate this rank's units, returning accumulated long rows."""
     frames = []
     for sol_idx, chunk_idx in work_slots:
         df, _err = _evaluate_unit(sol_idx, chunk_idx, dvs, solution_ids,
-                                  formulation, obj_set, chunks, realization_batch)
+                                  formulation, obj_set, chunks,
+                                  realization_batch, r_per_sow)
         if df is not None:
             frames.append(df)
     if frames:
@@ -225,6 +238,7 @@ def _run_units_incremental(
     obj_set,
     chunks: list[tuple[object, list[int]]],
     realization_batch: int | None,
+    r_per_sow: int,
     partial_dir: Path,
     rank: int,
     size: int,
@@ -271,7 +285,8 @@ def _run_units_incremental(
                   f"unit(s); resubmit the same job to resume.", flush=True)
             break
         df, err = _evaluate_unit(sol_idx, chunk_idx, dvs, solution_ids,
-                                 formulation, obj_set, chunks, realization_batch)
+                                 formulation, obj_set, chunks,
+                                 realization_batch, r_per_sow)
         stem = _unit_stem(units_dir, chunk_idx, sid)
         if df is None:
             stem.parent.mkdir(parents=True, exist_ok=True)
@@ -318,8 +333,8 @@ def _persist_and_score(
     persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions, seed)
 
     # Pass the status-quo re-eval matrix if step 05 staged one under this same
-    # reeval tag. Without it `improvement_vs_baseline` warns and silently
-    # drops the metric.
+    # reeval tag. Without it the incumbent-relative regret family warns and is
+    # silently dropped.
     from config import REEVALUATION_SETTINGS
 
     baseline_dir = reeval_dir / "baseline"
@@ -331,33 +346,33 @@ def _persist_and_score(
         reeval_dir,
         baseline_dir=baseline_dir if has_baseline else None,
         metrics=tuple(REEVALUATION_SETTINGS["robustness_metrics"]),
-        within_sow_agg=REEVALUATION_SETTINGS.get("within_sow_aggregator", "mean"),
     )
     return reeval_dir
 
 
 def _merge_and_persist(
-    partial_dir: Path, reeval_dir: Path, solution_ids: list[int], n_realizations: int,
+    partial_dir: Path, reeval_dir: Path, solution_ids: list[int], n_sow: int,
     formulation: str, obj_set, seed,
 ) -> Path:
     """One-shot merge: concatenate rank partials, reassemble per-solution matrices."""
     parts = _read_partials(partial_dir)
     long_df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(
-        columns=["solution_id", "realization_id", "objective", "value"]
+        columns=["solution_id", "sow_id", "objective", "value"]
     )
-    base_names = [o.base.name for o in obj_set]
+    obj_names = [o.name for o in obj_set]
 
-    # Reassemble each solution's (N, M) matrix in global-id order (NaN for failed/absent cells);
-    # persist_reeval_raw maps row j -> realization_indices[j] == global id j.
+    # Reassemble each solution's (n_sow, M) matrix in global-SOW order (NaN for
+    # failed/absent cells); persist_reeval_raw maps row g -> sow_labels[g] ==
+    # global SOW id g.
     raw_results = []
     for sid in solution_ids:
         sub = long_df[long_df["solution_id"] == sid]
         if sub.empty:
             raw_results.append((sid, None, None, "no rows"))
             continue
-        piv = (sub.pivot_table(index="realization_id", columns="objective", values="value")
-               .reindex(index=range(n_realizations), columns=base_names))
-        raw_results.append((sid, piv.to_numpy(dtype=float), base_names, None))
+        piv = (sub.pivot_table(index="sow_id", columns="objective", values="value")
+               .reindex(index=range(n_sow), columns=obj_names))
+        raw_results.append((sid, piv.to_numpy(dtype=float), obj_names, None))
 
     return _persist_and_score(reeval_dir, raw_results, formulation,
                               len(solution_ids), seed)
@@ -366,7 +381,7 @@ def _merge_and_persist(
 def merge_units(
     reeval_dir: Path,
     solution_ids: list[int],
-    n_realizations: int,
+    n_sow: int,
     formulation: str,
     obj_set,
     chunks: list[tuple[object, list[int]]],
@@ -376,7 +391,7 @@ def merge_units(
 ) -> Path:
     """Merge per-unit files into the re-eval cube (no pivots, no full-table scans).
 
-    Direct placement by (global realization id, objective) reproduces the one-shot
+    Direct placement by (global SOW id, objective) reproduces the one-shot
     ``pivot_table`` + ``reindex`` semantics exactly for the unique-cell case;
     absent units (failed or missing) leave NaN rows, the one-shot no-rows
     behavior. Stateless over the unit files -> trivially resumable.
@@ -384,7 +399,7 @@ def merge_units(
     Args:
         reeval_dir: Re-eval output dir holding ``partial/units``.
         solution_ids: Solution ids in ``dvs`` row order.
-        n_realizations: Global realization count (matrix row space).
+        n_sow: Global SOW count (matrix row space).
         formulation: Formulation name (persist metadata).
         obj_set: Resolved objective set (column names + order).
         chunks: ``pool_chunk_specs`` output (chunk count for the completeness gate).
@@ -396,14 +411,14 @@ def merge_units(
         ValueError: If a unit file carries an objective not in ``obj_set``.
     """
     units_dir = Path(reeval_dir) / "partial" / "units"
-    base_names = [o.base.name for o in obj_set]
-    col_pos = {name: k for k, name in enumerate(base_names)}
+    obj_names = [o.name for o in obj_set]
+    col_pos = {name: k for k, name in enumerate(obj_names)}
 
     missing: list[tuple[int, int]] = []
     n_failed = 0
     raw_results = []
     for sid in solution_ids:
-        mat = np.full((n_realizations, len(base_names)), np.nan)
+        mat = np.full((n_sow, len(obj_names)), np.nan)
         any_rows = False
         for j in range(len(chunks)):
             stem = _unit_stem(units_dir, j, sid)
@@ -421,11 +436,11 @@ def merge_units(
                     f"unit sol{sid}/chunk{j} carries objectives not in the "
                     f"active set: {bad}"
                 )
-            mat[df["realization_id"].to_numpy(dtype=int),
+            mat[df["sow_id"].to_numpy(dtype=int),
                 obj_idx.to_numpy(dtype=int)] = df["value"].to_numpy(dtype=float)
             any_rows = True
         if any_rows:
-            raw_results.append((sid, mat, base_names, None))
+            raw_results.append((sid, mat, obj_names, None))
         else:
             raw_results.append((sid, None, None, "no rows"))
 
@@ -460,7 +475,7 @@ def _resolve_campaign(formulation: str, seed, reeval_dir: Path | None):
     """
     from config import (REEVAL_ENSEMBLE_SPEC, active_scenario_name, derive_slug)
     from src.ensembles import pool_chunk_specs
-    from src.reeval_core import reeval_output_dir, resolve_reeval
+    from src.reeval_core import reeval_output_dir, resolve_reeval, sow_grouping
 
     if REEVAL_ENSEMBLE_SPEC is None or not REEVAL_ENSEMBLE_SPEC.is_ensemble:
         raise ValueError(
@@ -470,10 +485,18 @@ def _resolve_campaign(formulation: str, seed, reeval_dir: Path | None):
         )
     obj_set, test_spec, _ = resolve_reeval()
     chunks = pool_chunk_specs(test_spec.inflow_type)
+    sow_ids, n_sow, r_per_sow = sow_grouping(
+        test_spec, test_spec.realization_indices)
+    if sow_ids is None:
+        raise ValueError(
+            "chunk re-eval requires a DU-forced test ensemble with forcing "
+            "profiles; this spec carries no SOW grouping, so the per-SOW "
+            "objective unit is undefined for it."
+        )
     if reeval_dir is None:
         reeval_dir = reeval_output_dir(active_scenario_name(), derive_slug(formulation),
                                        test_spec, seed)
-    return obj_set, test_spec, chunks, Path(reeval_dir)
+    return obj_set, test_spec, chunks, n_sow, r_per_sow, Path(reeval_dir)
 
 
 def simulate_test_chunks(
@@ -498,7 +521,7 @@ def simulate_test_chunks(
     from config import (CHUNK_DONE_DEADLINE_S, CHUNK_INCREMENTAL, CHUNK_MERGE,
                         SEARCH_REALIZATION_BATCH)
 
-    obj_set, test_spec, chunks, reeval_dir = _resolve_campaign(
+    obj_set, test_spec, chunks, n_sow, r_per_sow, reeval_dir = _resolve_campaign(
         formulation, seed, reeval_dir)
     n_realizations = test_spec.n_realizations
 
@@ -535,11 +558,12 @@ def simulate_test_chunks(
 
     if incremental:
         _run_units_incremental(work, dvs, solution_ids, formulation, obj_set,
-                               chunks, realization_batch, partial_dir, rank, size)
+                               chunks, realization_batch, r_per_sow,
+                               partial_dir, rank, size)
     else:
         my_slots = [work[i] for i in assign_rank_slots(len(work), rank, size)]
         rows = _rank_long_rows(my_slots, dvs, solution_ids, formulation, obj_set,
-                               chunks, realization_batch)
+                               chunks, realization_batch, r_per_sow)
         _write_partial(rows, partial_dir / f"rank_{rank:03d}")
     mark_rank_done(partial_dir, rank)
 
@@ -555,10 +579,10 @@ def simulate_test_chunks(
     if incremental:
         from config import CHUNK_MERGE_ALLOW_PARTIAL
 
-        return merge_units(reeval_dir, solution_ids, n_realizations, formulation,
+        return merge_units(reeval_dir, solution_ids, n_sow, formulation,
                            obj_set, chunks, seed,
                            allow_partial=bool(CHUNK_MERGE_ALLOW_PARTIAL))
-    return _merge_and_persist(partial_dir, Path(reeval_dir), solution_ids, n_realizations,
+    return _merge_and_persist(partial_dir, Path(reeval_dir), solution_ids, n_sow,
                               formulation, obj_set, seed)
 
 
@@ -574,8 +598,8 @@ def merge_test_chunks(
     """
     from config import CHUNK_MERGE_ALLOW_PARTIAL
 
-    obj_set, test_spec, chunks, reeval_dir = _resolve_campaign(
+    obj_set, test_spec, chunks, n_sow, _r_per_sow, reeval_dir = _resolve_campaign(
         formulation, seed, reeval_dir)
-    return merge_units(reeval_dir, list(solution_ids), test_spec.n_realizations,
+    return merge_units(reeval_dir, list(solution_ids), n_sow,
                        formulation, obj_set, chunks, seed,
                        allow_partial=bool(CHUNK_MERGE_ALLOW_PARTIAL))

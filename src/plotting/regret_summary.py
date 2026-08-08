@@ -193,7 +193,6 @@ def plot_regret_tolerance_sweep(sweep: pd.DataFrame, out_file,
 
 
 def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
-                              within_sow_agg: str = "mean",
                               figsize: tuple = (12.5, 5.6)) -> Path:
     """Per-objective tail regret and mean gain vs the status quo, in NATURAL units.
 
@@ -206,7 +205,6 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
         out_file: Output stub.
         accepted_ids: Restrict to these ``solution_id``\\ s (e.g. the stakeholder
             screen from :mod:`src.pareto_filter`); None keeps every policy.
-        within_sow_agg: Within-SOW risk attitude.
         figsize: Figure size.
 
     Returns:
@@ -217,14 +215,14 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
     reeval_dir = Path(reeval_dir)
     raw = load_raw(reeval_dir)
     base = load_raw(reeval_dir / "baseline")
-    mags = regret_magnitudes(raw, base, within_sow_agg=within_sow_agg)
+    mags = regret_magnitudes(raw, base)
     if accepted_ids is not None:
         keep = [s for s in accepted_ids if s in mags.index]
         if not keep:
             raise ValueError("no accepted solutions found in the re-eval cube")
         mags = mags.loc[keep]
 
-    names = list(raw.base_names)
+    names = list(raw.obj_names)
     # Order by how often the objective is harmed at all, worst first, so the
     # binding party is at the top of both panels.
     harm_rank = [np.nanmean(mags[f"regret_q90__{n}"].to_numpy()) > 0 for n in names]

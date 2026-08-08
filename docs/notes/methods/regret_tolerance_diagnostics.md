@@ -2,7 +2,11 @@
 
 *Sets the two free parameters of the incumbent-relative regret comparison
 (`objective_definitions.md` §3.2b): the no-harm tolerance $\tau_i = k\,\epsilon_i$
-and the non-inferiority margin $\delta$ on `no_harm_freq_tau`. Implementation:
+($\epsilon_i$ = the ANNUAL-UNIT epsilon of
+`objectives_ensemble.ENSEMBLE_OBJECTIVES`) and the non-inferiority margin
+$\delta$ on `no_harm_freq_tau`. The metric substrate is the per-SOW
+annual-unit objective value — the search objective recomputed per
+deeply-uncertain state. Implementation:
 `scripts/supplemental/regret_tolerance_diagnostics.py`, settings in
 `supplemental_config.py` (`RTOL_*`), launcher
 `workflow/supplemental/regret_tolerance_diagnostics.sh`.*
@@ -63,65 +67,70 @@ variance alone. It cannot flip the sign of the comparison, only its resolution.
 
 ## 2. Pass A — the noise floor (needs only the incumbent)
 
-Every quantity here is a reduction of the step-05 incumbent cube, so **pass A can
+Every quantity here is a reduction of the step-05 incumbent cube (plus the
+staged $E_{\text{test}}$ forcing profiles for the $m$ join), so **pass A can
 and should run as soon as that cube lands, long before any search finishes.**
 Running it early is not a convenience: a tolerance fixed after the campaign
 contrast is visible is not a pre-registered tolerance, whatever value it takes.
 
 The question is *how small can $\tau$ be before it measures the estimator?* Under
-the null that a policy is operationally identical to the incumbent, the SOW-mean
-difference $D_i(x,\theta)$ is pure noise, and any $\tau$ below its scale reports
-that noise as harm. With $\sigma_i(\theta)$ the within-SOW standard deviation of
-the whole-record base metric and $R$ realizations per SOW:
+the null that a policy is operationally identical to the incumbent, the per-SOW
+difference $D_i(x,\theta)$ is pure estimator noise (finite $R$ realizations
+pooled per SOW), and any $\tau$ below its scale reports that noise as harm.
+
+**Floor estimator.** The persisted cube carries ONE value per (SOW, objective)
+— the SOW's $R$ realizations already pooled through the §2 unit operator — so
+the Monte Carlo noise of $J(\theta)$ cannot be recovered from per-realization
+spread (none is persisted). It is instead BOUNDED from the incumbent's per-SOW
+values: sort the SOWs on the dominant forcing axis $m$ (theta joined on the
+SOW label), partition into consecutive bins of `RTOL_M_BIN_SIZE` SOWs, and
+take $\sigma_i$ = the median across bins of the within-bin standard deviation
+— the local (binned-in-$\theta$) spread of $J$ around its forcing response.
+Then
 
 $$
-\tau_i^{\text{floor}} \;=\; z \cdot \sqrt{2} \cdot \operatorname*{median}_{\theta}
-\frac{\sigma_i(\theta)}{\sqrt{R}},
+\tau_i^{\text{floor}} \;=\; z \cdot \sqrt{2} \cdot \sigma_i,
 \qquad z = 1.645 \;\Rightarrow\; \text{5\% false-harm per (objective, SOW)}.
 $$
 
-A non-parametric companion — the **split-half null** — partitions each SOW's
-realizations in two and treats one half as a pseudo-policy against the other, so
-every flagged harm is false by construction and the resulting frequency *is* the
-false-harm rate of the ladder. Differences are rescaled by
-$\sqrt{(2/R)\,/\,(1/n_1 + 1/n_2)}$ so the half-sample penalty is removed and the
-two estimates are comparable.
-
-**Both are unpaired, and therefore conservative — this must be stated wherever
-they are used.** The real comparison is paired: a policy and the incumbent are
-simulated on the *same* inflow sequences, so their difference cancels most of the
-shared natural variability and the true floor is smaller, possibly much smaller.
-The paired floor cannot be estimated without a second policy on the test
-ensemble, so pass A reports the unpaired bound explicitly labelled as an upper
-bound and pass B replaces it as soon as any policy cube exists.
+**The floor is an unpaired UPPER BOUND — this must be stated wherever it is
+used.** Two stacked conservatisms: the within-bin spread still contains real
+structure (the $r_1$/$r_2$ response and the residual $m$-trend inside each
+narrow bin), and the real comparison is paired — a policy and the incumbent
+are simulated on the *same* inflow sequences, so their difference cancels most
+of the shared natural variability and the true floor is smaller, possibly much
+smaller. The paired floor cannot be estimated without a second policy on the
+test ensemble, so pass A reports the unpaired bound explicitly labelled as an
+upper bound and pass B replaces it as soon as any policy cube exists.
 
 The direction of that conservatism matters and is not benign: an overstated floor
 pushes $k$ *up*, toward less discrimination, which is the direction that flatters
 a non-inferiority claim. It is a bound to be tightened, not a safe default.
 
-**Outputs.** `rtol_noise_floor.csv` (per objective: $\sigma$, SE, $\tau^{\text{floor}}$,
-$\epsilon_i$, and $k^{\text{floor}} = \tau^{\text{floor}}/\epsilon_i$),
+**Outputs.** `rtol_noise_floor.csv` (per objective: $\sigma_i$, the unpaired
+null SD, $\tau^{\text{floor}}$, $\epsilon_i$, and
+$k^{\text{floor}} = \tau^{\text{floor}}/\epsilon_i$),
 `rtol_ladder_shapes.csv` (§2b), `rtol_floors.json` (the floor vector, consumed by
-`robustness.tau_ladder(floors=...)`), `rtol_split_half_null.csv` (false-harm
-frequency per objective and joint, per rung).
+`robustness.tau_ladder(floors=...)`).
 
 ### 2b. The ladder's *shape* is a separate choice from its scale
 
 $\tau_i = k\,u_i$ shares **one** $k$ across eight objectives, so the unit $u_i$
 decides what a rung means on each axis. Using $u_i = \epsilon_i$ tacitly assumes
-every epsilon is comparably placed relative to its own estimator noise. It is not:
-a first run of pass A on a synthetic incumbent with realistic spreads gives
+every epsilon is comparably placed relative to its own estimator noise. It need
+not be: illustrative pass-A numbers on a synthetic incumbent with realistic
+spreads give
 
 | objective | $\epsilon_i$ | $\tau_i^{\text{floor}}$ | $\tau^{\text{floor}}/\epsilon$ |
 |---|---|---|---|
-| `nyc_delivery_reliability_weekly` | 0.07 | 0.0091 | 0.13 |
-| `downstream_flood_exceedance_minor` | 0.01 | 0.069 | **6.9** |
+| `nyc_delivery_reliability_annual` | 0.02 | 0.009 | 0.5 |
+| `downstream_flood_exceedance_annual` | 0.3 | 1.2 | **3.9** |
 
-The flood epsilon sits an order of magnitude *below* its noise floor. On that
-axis $k = 1$ is inside the estimator's noise; on the reliability axis it is
-roughly eight times outside it. A single rung therefore means two different
-things, and the eps-shape rule of §3 responds by pushing the headline rung to
-$k = 10$ — which is defensible for flood and absurdly loose for everything else.
+A flood epsilon sitting well *below* its noise floor means that on that axis
+$k = 1$ is inside the estimator's noise while on the reliability axis it is
+far outside it. A single rung then means two different things, and the
+eps-shape rule of §3 responds by pushing the headline rung upward — defensible
+for flood and loose for everything else.
 
 Three candidate shapes, reported side by side in `rtol_ladder_shapes.csv`:
 
@@ -143,9 +152,10 @@ they would leave some objectives on a different basis without saying so).
 
 The numbers above are from a synthetic cube and are illustrative of the
 *mechanism*, not of the campaign. The real ratios come from the step-05 incumbent.
-The finding that matters and will not change is structural: **the §1 epsilons were
-never calibrated against per-SOW estimator noise, so their ratios across
-objectives cannot be assumed to carry a shared tolerance.**
+The finding that matters and will not change is structural: **the annual
+epsilons were calibrated for Borg archiving resolution, not against per-SOW
+estimator noise, so their ratios across objectives cannot be assumed to carry
+a shared tolerance.**
 
 ---
 
@@ -247,16 +257,15 @@ a rule fixed in advance — not on a $p$-value.
 
 ## 6. Reporting plan (SI)
 
-One SI text section, four panels, plus the two rules quoted verbatim from
+One SI text section, three panels, plus the two rules quoted verbatim from
 `supplemental_config.RTOL_TAU_RULE` / `RTOL_MARGIN_RULE` so that what was fixed in
 advance is legible after the fact.
 
 | Panel | Content | Answers |
 |---|---|---|
 | A | Per-objective $\tau^{\text{floor}}$ against $\epsilon_i$ and the ladder rungs, natural units, with the $\tau^{\text{floor}}/\epsilon$ ratio annotated | which rungs measure noise, and which axes need the `max` unit |
-| B | Split-half false-harm frequency vs $k$, per objective and joint | the same thing without a normality assumption |
-| C | $\Pi_\tau(k)$ per design and draw, with the starved / informative / saturated bands shaded | over what range the comparison is informative, and whether the ordering holds across it |
-| D | The two empirical null distributions and the paired bootstrap CI at $k_{\text{headline}}$, with $\delta$ marked | how large a difference means nothing |
+| B | $\Pi_\tau(k)$ per design and draw, with the starved / informative / saturated bands shaded | over what range the comparison is informative, and whether the ordering holds across it |
+| C | The two empirical null distributions and the paired bootstrap CI at $k_{\text{headline}}$, with $\delta$ marked | how large a difference means nothing |
 
 The assay-sensitivity verdict is a sentence in the main text, not an SI panel: if
 it fails, the RQ2 result is not reportable as a null and the reader must be told
@@ -281,13 +290,8 @@ in the same place the result is.
 ## 8. Open items
 
 1. Adopt the ladder **shape** (§2b) and then $k_{\text{headline}}$ (§3) from pass
-   A. Both are blocked on the step-05 rerun under the allocation-reduction DV
-   encoding, and both must be fixed before any re-evaluated policy set is read.
+   A. Both are blocked on the step-05 rerun on the per-SOW annual-unit
+   substrate, and both must be fixed before any re-evaluated policy set is
+   read.
 2. Replace the unpaired noise floor with the paired estimate once any policy cube
    exists on the test ensemble (§2), and record whether it moves the rung.
-3. Confirm the §1 base-metric epsilons are current — the ladder scales by them,
-   and only the §2 annual-unit vector went through the calibration experiment
-   (`epsilon_calibration_experiment.md`). §2b is the reason this matters: their
-   *ratios* across objectives, not just their levels, are load-bearing here in a
-   way they never were for Borg archiving, where each epsilon acts on its own axis
-   independently.

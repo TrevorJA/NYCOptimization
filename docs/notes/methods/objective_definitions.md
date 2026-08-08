@@ -200,8 +200,9 @@ unit-years** with the objective's **unit operator**:
 (multi-year droughts appear as consecutive failure-years — this is how the
 WaterPaths-lineage frequency objectives express persistence); effective sample size
 is below NL and differs by design; this is disclosed rather than corrected. An annual window cannot hold a whole multi-year
-drought as a single unit; event-scale severity enters through the hazard axes and the
-re-evaluation metrics, not the search objectives.
+drought as a single unit; event-scale severity enters through the hazard axes
+(hazard selection and scenario discovery), not through the objective statistics
+— which are the same annual-unit quantities in search and re-evaluation.
 
 **Design mapping.** All three designs use this same two-layer scheme. The
 **historic design** enters it as N = 1 over the consecutive water-year units of
@@ -245,105 +246,92 @@ not corrected — see §5.)
 **No explicit scenario weighting is used anywhere**, in search or in
 re-evaluation.
 
-**The full matrix is persisted.** Unlike search, which keeps only objective
-scores, re-evaluation persists the entire (solution × realization × objective)
-matrix in natural units, plus each realization's **SOW id** (its θ / LHS-point
-index). Every robustness metric is scored *offline* from that matrix, so a new
-metric never requires re-simulating, and **both units of robustness are available
-without additional compute**: the **SOW unit** (collapse each θ's realizations,
-then apply the Starr criterion across the N_θ SOWs — the ADOPTED primary, §3.1)
-and the **realization unit** (co-reported sensitivity). Precision is governed
-by N_θ, not by N_test. Switching or re-scoring between units is pure
-post-processing — `sow_ids` is in the persisted meta, so nothing is re-simulated.
+**The per-SOW objective matrix is persisted.** Re-evaluation persists the
+**(solution × SOW × objective)** matrix in natural units
+(`reeval_raw.parquet` + a self-describing `reeval_raw_meta.json`): each E_test
+state of the world's R = 25 realizations contribute their stage-(i) unit-years
+to one pooled sample, and the objective's §2 unit operator collapses that pool
+to the state's objective value. Every robustness and regret metric is scored
+*offline* from that matrix (`src/robustness.py`), so a new metric or a changed
+threshold never requires re-simulating. Precision is governed by N_θ, not by
+N_test.
 
-**The re-evaluation metric is not the §2 search metric — by design.** Search and
-re-evaluation compute structurally different quantities on different code paths:
+**The re-evaluation metric IS the §2 search metric, recomputed per state of the
+world.** Search and re-evaluation share one code path for the statistic — the
+stage-(i) annual metrics (`annual_units()`) and the stage-(ii) unit operators —
+and differ only in the pool the operator collapses:
 
-| | Search (`_evaluate_ensemble_batched`) | Re-evaluation (`_ensemble_base_matrix`) |
+| | Search (`_evaluate_ensemble_batched`) | Re-evaluation (`evaluate_annual_units` + `sow_objective_matrix`) |
 |---|---|---|
-| per realization | `annual_units()` → vector of L−1 **annual** metrics | `base.compute()` → **one whole-trace scalar** (the §1 temporal metric) |
-| across realizations | pool NL unit-years → §2 **unit operator** (frequency / P99 / mean) | collapse within θ, then count over SOWs (§3.1) |
+| per realization | `annual_units()` → vector of L−1 **annual** metrics | the same `annual_units()` |
+| pooling | ALL realizations' unit-years → §2 unit operator → one search objective | EACH θ's realizations' unit-years → the same unit operator → J_i(x, θ) |
 
-The §2 unit operators are **never invoked at re-evaluation**. The re-evaluation
-metric is **SOW-level satisficing on the §1 whole-trace metrics**: each E_test
-realization yields one scalar per objective, the R realizations sharing a θ are
-collapsed into one performance vector for that state, and robustness is the
-fraction of STATES that clear the criteria (§3.1). This metric does **not** need
-to equal the search metric — it needs only to be **identical across all designs**,
-which is exactly what makes the comparison commensurable.
+This is the standard construction of the robustness literature: the performance
+measure inside the robustness calculation is the optimization objective
+re-evaluated per state of the world (Herman et al. 2015 Eqs. 3–7, whose
+`F(x)_{i,j}` is objective *i* in SOW *j*; Trindade et al. 2017, whose
+satisficing is computed on the objective values "as calculated with
+Eqs. (16)–(20)"; Herman et al. 2014; Quinn et al. 2018; Gold et al. 2023;
+McPhail et al. 2018, whose `f(x_i, S)` is titled "objectives and performance
+metrics"). What differs between search and evaluation is the ensemble and the
+outer aggregation across states — never the definition of the statistic. One
+metric currency also removes the annual-unit statistics' record-length
+sensitivity from the comparison: a 10-yr search window and the 50-yr test
+window are pooled through the same per-unit-year operators.
 
-`objectives_summary.csv` (derived by `SatisficingAgg` at re-eval time) is a
-realization-unit column by construction and is retained as the unit sensitivity,
-not as the headline number.
+Each SOW's pool (25 × 49 ≈ 1,225 unit-years) keeps the tail operators
+well-defined per state: the per-SOW P01 is ≈ the 12th-worst unit-year, exactly
+the "worst first-percentile year" construction Quinn et al. (2018) evaluate per
+SOW. Commensurability across designs is unchanged — E_test and the metric set
+are identical for every design.
 
-The re-evaluation drivers (`src/reevaluate.py`, `src/reevaluate_mpi.py`) persist
-the raw **(solution × realization × objective)** cube in natural units
-(`reeval_raw.parquet` + a self-describing `reeval_raw_meta.json`). Every metric
-below is therefore an *offline re-scoring* of that cube (`src/robustness.py`),
-not a re-simulation — the whole set is free once the cube exists.
+`objectives_summary.csv` holds the mean over SOWs of the per-SOW objective
+values (`sowmean__*` columns) — a risk-neutral summary derived from the same
+persisted matrix, never a second simulation.
 
 ### 3.1 Primary metric: multivariate satisficing (Starr's domain criterion)
 
-**The fraction of E_test STATES OF THE WORLD in which the policy meets ALL
-criteria jointly.** Two stages, in this order:
+**The fraction of E_test STATES OF THE WORLD in which the policy's per-SOW
+objective vector `J_i(x,θ)` meets ALL criteria jointly** — Starr's (1962)
+domain criterion across the N_θ = 1,000 states, the standard measure of the
+Herman (2014/2015) / Trindade (2017, 2019) / Gold (2023) lineage, and Herman
+et al. (2015)'s own recommendation ("a carefully elicited multivariate
+satisficing measure of robustness allows stakeholders to achieve their
+problem-specific performance requirements").
 
-1. **Collapse within θ.** The R = 25 realizations sharing a forcing point are
-   reduced to one performance vector per state,
-   `f̄_i(x,θ) = (1/R) Σ_r f_i(x, s_{θ,r})` — `collapse_within_sow`, the
-   risk-NEUTRAL mean. `worst` (the worst realization in each objective's own
-   direction) is the risk-averse sensitivity; the choice is recorded in
-   `robustness_meta.json` because it moves the number.
-2. **Starr (1962) domain criterion across the N_θ = 1,000 states.** A policy
-   satisfices in θ when every criterion holds on `f̄_i(x,θ)`.
+In McPhail terms: T1 = satisfaction-of-constraints, T2 = all states, T3 =
+frequency, applied to the search objective recomputed per state. Pooling each
+θ's realizations' unit-years through the unit operator IS the within-state
+collapse — natural variability inside a state enters through the statistic's
+own definition, exactly as it does during search, so there is no separate
+within-SOW risk-attitude knob to choose or record.
 
-McPhail T1 = satisfaction-of-constraints, T2 = all states, T3 = frequency —
-noting that T1/T2/T3 assumes ONE scalar per scenario and has no slot for
-within-scenario replication, which is why stage 1 has to be stated separately.
-
-**Why the SOW and not the realization.** Both units are computable here, because
-our base metrics are whole-trace scalars defined on a single realization; the
-choice is therefore justified, not inherited. The Triangle lineage collapses
-first (Herman et al. 2014, 2015; Trindade et al. 2017, 2019; Gold et al. 2023;
-stated as a convention by Bartholomew & Kwakkel 2020), but by necessity — their
-objectives are themselves realization-ensemble statistics (reliability as a
-probability over 1,000 simulations, cost as a quantile ACROSS realizations) and
-are undefined on one trace. The StateMod applications pool realizations
-(Hadjimichael et al. 2020; Quinn et al. 2020), which their within-trace
-frequency-magnitude objectives permit. Three reasons decide it for us:
+**Why the SOW is the unit.** The construction matches the Triangle lineage,
+whose objectives are likewise ensemble statistics per state (reliability as a
+probability over realizations, cost as a quantile across them; Herman et al.
+2014; Trindade et al. 2017; Gold et al. 2023; stated as a convention by
+Bartholomew & Kwakkel 2020). Three reasons make it right here too:
 
 - **Measure separation.** E_test carries no probability measure over the forcing
-  space (Lamontagne et al. 2018). A pooled fraction integrates a DESIGNED LHS box
-  and a FITTED stochastic generator in one number; the two-stage form applies a
-  named risk attitude to natural variability inside a state and a
-  coverage-weighted count to the states.
+  space (Lamontagne et al. 2018). A pooled-realization fraction would integrate
+  a DESIGNED LHS box and a FITTED stochastic generator in one number; counting
+  states applies a coverage-weighted count to the design and leaves natural
+  variability inside the per-state statistic.
 - **Precision.** Realizations sharing a θ are not independent. The reported
-  ±1.6 pp is `0.5/√1000`, a SOW-unit standard error; the pooled fraction over
-  25,000 correlated draws has no such simple error and √25000 would overstate
-  precision ~5×.
-- **One unit for both headline families.** The incumbent-regret family (§3.3)
-  already consumes `f̄_i(x,θ)`. Bonham et al. (2024)'s 50–300 convergence result
-  is measured on a FLAT ensemble and so bounds N_θ, not R.
-
-The pooled realization unit (`sat_multivariate`) and the `worst` collapse are
-both co-reported as sensitivities. **Scenario discovery is the one deliberate
-exception**: it runs on the realization unit, because its features are the
-per-realization hazard descriptors and each realization is a distinct point in
-that space (`scripts/main/scenario_discovery.py::failure_matrix`). The unit
-follows the space the analysis lives in.
+  ±1.6 pp is `0.5/√1000`, a SOW-unit standard error. Bonham et al. (2024)'s
+  50–300 convergence result is measured on a FLAT ensemble and so bounds N_θ,
+  not R.
+- **One unit everywhere.** The incumbent-regret family (§3.2b), scenario
+  discovery's failure labels, and the attainability screen all consume the same
+  per-SOW `J_i(x,θ)`; there is no second unit for a reader to track.
 
 ### 3.2 Secondary metrics (all reported)
 
 | Metric | Definition | McPhail T1 / T2 / T3 | Role |
 |---|---|---|---|
-| **univariate satisficing** | fraction of SOWs clearing one objective's criterion (`sat_uni_sow__`) | satisfaction / all / frequency | per-objective decomposition of the primary — same unit, same collapse, conjunction dropped. The realization-unit `sat_uni__` is kept beside it as the sensitivity |
-| **Laplace (mean)** | mean performance across realizations | identity / all / mean | risk-neutral reference; **unit-invariant** — E_test is balanced (R = 25 in every SOW), so the mean of the SOW-means is the pooled mean |
-| **maximin** | worst realization | identity / worst-case / worst-case | risk-averse reference, deliberately on the realization unit (the strictest anchor); the worst-SOW counterpart is the `worst` collapse |
-| **improvement over status quo** | per-realization signed deviation from the **default FFMP policy** on the *same* E_test | regret-vs-incumbent / all / mean | "is it better than current operations, on average?" |
-
-*Improvement over status quo* is design-independent and requires no extra
-optimization: the default FFMP baseline is already simulated on E_test by
-workflow step 05, and the reference does not move when designs are added or
-dropped. (Implementation: `improvement_vs_baseline` in `src/robustness.py`.)
+| **univariate satisficing** | fraction of SOWs clearing one objective's criterion (`sat_uni_sow__`) | satisfaction / all / frequency | per-objective decomposition of the primary — same unit, conjunction dropped |
+| **Laplace (mean)** | mean of `J_i(x,θ)` across SOWs (`laplace__`) | identity / all / mean | risk-neutral reference |
+| **maximin** | worst SOW's `J_i(x,θ)` (`maximin__`) | identity / worst-case / worst-case | risk-averse reference (Wald) |
 
 Ranking agreement is summarized with **Kendall's τ_b computed across the *design*
 rankings** these metrics induce — i.e. do the metrics rank the scenario
@@ -351,10 +339,12 @@ designs the same way? (Herman et al. 2015; McPhail et al. 2018, 2020.)
 
 ### 3.2b Incumbent-relative regret (co-primary; answers RQ2)
 
-The signed mean above cannot answer RQ2, which asks whether policies improve some
-outcomes *without degrading others below current performance*: a mean can be
-comfortably positive while the policy is badly worse than the status quo in a
-third of futures. The regret family is the one-sided half of the same deviation.
+RQ2 asks whether policies improve some outcomes *without degrading others below
+current performance*: a mean improvement can be comfortably positive while the
+policy is badly worse than the status quo in a third of futures. The regret
+family reports the signed incumbent advantage through its one-sided halves
+(`regret_*__` and `gain_mean__`) plus unit-free frequencies, all on the same
+per-SOW objective values as the primary metric.
 
 **Reference.** The incumbent 2017 FFMP policy, evaluated **in the same SOW**.
 McPhail et al. (2018) §3.1 license exactly this T1 — "Alternative metrics that are
@@ -365,10 +355,9 @@ an admitted variant explicit rather than importing one. It is also Savage regret
 on the action set the Decree parties actually face, `{retain the FFMP, adopt the
 candidate}`: a unanimity-bound renegotiation, not a free choice over an archive.
 
-**Unit and construction** (`src/robustness.py`; SOW unit, `within_sow_agg` default
-`mean`):
+**Unit and construction** (`src/robustness.py`; the per-SOW objective values):
 
-- `D_i(x,θ) = σ_i · [ f̄_i(x,θ) − f̄_i(b,θ) ]` — signed, oriented so positive =
+- `D_i(x,θ) = σ_i · [ J_i(x,θ) − J_i(b,θ) ]` — signed, oriented so positive =
   better than current operations for every objective (`incumbent_advantage`).
 - Magnitudes, in each objective's **own natural units**, never combined across
   objectives: `regret_mean__`, `regret_q90__` (the Herman R1/R2 tail statistic),
@@ -393,35 +382,34 @@ never converge on extreme-of-extremes operators. McPhail et al. document the
 tie-degeneracy directly. The 90th percentile over 1,000 SOWs is well resolved.
 
 **Natural units, and no cross-objective magnitude scalar.** Dividing by the
-incumbent's own per-cell value is degenerate for this objective set: flood
-exceedance is exactly 0 in a large share of realizations and both CVaR₉₀ deficits
-are 0 in wet ones, so the cell is NaN'd and *silently dropped* — and the dropped
-cells are the benign ones, biasing the estimator toward the adverse subset.
-Natural units dissolve that rather than patching it. Neither published scale is
-usable: Cohen et al. (2021) normalize on the per-scenario span to a
-perfect-foresight optimum (one MOEA run per scenario, out of budget), and Sunkara
-et al. (2023) rescale over the alternative set, which is design-coupled. Herman
-et al. (2015) hit the same wall — they normalize R2 by the objective's own value
-"because the latter often approaches zero" — and McPhail et al. give no
-normalization guidance at all. An optional fixed scale (`incumbent_spread`, the
-incumbent's q90−q10 over E_test) is implemented as a scoring-time sensitivity so a
-reviewer asking for a dimensionless regret can be answered without re-simulating;
-it is never the reported primary.
+incumbent's own per-state value is degenerate for this objective set: flood
+exceedance is exactly 0 in a share of states and both deficit tails are 0 in wet
+ones, so the cell is NaN'd and *silently dropped* — and the dropped cells are
+the benign ones, biasing the estimator toward the adverse subset. Herman et al.
+(2015) additionally show the normalized-deviation form selects poor-baseline
+solutions as a "mathematical artifact". Natural units dissolve both rather than
+patching them. Neither published scale is usable: Cohen et al. (2021) normalize
+on the per-scenario span to a perfect-foresight optimum (one MOEA run per
+scenario, out of budget), and Sunkara et al. (2023) rescale over the alternative
+set, which is design-coupled. McPhail et al. give no normalization guidance at
+all. An optional fixed scale (`incumbent_spread`, the incumbent's q90−q10 over
+E_test) is implemented as a scoring-time sensitivity so a reviewer asking for a
+dimensionless regret can be answered without re-simulating; it is never the
+reported primary.
 
 **The tolerance ladder.** `τ_i = k · u_i` with the unit `u_i =
-max(ε_i, τ_i^floor)`: `ε_i` is the objective's §1 base-metric epsilon — a
-signal-scale just-noticeable difference (Reed et al. 2013, ≈IQR/10) in exactly the
-whole-trace metric space the re-eval cube lives in — and `τ_i^floor` is the
-measured noise floor of that objective's SOW-mean estimator. Taking the max is
-not cosmetic: one `k` is shared across eight objectives, and an epsilon *below*
-its own noise floor makes every rung fire on Monte Carlo noise for that axis while
-being far outside the noise on the others, so a single rung silently means two
-different things. Flood exceedance is the live case. Provenance disclosure: the
-epsilons were measured on the historic reference trace, not on E_test, and the
-campaign epsilon vector is the separate annual-unit one. `k` is swept
-(`REGRET_TAU_GRID` in `compare_designs.py`) rather than fixed, for the reason the
-satisficing criteria are swept: a single tolerance could manufacture or hide the
-whole RQ2 answer (Quinn et al. 2020).
+max(ε_i, τ_i^floor)`: `ε_i` is the objective's ANNUAL-UNIT epsilon from the
+campaign registry (`src/objectives_ensemble.py`) — the epsilon-calibration
+experiment's just-noticeable difference in exactly the annual-unit metric space
+the per-SOW cube lives in, so the regret tolerance and the search resolution
+sit on ONE calibration — and `τ_i^floor` is the measured noise floor of that
+objective's per-SOW estimator. Taking the max is not cosmetic: one `k` is
+shared across eight objectives, and an epsilon *below* its own noise floor
+makes every rung fire on Monte Carlo noise for that axis while being far
+outside the noise on the others, so a single rung silently means two different
+things. `k` is swept (`REGRET_TAU_GRID` in `compare_designs.py`) rather than
+fixed, for the reason the satisficing criteria are swept: a single tolerance
+could manufacture or hide the whole RQ2 answer (Quinn et al. 2020).
 
 **Both `k` and the ladder shape are pre-registration quantities**, and the rules
 that fix them — plus the noise floor, the discrimination band, the empirical
@@ -493,10 +481,10 @@ absence.)
 
 ### 3.4 Attainability screen (free)
 
-Flag the E_test realizations in which **no policy from any design** meets the
-criteria. This costs zero CPU — the (solution × realization × objective) cube
-already exists — and it separates *"this design searched badly"* from *"this test
-scenario is unwinnable for anyone."* Every design's satisficing fraction is
+Flag the E_test states of the world in which **no policy from any design** meets
+the criteria. This costs zero CPU — the (solution × SOW × objective) matrix
+already exists — and it separates *"this design searched badly"* from *"this
+test state is unwinnable for anyone."* Every design's satisficing fraction is
 bounded above by the attainable fraction, so the screen also sets the ceiling
 against which design differences should be read. Precedent: Shavazipour et al.
 (2021) found 23% of their test scenarios unwinnable by any policy. Stated

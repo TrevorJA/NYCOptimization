@@ -1176,12 +1176,13 @@ def floodobj_figure_path(name: str) -> Path:
 # (docs/notes/methods/robustness_threshold_diagnostics.md)
 #
 # Places the satisficing thresholds (`objectives_ensemble._DEFAULT_THRESHOLDS`,
-# shipped as placeholders) against measured evidence: the baseline FFMP
-# policy's persisted E_test re-eval cube (step 05 `--reeval`, 1,000 theta-SOWs
-# x 25 realizations), the E_test DU forcing factors, and an apples-to-apples
-# historic-trace anchor recomputed from the persisted baseline HDF5. Zero
-# simulation — two scripts reduce persisted artifacts only:
-#   robustness_threshold_anchor.py   base-metric anchor -> JSON cache
+# PROVISIONAL since the 2026-08-07 substrate change) against measured
+# evidence: the baseline FFMP policy's persisted E_test re-eval cube (step 05
+# `--reeval`; per-SOW annual-unit objective values), the E_test DU forcing
+# factors, and an apples-to-apples historic-trace anchor recomputed from the
+# persisted baseline HDF5. Zero simulation — two scripts reduce persisted
+# artifacts only:
+#   robustness_threshold_anchor.py   annual-unit anchor -> JSON cache
 #   robustness_threshold_figures.py  tables + SI figures + recommendation
 ###############################################################################
 
@@ -1189,10 +1190,10 @@ def floodobj_figure_path(name: str) -> Path:
 def configure_rtd_env() -> None:
     """Apply env knobs for the robustness-threshold diagnostics.
 
-    Salinity and temperature LSTMs off (none of the 8 base objectives needs
-    them). Scenario design defaults to ``historic`` so ``config`` imports as a
-    pure lookup; every input below is pinned by absolute path, not resolved
-    through the scenario wiring.
+    Salinity and temperature LSTMs off (none of the 8 annual-unit objectives
+    needs them). Scenario design defaults to ``historic`` so ``config`` imports
+    as a pure lookup; every input below is pinned by absolute path, not
+    resolved through the scenario wiring.
     """
     _apply_env(salinity="0", temperature="0")
     os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
@@ -1214,9 +1215,9 @@ RTD_FORCING_NPZ: Path = (
     / "forcing_profiles.npz")
 
 #: Persisted historic-trace baseline simulation (full model) and its
-#: annual-unit objective vector. The CSV is a DIFFERENT metric space from the
-#: cube (search annual-unit objectives vs whole-trace base metrics) and is
-#: carried in the comparison table as reference only.
+#: annual-unit objective vector. Since the 2026-08-07 substrate change the CSV
+#: is in the SAME metric space as the cube (annual-unit search objectives), so
+#: it serves as a cross-check on the anchor recompute.
 RTD_BASELINE_HDF5: Path = _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline.hdf5"
 RTD_BASELINE_ANNUAL_CSV: Path = (
     _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline_objectives.csv")
@@ -1224,10 +1225,6 @@ RTD_BASELINE_ANNUAL_CSV: Path = (
 # ---------------------------------------------------------------------------
 # Analysis settings
 # ---------------------------------------------------------------------------
-#: Within-SOW collapse for the SOW robustness unit (Triangle-lineage
-#: risk-neutral default; must match the shipped scorer's aggregator).
-RTD_WITHIN_SOW_AGG: str = "mean"
-
 #: Dense points per objective on the natural-unit threshold sweep grid
 #: (extended so the default and every candidate lie exactly on a sample).
 RTD_SWEEP_POINTS: int = 201
@@ -1240,14 +1237,14 @@ RTD_THETA_NAMES: tuple = ("m", "r1", "r2")
 #: near-monotone in m for every objective and r2 is inert, so one plane per
 #: criterion beats three planes for two criteria.
 RTD_FACTOR_MAP_OBJECTIVES: tuple = (
-    "nyc_delivery_reliability_weekly",
-    "nyc_delivery_deficit_cvar90_pct",
-    "montague_flow_reliability_weekly",
-    "montague_flow_deficit_cvar90_pct",
-    "trenton_flow_reliability_weekly",
-    "downstream_flood_exceedance_minor",
-    "nyc_storage_p5_pct",
-    "nj_delivery_reliability_weekly",
+    "nyc_delivery_reliability_annual",
+    "nyc_delivery_deficit_p99_pct",
+    "montague_flow_reliability_annual",
+    "montague_flow_deficit_p99_pct",
+    "trenton_flow_reliability_annual",
+    "downstream_flood_exceedance_annual",
+    "nyc_storage_min_p01_pct",
+    "nj_delivery_reliability_annual",
 )
 
 #: The theta plane the factor maps are drawn in (names from RTD_THETA_NAMES).
@@ -1256,18 +1253,14 @@ RTD_FACTOR_MAP_PLANE: tuple = ("m", "r1")
 #: External flood anchor in ft-days/yr: the observed basin experience, WY2001-2023
 #: (outputs/supplemental/flood_objective/tables/A_sim_vs_obs.csv, row C4_max_ft,
 #: column obs = 1.1722 -- the revealed-tolerated level of realized history).
-#: The former "simulated_baseline": 0.35 anchor was REMOVED 2026-08-07: it traced
-#: to outputs/baseline/ffmp_baseline_objectives.csv::downstream_flood_exceedance_annual
-#: (0.3467), an ANNUAL-UNIT search-space value -- the metric-space mixing the
-#: rtd_historic_anchor_comparison table exists to prevent -- and the correct
-#: base-metric simulated baseline is already the anchor script's runtime-recomputed
-#: historic anchor.
+#: The simulated baseline is NOT listed here: it is the anchor script's
+#: runtime-recomputed historic value, never a hardcoded number.
 RTD_FLOOD_ANCHORS: dict = {
     "observed_2000_2023": 1.17,
 }
 
-#: Distribution-feature candidates: quantiles of the baseline SOW-mean
-#: distribution offered as threshold placements.
+#: Distribution-feature candidates: quantiles of the baseline per-SOW value
+#: distribution offered as threshold placements (reported, never adopted).
 RTD_CANDIDATE_QUANTILES: tuple = (0.10, 0.50, 0.90)
 
 #: |delta univariate SOW fraction| (current -> recommended) above which a
@@ -1283,9 +1276,8 @@ RTD_HEADLINE_IMPACT_DELTA: float = 0.10
 RTD_DEGENERACY_LIMIT: float = 0.01
 
 #: Confidence level for the Wilson score intervals on SOW-unit satisficing
-#: fractions (n = 1,000 independent LHS draws). The pooled realization unit
-#: gets NO interval: its 25,000 draws are correlated within SOWs, so a binomial
-#: interval would overstate precision ~5x (objective_definitions.md 3.1).
+#: fractions (n = 1,000 independent LHS draws — the only counting unit under
+#: the per-SOW annual-unit substrate).
 RTD_CI_CONFIDENCE: float = 0.95
 
 #: Failure combinations reported individually in rtd_failure_combinations.csv
@@ -1304,52 +1296,17 @@ RTD_NEAR_HISTORIC_K: int = 25
 
 #: FINAL recommended threshold vector, filled AFTER inspecting the pass-1
 #: outputs (two-pass workflow; empty dicts on pass 1 leave the recommendation
-#: columns NaN). Keys are base objective names; basis strings are the short
+#: columns NaN). Keys are ANNUAL objective names; basis strings are the short
 #: per-objective justification carried into the summary table.
 #:
-#: ADOPTED 2026-08-07 from pass 1 against the genuine status-quo cube (job
-#: 19729980; meta gate + objectives_summary equality check both passed), per
-#: the §0b rules of docs/notes/methods/robustness_threshold_diagnostics.md.
-#: The same vector is pasted into objectives_ensemble._DEFAULT_THRESHOLDS
-#: (with the __satNN label renames). Already-persisted reeval_raw_meta.json
-#: files keep their snapshotted PRE-adoption thresholds by design (the McPhail
-#: guard); new metas snapshot these values on the next step-05/08 run.
-RTD_RECOMMENDED_THRESHOLDS: dict = {
-    "nyc_delivery_reliability_weekly":   0.87,
-    "nyc_delivery_deficit_cvar90_pct":   29.0,
-    "montague_flow_reliability_weekly":  0.85,
-    "montague_flow_deficit_cvar90_pct":  25.0,
-    "trenton_flow_reliability_weekly":   0.85,
-    "downstream_flood_exceedance_minor": 1.17,
-    "nyc_storage_p5_pct":                26.0,
-    "nj_delivery_reliability_weekly":    0.92,
-}
-RTD_RECOMMENDATION_BASIS: dict = {
-    "nyc_delivery_reliability_weekly":
-        "rule 1: status quo fails 0.95 on the observed record; re-anchored at "
-        "maintain-status-quo (anchor 0.8692 -> 0.87, stricter side)",
-    "nyc_delivery_deficit_cvar90_pct":
-        "rule 1: re-anchored at maintain-status-quo (anchor 29.17 -> 29.0, "
-        "stricter side); ~ the sustained L4 restriction depth (30%)",
-    "montague_flow_reliability_weekly":
-        "kept: binding and non-degenerate (SOW frac 0.856); status quo passes "
-        "on the observed record",
-    "montague_flow_deficit_cvar90_pct":
-        "rule 3: all-pass guardrail kept (margin 4.2 IQR); re-anchoring "
-        "measured near-degenerate (frac 0.055)",
-    "trenton_flow_reliability_weekly":
-        "rule 3: all-pass guardrail kept (margin 8.2 IQR); anchor 0.9945 "
-        "rounds stricter to an ill-posed 1.00",
-    "downstream_flood_exceedance_minor":
-        "rule 2: observed WY2001-2023 exceedance (A_sim_vs_obs C4_max_ft obs "
-        "= 1.17) beats the round number",
-    "nyc_storage_p5_pct":
-        "rule 2: FFMP drought-emergency (L5) boundary seasonal floor (26% of "
-        "capacity) replaces the round 25; stricter, still all-pass",
-    "nj_delivery_reliability_weekly":
-        "rule 1: re-anchored at maintain-status-quo (anchor 0.9188 -> 0.92, "
-        "stricter side)",
-}
+#: SUPERSEDED 2026-08-07: the vector adopted that morning was measured on the
+#: retired whole-trace substrate and does not carry over to the per-SOW
+#: annual-unit objective values. The PROVISIONAL annual-space thresholds live
+#: in objectives_ensemble._DEFAULT_THRESHOLDS; these dicts stay empty (pass 1
+#: pending) until the diagnostic is re-run against the status-quo E_test cube
+#: on the new substrate and the §0b placement rules are re-applied.
+RTD_RECOMMENDED_THRESHOLDS: dict = {}
+RTD_RECOMMENDATION_BASIS: dict = {}
 
 # ---------------------------------------------------------------------------
 # Output tree (gitignored, regenerable)
@@ -1359,10 +1316,10 @@ RTD_CACHE_DIR: Path = RTD_OUTPUT_ROOT / "cache"
 RTD_TABLES_DIR: Path = RTD_OUTPUT_ROOT / "tables"
 RTD_FIGURES_DIR: Path = RTD_OUTPUT_ROOT / "figures"
 
-#: Historic-anchor base metrics recomputed from RTD_BASELINE_HDF5 (JSON, the
-#: seam that keeps the figures script pywrdrb-free). Refresh with
-#: NYCOPT_RTD_REFRESH=1 on the anchor script.
-RTD_ANCHOR_CACHE: Path = RTD_CACHE_DIR / "historic_anchor_base_metrics.json"
+#: Historic-anchor ANNUAL-UNIT objective values recomputed from
+#: RTD_BASELINE_HDF5 (JSON, the seam that keeps the figures script
+#: pywrdrb-free). Refresh with NYCOPT_RTD_REFRESH=1 on the anchor script.
+RTD_ANCHOR_CACHE: Path = RTD_CACHE_DIR / "historic_anchor_annual_metrics.json"
 
 
 def rtd_table_path(name: str) -> Path:
@@ -1399,13 +1356,11 @@ def rtd_figure_path(name: str) -> Path:
 #: pass A can be run as soon as step 05 lands and long before any search finishes.
 RTOL_REEVAL_BASELINE_DIR: Path = RTD_REEVAL_BASELINE_DIR
 
-#: Multipliers ``k`` on each objective's just-noticeable difference. Must match
+#: Multipliers ``k`` on each objective's just-noticeable difference (the ANNUAL
+#: epsilons from ``objectives_ensemble.ENSEMBLE_OBJECTIVES``). Must match
 #: ``compare_designs.REGRET_TAU_GRID`` so the diagnostic and the comparison speak
 #: the same coordinate.
 RTOL_TAU_GRID: tuple = (0.0, 0.5, 1.0, 2.0, 5.0, 10.0)
-
-#: Within-SOW collapse; must match the shipped scorer.
-RTOL_WITHIN_SOW_AGG: str = "mean"
 
 #: One-sided normal deviate for the noise floor. 1.645 -> a policy operationally
 #: identical to the incumbent is falsely flagged as harming a given objective in
@@ -1413,10 +1368,17 @@ RTOL_WITHIN_SOW_AGG: str = "mean"
 RTOL_FALSE_HARM_Z: float = 1.645
 RTOL_TARGET_FALSE_HARM: float = 0.05
 
-#: Split-half null: seed for the within-SOW realization partition, and the number
-#: of independent partitions averaged over.
-RTOL_SPLIT_HALF_SEED: int = 20260806
-RTOL_SPLIT_HALF_REPS: int = 20
+#: E_test forcing profiles (theta per realization), joined to the cube's SOW
+#: labels via realization_id // realizations_per_sow. The dominant axis ``m``
+#: orders the SOWs for the binned noise floor (see RTOL_M_BIN_SIZE).
+RTOL_FORCING_NPZ: Path = RTD_FORCING_NPZ
+
+#: Consecutive-SOW bin size on the m-sorted axis for the noise floor: the
+#: floor is the median across bins of the within-bin SD of the incumbent's
+#: per-SOW values. Narrow bins keep the forcing trend's within-bin variation
+#: small; what remains of it only INFLATES the floor (the conservative,
+#: upper-bound direction). 10 -> 100 bins at n_sow = 1,000.
+RTOL_M_BIN_SIZE: int = 10
 
 #: A tolerance is SATURATED when no_harm_freq_tau exceeds this for every design
 #: (the non-inferiority claim becomes trivially true) and STARVED when it falls

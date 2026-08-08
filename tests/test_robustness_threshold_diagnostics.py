@@ -12,10 +12,11 @@ or the live threshold registry):
   3. stringency_coordinate: strict-inequality quantile position, both kinds
      (the compare_designs.default_stringency convention);
   4. sweep_grid: contains the default and every candidate exactly;
-  5. theta_for_sows: id-keyed join (shuffled realization ids still land),
-     non-constant theta within a SOW raises, missing realization raises;
+  5. theta_for_sows: sow-id-keyed join (realization_id // R; shuffled theta
+     rows still land), non-constant theta within a SOW raises, a SOW with no
+     theta rows raises;
   6. candidate_menu: the NYC stakeholder floor and the external flood anchor
-     are attached only to their own objectives;
+     are attached only to their own (ANNUAL-named) objectives;
   7. build_recommendation_table: NaN recommendation columns on pass 1, the
      headline flag fires on a large fraction delta and on degeneracy-exit,
      stays quiet for a small move, and appends the joint Starr row;
@@ -24,8 +25,8 @@ or the live threshold registry):
   9. the conjunction helpers (satisfaction_matrix, joint_satisficing_stats,
      failure_combinations, sole_cofailure, failing_count_distribution):
      hand-computed toy matrices, non-finite counts as fail;
- 10. within_between_sd, critical_m, nearest_to_zero_theta: hand-computed
-     dispersion, boundary recovery on a clean step, degenerate -> NaN.
+ 10. critical_m, nearest_to_zero_theta: boundary recovery on a clean step,
+     degenerate -> NaN, nearest-to-zero selection.
 
 Run:
     venv/bin/python -m pytest tests/test_robustness_threshold_diagnostics.py -v
@@ -127,35 +128,37 @@ def test_sweep_grid_contains_default_and_candidates_exactly():
 # ---------------------------------------------------------------------------
 
 def _synthetic_theta(n_sow=4, reals_per_sow=3):
-    """Realization ids 0..11, SOW s owns [3s, 3s+2], theta row = (s, 10s, 100s)."""
+    """Realization ids 0..11, SOW s = rid // 3, theta row = (s, 10s, 100s)."""
     rids = np.arange(n_sow * reals_per_sow)
     sow_ids = rids // reals_per_sow
     theta = np.column_stack([sow_ids, 10.0 * sow_ids, 100.0 * sow_ids]).astype(float)
-    return theta, rids, sow_ids
+    return theta, rids
 
 
-def test_theta_for_sows_joins_by_id_not_position():
-    theta, rids, sow_ids = _synthetic_theta()
+def test_theta_for_sows_joins_by_sow_id_not_position():
+    theta, rids = _synthetic_theta()
     perm = np.random.default_rng(3).permutation(len(rids))
-    out = rtd.theta_for_sows(theta[perm], rids[perm], list(rids),
-                             list(sow_ids), sow_labels=[0, 1, 2, 3])
+    out = rtd.theta_for_sows(theta[perm], rids[perm], realizations_per_sow=3,
+                             sow_labels=[0, 1, 2, 3])
     expected = np.column_stack([np.arange(4), 10.0 * np.arange(4),
                                 100.0 * np.arange(4)]).astype(float)
     np.testing.assert_allclose(out, expected)
 
 
 def test_theta_for_sows_nonconstant_block_raises():
-    theta, rids, sow_ids = _synthetic_theta()
+    theta, rids = _synthetic_theta()
     theta[4, 0] += 1e-6  # perturb one realization of SOW 1
     with pytest.raises(ValueError, match="not constant"):
-        rtd.theta_for_sows(theta, rids, list(rids), list(sow_ids),
+        rtd.theta_for_sows(theta, rids, realizations_per_sow=3,
                            sow_labels=[0, 1, 2, 3])
 
 
-def test_theta_for_sows_missing_realization_raises():
-    theta, rids, sow_ids = _synthetic_theta()
+def test_theta_for_sows_missing_sow_raises():
+    theta, rids = _synthetic_theta()
+    # Drop every realization of SOW 3: the cube's label 3 has no theta rows.
+    keep = rids // 3 != 3
     with pytest.raises(ValueError, match="missing"):
-        rtd.theta_for_sows(theta[:-1], rids[:-1], list(rids), list(sow_ids),
+        rtd.theta_for_sows(theta[keep], rids[keep], realizations_per_sow=3,
                            sow_labels=[0, 1, 2, 3])
 
 
@@ -165,12 +168,12 @@ def test_theta_for_sows_missing_realization_raises():
 
 def test_candidate_menu_floor_and_anchor_routing():
     v = np.linspace(0.0, 1.0, 101)
-    floors = {"nyc_delivery_reliability_weekly": 0.5}
+    floors = {"nyc_delivery_reliability_annual": 0.5}
     # Single external flood anchor since 2026-08-07: the simulated baseline is
     # the anchor script's recomputed value, never a hardcoded number.
     flood = {"observed_2000_2023": 1.17}
 
-    nyc = rtd.candidate_menu("nyc_delivery_reliability_weekly", "ge", v, 0.95,
+    nyc = rtd.candidate_menu("nyc_delivery_reliability_annual", "ge", v, 0.95,
                              anchor_val=0.8, floors=floors, flood_anchors=flood,
                              quantiles=(0.5,))
     assert nyc["current"] == 0.95
@@ -179,18 +182,23 @@ def test_candidate_menu_floor_and_anchor_routing():
     assert nyc["sow_p50"] == pytest.approx(0.5)
     assert not any(k.startswith("anchor_") for k in nyc)
 
-    fl = rtd.candidate_menu("downstream_flood_exceedance_minor", "le", v, 1.0,
+    fl = rtd.candidate_menu("downstream_flood_exceedance_annual", "le", v, 1.0,
                             anchor_val=0.35, floors=floors, flood_anchors=flood,
                             quantiles=(0.5,))
     assert fl["anchor_observed_2000_2023"] == 1.17
     assert "anchor_simulated_baseline" not in fl
     assert "stakeholder_floor" not in fl
 
-    other = rtd.candidate_menu("nj_delivery_reliability_weekly", "ge", v, 0.95,
+    other = rtd.candidate_menu("nj_delivery_reliability_annual", "ge", v, 0.95,
                                anchor_val=None, floors=floors,
                                flood_anchors=flood, quantiles=(0.5,))
     assert "historic_anchor" not in other  # None anchor is dropped
     assert "stakeholder_floor" not in other
+
+
+def test_stakeholder_floor_keys_are_annual():
+    """The translated floor map must key by the annual reporting names."""
+    assert all(k in rtd.SHORT_LABELS for k in rtd.STAKEHOLDER_FLOORS)
 
 
 # ---------------------------------------------------------------------------
@@ -338,15 +346,8 @@ def test_sole_cofailure_and_count_distribution():
 
 
 # ---------------------------------------------------------------------------
-# within_between_sd / critical_m / nearest_to_zero_theta
+# critical_m / nearest_to_zero_theta
 # ---------------------------------------------------------------------------
-
-def test_within_between_sd_hand_computed():
-    v = np.array([[0.0, 2.0], [4.0, 8.0]])   # within SDs sqrt(2), 2*sqrt(2)
-    med_within, between = rtd.within_between_sd(v)
-    assert med_within == pytest.approx((np.sqrt(2) + 2 * np.sqrt(2)) / 2)
-    assert between == pytest.approx(np.std([1.0, 6.0], ddof=1))
-
 
 def test_critical_m_recovers_step_and_nan_when_degenerate():
     m = np.linspace(0.0, 1.0, 400)

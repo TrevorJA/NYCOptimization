@@ -53,8 +53,8 @@ designs (`historic` skips `02`–`04`); `06` before `07`/`08`. Chain with
 `12` builds E_test and is independent of `02`–`07` (it is not a scenario design and
 never enters search). It must run before `05`/`08`/`09`/`11`, all of which take
 `NYCOPT_REEVAL_ENSEMBLE_PRESET=<its slug>` — and `05` must use the SAME preset as `08`,
-or the status-quo baseline lands under a different re-eval tag and
-`improvement_vs_baseline` is silently skipped.
+or the status-quo baseline lands under a different re-eval tag and the
+incumbent-relative regret family is silently skipped.
 
 ## Building a design's search ensemble (02–04)
 

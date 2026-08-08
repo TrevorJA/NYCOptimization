@@ -112,7 +112,7 @@ def fig_du_distributions(reeval_dir, filt, out_dir):
     accepted = set(int(i) for i in filt.accepted_ids)
     opt = opt[opt["solution_id"].isin(accepted)]
 
-    # per (solution, objective): mean over realizations = DU-expected performance
+    # per (solution, objective): mean over SOWs = DU-expected performance
     opt_mean = (opt.groupby(["solution_id", "objective"])["value"].mean()
                 .unstack("objective"))
     base_mean = (base.groupby("objective")["value"].mean()
@@ -149,7 +149,7 @@ def fig_du_distributions(reeval_dir, filt, out_dir):
     for j in range(n, len(axes)):
         axes[j].set_visible(False)
     fig.suptitle("DU performance of ACCEPTABLE policies across E_test "
-                 f"(n={filt.n_accepted}; mean over realizations per policy)",
+                 f"(n={filt.n_accepted}; mean over SOWs per policy)",
                  fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_dir / "03_du_performance_distributions.png", dpi=200,

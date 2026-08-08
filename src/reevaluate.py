@@ -38,13 +38,13 @@ from src.reeval_core import (
 
 
 def _evaluate_one(task: tuple):
-    """Worker: re-evaluate one solution and return its raw per-realization matrix.
+    """Worker: re-evaluate one solution and return its per-SOW objective matrix.
 
     Args:
         task: (solution_id, dv_vector, formulation).
 
     Returns:
-        (solution_id, base_matrix | None, base_names | None, error | None).
+        (solution_id, sow_matrix | None, obj_names | None, error | None).
     """
     solution_id, dv_vector, formulation = task
     return evaluate_solution_raw(solution_id, dv_vector, formulation)
