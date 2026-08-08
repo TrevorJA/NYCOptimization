@@ -42,12 +42,16 @@ NYCOPT_CONDA_ENV="${NYCOPT_CONDA_ENV:-venv}"
 # route MPI over IPoIB. Resolved in _nycopt_set_mpi_flags() once
 # NYCOPT_CLUSTER is known (i.e. after the env file is sourced).
 NYCOPT_MPI_MCA_FLAGS="${NYCOPT_MPI_MCA_FLAGS:-}"
-# MPI ranks packed per node for MM-Borg jobs. 33/node is the measured
-# memory-bandwidth-safe packing for pywrdrb simulations; it is the single
-# source for the suggested --nodes/--ntasks-per-node geometry printed by
+# MPI ranks packed per node for MM-Borg jobs. 128/node is the measured Anvil
+# wholenode packing: the node-packing sweep (SI §S8.2) bounds the eval-time
+# penalty at full packing to ~17-21% (priced into the 173.8 s/eval cost
+# surface, measured at this density) with ~1.2 GB/rank << node memory, and
+# wholenode bills all 128 cores regardless. It is the single source for the
+# suggested --nodes/--ntasks-per-node geometry printed by
 # nycopt_check_allocation when an allocation doesn't fit the MOEA config.
-# Override via env to test denser packings (e.g. on Anvil's 128-core nodes).
-NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-33}"
+# Override via env for other machines (e.g. 33/node was the Hopper-safe
+# packing).
+NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-128}"
 
 _nycopt_set_mpi_flags() {
     if [[ -z "${NYCOPT_MPI_MCA_FLAGS}" && "${NYCOPT_CLUSTER:-hopper}" == "hopper" ]]; then

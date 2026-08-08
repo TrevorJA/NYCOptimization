@@ -110,13 +110,13 @@ the container for it:
 **To scale the search up**: register a larger MOEA config (more
 islands/workers) in `src/moea_config.py`, point the env file's
 `NYCOPT_MOEA_CONFIG` at it, and submit with
-`--nodes=ceil(total_ntasks_mpi / 33) --ntasks-per-node=33` (33/node is the
-memory-bandwidth-safe packing, centralized as `NYCOPT_RANKS_PER_NODE` in
-`_common.sh`). Anvil ceilings: `wholenode` allows up to 16 nodes (2,048
-cores) and 96 h — at 33 ranks/node that is ~528 ranks (≈ 13 islands × 40
-workers); denser packing (override `NYCOPT_RANKS_PER_NODE` after
-benchmarking with `supplemental/anvil_scaling_packing.sh`) raises the ceiling
-toward 2,048 ranks. The `wide` queue reaches 56 nodes but only 12 h. Seeds
+`--nodes=ceil(total_ntasks_mpi / 128) --ntasks-per-node=128` (128/node is the
+measured Anvil `wholenode` packing — the node-packing sweep bounds the
+eval-time penalty at ~17–21% and it is priced into the cost surface;
+centralized as `NYCOPT_RANKS_PER_NODE` in `_common.sh`, override for other
+machines — 33/node was the Hopper-safe packing). Anvil ceilings: `wholenode`
+allows up to 16 nodes (2,048 cores) and 96 h. The `wide` queue reaches 56
+nodes but only 12 h. Seeds
 (`--array`) and experiments (env files) scale horizontally as fully
 independent jobs with no cross-job coordination. Shorter pilots can pass
 `sbatch --time=...`.

@@ -62,31 +62,13 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 2. Anvil shakeout (before production submissions)
 
-- [ ] **[HPC]** `pilot` MOEA config go/no-go run.
-- [ ] **[local]** Finalize the `mm_moderate` parallel scheme (rank geometry) to
-  maximize parallel efficiency, SU, and wall-clock — before any moderate-scale
-  submission. `mm_moderate` inherits the Hopper-shaped 165 ranks = 5 nodes x 33
-  (`NYCOPT_RANKS_PER_NODE=33` in `workflow/_common.sh`, mirrored in step 06's
-  SBATCH header). Anvil's `wholenode` partition is node-EXCLUSIVE at 128
-  cores/node, so that layout idles ~74% of every node it bills. The campaign
-  cost surface already measures the dense packing
-  (`outputs/supplemental/ensemble_cost_experiment/tables/campaign_projection.csv`:
-  `search_ranks_per_node=128`, 173.8 s/eval at N=100/L=10, efficiency 0.729),
-  and `production` is already sized that way — `mm_moderate` is the straggler.
-  Projected at 20k NFE per design (t_eval 173.8 s, eff 0.729):
-
-  | geometry                       | wall  | SU/run |
-  |--------------------------------|-------|--------|
-  | 5 nodes x 33 (165 ranks, now)  | 8.3 h | ~5,300 |
-  | 4 nodes x 128 (511 ranks)      | 2.6 h | ~1,340 |
-
-  Decide the island/worker split too (511 ranks = 1 + 2x(254+1); the scaling
-  supplement found island partitioning throughput-free at fixed slot count, so
-  it is a search-reliability choice, not a throughput one). Re-check the
-  33/node memory-bandwidth rationale against the 128/node cost-surface cells
-  before committing — the two were calibrated on different machines. Then
-  update `src/moea_config.py` and step 06's `--nodes`/`--ntasks-per-node`
-  together so `nycopt_check_allocation` stays consistent.
+- [ ] **[HPC]** `pilot` MOEA config go/no-go run. Measure the feasibility rate
+  (fraction of NFE rejected in <0.1 s by `flood_zone_ordering`) — it sets how
+  far below the upper-bound cost projections real runs land. `mm_moderate` is
+  finalized for the runs after it (2026-08-07): 50k total NFE, 511 ranks =
+  2 islands x 254 workers on 4 Anvil `wholenode` nodes at 128/node
+  (<=6.5 h / ~3,340 SU per seed, upper bound; rationale in
+  `src/moea_config.py`).
 
 ## 3. Production gates
 

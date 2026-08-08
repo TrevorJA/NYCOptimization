@@ -23,11 +23,14 @@
 #
 # Geometry: the MPI rank count ALWAYS comes from the MOEA config
 # (MOEAConfig.total_ntasks_mpi -> mpirun -np); the #SBATCH lines below are
-# only the container for it, sized for mm_pilot/mm_full: 5 nodes x 33 tasks =
-# 165 ranks = 1 controller + 4 islands x (40 workers + 1 master). 33/node
-# (NYCOPT_RANKS_PER_NODE in _common.sh) avoids the measured memory-bandwidth
-# packing penalty. A MOEA config with different island/worker counts only
-# needs matching --nodes/--ntasks-per-node at submission —
+# only the container for it, sized for mm_moderate: 4 nodes x 128 tasks =
+# 512 cores holding 511 ranks = 1 controller + 2 islands x (254 workers +
+# 1 master). Dense 128/node packing (NYCOPT_RANKS_PER_NODE in _common.sh) is
+# the measured Anvil choice — wholenode bills all 128 cores regardless, and
+# the packing sweep (SI §S8.2) bounds the eval-time penalty at ~17-21%,
+# already priced into the cost surface. A MOEA config with different
+# island/worker counts only needs matching --nodes/--ntasks-per-node at
+# submission (e.g. `production` at 1,021 ranks: --nodes=8) —
 # nycopt_check_allocation aborts before the search starts if the allocation
 # is too small and prints the geometry to use.
 #
@@ -40,8 +43,8 @@
 #SBATCH --job-name=mmborg
 #SBATCH --account=ees260021
 #SBATCH --partition=wholenode
-#SBATCH --nodes=5
-#SBATCH --ntasks-per-node=33
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=128
 #SBATCH --exclusive
 #SBATCH --time=96:00:00
 #SBATCH --output=logs/mmborg_%x_seed%a_%A.out
