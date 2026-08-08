@@ -62,24 +62,6 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 2. Anvil shakeout (before production submissions)
 
-- [x] **[HPC]** End-to-end smoke of `hazard_filling_stationary` — DONE
-  2026-08-07 (job 19731839, `shared`, 41 ranks, 3m10s, ~2 SU;
-  `workflow/envs/smoke_hazfill.env`). Exercised MPI fan-out, MM-Borg, the
-  staged N=100/L=10 ensemble over the correct 1945-10-01 -> 1955-09-30 window,
-  the 2026-08-06 allocation-reduction DV decode, both constraints, and
-  `.set`/runtime writing. The single archived solution is feasible (NYC
-  reliability 0.5078 >= 0.5 floor). Full pytest suite also green the same day
-  (366 passed / 2 skipped, job 19727560) — the DV decode's first validation.
-  Step 04's MPI fan-out was already verified (33 ranks on Anvil, 2026-08-04,
-  both campaign designs — `logs/prep_pywrdrb_inputs_19663199_1.out`).
-  OBSERVATION for search sizing: runtime snapshots show ~150 of the first 200
-  NFE/island returning in <0.1 s, i.e. rejected by the DV-space
-  `flood_zone_ordering` constraint BEFORE simulation, and the archive never
-  grew past 1. Expected at a 400-NFE plumbing budget, but it means (a) random
-  initial DVs are mostly flood-zone-infeasible, so early NFE are nearly free,
-  and (b) the 173.8 s x NFE cost projections are an UPPER bound, not an
-  estimate. Worth a feasibility-rate check at pilot scale before sizing the
-  campaign wall clock.
 - [ ] **[HPC]** `pilot` MOEA config go/no-go run.
 - [ ] **[local]** Finalize the `mm_moderate` parallel scheme (rank geometry) to
   maximize parallel efficiency, SU, and wall-clock — before any moderate-scale
@@ -139,15 +121,30 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## Parked (scope decisions, not blockers)
 
-- [ ] Optional HMM E_test variant — deprioritized (a second DU factor set,
-  and the DRB-fitted HMM is near-memoryless so it is not a persistence
-  stress); a persistence-stressed test ensemble is future-work material
-  (`persistence_axis_diagnostics.md`).
-- [ ] Hazard descriptors beyond the controlling event (event multiplicity /
-  frequency within a window) — independent follow-up investigation.
 - [ ] Remaining manuscript scoping sentence: demand is Decree-capped and held
   stationary (no demand-growth DU axis — consider other justifiable
   socio-economic parameterizations).
 - [ ] Per-realization diversion staging (`src/ensemble_prep.py` supports only
   `constant_max`) and the deferred DU-factor presets (`src/ensembles.py`) —
   both forward hooks, not campaign blockers.
+
+
+## Done (can be deleted when info is no longer needed)
+- [x] **[HPC]** End-to-end smoke of `hazard_filling_stationary` — DONE
+  2026-08-07 (job 19731839, `shared`, 41 ranks, 3m10s, ~2 SU;
+  `workflow/envs/smoke_hazfill.env`). Exercised MPI fan-out, MM-Borg, the
+  staged N=100/L=10 ensemble over the correct 1945-10-01 -> 1955-09-30 window,
+  the 2026-08-06 allocation-reduction DV decode, both constraints, and
+  `.set`/runtime writing. The single archived solution is feasible (NYC
+  reliability 0.5078 >= 0.5 floor). Full pytest suite also green the same day
+  (366 passed / 2 skipped, job 19727560) — the DV decode's first validation.
+  Step 04's MPI fan-out was already verified (33 ranks on Anvil, 2026-08-04,
+  both campaign designs — `logs/prep_pywrdrb_inputs_19663199_1.out`).
+  OBSERVATION for search sizing: runtime snapshots show ~150 of the first 200
+  NFE/island returning in <0.1 s, i.e. rejected by the DV-space
+  `flood_zone_ordering` constraint BEFORE simulation, and the archive never
+  grew past 1. Expected at a 400-NFE plumbing budget, but it means (a) random
+  initial DVs are mostly flood-zone-infeasible, so early NFE are nearly free,
+  and (b) the 173.8 s x NFE cost projections are an UPPER bound, not an
+  estimate. Worth a feasibility-rate check at pilot scale before sizing the
+  campaign wall clock.
