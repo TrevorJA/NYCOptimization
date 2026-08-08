@@ -290,7 +290,6 @@ def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
     from src.objectives_ensemble import (
         AnnualUnitObjective,
         FailureFrequencyOp,
-        SatisficingAgg,
     )
 
     class FakeBase:
@@ -306,7 +305,7 @@ def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
         annual_metric=lambda data: np.asarray(data["units"], dtype=float),
         unit_operator=FailureFrequencyOp(k=2),
         base=FakeBase(),
-        aggregator=SatisficingAgg(threshold=0.5, kind="ge"),
+        sat_threshold=0.5,
     )
     objset = ObjectiveSet([ao])
 

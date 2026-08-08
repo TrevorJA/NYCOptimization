@@ -1,33 +1,35 @@
 """robustness_threshold_figures.py - Satisficing-threshold placement diagnostics.
 
 Reduces the baseline FFMP policy's persisted E_test re-eval cube (1,000
-theta-SOWs x 25 realizations; step 05 ``--reeval``) into the manuscript-SI
-evidence for placing the satisficing thresholds
-(``objectives_ensemble._DEFAULT_THRESHOLDS``, shipped as placeholders):
+theta-SOWs; step 05 ``--reeval``; per-SOW ANNUAL-UNIT objective values — the
+search objectives recomputed per deeply-uncertain state) into the
+manuscript-SI evidence for placing the satisficing thresholds
+(``objectives_ensemble._DEFAULT_THRESHOLDS``, PROVISIONAL pending this
+diagnostic's re-run on the per-SOW substrate):
 
 Tables (outputs/supplemental/robustness_threshold_diagnostics/tables/):
-  rtd_sow_mean_summary.csv           per-objective quantiles of the SOW-mean dist
-  rtd_default_stringency.csv         where each current threshold sits (fraction
-                                     satisficing + Wilson CI + stringency
-                                     coordinate, SOW and pooled-realization
-                                     units; guardrail margins; sole/co-failure
-                                     attribution within the conjunction)
+  rtd_sow_summary.csv                per-objective quantiles of the per-SOW
+                                     value distribution
+  rtd_default_stringency.csv         where each current threshold sits (SOW
+                                     fraction satisficing + Wilson CI +
+                                     stringency coordinate; guardrail margins;
+                                     sole/co-failure attribution within the
+                                     conjunction)
   rtd_threshold_sweep.csv            tidy dense sweep: satisficing fraction vs
                                      threshold per objective, defaults/candidates
                                      marked
   rtd_candidate_placements.csv       candidate threshold menu with fractions + CIs
-  rtd_theta_spearman.csv             (8+3)x(8+3) Spearman: SOW-mean objectives +
+  rtd_theta_spearman.csv             (8+3)x(8+3) Spearman: per-SOW objectives +
                                      DU factors (m, r1, r2)
-  rtd_historic_anchor_comparison.csv historic-trace anchor vs cube distribution
-                                     (base metrics; support flags; near-historic
-                                     consistency; annual CSV as reference only)
+  rtd_historic_anchor_comparison.csv historic-trace annual-unit anchor vs cube
+                                     distribution (support flags; near-historic
+                                     consistency; persisted baseline CSV as a
+                                     same-space cross-check)
   rtd_joint_satisficing.csv          Starr conjunction: observed joint fraction
                                      vs independence / comonotone benchmarks
   rtd_failure_combinations.csv       most frequent failing-criteria combinations
   rtd_failing_count_distribution.csv per-SOW count of simultaneously failing
                                      criteria
-  rtd_unit_collapse.csv              within- vs between-SOW dispersion and the
-                                     mean-vs-worst collapse sensitivity
   rtd_critical_m.csv                 m at which each criterion's local pass rate
                                      crosses 0.5 (hydrologic reading of the
                                      placement)
@@ -35,8 +37,8 @@ Tables (outputs/supplemental/robustness_threshold_diagnostics/tables/):
                                      (+ the joint Starr row)
 
 Figures (figures/):
-  S_rtd_baseline_sow_cdfs        per-objective ECDFs (SOW-mean + pooled
-                                 realizations) with thresholds/anchors overlaid
+  S_rtd_baseline_sow_cdfs        per-objective ECDFs of the per-SOW values with
+                                 thresholds/anchors overlaid
   S_rtd_threshold_sensitivity    satisficing fraction vs threshold (decision
                                  instrument; Wilson band; degeneracy zones)
   S_rtd_theta_spearman           DU-factor attribution (objectives x theta block)
@@ -44,7 +46,11 @@ Figures (figures/):
   S_rtd_conjunction              failure-combination frequencies + sole/co-failure
                                  attribution of the Starr conjunction
 
-The satisfaction rule mirrors ``src.robustness._satisfy`` exactly (inclusive
+The SOW is the only scoring unit: pooling each state's realizations' unit
+years through the §2 unit operator IS the per-SOW value, so there is no
+within-SOW collapse knob and no realization-unit co-report (the retired
+unit-collapse diagnostic measured a knob that no longer exists). The
+satisfaction rule mirrors ``src.robustness._satisfy`` exactly (inclusive
 comparison, non-finite = fail); thresholds/kinds come from the cube's own
 ``reeval_raw_meta.json`` snapshot (the moving-measuring-stick guard), never the
 live registry. The historic anchor comes from the JSON cache written by
@@ -66,7 +72,6 @@ from __future__ import annotations
 
 import json
 import sys
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -94,13 +99,12 @@ from src.plotting.style import (  # noqa: E402
 )
 
 # Okabe-Ito CVD-validated colors, matching the flood-figure conventions.
-SOW_COLOR = "#0072B2"        # SOW-mean distribution / pass
+SOW_COLOR = "#0072B2"        # per-SOW value distribution / pass
 FAIL_COLOR = "#D55E00"       # failing SOWs in the factor maps
 RESCUED_COLOR = "#009E73"    # fails current threshold, passes recommended
 ANCHOR_COLOR = "#CC79A7"     # historic-trace anchor (NOT the fail color: the
                              # anchor is a reference, not a verdict)
 QUANTILE_COLOR = "#E69F00"   # SOW-quantile candidates (report-only, rule 4)
-POOLED_COLOR = "0.72"        # pooled-realization underlay
 
 #: DU-factor display labels (forcing_parameterization.md: log change-factor
 #: harmonic with fixed CMIP6 phases).
@@ -113,17 +117,30 @@ THETA_LABELS = {
 #: Compact per-objective tags for the failure-combination axis; everything
 #: longer than these turns the conjunction figure into a wall of text.
 SHORT_LABELS = {
-    "nyc_delivery_reliability_weekly": "NYC rel",
-    "nyc_delivery_deficit_cvar90_pct": "NYC def",
-    "montague_flow_reliability_weekly": "Mon rel",
-    "montague_flow_deficit_cvar90_pct": "Mon def",
-    "trenton_flow_reliability_weekly": "Tre rel",
-    "downstream_flood_exceedance_minor": "Flood",
-    "nyc_storage_p5_pct": "Storage",
-    "nj_delivery_reliability_weekly": "NJ rel",
+    "nyc_delivery_reliability_annual": "NYC rel",
+    "nyc_delivery_deficit_p99_pct": "NYC def",
+    "montague_flow_reliability_annual": "Mon rel",
+    "montague_flow_deficit_p99_pct": "Mon def",
+    "trenton_flow_reliability_annual": "Tre rel",
+    "downstream_flood_exceedance_annual": "Flood",
+    "nyc_storage_min_p01_pct": "Storage",
+    "nj_delivery_reliability_annual": "NJ rel",
 }
 
-FLOOD_OBJ = "downstream_flood_exceedance_minor"
+FLOOD_OBJ = "downstream_flood_exceedance_annual"
+
+#: ``pareto_filter`` records stakeholder floors by the §1 base/selector name;
+#: translate to the annual reporting names so the annual-named cube still
+#: picks them up. Local map rather than objectives_ensemble._BASE_TO_ENSEMBLE
+#: because importing that module would pull pywrdrb into this script (the
+#: anchor cache exists precisely to keep it out).
+_FLOOR_NAME_TO_ANNUAL = {
+    "nyc_delivery_reliability_weekly": "nyc_delivery_reliability_annual",
+}
+STAKEHOLDER_FLOORS = {
+    _FLOOR_NAME_TO_ANNUAL.get(name, name): val
+    for name, val in DEFAULT_STAKEHOLDER_FLOORS.items()
+}
 
 
 ###############################################################################
@@ -187,9 +204,8 @@ def stringency_coordinate(values, thr, kind) -> float:
 def wilson_ci(frac, n, conf=None) -> tuple[np.ndarray, np.ndarray]:
     """Wilson score interval for a binomial fraction, vectorized over ``frac``.
 
-    Applied to SOW-unit fractions only (n independent LHS draws); the pooled
-    realization unit gets no interval because its draws are correlated within
-    SOWs (objective_definitions.md §3.1).
+    Applied to SOW-unit fractions (n independent LHS forcing draws) — the only
+    counting unit under the per-SOW annual-unit substrate.
     """
     conf = scfg.RTD_CI_CONFIDENCE if conf is None else float(conf)
     z = float(norm.ppf(0.5 + conf / 2.0))
@@ -201,17 +217,17 @@ def wilson_ci(frac, n, conf=None) -> tuple[np.ndarray, np.ndarray]:
     return centre - half, centre + half
 
 
-def satisfaction_matrix(values_by_name, base_names, thresholds, kinds) -> np.ndarray:
-    """``(U, M)`` boolean satisfaction across objectives on one unit axis."""
+def satisfaction_matrix(values_by_name, obj_names, thresholds, kinds) -> np.ndarray:
+    """``(G, M)`` boolean satisfaction across objectives on the SOW axis."""
     return np.column_stack([
         sweep_fractions_mask(np.asarray(values_by_name[n], dtype=float),
                              float(thresholds[n]), kinds[n])
-        for n in base_names
+        for n in obj_names
     ])
 
 
-def joint_satisficing_stats(sat, base_names) -> dict:
-    """Starr conjunction vs its marginal benchmarks on an ``(U, M)`` matrix.
+def joint_satisficing_stats(sat, obj_names) -> dict:
+    """Starr conjunction vs its marginal benchmarks on a ``(G, M)`` matrix.
 
     The independence benchmark (product of marginals) and the comonotone
     benchmark (min marginal) bracket the joint fraction: observed ≈ min says
@@ -228,12 +244,12 @@ def joint_satisficing_stats(sat, base_names) -> dict:
         "independence_benchmark": float(np.prod(marg)),
         "comonotone_benchmark": float(marg.min()),
         "co_occurrence_gap": observed - float(np.prod(marg)),
-        "binding_criterion": base_names[k],
+        "binding_criterion": obj_names[k],
         "binding_marginal_frac": float(marg[k]),
     }
 
 
-def failure_combinations(sat, base_names, top_k) -> pd.DataFrame:
+def failure_combinations(sat, obj_names, top_k) -> pd.DataFrame:
     """Frequency of every observed failing-criteria combination.
 
     Returns the ``top_k`` most frequent failing combinations individually plus
@@ -252,7 +268,7 @@ def failure_combinations(sat, base_names, top_k) -> pd.DataFrame:
     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     rows = []
     for rank, (key, cnt) in enumerate(ordered[:int(top_k)], start=1):
-        names = tuple(base_names[i] for i in key)
+        names = tuple(obj_names[i] for i in key)
         rows.append({"rank": rank, "criteria": names,
                      "failing_criteria": " + ".join(names),
                      "n_failing": len(key), "count": cnt, "frac": cnt / n})
@@ -267,7 +283,7 @@ def failure_combinations(sat, base_names, top_k) -> pd.DataFrame:
 
 
 def sole_cofailure(sat) -> tuple[np.ndarray, np.ndarray]:
-    """Per-criterion fractions of units where it is the SOLE failing criterion
+    """Per-criterion fractions of SOWs where it is the SOLE failing criterion
     vs failing alongside at least one other (``(M,)`` arrays; sums to the
     marginal failure fraction)."""
     fail = ~np.asarray(sat, dtype=bool)
@@ -278,21 +294,10 @@ def sole_cofailure(sat) -> tuple[np.ndarray, np.ndarray]:
 
 
 def failing_count_distribution(sat) -> np.ndarray:
-    """Fraction of units failing exactly k criteria, k = 0..M (length M+1)."""
+    """Fraction of SOWs failing exactly k criteria, k = 0..M (length M+1)."""
     fail = ~np.asarray(sat, dtype=bool)
     return np.bincount(fail.sum(axis=1),
                        minlength=fail.shape[1] + 1) / fail.shape[0]
-
-
-def within_between_sd(values_2d) -> tuple[float, float]:
-    """``(median within-SOW SD, between-SOW SD of the SOW means)`` for one
-    objective's ``(n_sow, R)`` slab, NaN-safe."""
-    v = np.asarray(values_2d, dtype=float)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        within = np.nanstd(v, axis=1, ddof=1)
-        means = np.nanmean(v, axis=1)
-    return float(np.nanmedian(within)), float(np.nanstd(means, ddof=1))
 
 
 def critical_m(theta_m, pass_mask, window) -> float:
@@ -336,35 +341,41 @@ def nearest_to_zero_theta(theta, k) -> np.ndarray:
     return np.argsort(d)[: int(k)]
 
 
-def theta_for_sows(theta_params, theta_realization_ids, cube_realization_ids,
-                   sow_ids, sow_labels) -> np.ndarray:
-    """One DU-factor row per SOW, joined by realization id (never positional).
+def theta_for_sows(theta_params, theta_realization_ids, realizations_per_sow,
+                   sow_labels) -> np.ndarray:
+    """One DU-factor row per SOW, joined on the SOW label (never positional).
 
-    Asserts every cube realization maps to a theta row and that theta is
-    constant within each SOW block (25 realizations share one forcing profile).
+    The forcing npz stores one theta row per REALIZATION; realization ``k``
+    belongs to SOW ``k // realizations_per_sow`` (``src.reeval_core.sow_grouping``).
+    Asserts theta is constant within each SOW block and every cube SOW label
+    has at least one theta row.
+
+    Args:
+        theta_params: ``(n_realizations, n_theta)`` per-realization DU factors.
+        theta_realization_ids: Realization id of each theta row.
+        realizations_per_sow: R realizations pooled into each SOW value.
+        sow_labels: The cube's SOW labels (ascending).
 
     Returns:
         ``(n_sow, n_theta)`` array in ``sow_labels`` order.
     """
     theta_params = np.asarray(theta_params, dtype=float)
-    row_of = {int(r): i for i, r in enumerate(theta_realization_ids)}
+    r = int(realizations_per_sow)
+    if r < 1:
+        raise ValueError(f"realizations_per_sow must be >= 1, got {r}")
     by_sow: dict[int, list[int]] = {}
-    for rid, sid in zip(cube_realization_ids, sow_ids):
-        by_sow.setdefault(int(sid), []).append(int(rid))
+    for row, rid in enumerate(theta_realization_ids):
+        by_sow.setdefault(int(rid) // r, []).append(row)
 
     out = np.full((len(sow_labels), theta_params.shape[1]), np.nan)
     for g, s in enumerate(sow_labels):
-        rids = by_sow.get(int(s))
-        if not rids:
-            raise ValueError(f"SOW {s} has no realizations in the cube")
-        missing = [r for r in rids if r not in row_of]
-        if missing:
-            raise ValueError(
-                f"realizations {missing[:5]} of SOW {s} missing from forcing npz")
-        rows = theta_params[[row_of[r] for r in rids]]
-        if not np.allclose(rows, rows[0], rtol=0.0, atol=1e-12):
+        rows = by_sow.get(int(s))
+        if not rows:
+            raise ValueError(f"SOW {s} is missing from the forcing npz")
+        block = theta_params[rows]
+        if not np.allclose(block, block[0], rtol=0.0, atol=1e-12):
             raise ValueError(f"theta rows are not constant within SOW {s}")
-        out[g] = rows[0]
+        out[g] = block[0]
     return out
 
 
@@ -373,10 +384,10 @@ def candidate_menu(name, kind, sow_values, default_thr, anchor_val, *,
                    quantiles=scfg.RTD_CANDIDATE_QUANTILES) -> dict:
     """Candidate threshold placements for one objective.
 
-    current + historic-trace anchor + SOW-mean distribution quantiles, plus the
+    current + historic-trace anchor + per-SOW distribution quantiles, plus the
     NYC stakeholder floor and the external flood anchor where they apply.
     """
-    floors = DEFAULT_STAKEHOLDER_FLOORS if floors is None else floors
+    floors = STAKEHOLDER_FLOORS if floors is None else floors
     flood_anchors = scfg.RTD_FLOOD_ANCHORS if flood_anchors is None else flood_anchors
 
     menu = {"current": float(default_thr)}
@@ -394,7 +405,7 @@ def candidate_menu(name, kind, sow_values, default_thr, anchor_val, *,
     return menu
 
 
-def build_recommendation_table(base_names, kinds, current_thresholds,
+def build_recommendation_table(obj_names, kinds, current_thresholds,
                                sow_values_by_name, recommended, basis,
                                headline_delta) -> pd.DataFrame:
     """Per-objective recommendation summary, plus the joint Starr row.
@@ -406,11 +417,11 @@ def build_recommendation_table(base_names, kinds, current_thresholds,
     the Starr conjunction over all criteria — the metric the thresholds serve.
     """
     lim = scfg.RTD_DEGENERACY_LIMIT
-    n_sow = np.asarray(sow_values_by_name[base_names[0]]).size
+    n_sow = np.asarray(sow_values_by_name[obj_names[0]]).size
     merged = None
     if recommended:
         merged = {n: float(recommended.get(n, current_thresholds[n]))
-                  for n in base_names}
+                  for n in obj_names}
 
     def _row(name, kind, cur, frac_cur, rec, frac_rec, basis_str):
         degen_cur = frac_cur < lim or frac_cur > 1 - lim
@@ -438,7 +449,7 @@ def build_recommendation_table(base_names, kinds, current_thresholds,
         }
 
     rows = []
-    for name in base_names:
+    for name in obj_names:
         kind = kinds[name]
         cur = float(current_thresholds[name])
         v = sow_values_by_name[name]
@@ -451,12 +462,12 @@ def build_recommendation_table(base_names, kinds, current_thresholds,
         rows.append(row)
 
     # The conjunction the thresholds exist to serve (Starr 1962), SOW unit.
-    sat_cur = satisfaction_matrix(sow_values_by_name, base_names,
+    sat_cur = satisfaction_matrix(sow_values_by_name, obj_names,
                                   current_thresholds, kinds)
     joint_cur = float(sat_cur.all(axis=1).mean())
     joint_rec = np.nan
     if merged is not None:
-        sat_rec = satisfaction_matrix(sow_values_by_name, base_names,
+        sat_rec = satisfaction_matrix(sow_values_by_name, obj_names,
                                       merged, kinds)
         joint_rec = float(sat_rec.all(axis=1).mean())
     joint = _row("ALL__joint_starr", "joint", None, joint_cur, None, joint_rec,
@@ -471,28 +482,37 @@ def build_recommendation_table(base_names, kinds, current_thresholds,
 ###############################################################################
 
 def load_cube():
-    """Baseline cube + SOW-mean collapse: ``(raw, sow_means (n_sow, M), sow_labels)``."""
+    """Baseline cube: ``(raw, sow_values (n_sow, M), sow_labels)``.
+
+    ``sow_values`` is the per-SOW annual-unit objective matrix itself — the
+    substrate carries one value per (SOW, objective), no collapse step.
+    """
     raw = rob.load_raw(scfg.RTD_REEVAL_BASELINE_DIR)
     if raw.cube.shape[0] != 1:
         sys.exit(f"[rtd] expected the 1-solution baseline cube, got "
                  f"S={raw.cube.shape[0]}")
-    cube_sow, sow_labels = rob.collapse_within_sow(raw, scfg.RTD_WITHIN_SOW_AGG)
-    return raw, cube_sow[0], sow_labels
+    if not raw.is_ensemble or raw.n_sow <= 1:
+        sys.exit("[rtd] the baseline cube carries no SOW structure; threshold "
+                 "placement needs the E_test re-eval, not a single trace.")
+    return raw, raw.cube[0], list(raw.sow_labels)
 
 
-def load_theta(raw, sow_labels) -> tuple[np.ndarray, list]:
-    """DU-factor matrix aligned to ``sow_labels``; returns ``(theta, names)``."""
+def load_theta(raw) -> tuple[np.ndarray, list]:
+    """DU-factor matrix aligned to the cube's SOW labels; ``(theta, names)``."""
+    if not raw.realizations_per_sow:
+        sys.exit("[rtd] the cube meta records no realizations_per_sow; cannot "
+                 "join theta rows to SOW labels.")
     with np.load(scfg.RTD_FORCING_NPZ) as npz:
         names = [str(n) for n in npz["theta_param_names"]]
         theta = theta_for_sows(npz["theta_params"], npz["realization_ids"],
-                               raw.realization_ids, raw.sow_ids, sow_labels)
+                               raw.realizations_per_sow, raw.sow_labels)
     if tuple(names) != tuple(scfg.RTD_THETA_NAMES):
         sys.exit(f"[rtd] theta names {names} != expected {scfg.RTD_THETA_NAMES}")
     return theta, names
 
 
-def load_anchor(base_names) -> dict:
-    """Historic-trace base-metric anchor from the JSON cache (hard requirement)."""
+def load_anchor(obj_names) -> dict:
+    """Historic-trace annual-unit anchor from the JSON cache (hard requirement)."""
     if not scfg.RTD_ANCHOR_CACHE.exists():
         sys.exit(
             f"[rtd] missing anchor cache {scfg.RTD_ANCHOR_CACHE} — run\n"
@@ -502,7 +522,7 @@ def load_anchor(base_names) -> dict:
     with open(scfg.RTD_ANCHOR_CACHE) as f:
         payload = json.load(f)
     anchor = payload["anchor"]
-    missing = [n for n in base_names if n not in anchor]
+    missing = [n for n in obj_names if n not in anchor]
     if missing:
         sys.exit(f"[rtd] anchor cache missing objectives {missing} — rerun the "
                  "anchor script with NYCOPT_RTD_REFRESH=1")
@@ -513,10 +533,10 @@ def load_anchor(base_names) -> dict:
 # Tables
 ###############################################################################
 
-def write_sow_mean_summary(base_names, sow_values_by_name) -> pd.DataFrame:
+def write_sow_summary(obj_names, sow_values_by_name) -> pd.DataFrame:
     qs = (0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
     rows = []
-    for name in base_names:
+    for name in obj_names:
         v = np.asarray(sow_values_by_name[name], dtype=float)
         v = v[np.isfinite(v)]
         row = {"objective": name, "n_sow": v.size,
@@ -524,21 +544,21 @@ def write_sow_mean_summary(base_names, sow_values_by_name) -> pd.DataFrame:
         row.update({f"p{int(q * 100):02d}": np.quantile(v, q) for q in qs})
         rows.append(row)
     df = pd.DataFrame(rows)
-    df.to_csv(scfg.rtd_table_path("rtd_sow_mean_summary"), index=False)
+    df.to_csv(scfg.rtd_table_path("rtd_sow_summary"), index=False)
     return df
 
 
-def write_default_stringency(raw, base_names, sow_values_by_name,
+def write_default_stringency(raw, obj_names, sow_values_by_name,
                              sat_sow) -> pd.DataFrame:
-    """Placement of each current threshold: fractions + Wilson CI, stringency,
-    guardrail margin (distance to the worst SOW-mean; positive = headroom),
-    and the criterion's role inside the conjunction (sole vs co-failure)."""
+    """Placement of each current threshold: SOW fraction + Wilson CI,
+    stringency, guardrail margin (distance to the worst per-SOW value;
+    positive = headroom), and the criterion's role inside the conjunction
+    (sole vs co-failure)."""
     sole, co = sole_cofailure(sat_sow)
     rows = []
-    for k, name in enumerate(base_names):
+    for k, name in enumerate(obj_names):
         kind, thr = raw.kinds[name], float(raw.thresholds[name])
         sow_v = np.asarray(sow_values_by_name[name], dtype=float)
-        pooled = raw.cube[0, :, k]
         frac_sow = float(sweep_fractions(sow_v, [thr], kind)[0])
         lo, hi = wilson_ci(frac_sow, sow_v.size)
         fin = sow_v[np.isfinite(sow_v)]
@@ -548,9 +568,7 @@ def write_default_stringency(raw, base_names, sow_values_by_name,
             "objective": name, "kind": kind, "current_threshold": thr,
             "frac_sow": frac_sow,
             "frac_sow_ci_lo": float(lo), "frac_sow_ci_hi": float(hi),
-            "frac_realization": float(sweep_fractions(pooled, [thr], kind)[0]),
             "stringency_sow": stringency_coordinate(sow_v, thr, kind),
-            "stringency_realization": stringency_coordinate(pooled, thr, kind),
             "margin_worst_natural": float(margin),
             "margin_worst_iqr": float(margin / iqr) if iqr > 0 else np.nan,
             "sole_failure_frac_sow": float(sole[k]),
@@ -561,24 +579,22 @@ def write_default_stringency(raw, base_names, sow_values_by_name,
     return df
 
 
-def write_threshold_sweep(raw, base_names, sow_values_by_name, menus) -> pd.DataFrame:
+def write_threshold_sweep(raw, obj_names, sow_values_by_name, menus) -> pd.DataFrame:
     frames = []
-    for k, name in enumerate(base_names):
+    for name in obj_names:
         kind, thr = raw.kinds[name], float(raw.thresholds[name])
         sow_v = sow_values_by_name[name]
-        pooled = raw.cube[0, :, k]
         menu = menus[name]
         grid = sweep_grid(sow_v, list(menu.values()) + [thr],
                           scfg.RTD_SWEEP_POINTS)
         frac_sow = sweep_fractions(sow_v, grid, kind)
-        frac_real = sweep_fractions(pooled, grid, kind)
         labels = ["" for _ in grid]
         for lab, val in menu.items():
             j = int(np.argmin(np.abs(grid - val)))
             labels[j] = f"{labels[j]}+{lab}" if labels[j] else lab
         frames.append(pd.DataFrame({
             "objective": name, "kind": kind, "threshold": grid,
-            "frac_sow": frac_sow, "frac_realization": frac_real,
+            "frac_sow": frac_sow,
             "stringency_sow": [stringency_coordinate(sow_v, t, kind)
                                for t in grid],
             "is_default": np.isclose(grid, thr),
@@ -589,13 +605,12 @@ def write_threshold_sweep(raw, base_names, sow_values_by_name, menus) -> pd.Data
     return df
 
 
-def write_candidate_placements(raw, base_names, sow_values_by_name,
+def write_candidate_placements(raw, obj_names, sow_values_by_name,
                                menus) -> pd.DataFrame:
     rows = []
-    for k, name in enumerate(base_names):
+    for name in obj_names:
         kind = raw.kinds[name]
         sow_v = np.asarray(sow_values_by_name[name], dtype=float)
-        pooled = raw.cube[0, :, k]
         for lab, val in menus[name].items():
             frac_sow = float(sweep_fractions(sow_v, [val], kind)[0])
             lo, hi = wilson_ci(frac_sow, sow_v.size)
@@ -604,7 +619,6 @@ def write_candidate_placements(raw, base_names, sow_values_by_name,
                 "threshold": val,
                 "frac_sow": frac_sow,
                 "frac_sow_ci_lo": float(lo), "frac_sow_ci_hi": float(hi),
-                "frac_realization": float(sweep_fractions(pooled, [val], kind)[0]),
                 "stringency_sow": stringency_coordinate(sow_v, val, kind),
             })
     df = pd.DataFrame(rows)
@@ -612,23 +626,33 @@ def write_candidate_placements(raw, base_names, sow_values_by_name,
     return df
 
 
-def write_theta_spearman(base_names, sow_means, theta, theta_names) -> pd.DataFrame:
-    mat = np.hstack([sow_means, theta])          # (n_sow, M + n_theta)
+def write_theta_spearman(obj_names, sow_values, theta, theta_names) -> pd.DataFrame:
+    mat = np.hstack([sow_values, theta])         # (n_sow, M + n_theta)
     corr = spearmanr(mat).correlation            # (M+3, M+3)
-    labels = list(base_names) + list(theta_names)
+    labels = list(obj_names) + list(theta_names)
     df = pd.DataFrame(corr, index=labels, columns=labels)
     df.to_csv(scfg.rtd_table_path("rtd_theta_spearman"))
     return df
 
 
-def write_anchor_comparison(raw, base_names, sow_values_by_name, anchor,
+def write_anchor_comparison(raw, obj_names, sow_values_by_name, anchor,
                             theta) -> pd.DataFrame:
-    """Historic-trace anchor vs the cube distribution, with explicit support
-    flags and the near-historic consistency check (anchor's percentile within
-    the K SOWs closest to theta = 0)."""
+    """Historic-trace anchor vs the cube's per-SOW distribution.
+
+    Anchor and cube live in ONE metric space (annual-unit objective values), so
+    each row carries the anchor's quantile position, explicit support flags,
+    the near-historic consistency check (anchor's percentile within the K SOWs
+    closest to theta = 0), and — where the persisted baseline CSV has the
+    column — the same-space ``baseline_csv_value`` cross-check.
+    """
     near = nearest_to_zero_theta(theta, scfg.RTD_NEAR_HISTORIC_K)
+    csv_vals = {}
+    if scfg.RTD_BASELINE_ANNUAL_CSV.exists():
+        annual = pd.read_csv(scfg.RTD_BASELINE_ANNUAL_CSV)
+        csv_vals = {n: float(annual[n].iloc[0]) for n in obj_names
+                    if n in annual.columns}
     rows = []
-    for name in base_names:
+    for name in obj_names:
         kind, thr = raw.kinds[name], float(raw.thresholds[name])
         val = float(anchor[name])
         v = np.asarray(sow_values_by_name[name], dtype=float)
@@ -640,63 +664,44 @@ def write_anchor_comparison(raw, base_names, sow_values_by_name, anchor,
         v_near = v[near]
         v_near = v_near[np.isfinite(v_near)]
         rows.append({
-            "objective": name, "metric_space": "base_weekly_recomputed",
-            "metric_name": name, "value": val,
+            "objective": name, "anchor_value": val,
+            "baseline_csv_value": csv_vals.get(name, np.nan),
             "current_threshold": thr, "kind": kind,
             "passes_current": bool(passes),
-            "sow_mean_quantile_of_value": float(np.mean(fin <= val)),
+            "sow_quantile_of_anchor": float(np.mean(fin <= val)),
             "in_sow_support": in_support,
             "dist_outside_support": dist,
             "near_historic_quantile": float(np.mean(v_near <= val)),
             "n_near_historic": int(v_near.size),
         })
-    # Annual-unit search objectives: a DIFFERENT metric space, reference only.
-    annual = pd.read_csv(scfg.RTD_BASELINE_ANNUAL_CSV)
-    ens_names = raw.meta.get("ensemble_obj_names", [])
-    for base, ann in zip(base_names, ens_names):
-        if ann in annual.columns:
-            rows.append({
-                "objective": base, "metric_space": "search_annual_csv",
-                "metric_name": ann, "value": float(annual[ann].iloc[0]),
-                "current_threshold": np.nan, "kind": "",
-                "passes_current": np.nan,
-                "sow_mean_quantile_of_value": np.nan,
-                "in_sow_support": np.nan, "dist_outside_support": np.nan,
-                "near_historic_quantile": np.nan, "n_near_historic": np.nan,
-            })
     df = pd.DataFrame(rows)
     df.to_csv(scfg.rtd_table_path("rtd_historic_anchor_comparison"), index=False)
     return df
 
 
-def write_joint_satisficing(base_names, sat_by_vector_unit) -> pd.DataFrame:
-    """Starr conjunction summary. ``sat_by_vector_unit`` maps
-    ``(vector, unit) -> (U, M)`` boolean matrix; Wilson CI on the SOW unit."""
+def write_joint_satisficing(obj_names, sat_sow_by_vector) -> pd.DataFrame:
+    """Starr conjunction summary per threshold vector (SOW unit, Wilson CI)."""
     rows = []
-    for (vector, unit), sat in sat_by_vector_unit.items():
-        stats = joint_satisficing_stats(sat, base_names)
-        row = {"vector": vector, "unit": unit, "n_units": int(sat.shape[0])}
+    for vector, sat in sat_sow_by_vector.items():
+        stats = joint_satisficing_stats(sat, obj_names)
+        row = {"vector": vector, "n_sow": int(sat.shape[0])}
         row.update(stats)
-        if unit == "sow":
-            lo, hi = wilson_ci(stats["joint_frac"], sat.shape[0])
-            row["joint_frac_ci_lo"] = float(lo)
-            row["joint_frac_ci_hi"] = float(hi)
-        else:
-            row["joint_frac_ci_lo"] = np.nan
-            row["joint_frac_ci_hi"] = np.nan
+        lo, hi = wilson_ci(stats["joint_frac"], sat.shape[0])
+        row["joint_frac_ci_lo"] = float(lo)
+        row["joint_frac_ci_hi"] = float(hi)
         rows.append(row)
     df = pd.DataFrame(rows)
     df.to_csv(scfg.rtd_table_path("rtd_joint_satisficing"), index=False)
     return df
 
 
-def write_failure_combinations(base_names, sat_sow_by_vector) -> pd.DataFrame:
+def write_failure_combinations(obj_names, sat_sow_by_vector) -> pd.DataFrame:
     """Top failing-criteria combinations + the failing-count distribution
     (SOW unit — the adopted primary)."""
     frames = []
     dist_rows = []
     for vector, sat in sat_sow_by_vector.items():
-        comb = failure_combinations(sat, base_names,
+        comb = failure_combinations(sat, obj_names,
                                     scfg.RTD_TOP_FAILURE_COMBOS)
         comb = comb.drop(columns=["criteria"])
         comb.insert(0, "vector", vector)
@@ -712,45 +717,14 @@ def write_failure_combinations(base_names, sat_sow_by_vector) -> pd.DataFrame:
     return df
 
 
-def write_unit_collapse(raw, base_names, sow_values_by_name) -> pd.DataFrame:
-    """Within- vs between-SOW dispersion, and the mean-vs-worst collapse
-    sensitivity of the SOW fraction at the current thresholds."""
-    cube_worst, _ = rob.collapse_within_sow(raw, "worst")
-    groups = raw.sow_groups()
-    R = raw.realizations_per_sow or max(len(c) for _, c in groups)
-    rows = []
-    for k, name in enumerate(base_names):
-        kind, thr = raw.kinds[name], float(raw.thresholds[name])
-        slab = np.stack([raw.cube[0, cols, k] for _, cols in groups])
-        med_within, between = within_between_sd(slab)
-        se_mean = med_within / np.sqrt(R)
-        mean_v = np.asarray(sow_values_by_name[name], dtype=float)
-        worst_v = cube_worst[0][:, k]
-        rows.append({
-            "objective": name, "kind": kind, "current_threshold": thr,
-            "realizations_per_sow": int(R),
-            "median_within_sow_sd": med_within,
-            "se_sow_mean": float(se_mean),
-            "between_sow_sd": between,
-            "noise_ratio": float(se_mean / between) if between > 0 else np.nan,
-            "frac_sow_mean_collapse": float(
-                sweep_fractions(mean_v, [thr], kind)[0]),
-            "frac_sow_worst_collapse": float(
-                sweep_fractions(worst_v, [thr], kind)[0]),
-        })
-    df = pd.DataFrame(rows)
-    df.to_csv(scfg.rtd_table_path("rtd_unit_collapse"), index=False)
-    return df
-
-
-def write_critical_m(base_names, sow_values_by_name, theta_m, thresholds_by_vector,
+def write_critical_m(obj_names, sow_values_by_name, theta_m, thresholds_by_vector,
                      kinds) -> pd.DataFrame:
     """Hydrologic reading of each placement: the m at which the local pass rate
     crosses 0.5, per threshold vector. NaN = degenerate (no boundary in the
     E_test box)."""
     rows = []
     for vector, thresholds in thresholds_by_vector.items():
-        for name in base_names:
+        for name in obj_names:
             v = np.asarray(sow_values_by_name[name], dtype=float)
             ok = sweep_fractions_mask(v, float(thresholds[name]), kinds[name])
             rows.append({
@@ -786,12 +760,13 @@ def _ref_line(ax, val, lo, hi, **style):
                 ms=6, clip_on=False, zorder=6)
 
 
-def fig_sow_cdfs(raw, base_names, sow_values_by_name, anchor) -> None:
+def fig_sow_cdfs(raw, obj_names, sow_values_by_name, anchor) -> None:
+    n_sow = raw.n_sow
     fig, axes = plt.subplots(2, 4, figsize=(12.6, 6.6))
-    for k, (name, ax) in enumerate(zip(base_names, axes.ravel())):
+    for k, (name, ax) in enumerate(zip(obj_names, axes.ravel())):
         kind, thr = raw.kinds[name], float(raw.thresholds[name])
-        pooled = raw.cube[0, :, k]
-        fin = pooled[np.isfinite(pooled)]
+        sow_v = np.asarray(sow_values_by_name[name], dtype=float)
+        fin = sow_v[np.isfinite(sow_v)]
         pad = 0.04 * (fin.max() - fin.min())
         xlo, xhi = fin.min() - pad, fin.max() + pad
 
@@ -801,22 +776,19 @@ def fig_sow_cdfs(raw, base_names, sow_values_by_name, anchor) -> None:
         if lo_span < hi_span:
             ax.axvspan(lo_span, hi_span, color=SOW_COLOR, alpha=0.06, zorder=0)
 
-        xs, ys = _ecdf(pooled)
-        ax.step(xs, ys, where="post", color=POOLED_COLOR, lw=1.0)
-        xs, ys = _ecdf(sow_values_by_name[name])
+        xs, ys = _ecdf(sow_v)
         ax.step(xs, ys, where="post", color=SOW_COLOR, lw=1.6)
 
         _ref_line(ax, thr, xlo, xhi, color="black", lw=1.2)
         _ref_line(ax, float(anchor[name]), xlo, xhi, color=ANCHOR_COLOR,
                   lw=1.2, ls="--")
-        if name in DEFAULT_STAKEHOLDER_FLOORS:
-            _ref_line(ax, DEFAULT_STAKEHOLDER_FLOORS[name], xlo, xhi,
+        if name in STAKEHOLDER_FLOORS:
+            _ref_line(ax, STAKEHOLDER_FLOORS[name], xlo, xhi,
                       color="0.35", lw=1.2, ls=":")
         if name == FLOOD_OBJ:
             for val in scfg.RTD_FLOOD_ANCHORS.values():
                 _ref_line(ax, val, xlo, xhi, color="0.35", lw=1.2, ls="-.")
 
-        sow_v = sow_values_by_name[name]
         frac = float(sweep_fractions(sow_v, [thr], kind)[0])
         ax.set_title(f"{label_for(name)}\npass {frac:.2f}", fontsize=9)
         ax.set_xlim(xlo, xhi)
@@ -824,9 +796,8 @@ def fig_sow_cdfs(raw, base_names, sow_values_by_name, anchor) -> None:
         if k % 4 == 0:
             ax.set_ylabel("fraction of SOWs ≤ x")
     handles = [
-        Line2D([], [], color=SOW_COLOR, lw=1.6, label="SOW mean (n=1,000)"),
-        Line2D([], [], color=POOLED_COLOR, lw=1.0,
-               label="pooled realizations (n=25,000)"),
+        Line2D([], [], color=SOW_COLOR, lw=1.6,
+               label=f"per-SOW value (n={n_sow:,})"),
         Line2D([], [], color="black", lw=1.2, label="current threshold"),
         Line2D([], [], color=ANCHOR_COLOR, lw=1.2, ls="--",
                label="historic-trace anchor"),
@@ -839,8 +810,8 @@ def fig_sow_cdfs(raw, base_names, sow_values_by_name, anchor) -> None:
     ]
     fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=8,
                frameon=False, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle("Baseline FFMP on $E_{test}$: per-objective distributions vs "
-                 "satisficing thresholds", fontsize=11)
+    fig.suptitle("Baseline FFMP on $E_{test}$: per-SOW annual-unit objective "
+                 "distributions vs satisficing thresholds", fontsize=11)
     fig.tight_layout(rect=(0, 0.05, 1, 0.97))
     save_figure(fig, scfg.rtd_figure_path("S_rtd_baseline_sow_cdfs"))
     plt.close(fig)
@@ -858,13 +829,13 @@ def _candidate_style(label) -> dict:
     return dict(marker="^", color="0.35", ms=4.5, zorder=5)  # floor / external
 
 
-def fig_threshold_sensitivity(raw, base_names, sow_values_by_name, menus) -> None:
+def fig_threshold_sensitivity(raw, obj_names, sow_values_by_name, menus) -> None:
     lim = scfg.RTD_DEGENERACY_LIMIT
+    n_sow = raw.n_sow
     fig, axes = plt.subplots(2, 4, figsize=(12.6, 6.6))
-    for k, (name, ax) in enumerate(zip(base_names, axes.ravel())):
+    for k, (name, ax) in enumerate(zip(obj_names, axes.ravel())):
         kind, thr = raw.kinds[name], float(raw.thresholds[name])
         sow_v = np.asarray(sow_values_by_name[name], dtype=float)
-        pooled = raw.cube[0, :, k]
         menu = menus[name]
         grid = sweep_grid(sow_v, list(menu.values()) + [thr],
                           scfg.RTD_SWEEP_POINTS)
@@ -873,8 +844,6 @@ def fig_threshold_sensitivity(raw, base_names, sow_values_by_name, menus) -> Non
         frac_sow = sweep_fractions(sow_v, grid, kind)
         lo_b, hi_b = wilson_ci(frac_sow, sow_v.size)
         ax.fill_between(grid, lo_b, hi_b, color=SOW_COLOR, alpha=0.15, lw=0)
-        ax.plot(grid, sweep_fractions(pooled, grid, kind), color=POOLED_COLOR,
-                lw=1.0, ls="--")
         ax.plot(grid, frac_sow, color=SOW_COLOR, lw=1.6)
         for lab, val in menu.items():
             frac = float(sweep_fractions(sow_v, [val], kind)[0])
@@ -888,10 +857,9 @@ def fig_threshold_sensitivity(raw, base_names, sow_values_by_name, menus) -> Non
         if k >= 4:
             ax.set_xlabel("threshold (natural units)")
     handles = [
-        Line2D([], [], color=SOW_COLOR, lw=1.6, label="SOW unit (within-SOW mean)"),
-        Line2D([], [], color=POOLED_COLOR, lw=1.0, ls="--",
-               label="realization unit (pooled)"),
-        Patch(facecolor=SOW_COLOR, alpha=0.15, label="95% Wilson band (n=1,000)"),
+        Line2D([], [], color=SOW_COLOR, lw=1.6, label="fraction of SOWs"),
+        Patch(facecolor=SOW_COLOR, alpha=0.15,
+              label=f"95% Wilson band (n={n_sow:,})"),
         Line2D([], [], color="black", marker="o", ls="", label="current threshold"),
         Line2D([], [], color=ANCHOR_COLOR, marker="D", ls="",
                label="historic-trace anchor"),
@@ -912,35 +880,35 @@ def fig_threshold_sensitivity(raw, base_names, sow_values_by_name, menus) -> Non
     plt.close(fig)
 
 
-def fig_theta_heatmap(corr_df, base_names, theta_names) -> None:
+def fig_theta_heatmap(corr_df, obj_names, theta_names) -> None:
     """Objectives x DU-factor block only; the full matrix stays in the CSV."""
-    block = corr_df.loc[list(base_names), list(theta_names)].values
+    block = corr_df.loc[list(obj_names), list(theta_names)].values
     fig, ax = plt.subplots(figsize=(5.4, 6.0))
     im = ax.imshow(block, cmap="RdBu_r", vmin=-1.0, vmax=1.0, aspect="auto")
     ax.set_xticks(range(len(theta_names)))
     ax.set_xticklabels([THETA_LABELS.get(n, n) for n in theta_names],
                        rotation=20, ha="right", fontsize=8)
-    ax.set_yticks(range(len(base_names)))
-    ax.set_yticklabels([label_for(n) for n in base_names], fontsize=8)
+    ax.set_yticks(range(len(obj_names)))
+    ax.set_yticklabels([label_for(n) for n in obj_names], fontsize=8)
     for i in range(block.shape[0]):
         for j in range(block.shape[1]):
             v = block[i, j]
             ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=7,
                     color="white" if abs(v) > 0.55 else "black")
     fig.colorbar(im, ax=ax, shrink=0.75, label="Spearman ρ")
-    ax.set_title("Baseline SOW-mean objectives vs DU forcing factors",
+    ax.set_title("Baseline per-SOW objectives vs DU forcing factors",
                  fontsize=10)
     fig.tight_layout()
     save_figure(fig, scfg.rtd_figure_path("S_rtd_theta_spearman"))
     plt.close(fig)
 
 
-def fig_factor_maps(raw, base_names, sow_values_by_name, theta,
+def fig_factor_maps(raw, obj_names, sow_values_by_name, theta,
                     theta_names) -> None:
     """Pass/fail at the current thresholds for every criterion, in the single
     informative theta plane (RTD_FACTOR_MAP_PLANE); dashed line = the m at
     which the local pass rate crosses 0.5 (rtd_critical_m.csv)."""
-    objectives = [n for n in scfg.RTD_FACTOR_MAP_OBJECTIVES if n in base_names]
+    objectives = [n for n in scfg.RTD_FACTOR_MAP_OBJECTIVES if n in obj_names]
     i = theta_names.index(scfg.RTD_FACTOR_MAP_PLANE[0])
     j = theta_names.index(scfg.RTD_FACTOR_MAP_PLANE[1])
     rec = scfg.RTD_RECOMMENDED_THRESHOLDS
@@ -991,7 +959,7 @@ def fig_factor_maps(raw, base_names, sow_values_by_name, theta,
     plt.close(fig)
 
 
-def fig_conjunction(base_names, sat_sow_by_vector) -> None:
+def fig_conjunction(obj_names, sat_sow_by_vector) -> None:
     """The Starr conjunction, decomposed: which failing-criteria combinations
     occur (left) and each criterion's sole- vs co-failure role (right)."""
     vectors = list(sat_sow_by_vector)
@@ -1000,7 +968,7 @@ def fig_conjunction(base_names, sat_sow_by_vector) -> None:
                              squeeze=False)
     for r, vector in enumerate(vectors):
         sat = sat_sow_by_vector[vector]
-        comb = failure_combinations(sat, base_names,
+        comb = failure_combinations(sat, obj_names,
                                     scfg.RTD_TOP_FAILURE_COMBOS)
         plot = comb[comb["failing_criteria"] != "(none)"]
         labels = [
@@ -1019,12 +987,12 @@ def fig_conjunction(base_names, sat_sow_by_vector) -> None:
 
         sole, co = sole_cofailure(sat)
         ax = axes[r, 1]
-        y = np.arange(len(base_names))[::-1]
+        y = np.arange(len(obj_names))[::-1]
         ax.barh(y, sole, color=FAIL_COLOR, alpha=0.9, label="sole failure")
         ax.barh(y, co, left=sole, color=FAIL_COLOR, alpha=0.4,
                 label="co-failure")
         ax.set_yticks(y)
-        ax.set_yticklabels([SHORT_LABELS.get(n, n) for n in base_names],
+        ax.set_yticklabels([SHORT_LABELS.get(n, n) for n in obj_names],
                            fontsize=7.5)
         ax.set_xlabel("fraction of SOWs failing", fontsize=8)
         ax.set_title(f"sole vs co-failure per criterion ({vector})", fontsize=9)
@@ -1038,37 +1006,41 @@ def fig_conjunction(base_names, sat_sow_by_vector) -> None:
 
 
 ###############################################################################
-# Verification against the shipped scorer
+# Verification against the shipped re-eval summary
 ###############################################################################
 
-def verify_against_summary(raw, base_names) -> None:
-    """The realization-unit fraction at the current thresholds must reproduce
-    objectives_summary.csv (written by the shipped SatisficingAgg at re-eval
-    time) — end-to-end check that this script scores the same criterion."""
+def verify_against_summary(raw, obj_names) -> None:
+    """The SOW-mean of the cube must reproduce objectives_summary.csv.
+
+    ``objectives_summary.csv`` carries ``sowmean__{objective}`` columns — the
+    mean over SOWs of the per-SOW annual-unit objective values, derived from
+    the SAME matrix at persist time (``src.reeval_core.persist_reeval_raw``).
+    Recomputing that mean from the loaded cube and requiring equality
+    (atol 1e-9) is the end-to-end check that this script scores the same
+    substrate the pipeline persisted.
+    """
     path = scfg.RTD_REEVAL_BASELINE_DIR / "objectives_summary.csv"
     if not path.exists():
         print(f"[rtd] WARNING: {path} missing; skipping cross-check", flush=True)
         return
     summary = pd.read_csv(path)
     bad = []
-    for k, name in enumerate(base_names):
-        col = f"sat__{name}"
+    for k, name in enumerate(obj_names):
+        col = f"sowmean__{name}"
         if col not in summary.columns:
             continue
         expected = float(summary[col].iloc[0])
-        got = float(sweep_fractions(raw.cube[0, :, k],
-                                    [float(raw.thresholds[name])],
-                                    raw.kinds[name])[0])
+        got = float(np.nanmean(raw.cube[0, :, k]))
         status = "OK" if abs(got - expected) <= 1e-9 else "MISMATCH"
         print(f"[rtd] verify {name}: summary={expected:.5f} "
               f"recomputed={got:.5f} {status}", flush=True)
         if status == "MISMATCH":
             bad.append(name)
     if bad:
-        sys.exit(f"[rtd] FAIL: satisficing recomputation mismatches shipped "
+        sys.exit(f"[rtd] FAIL: SOW-mean recomputation mismatches shipped "
                  f"summary for {bad}")
-    print("[rtd] PASS: realization-unit fractions reproduce "
-          "objectives_summary.csv", flush=True)
+    print("[rtd] PASS: cube SOW-means reproduce objectives_summary.csv",
+          flush=True)
 
 
 ###############################################################################
@@ -1080,69 +1052,62 @@ def main() -> None:
     for d in (scfg.RTD_TABLES_DIR, scfg.RTD_FIGURES_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
-    raw, sow_means, sow_labels = load_cube()
-    base_names = list(raw.base_names)
-    sow_values_by_name = {n: sow_means[:, k] for k, n in enumerate(base_names)}
-    pooled_by_name = {n: raw.cube[0, :, k] for k, n in enumerate(base_names)}
-    anchor = load_anchor(base_names)
-    theta, theta_names = load_theta(raw, sow_labels)
+    raw, sow_values, sow_labels = load_cube()
+    obj_names = list(raw.obj_names)
+    sow_values_by_name = {n: sow_values[:, k] for k, n in enumerate(obj_names)}
+    anchor = load_anchor(obj_names)
+    theta, theta_names = load_theta(raw)
 
-    verify_against_summary(raw, base_names)
+    verify_against_summary(raw, obj_names)
 
     menus = {
         n: candidate_menu(n, raw.kinds[n], sow_values_by_name[n],
                           raw.thresholds[n], anchor.get(n))
-        for n in base_names
+        for n in obj_names
     }
 
     # Threshold vectors under study: always the cube's snapshotted currents;
     # plus the recommended vector once pass 2 fills it in (merged over currents
     # so a partial recommendation stays a full vector).
-    current_thr = {n: float(raw.thresholds[n]) for n in base_names}
+    current_thr = {n: float(raw.thresholds[n]) for n in obj_names}
     thresholds_by_vector = {"current": current_thr}
     rec = {n: float(v) for n, v in scfg.RTD_RECOMMENDED_THRESHOLDS.items()
-           if n in base_names}
+           if n in obj_names}
     if rec:
         thresholds_by_vector["recommended"] = {**current_thr, **rec}
 
     sat_sow_by_vector = {
-        vec: satisfaction_matrix(sow_values_by_name, base_names, thr, raw.kinds)
+        vec: satisfaction_matrix(sow_values_by_name, obj_names, thr, raw.kinds)
         for vec, thr in thresholds_by_vector.items()
     }
-    sat_by_vector_unit = {}
-    for vec, thr in thresholds_by_vector.items():
-        sat_by_vector_unit[(vec, "sow")] = sat_sow_by_vector[vec]
-        sat_by_vector_unit[(vec, "realization")] = satisfaction_matrix(
-            pooled_by_name, base_names, thr, raw.kinds)
 
-    write_sow_mean_summary(base_names, sow_values_by_name)
-    stringency = write_default_stringency(raw, base_names, sow_values_by_name,
+    write_sow_summary(obj_names, sow_values_by_name)
+    stringency = write_default_stringency(raw, obj_names, sow_values_by_name,
                                           sat_sow_by_vector["current"])
-    write_threshold_sweep(raw, base_names, sow_values_by_name, menus)
-    write_candidate_placements(raw, base_names, sow_values_by_name, menus)
-    corr_df = write_theta_spearman(base_names, sow_means, theta, theta_names)
-    write_anchor_comparison(raw, base_names, sow_values_by_name, anchor, theta)
-    write_joint_satisficing(base_names, sat_by_vector_unit)
-    write_failure_combinations(base_names, sat_sow_by_vector)
-    write_unit_collapse(raw, base_names, sow_values_by_name)
+    write_threshold_sweep(raw, obj_names, sow_values_by_name, menus)
+    write_candidate_placements(raw, obj_names, sow_values_by_name, menus)
+    corr_df = write_theta_spearman(obj_names, sow_values, theta, theta_names)
+    write_anchor_comparison(raw, obj_names, sow_values_by_name, anchor, theta)
+    write_joint_satisficing(obj_names, sat_sow_by_vector)
+    write_failure_combinations(obj_names, sat_sow_by_vector)
     m_col = theta[:, theta_names.index("m")]
-    write_critical_m(base_names, sow_values_by_name, m_col,
+    write_critical_m(obj_names, sow_values_by_name, m_col,
                      thresholds_by_vector, raw.kinds)
     recommendation = build_recommendation_table(
-        base_names, raw.kinds, raw.thresholds, sow_values_by_name,
+        obj_names, raw.kinds, raw.thresholds, sow_values_by_name,
         scfg.RTD_RECOMMENDED_THRESHOLDS, scfg.RTD_RECOMMENDATION_BASIS,
         scfg.RTD_HEADLINE_IMPACT_DELTA)
     recommendation.to_csv(scfg.rtd_table_path("rtd_threshold_recommendation"),
                           index=False)
 
-    fig_sow_cdfs(raw, base_names, sow_values_by_name, anchor)
-    fig_threshold_sensitivity(raw, base_names, sow_values_by_name, menus)
-    fig_theta_heatmap(corr_df, base_names, theta_names)
-    fig_factor_maps(raw, base_names, sow_values_by_name, theta, theta_names)
-    fig_conjunction(base_names, sat_sow_by_vector)
+    fig_sow_cdfs(raw, obj_names, sow_values_by_name, anchor)
+    fig_threshold_sensitivity(raw, obj_names, sow_values_by_name, menus)
+    fig_theta_heatmap(corr_df, obj_names, theta_names)
+    fig_factor_maps(raw, obj_names, sow_values_by_name, theta, theta_names)
+    fig_conjunction(obj_names, sat_sow_by_vector)
 
-    print("\n[rtd] === summary (SOW unit, within-SOW "
-          f"{scfg.RTD_WITHIN_SOW_AGG}) ===", flush=True)
+    print("\n[rtd] === summary (SOW unit: per-SOW annual-unit objective "
+          "values) ===", flush=True)
     with pd.option_context("display.width", 200, "display.max_columns", 24):
         print(stringency.to_string(index=False), flush=True)
         stage = ("pass 2" if scfg.RTD_RECOMMENDED_THRESHOLDS

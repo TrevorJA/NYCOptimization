@@ -69,10 +69,10 @@ def _get_mpi_context():
 ###############################################################################
 
 def _evaluate_one(solution_id: int, dv_vector: np.ndarray, formulation: str):
-    """Re-evaluate one solution and return its raw per-realization matrix.
+    """Re-evaluate one solution and return its per-SOW objective matrix.
 
     Returns:
-        (solution_id, base_matrix | None, base_names | None, error | None).
+        (solution_id, sow_matrix | None, obj_names | None, error | None).
     """
     return evaluate_solution_raw(solution_id, dv_vector, formulation)
 
@@ -196,7 +196,7 @@ def reevaluate_mpi(
     if not is_root:
         return None
 
-    # Flatten and sort. Each result is (sid, base_matrix|None, base_names|None,
+    # Flatten and sort. Each result is (sid, sow_matrix|None, obj_names|None,
     # err); rows carry their own solution_id so no positional stitching needed.
     flat: list = []
     for chunk in gathered:

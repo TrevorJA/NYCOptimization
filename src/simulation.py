@@ -1785,93 +1785,123 @@ def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
     ]
 
 
-def _ensemble_base_matrix(nyc_config, ensemble_spec, objective_set,
-                          batch_size: int, *, skip_failed_batches: bool = False):
-    """Per-realization base-metric matrix ``(n_real, n_obj)`` in NATURAL units.
+def _units_tensor_from_rows(unit_rows: list, n_obj: int) -> np.ndarray:
+    """Stack per-realization stage-(i) rows into a ``(R, M, U)`` float tensor.
 
-    The matrix-building half of the batched RE-EVAL path (:func:`evaluate_raw`):
-    column ``k`` holds ``objective_set[k].base.compute(data)`` — the §1
-    single-trace temporal metric — for each realization (NOT Borg-negated,
-    NOT aggregated). Search does NOT use this: its batched path
-    (:func:`_evaluate_ensemble_batched`) pools per-unit-year annual metrics
-    instead. Requires an ObjectiveSet of ``AnnualUnitObjective`` instances
-    (exposing ``.base``).
+    ``unit_rows[r]`` is either a list of ``n_obj`` equal-length annual-metric
+    vectors, or ``None`` for a realization whose simulation batch failed. The
+    unit-year count ``U`` is taken from the first successful row; failed rows
+    become all-NaN slabs so the offline pooling can distinguish a FAILED
+    realization (excluded from its SOW's unit pool) from a ran-but-degenerate
+    one (whose non-finite unit-years the unit operators count as failures).
+    """
+    first = next((row for row in unit_rows if row is not None), None)
+    if first is None:
+        raise RuntimeError("every simulation batch failed; no unit-years produced")
+    n_units = len(np.asarray(first[0], dtype=float).ravel())
+    out = np.full((len(unit_rows), n_obj, n_units), np.nan, dtype=float)
+    for r, row in enumerate(unit_rows):
+        if row is None:
+            continue
+        for k in range(n_obj):
+            vec = np.asarray(row[k], dtype=float).ravel()
+            if vec.shape[0] != n_units:
+                raise ValueError(
+                    f"realization {r} yields {vec.shape[0]} unit-years, "
+                    f"expected {n_units}; the ensemble's realizations must "
+                    f"share one window length"
+                )
+            out[r, k, :] = vec
+    return out
+
+
+def _ensemble_units_tensor(nyc_config, ensemble_spec, objective_set,
+                           batch_size: int, *, skip_failed_batches: bool = False):
+    """Per-realization stage-(i) annual-metric tensor ``(R, M, U)``.
+
+    The tensor-building half of the batched RE-EVAL path
+    (:func:`evaluate_annual_units`): slab ``[r, k, :]`` holds objective ``k``'s
+    per-unit-year annual metrics for realization ``r`` — the SAME stage-(i)
+    reduction the search path pools (:func:`_evaluate_ensemble_batched`), so
+    search and re-evaluation share one metric formula per quantity. The
+    re-eval layer pools these per SOW with the §2 unit operators
+    (``src.reeval_core.sow_objective_matrix``).
 
     Args:
         skip_failed_batches: When True (re-eval path), a batch whose simulation
-            raises leaves its realizations as an all-NaN base-metric row and the
-            sweep continues, so one infeasible trace NaNs only its own batch
-            rather than failing the whole solution. The failed-row placeholder is
-            a length-``n_obj`` NaN vector (NOT a scalar) so the row stack stays
-            rectangular for ``np.asarray``. Search keeps the strict default
+            raises leaves its realizations as all-NaN slabs and the sweep
+            continues, so one infeasible trace NaNs only its own batch rather
+            than failing the whole solution. Search keeps the strict default
             (False) so its behavior is unchanged.
 
     Returns:
-        ``(base_matrix, base_names)`` — ``base_matrix`` float array
-        ``(n_real, n_obj)``; ``base_names[k]`` is the base objective name of
-        column ``k``. Rows for skipped batches are all-NaN.
+        ``(units, obj_names)`` — ``units`` float array ``(R, M, U)``;
+        ``obj_names[k]`` is the annual objective name of slab ``k``.
     """
     ens_objs = list(objective_set)
-    if not ens_objs or not all(hasattr(o, "base") for o in ens_objs):
+    if not ens_objs or not all(hasattr(o, "annual_units") for o in ens_objs):
         raise NotImplementedError(
-            "batched ensemble base-matrix evaluation requires "
-            "AnnualUnitObjective instances (with .base). Build the set via "
+            "batched ensemble unit evaluation requires AnnualUnitObjective "
+            "instances (with .annual_units). Build the set via "
             "src.objectives_ensemble.build_ensemble_objective_set or pass the "
             "active set returned by formulations.get_objective_set()."
         )
 
     def per_real(data):
-        # Per-realization base-metric vector (one column per objective). Strict
-        # (no per-metric try/except) so behavior matches the single-trace path.
-        return [o.base.compute(data) for o in ens_objs]
+        # Stage (i): one annual-metric vector per objective — identical to the
+        # search path's per-realization reduction.
+        return [o.annual_units(data) for o in ens_objs]
 
-    base_rows = run_simulation_ensemble_batched(
+    unit_rows = run_simulation_ensemble_batched(
         nyc_config, ensemble_spec, batch_size, per_real,
         skip_failed_batches=skip_failed_batches,
-        # Length-n_obj NaN row so a skipped batch keeps the stack rectangular.
-        failed_value=([np.nan] * len(ens_objs)) if skip_failed_batches else None,
+        failed_value=None,  # post-processed to an all-NaN slab
     )
-    base_matrix = np.asarray(base_rows, dtype=float)  # (n_real, n_obj)
-    base_names = [o.base.name for o in ens_objs]
-    return base_matrix, base_names
+    units = _units_tensor_from_rows(unit_rows, len(ens_objs))
+    return units, [o.name for o in ens_objs]
 
 
-def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
-                 ensemble_spec=None, realization_batch=None):
-    """Per-realization base-objective matrix in NATURAL units (not Borg-negated).
+def evaluate_annual_units(dv_vector, formulation_name="ffmp", objective_set=None,
+                          ensemble_spec=None, realization_batch=None):
+    """Per-realization stage-(i) annual-metric tensor in NATURAL units.
 
-    Re-eval-facing companion to :func:`evaluate`: runs the SAME simulation
-    path, but computes each realization's §1 single-trace temporal metrics
-    (``objective.base``) and returns the raw ``(n_realizations, n_base_objs)``
-    matrix instead of search's pooled annual-unit objectives. This lets
-    robustness metrics (satisficing, regret, ...) be scored offline from the
-    persisted matrix without re-simulating. Mirrors ``evaluate()``'s dispatch
-    (resample / single-trace / batched / unbatched) so re-eval
-    simulations match the search path.
+    Re-eval-facing companion to :func:`evaluate`: runs the SAME simulation path
+    and the SAME stage-(i) annual-metric reduction as search, returning the raw
+    ``(n_realizations, n_objs, n_unit_years)`` tensor instead of search's
+    pooled scalar objectives. The re-eval layer pools each SOW's unit-years
+    with the §2 unit operators (``src.reeval_core.sow_objective_matrix``), so
+    the persisted per-SOW values are the search objectives recomputed per
+    deeply-uncertain state — one metric currency across search, robustness,
+    and regret. Mirrors ``evaluate()``'s dispatch (resample / single-trace /
+    batched / unbatched) so re-eval simulations match the search path.
 
     Args:
         dv_vector: Decision-variable vector.
         formulation_name: Formulation name string.
-        objective_set: ObjectiveSet (ensemble objectives for the ensemble path;
-            a single-trace set for ``is_ensemble=False``). Defaults to the active
-            set from ``formulations.get_objective_set()``.
+        objective_set: ObjectiveSet of ``AnnualUnitObjective`` instances.
+            Defaults to the active set from ``formulations.get_objective_set()``.
         ensemble_spec: EnsembleSpec; defaults to ``config.SEARCH_ENSEMBLE_SPEC``.
             Re-eval callers pass ``config.REEVAL_ENSEMBLE_SPEC``.
         realization_batch: Realizations per simulation batch; defaults to
             ``config.SEARCH_REALIZATION_BATCH``.
 
     Returns:
-        ``(base_matrix, base_names)`` — ``base_matrix`` float array
-        ``(n_realizations, n_base_objs)`` in natural units; ``base_names[k]`` is
-        column ``k``'s base objective name. Single-trace (``is_ensemble=False``)
-        returns shape ``(1, n_obj)`` where the base metrics ARE the natural
-        objective values (no ensemble aggregation); robustness metrics defined
-        over realizations are degenerate at ``n_realizations == 1`` and the
-        offline scorer treats them as N/A.
+        ``(units, obj_names)`` — ``units`` float array ``(R, M, U)`` of
+        stage-(i) annual metrics (all-NaN slab = failed realization);
+        ``obj_names[k]`` is slab ``k``'s annual objective name. Single-trace
+        (``is_ensemble=False``) returns ``R == 1``.
     """
     if objective_set is None:
         from src.formulations import get_objective_set
         objective_set = get_objective_set()
+
+    ens_objs = list(objective_set)
+    if not ens_objs or not all(hasattr(o, "annual_units") for o in ens_objs):
+        raise NotImplementedError(
+            "evaluate_annual_units requires AnnualUnitObjective instances "
+            "(with .annual_units). Build the set via "
+            "src.objectives_ensemble.build_ensemble_objective_set."
+        )
 
     if ensemble_spec is None:
         from config import SEARCH_ENSEMBLE_SPEC
@@ -1889,45 +1919,27 @@ def evaluate_raw(dv_vector, formulation_name="ffmp", objective_set=None,
     nyc_config = dvs_to_config(dv_vector, formulation_name)
 
     if not ensemble_spec.is_ensemble:
-        # Single-trace re-eval: return the §1 per-realization base metrics
-        # (one "realization"). With the annual-unit search set the base metrics
-        # live on ``.base``; a plain §1 set (no ``.base``) is used directly.
+        # Single-trace re-eval: one realization's stage-(i) annual metrics.
         data = run_simulation_inmemory(nyc_config)
-        ens_objs = list(objective_set)
-        if ens_objs and all(hasattr(o, "base") for o in ens_objs):
-            base_matrix = np.asarray(
-                [[o.base.compute(data) for o in ens_objs]], dtype=float)
-            base_names = [o.base.name for o in ens_objs]
-        else:
-            base_matrix = np.asarray([objective_set.compute(data)], dtype=float)
-            base_names = list(objective_set.names)
-        return base_matrix, base_names
+        rows = [[o.annual_units(data) for o in ens_objs]]
+        return (_units_tensor_from_rows(rows, len(ens_objs)),
+                [o.name for o in ens_objs])
 
     if realization_batch and realization_batch > 0:
-        # Re-eval tolerates a failed batch (all-NaN rows) instead of failing the
-        # whole solution; the offline scorer treats NaN as unsatisfied and uses
-        # NaN-safe reduces. Search (via _evaluate_ensemble_batched) keeps the
-        # strict default so its behavior is unchanged.
-        return _ensemble_base_matrix(
+        # Re-eval tolerates a failed batch (all-NaN slabs) instead of failing
+        # the whole solution; the offline pooling excludes failed realizations
+        # from their SOW's unit pool. Search (via _evaluate_ensemble_batched)
+        # keeps the strict default so its behavior is unchanged.
+        return _ensemble_units_tensor(
             nyc_config, ensemble_spec, objective_set, realization_batch,
             skip_failed_batches=True,
         )
 
     # Single-model ensemble path (all realizations as one scenario block).
-    ens_objs = list(objective_set)
-    if not ens_objs or not all(hasattr(o, "base") for o in ens_objs):
-        raise NotImplementedError(
-            "ensemble evaluate_raw requires AnnualUnitObjective instances "
-            "(with .base). Build the set via "
-            "src.objectives_ensemble.build_ensemble_objective_set."
-        )
     data_per_real = run_simulation_ensemble_inmemory(nyc_config, ensemble_spec)
-    base_matrix = np.asarray(
-        [[o.base.compute(d) for o in ens_objs] for d in data_per_real],
-        dtype=float,
-    )
-    base_names = [o.base.name for o in ens_objs]
-    return base_matrix, base_names
+    rows = [[o.annual_units(d) for o in ens_objs] for d in data_per_real]
+    return (_units_tensor_from_rows(rows, len(ens_objs)),
+            [o.name for o in ens_objs])
 
 
 _RESAMPLE_BASE_SEED = 1_000_003  # salt for the resampled-probabilistic per-eval RNG

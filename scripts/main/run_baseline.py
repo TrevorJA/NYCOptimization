@@ -93,11 +93,11 @@ def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
 def run_baseline_reeval(formulation: str = "ffmp", seed=None):
     """Run the default policy through the re-eval ensemble; persist its raw matrix.
 
-    Provides the baseline performance matrix for improvement-vs-baseline scoring
-    (``src.robustness --baseline-dir``). Uses the SAME common re-eval ensemble
-    and per-realization base-metric computation as the policy re-eval, so the two
-    are on equal footing. Writes ``reeval_raw.parquet`` + ``reeval_raw_meta.json``
-    under ``.../reeval/{tag}[/seed_NN]/baseline``.
+    Provides the incumbent's per-SOW objective matrix for the incumbent-relative
+    regret family (``src.robustness --baseline-dir``). Uses the SAME common
+    re-eval ensemble and per-SOW annual-unit objective computation as the policy
+    re-eval, so the two are on equal footing. Writes ``reeval_raw.parquet`` +
+    ``reeval_raw_meta.json`` under ``.../reeval/{tag}[/seed_NN]/baseline``.
 
     Args:
         formulation: Problem formulation name.
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reeval", action="store_true",
         help="Run the baseline through the common re-eval ensemble and persist "
-             "its raw matrix (for improvement-vs-baseline scoring)."
+             "its per-SOW matrix (for the incumbent-relative regret family)."
     )
     parser.add_argument("--seed", type=int, default=None,
                         help="Seed subdir for --reeval baseline output.")

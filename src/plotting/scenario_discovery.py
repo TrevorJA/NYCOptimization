@@ -4,9 +4,9 @@ The scenario-discovery step of MORDM (Kasprzyk et al. 2013): having re-evaluated
 policy across the held-out deeply-uncertain ensemble, show WHERE in the uncertain
 forcing space it satisfices and where it fails. Here the uncertain space is the
 sampled CMIP6 harmonic forcing factors theta = (m, r1, r2) that DEFINE each state
-of the world (SOW), so each of the 50 SOWs is one point in theta-space, colored by
-whether the policy meets all seven objective thresholds jointly in that SOW (the
-same SOW-unit domain criterion used for the robustness scorecard).
+of the world (SOW), so each SOW is one point in theta-space, colored by whether
+the policy's per-SOW annual-unit objectives meet ALL thresholds jointly in that
+SOW (the same SOW-unit domain criterion used for the robustness scorecard).
 
 This is a direct pass/fail scatter over the factor ranges -- not a boosted-tree or
 PRIM box -- so the vulnerable corner of the forcing space is read straight off the
@@ -33,18 +33,16 @@ _THETA_LABEL = {
 }
 
 
-def _policy_sow_passfail(raw, solution_id: int, within_sow_agg: str = "mean"
-                         ) -> np.ndarray:
+def _policy_sow_passfail(raw, solution_id: int) -> tuple[np.ndarray, list]:
     """Boolean ``(n_sow,)``: does the policy meet ALL thresholds in each SOW?
 
-    SOWs are in ascending SOW-id order, aligned to ``theta[::realizations_per_sow]``.
+    SOWs are in ascending SOW-id order, aligned to the staged theta sample.
     """
-    from src.robustness import collapse_within_sow, _satisfy
-    cube_sow, sow_labels = collapse_within_sow(raw, within_sow_agg)     # (S, n_sow, M)
-    sat = _satisfy(cube_sow, raw.base_names, raw.thresholds, raw.kinds)
+    from src.robustness import _satisfaction_cube
+    sat = _satisfaction_cube(raw)                                      # (S, n_sow, M)
     joint = sat.all(axis=2)                                            # (S, n_sow)
     sidx = raw.solution_ids.index(int(solution_id))
-    return joint[sidx], list(sow_labels)
+    return joint[sidx], list(raw.sow_labels)
 
 
 def _load_sow_theta(ensemble_dir) -> tuple[np.ndarray, list]:
@@ -56,7 +54,6 @@ def _load_sow_theta(ensemble_dir) -> tuple[np.ndarray, list]:
 
 
 def plot_scenario_discovery(reeval_dir, ensemble_dir, solution_id, out_file,
-                            within_sow_agg: str = "mean",
                             policy_label: str = "most-robust policy",
                             figsize: tuple = (14, 4.8)) -> dict:
     """Pass/fail scatter of one policy across the DU theta-factor ranges.
@@ -67,7 +64,6 @@ def plot_scenario_discovery(reeval_dir, ensemble_dir, solution_id, out_file,
             holding ``forcing_profiles.npz`` with the sampled theta.
         solution_id: Policy to diagnose (typically the most-robust acceptable one).
         out_file: PNG path.
-        within_sow_agg: Within-SOW risk attitude (matches the scorecard).
         policy_label: Legend/title label for the policy.
         figsize: Figure size.
 
@@ -77,7 +73,7 @@ def plot_scenario_discovery(reeval_dir, ensemble_dir, solution_id, out_file,
     from src.robustness import load_raw
 
     raw = load_raw(Path(reeval_dir))
-    passfail, sow_labels = _policy_sow_passfail(raw, solution_id, within_sow_agg)
+    passfail, sow_labels = _policy_sow_passfail(raw, solution_id)
     theta_sow, names = _load_sow_theta(ensemble_dir)
 
     if theta_sow.shape[0] != passfail.shape[0]:
@@ -109,7 +105,8 @@ def plot_scenario_discovery(reeval_dir, ensemble_dir, solution_id, out_file,
 
     fig.suptitle(
         f"Scenario discovery — {policy_label} (id {int(solution_id)}): "
-        f"satisfices all 7 thresholds in {npass}/{n} SOWs ({100*npass/n:.0f}%)\n"
+        f"satisfices all {len(raw.obj_names)} thresholds in {npass}/{n} SOWs "
+        f"({100*npass/n:.0f}%)\n"
         f"each point is one deeply-uncertain state of the world in sampled "
         f"forcing-factor space",
         fontsize=11)

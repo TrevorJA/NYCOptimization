@@ -9,10 +9,16 @@ directions:
 
 So the assertions below are not shape checks. They pin the direction of every
 choice: the headline rung is the SMALLEST that clears the floor (not the
-largest); the noise floor scales with the estimator's noise (not with the
-objective's level); the null differences carry no design effect; a saturated
-tolerance is detected and named; and the margin machinery REFUSES to run before a
-rung has been adopted.
+largest); the noise floor scales with the local spread of the per-SOW estimator
+(not with the objective's level, and not with the forcing trend the binning
+exists to exclude); the null differences carry no design effect; a saturated
+tolerance is detected and named; and the margin machinery REFUSES to run before
+a rung has been adopted.
+
+Fixtures follow the per-SOW annual-unit substrate: long rows
+``(solution_id, sow_id, objective, value)`` plus a meta carrying ``obj_names``
+(ANNUAL names), ``sow_labels``, ``realizations_per_sow``, and
+``substrate = "sow_annual_unit"``.
 
 Run:
     venv/Scripts/python.exe -m pytest tests/test_regret_tolerance_diagnostics.py -v
@@ -46,45 +52,65 @@ def _load_rtol():
 
 rtol = _load_rtol()
 
-# Two REAL base objectives so the epsilon ladder resolves against the registry.
-OBJS = ["nyc_delivery_reliability_weekly", "downstream_flood_exceedance_minor"]
-N_SOW, R = 40, 25
+# Two REAL annual objectives so the epsilon ladder resolves against the
+# registry (eps 0.02 and 0.3 in ENSEMBLE_OBJECTIVES).
+OBJS = ["nyc_delivery_reliability_annual", "downstream_flood_exceedance_annual"]
+N_SOW, R = 400, 25
+
+#: The dominant forcing coordinate, one value per SOW (the fixture's severity
+#: axis; SOW labels are 0..N_SOW-1 in this order).
+THETA_M = np.linspace(-0.2, 0.2, N_SOW)
+
+#: Per-objective per-SOW estimator noise SD at noise_scale = 1. Chosen so the
+#: reliability epsilon (0.02) sits ABOVE its floor and the flood epsilon (0.3)
+#: sits BELOW its floor -- the live mis-scaled-axis case the shape table exists
+#: to flag.
+NOISE_SD = {OBJS[0]: 0.004, OBJS[1]: 0.5}
 
 META = {
     "is_ensemble": True,
-    "base_names": OBJS,
-    "thresholds": {OBJS[0]: 0.87, OBJS[1]: 1.17},
+    "substrate": "sow_annual_unit",
+    "obj_names": OBJS,
+    "thresholds": {OBJS[0]: 0.85, OBJS[1]: 1.17},
     "kinds": {OBJS[0]: "ge", OBJS[1]: "le"},
     "directions": {OBJS[0]: "maximize", OBJS[1]: "minimize"},
-    "realization_indices": list(range(N_SOW * R)),
-    "sow_ids": [s for s in range(N_SOW) for _ in range(R)],
+    "sow_labels": list(range(N_SOW)),
     "n_sow": N_SOW,
     "realizations_per_sow": R,
+    "n_realizations": N_SOW * R,
 }
 
 
 def _write(dir_: Path, records, n_sol) -> None:
     dir_.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(records, columns=["solution_id", "realization_id", "objective",
+    pd.DataFrame(records, columns=["solution_id", "sow_id", "objective",
                                    "value"]).to_csv(
         dir_ / "reeval_raw.csv.gz", index=False, compression="gzip")
     (dir_ / "reeval_raw_meta.json").write_text(json.dumps(
-        dict(META, solution_ids=list(range(n_sol)), n_solutions=n_sol,
-             n_realizations=N_SOW * R)))
+        dict(META, solution_ids=list(range(n_sol)), n_solutions=n_sol)))
 
 
-def _baseline_cube(tmp_path: Path, noise_scale: float = 1.0) -> rob.RawCube:
-    """An incumbent whose within-SOW spread is a controlled multiple of a base level."""
+def _baseline_cube(tmp_path: Path, noise_scale: float = 1.0,
+                   trend_amp: float = 0.0, tag: str = "") -> rob.RawCube:
+    """An incumbent whose per-SOW values carry a controlled m-trend + noise.
+
+    ``trend_amp`` scales a linear response to the forcing coordinate m;
+    ``noise_scale`` multiplies the per-SOW estimator noise. The same RNG seed
+    is used at every scale so noise draws are identical up to the multiplier.
+    """
     rng = np.random.default_rng(11)
+    eps0 = rng.standard_normal(N_SOW)
+    eps1 = rng.standard_normal(N_SOW)
     records = []
-    for sow in range(N_SOW):
-        for rep in range(R):
-            rid = sow * R + rep
-            records.append((0, rid, OBJS[0],
-                            float(0.87 + noise_scale * 0.02 * rng.standard_normal())))
-            records.append((0, rid, OBJS[1],
-                            float(1.00 + noise_scale * 0.10 * rng.standard_normal())))
-    d = tmp_path / f"baseline_{noise_scale}"
+    for g in range(N_SOW):
+        m = THETA_M[g]
+        records.append((0, g, OBJS[0],
+                        float(0.87 + trend_amp * m
+                              + noise_scale * NOISE_SD[OBJS[0]] * eps0[g])))
+        records.append((0, g, OBJS[1],
+                        float(1.00 + trend_amp * m
+                              + noise_scale * NOISE_SD[OBJS[1]] * eps1[g])))
+    d = tmp_path / f"baseline_{tag or noise_scale}"
     _write(d, records, n_sol=1)
     return rob.load_raw(d)
 
@@ -94,49 +120,63 @@ def _baseline_cube(tmp_path: Path, noise_scale: float = 1.0) -> rob.RawCube:
 ###############################################################################
 
 def test_noise_floor_tracks_the_estimator_not_the_objective_level(tmp_path):
-    """Doubling the incumbent's within-SOW spread must double the floor.
+    """Doubling the incumbent's per-SOW spread must double the floor.
 
-    The floor is a property of how precisely a SOW mean is estimated. If it
-    tracked the objective's LEVEL instead, it would be a Tier-C quantity in
-    disguise and would drift with the system rather than with the measurement.
+    The floor is a property of how precisely a SOW's pooled objective value is
+    estimated. If it tracked the objective's LEVEL instead, it would be a
+    Tier-C quantity in disguise and would drift with the system rather than
+    with the measurement.
     """
-    quiet = rtol.tolerance_floor(rtol.within_sow_noise(_baseline_cube(tmp_path, 1.0)))
-    loud = rtol.tolerance_floor(rtol.within_sow_noise(_baseline_cube(tmp_path, 2.0)))
+    quiet = rtol.tolerance_floor(rtol.sow_noise_floor(
+        _baseline_cube(tmp_path, 1.0, tag="q"), THETA_M))
+    loud = rtol.tolerance_floor(rtol.sow_noise_floor(
+        _baseline_cube(tmp_path, 2.0, tag="l"), THETA_M))
     for name in OBJS:
         q = float(quiet.set_index("objective").loc[name, "tau_floor"])
         l = float(loud.set_index("objective").loc[name, "tau_floor"])
         assert l == pytest.approx(2.0 * q, rel=0.15)
 
 
-def test_noise_floor_shrinks_with_more_realizations_per_sow(tmp_path):
-    """SE = sigma/sqrt(R): a better-resolved SOW mean permits a tighter tolerance."""
-    base = _baseline_cube(tmp_path, 1.0)
-    full = rtol.tolerance_floor(rtol.within_sow_noise(base))
-    # Halve R by keeping only the first half of each SOW's realizations.
-    keep = [rid for rid in base.realization_ids if (rid % R) < R // 2]
-    sub_meta = dict(META, realization_indices=keep,
-                    sow_ids=[rid // R for rid in keep],
-                    realizations_per_sow=R // 2)
-    d = tmp_path / "half"
-    d.mkdir()
-    rows = []
-    for j, rid in enumerate(base.realization_ids):
-        if rid not in keep:
-            continue
-        for k, name in enumerate(base.base_names):
-            rows.append((0, rid, name, float(base.cube[0, j, k])))
-    pd.DataFrame(rows, columns=["solution_id", "realization_id", "objective",
-                                "value"]).to_csv(
-        d / "reeval_raw.csv.gz", index=False, compression="gzip")
-    (d / "reeval_raw_meta.json").write_text(json.dumps(
-        dict(sub_meta, solution_ids=[0], n_solutions=1, n_realizations=len(keep))))
-    half = rtol.tolerance_floor(rtol.within_sow_noise(rob.load_raw(d)))
+def test_noise_floor_excludes_the_forcing_trend(tmp_path):
+    """The binned-in-m spread must not read the m-response as noise.
 
+    A policy's systematic response to the forcing axis is signal, not
+    estimator noise; binning narrowly in m is what keeps it out of the floor.
+    A strong trend may only INFLATE the floor slightly (the documented
+    upper-bound direction), never by the trend's own global spread.
+    """
+    flat = rtol.sow_noise_floor(
+        _baseline_cube(tmp_path, 1.0, trend_amp=0.0, tag="flat"), THETA_M)
+    trended = rtol.sow_noise_floor(
+        _baseline_cube(tmp_path, 1.0, trend_amp=0.5, tag="trend"), THETA_M)
+    global_trend_sd = float(np.std(0.5 * THETA_M, ddof=1))  # ~0.058
     for name in OBJS:
-        f = float(full.set_index("objective").loc[name, "tau_floor"])
-        h = float(half.set_index("objective").loc[name, "tau_floor"])
-        assert h > f, "fewer realizations per SOW must RAISE the floor"
-        assert h == pytest.approx(f * np.sqrt(2.0), rel=0.25)
+        f = float(flat.set_index("objective").loc[name, "sigma_local"])
+        t = float(trended.set_index("objective").loc[name, "sigma_local"])
+        assert t >= f * 0.95, "binning must not deflate the floor"
+        assert t == pytest.approx(f, rel=0.25), (
+            "the local floor must track the noise, not the trend"
+        )
+        if NOISE_SD[name] < global_trend_sd:
+            assert t < global_trend_sd, (
+                "a floor carrying the global trend spread would be the "
+                "un-detrended estimator in disguise"
+            )
+
+
+def test_theta_m_by_sow_joins_on_sow_id(tmp_path):
+    """One theta row per realization; SOW = realization_id // R, never position."""
+    base = _baseline_cube(tmp_path, 1.0, tag="theta")
+    rids = np.arange(N_SOW * R)
+    m_per_real = THETA_M[rids // R]
+    theta = np.column_stack([m_per_real, np.zeros_like(m_per_real),
+                             np.zeros_like(m_per_real)])
+    perm = np.random.default_rng(5).permutation(rids.size)  # shuffled storage
+    npz = tmp_path / "forcing_profiles.npz"
+    np.savez(npz, theta_params=theta[perm], realization_ids=rids[perm],
+             theta_param_names=np.array(["m", "r1", "r2"]))
+    out = rtol.theta_m_by_sow(base, npz_path=npz)
+    np.testing.assert_allclose(out, THETA_M)
 
 
 def test_headline_rung_is_the_smallest_that_clears_every_floor(tmp_path):
@@ -165,11 +205,13 @@ def test_no_rung_clearing_the_floor_is_reported_not_papered_over(tmp_path):
 def test_ladder_shape_flags_an_epsilon_below_its_noise_floor(tmp_path):
     """One mis-scaled axis silently redefines every rung, because k is shared.
 
-    The flood objective is the live case: eps = 0.01 ft-days/yr sits well under its
-    estimator noise floor, so on that axis k = 1 is INSIDE the noise while on the
-    reliability axis it is far outside it. The 'max' unit is what repairs that.
+    The flood objective is the live case: its annual epsilon sits well under
+    its per-SOW estimator noise floor, so on that axis k = 1 is INSIDE the
+    noise while on the reliability axis it is far outside it. The 'max' unit
+    is what repairs that.
     """
-    floors = rtol.tolerance_floor(rtol.within_sow_noise(_baseline_cube(tmp_path, 1.0)))
+    floors = rtol.tolerance_floor(rtol.sow_noise_floor(
+        _baseline_cube(tmp_path, 1.0, tag="shape"), THETA_M))
     shapes = rtol.ladder_shape_table(floors).set_index("objective")
 
     flood = shapes.loc[OBJS[1]]
@@ -182,8 +224,9 @@ def test_ladder_shape_flags_an_epsilon_below_its_noise_floor(tmp_path):
 
 def test_max_shape_ladder_lifts_only_the_starved_axis(tmp_path):
     """tau_ladder(floors=...) must raise the noise-bound axis and leave the other."""
-    from src.objectives import OBJECTIVES
-    floors = rtol.tolerance_floor(rtol.within_sow_noise(_baseline_cube(tmp_path, 1.0)))
+    from src.objectives_ensemble import ENSEMBLE_OBJECTIVES
+    floors = rtol.tolerance_floor(rtol.sow_noise_floor(
+        _baseline_cube(tmp_path, 1.0, tag="max"), THETA_M))
     fl = rtol.floors_dict(floors)
 
     eps_only = rob.tau_ladder(OBJS, k=1.0)
@@ -197,7 +240,7 @@ def test_max_shape_ladder_lifts_only_the_starved_axis(tmp_path):
         2.0 * maxed[OBJS[1]])
     # And the unit can never fall BELOW epsilon.
     for n in OBJS:
-        assert maxed[n] >= OBJECTIVES[n].epsilon - 1e-12
+        assert maxed[n] >= ENSEMBLE_OBJECTIVES[n].epsilon - 1e-12
 
 
 def test_tau_env_override_must_be_a_whole_vector(monkeypatch):
@@ -212,20 +255,6 @@ def test_tau_env_override_must_be_a_whole_vector(monkeypatch):
     monkeypatch.setenv("NYCOPT_REGRET_TAU",
                        json.dumps({OBJS[0]: 0.05, OBJS[1]: 0.5}))
     assert rob.tau_ladder(OBJS) == {OBJS[0]: 0.05, OBJS[1]: 0.5}
-
-
-def test_split_half_false_harm_falls_as_the_tolerance_widens(tmp_path):
-    """The incumbent against itself: every flagged harm is false by construction."""
-    base = _baseline_cube(tmp_path, 1.0)
-    null = rtol.split_half_null(base, grid=(0.0, 1.0, 5.0, 50.0), reps=4)
-    joint = (null[null["objective"] == "__joint__"]
-             .set_index("tau_k")["false_harm_freq"])
-    assert joint.loc[0.0] > joint.loc[50.0]
-    # A tolerance of zero flags roughly half the SOWs per objective (the sign of
-    # pure noise is a coin flip), so the joint false-harm rate is high.
-    assert joint.loc[0.0] > 0.5
-    # A very wide tolerance forgives noise entirely.
-    assert joint.loc[50.0] == pytest.approx(0.0, abs=0.02)
 
 
 ###############################################################################

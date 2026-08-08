@@ -34,7 +34,6 @@ import re
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -94,6 +93,25 @@ RETIRED_TERMS: dict[str, str] = {
         "deleted -- monotonicity is structural under the non-negative "
         "allocation-reduction DVs; flood_zone_ordering is the only DV-space "
         "Borg constraint",
+    # 2026-08-07 unified-metric-currency refactor: robustness/regret moved onto
+    # the per-SOW annual-unit objective substrate; the whole-trace / realization-
+    # unit machinery below dissolved into it.
+    "improvement_vs_baseline":
+        "the incumbent-advantage regret family (regret_mean__/gain_mean__ are "
+        "its one-sided halves, natural units, SOW unit)",
+    "vs_baseline":
+        "the incumbent-advantage regret family (regret_mean__/gain_mean__ are "
+        "its one-sided halves, natural units, SOW unit)",
+    "within_sow_agg":
+        "retired: pooling each SOW's unit-years through the §2 unit operator "
+        "IS the within-state collapse",
+    "collapse_within_sow":
+        "retired: pooling each SOW's unit-years through the §2 unit operator "
+        "IS the within-state collapse",
+    "satisficing_from_raw":
+        "persist-time per-SOW pooling (reeval_core.sow_objective_matrix)",
+    "SatisficingAgg":
+        "AnnualUnitObjective.sat_threshold/sat_kind + robustness._satisfy",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.
@@ -170,17 +188,14 @@ def test_retired_term_is_not_a_live_claim(term, replacement):
 #: Every metric column must be reachable from this table, so a new metric cannot
 #: be added without declaring what it means.
 METRIC_CONTRACT = {
-    # The SOW-unit pair is the ADOPTED PRIMARY and its decomposition; the
-    # realization-unit pair is the co-reported unit sensitivity.
-    "sat_multivariate_sow": ("fraction of SOWs whose within-SOW-collapsed performance "
-                             "meets ALL criteria [PRIMARY]", True),
-    "sat_uni_sow__": ("fraction of SOWs whose within-SOW-collapsed performance meets "
+    # ONE metric currency: every column is a transformation of the per-SOW
+    # annual-unit objective values, and the SOW is the only scoring unit.
+    "sat_multivariate_sow": ("fraction of SOWs whose per-SOW annual-unit objective "
+                             "vector meets ALL criteria jointly [PRIMARY]", True),
+    "sat_uni_sow__": ("fraction of SOWs whose per-SOW annual-unit objective meets "
                       "one criterion", True),
-    "sat_multivariate": ("fraction of realizations meeting ALL criteria", True),
-    "sat_uni__": ("fraction of realizations meeting one criterion", True),
-    "laplace__": ("mean performance, natural units, own direction", None),
-    "maximin__": ("worst realization, natural units, own direction", None),
-    "vs_baseline__": ("signed improvement over status quo; positive = better", True),
+    "laplace__": ("mean SOW performance, natural units, own direction", None),
+    "maximin__": ("worst SOW performance, natural units, own direction", None),
     # Incumbent-relative regret. The magnitude columns are in each objective's OWN
     # natural units and are never compared across objectives; the frequency columns
     # are unit-free and are what the cross-objective comparison actually uses.
@@ -205,23 +220,25 @@ METRIC_CONTRACT = {
 
 
 def _fixture_cube(tmp_path, worse_than_baseline: bool = False):
-    """A tiny two-objective cube plus a status-quo baseline."""
+    """A tiny two-objective per-SOW cube plus a status-quo baseline."""
     import json
 
     import pandas as pd
 
     meta = {
         "is_ensemble": True,
-        "base_names": ["A", "B"],
+        "obj_names": ["A", "B"],
         "thresholds": {"A": 0.9, "B": 10.0},
         "kinds": {"A": "ge", "B": "le"},
         "directions": {"A": "maximize", "B": "minimize"},
-        "realization_indices": [0, 1],
+        "sow_labels": [0, 1],
+        "realizations_per_sow": 2,
+        "substrate": "sow_annual_unit",
     }
 
     def write(d, records):
         d.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(records, columns=["solution_id", "realization_id",
+        pd.DataFrame(records, columns=["solution_id", "sow_id",
                                        "objective", "value"]).to_csv(
             d / "reeval_raw.csv.gz", index=False, compression="gzip")
         (d / "reeval_raw_meta.json").write_text(json.dumps(meta))
@@ -266,23 +283,35 @@ def test_higher_better_flags_match_the_contract(tmp_path):
                 )
 
 
-def test_improvement_vs_baseline_name_matches_its_sign(tmp_path):
-    """The name says 'improvement'. The number must go UP when the policy is better.
+def test_gain_and_regret_are_the_one_sided_halves_of_the_advantage(tmp_path):
+    """gain_mean__ / regret_mean__ split the SIGNED incumbent advantage in two.
 
-    This is the exact bug the metric shipped with: it computed a shortfall clipped
-    at zero, so beating the status quo scored 0 and the name said the opposite of
-    the quantity -- while also collapsing to ~0 for every policy, since optimized
-    policies dominate the status quo nearly everywhere.
+    The retired baseline-improvement metric shipped with the exact bug this
+    guards: a name promising 'improvement' over a number that clipped it away.
+    Its signed information now lives in the two one-sided halves, so the names
+    must track the sign: a policy that DOMINATES the status quo carries all of
+    its signal in gain (regret exactly 0), and a policy the status quo
+    dominates carries all of it in regret (gain exactly 0). Anything else means
+    a column is reporting the opposite of what its name says.
     """
     raw_good, base_good = _fixture_cube(tmp_path / "good")
-    better = rob.improvement_vs_baseline(raw_good, base_good, normalize="none")
-    assert (better.to_numpy()[np.isfinite(better.to_numpy())] > 0).all(), (
-        "policies that beat the status quo must score POSITIVE"
+    dom = rob.regret_magnitudes(raw_good, base_good)
+    gain_cols = [c for c in dom.columns if c.startswith("gain_mean__")]
+    regret_cols = [c for c in dom.columns if c.startswith("regret_mean__")]
+    assert gain_cols and regret_cols
+    assert (dom[gain_cols].to_numpy() > 0).all(), (
+        "policies that beat the status quo must carry POSITIVE gain"
+    )
+    assert (dom[regret_cols].to_numpy() == 0).all(), (
+        "a dominating policy has NO shortfall; regret must be exactly 0"
     )
 
     raw_bad, base_bad = _fixture_cube(tmp_path / "bad", worse_than_baseline=True)
-    worse = rob.improvement_vs_baseline(raw_bad, base_bad, normalize="none")
-    assert (worse.to_numpy()[np.isfinite(worse.to_numpy())] < 0).all(), (
-        "policies that lose to the status quo must score NEGATIVE, not be clipped "
-        "to 0 -- clipping destroys the discrimination the metric exists for"
+    sub = rob.regret_magnitudes(raw_bad, base_bad)
+    assert (sub[regret_cols].to_numpy() > 0).all(), (
+        "policies the status quo dominates must carry POSITIVE regret, not be "
+        "clipped to 0 -- clipping destroys the discrimination the family exists for"
+    )
+    assert (sub[gain_cols].to_numpy() == 0).all(), (
+        "a dominated policy has NO improvement; gain must be exactly 0"
     )

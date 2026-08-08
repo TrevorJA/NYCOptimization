@@ -1,7 +1,8 @@
 """regret_tolerance_diagnostics.py - Fix the two free parameters of the regret comparison.
 
 The incumbent-relative regret comparison has exactly two numbers that are not
-determined by the data: the no-harm tolerance ``tau_i = k * eps_i`` and the
+determined by the data: the no-harm tolerance ``tau_i = k * eps_i`` (eps = the
+ANNUAL-UNIT epsilon of ``objectives_ensemble.ENSEMBLE_OBJECTIVES``) and the
 non-inferiority margin ``delta`` on ``no_harm_freq_tau``. Both are
 pre-registration quantities. This script measures everything that is admissible
 as an anchor for them, and nothing that is not.
@@ -23,22 +24,37 @@ Two passes, deliberately separable.
 **Pass A — needs only the incumbent's cube, so it can run the moment step 05
 lands and long before any search finishes.** It answers "how small can a
 tolerance be before it is measuring Monte Carlo noise rather than harm?" Under
-the null that a policy is operationally identical to the incumbent, the SOW-mean
-difference is pure estimator noise; a tolerance below that scale reports noise as
-harm. Reported two ways:
+the null that a policy is operationally identical to the incumbent, the per-SOW
+difference of the annual-unit objective values is pure estimator noise (finite
+R realizations pooled per SOW); a tolerance below that scale reports noise as
+harm.
 
-  - parametric: ``tau_floor = z * sqrt(2) * median_theta[ sigma_i(theta)/sqrt(R) ]``
-  - non-parametric: a split-half null, partitioning each SOW's R realizations into
-    two halves and treating one as a pseudo-policy against the other
+**Floor estimator (changed with the per-SOW substrate, 2026-08-07).** The
+persisted cube now carries ONE value per (SOW, objective) — the SOW's R
+realizations already pooled through the §2 unit operator — so the within-SOW
+spread of per-realization metrics no longer exists to be measured, and the
+former within-SOW machinery (parametric sigma/sqrt(R) and the split-half null)
+is retired with it. The Monte Carlo noise of J(theta) from finite R cannot be
+recovered from the cube alone; it is instead BOUNDED from the incumbent's
+per-SOW values: sort the SOWs on the dominant forcing axis ``m`` (theta joined
+on sow_id), partition them into consecutive bins of ``RTOL_M_BIN_SIZE`` SOWs,
+and take ``sigma_i`` = the median across bins of the within-bin standard
+deviation — the local (binned-in-theta) spread of J around its forcing
+response. ``tau_floor = z * sqrt(2) * sigma_i`` is then the tolerance at which
+two independent estimates of an operationally identical policy are flagged as
+harm at most Phi(-z) of the time.
 
-Both are UNPAIRED and therefore CONSERVATIVE (they overstate the floor). The real
-comparison is paired — a policy and the incumbent are simulated on the same
-inflow sequences, so their difference cancels most of the shared natural
-variability — and the paired floor is smaller. It cannot be estimated without a
-second policy on E_test, so pass A reports the unpaired bound explicitly labelled
-as an upper bound, and pass B replaces it the moment any policy cube exists. An
-overstated floor pushes ``k`` up, i.e. toward less discrimination, which is the
-direction that flatters the hypothesis: hence the label, and hence pass B.
+This floor is an UPPER BOUND, conservative in three stacked ways, all stated
+wherever it is used: (1) the within-bin spread still contains real structure —
+the r1/r2 response and the residual m-trend inside each narrow bin — so
+sigma_i overstates the estimator noise; (2) it is UNPAIRED — the real
+comparison simulates a policy and the incumbent on the same inflow sequences,
+cancelling most of the shared variability; (3) the median across bins guards
+against a few bins straddling a steep response but never deflates below the
+typical local spread. An overstated floor pushes ``k`` up, i.e. toward less
+discrimination, which is the direction that flatters the hypothesis: hence the
+labels, and hence pass B, which replaces the floor with the paired estimate
+the moment any policy cube exists on E_test.
 
 **Pass B — needs the re-evaluated policy sets.** It answers "over what range of
 tolerance is the comparison informative at all, and how big is a difference that
@@ -89,52 +105,116 @@ import src.robustness as rob                                        # noqa: E402
 # Pass A - the noise floor (incumbent cube only)
 ###############################################################################
 
-def within_sow_noise(baseline: rob.RawCube) -> pd.DataFrame:
-    """Per objective: the within-SOW spread of the incumbent and its SOW-mean error.
+def theta_m_by_sow(baseline: rob.RawCube, npz_path=None) -> np.ndarray:
+    """The dominant forcing coordinate ``m``, one value per cube SOW.
 
-    ``sigma`` is the median across SOWs of the within-SOW standard deviation of the
-    whole-record base metric; ``se_sow_mean = sigma / sqrt(R)`` is the standard
-    error of one SOW's collapsed value; ``null_sd_unpaired = sqrt(2) * se`` is the
-    standard deviation of a difference between two INDEPENDENT policies' SOW means
-    under the null that they behave alike.
+    The forcing npz stores one theta row per REALIZATION; realization ``k``
+    belongs to SOW ``k // realizations_per_sow`` (``src.reeval_core.sow_grouping``),
+    so the join is on the SOW label, never positional.
 
-    The last column is an upper bound. The real comparison is paired (a policy and
-    the incumbent share inflow sequences), which cancels most of the shared
-    variability, so the paired null SD is smaller and the true floor lower.
+    Args:
+        baseline: The incumbent's per-SOW cube (supplies ``sow_labels`` and
+            ``realizations_per_sow``).
+        npz_path: Forcing-profile npz; defaults to
+            :data:`supplemental_config.RTOL_FORCING_NPZ`.
+
+    Returns:
+        ``(n_sow,)`` array of m in ``baseline.sow_labels`` order.
 
     Raises:
-        ValueError: If the cube carries no SOW grouping, in which case the
-            per-SOW estimator whose noise this measures does not exist.
+        ValueError: If the cube records no ``realizations_per_sow``, a SOW has
+            no theta rows, or theta is not constant within a SOW block.
     """
-    if baseline.sow_ids is None:
+    npz_path = sc.RTOL_FORCING_NPZ if npz_path is None else Path(npz_path)
+    r = baseline.realizations_per_sow
+    if not r:
         raise ValueError(
-            "the incumbent cube carries no sow_ids, so there is no SOW-mean "
-            "estimator to characterise. Re-evaluate on an ensemble with forcing "
-            "profiles."
+            "the incumbent cube records no realizations_per_sow, so theta rows "
+            "cannot be joined to its SOW labels."
         )
+    with np.load(npz_path) as z:
+        names = [str(n) for n in z["theta_param_names"]]
+        theta = np.asarray(z["theta_params"], dtype=float)
+        rids = np.asarray(z["realization_ids"], dtype=int)
+    col = names.index("m")
+    by_sow: dict[int, list[float]] = {}
+    for rid, val in zip(rids, theta[:, col]):
+        by_sow.setdefault(int(rid) // int(r), []).append(float(val))
+
+    out = np.empty(len(baseline.sow_labels), dtype=float)
+    for g, s in enumerate(baseline.sow_labels):
+        vals = by_sow.get(int(s))
+        if not vals:
+            raise ValueError(f"SOW {s} is missing from the forcing npz")
+        if not np.allclose(vals, vals[0], rtol=0.0, atol=1e-12):
+            raise ValueError(f"theta m is not constant within SOW {s}")
+        out[g] = vals[0]
+    return out
+
+
+def sow_noise_floor(baseline: rob.RawCube, theta_m, bin_size: int = None
+                    ) -> pd.DataFrame:
+    """Per objective: local binned-in-m spread of the incumbent's per-SOW values.
+
+    The floor estimator of the per-SOW substrate (see the module docstring):
+    the SOWs are sorted on ``m``, partitioned into consecutive bins of
+    ``bin_size`` SOWs, and ``sigma_local`` is the median across bins of the
+    within-bin standard deviation — an UPPER BOUND on the Monte Carlo noise of
+    one SOW's pooled objective value, since each bin's spread also carries the
+    r1/r2 response and the residual m-trend inside the bin.
+    ``null_sd_unpaired = sqrt(2) * sigma_local`` is the SD of a difference
+    between two INDEPENDENT such estimates under the null that the policies
+    behave alike.
+
+    Args:
+        baseline: The incumbent's per-SOW cube.
+        theta_m: ``(n_sow,)`` forcing coordinate aligned to
+            ``baseline.sow_labels`` (from :func:`theta_m_by_sow`).
+        bin_size: Consecutive SOWs per bin on the m-sorted axis; defaults to
+            :data:`supplemental_config.RTOL_M_BIN_SIZE`.
+
+    Returns:
+        Tidy frame: objective, n_sow, n_bins, bin_size, sigma_local,
+        null_sd_unpaired.
+    """
+    if baseline.n_sow <= 1:
+        raise ValueError(
+            "the incumbent cube has no SOW structure, so there is no per-SOW "
+            "estimator to characterise. Re-evaluate on a DU-forced ensemble."
+        )
+    theta_m = np.asarray(theta_m, dtype=float).ravel()
+    if theta_m.shape[0] != baseline.n_sow:
+        raise ValueError(
+            f"theta_m has {theta_m.shape[0]} entries for {baseline.n_sow} SOWs"
+        )
+    b = int(sc.RTOL_M_BIN_SIZE if bin_size is None else bin_size)
+    if b < 3:
+        raise ValueError(f"bin_size must be >= 3, got {b}")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        vals = np.nanmean(baseline.cube, axis=0)       # (G, M); identity, S = 1
+    order = np.argsort(theta_m)
+
     rows = []
-    groups = baseline.sow_groups()
-    for k, name in enumerate(baseline.base_names):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            sds, ns = [], []
-            for _sow, cols in groups:
-                v = baseline.cube[:, cols, k].ravel()
-                v = v[np.isfinite(v)]
-                if v.size >= 2:
-                    sds.append(float(np.std(v, ddof=1)))
-                    ns.append(v.size)
-        if not sds:
-            rows.append({"objective": name, "n_sow": 0, "R_median": np.nan,
-                         "sigma_within_sow": np.nan, "se_sow_mean": np.nan,
-                         "null_sd_unpaired": np.nan})
-            continue
-        sigma = float(np.median(sds))
-        r = float(np.median(ns))
-        se = sigma / np.sqrt(r)
-        rows.append({"objective": name, "n_sow": len(sds), "R_median": r,
-                     "sigma_within_sow": sigma, "se_sow_mean": se,
-                     "null_sd_unpaired": float(np.sqrt(2.0) * se)})
+    for k, name in enumerate(baseline.obj_names):
+        v = vals[order, k]
+        sds = []
+        for start in range(0, v.size, b):
+            block = v[start:start + b]
+            block = block[np.isfinite(block)]
+            if block.size >= 3:
+                sds.append(float(np.std(block, ddof=1)))
+        sigma = float(np.median(sds)) if sds else np.nan
+        rows.append({
+            "objective": name,
+            "n_sow": int(np.isfinite(v).sum()),
+            "n_bins": len(sds),
+            "bin_size": b,
+            "sigma_local": sigma,
+            "null_sd_unpaired": float(np.sqrt(2.0) * sigma)
+            if np.isfinite(sigma) else np.nan,
+        })
     return pd.DataFrame(rows)
 
 
@@ -145,84 +225,22 @@ def tolerance_floor(noise: pd.DataFrame, z: float = None) -> pd.DataFrame:
     policy identical to the incumbent is flagged as harming that objective in at
     most ``Phi(-z)`` of SOWs. Below it, ``harm_freq`` is measuring the estimator.
 
-    Returns the noise table plus ``eps`` (the objective's just-noticeable
-    difference), ``tau_floor``, and ``k_floor = tau_floor / eps`` — the ladder rung
-    at which that objective becomes defensible.
+    Returns the noise table plus ``eps`` (the objective's ANNUAL-UNIT
+    just-noticeable difference from ``ENSEMBLE_OBJECTIVES``), ``tau_floor``,
+    and ``k_floor = tau_floor / eps`` — the ladder rung at which that objective
+    becomes defensible.
     """
-    from src.objectives import OBJECTIVES
+    from src.objectives_ensemble import ENSEMBLE_OBJECTIVES
 
     z = sc.RTOL_FALSE_HARM_Z if z is None else float(z)
     out = noise.copy()
     out["z"] = z
     out["tau_floor"] = z * out["null_sd_unpaired"]
-    out["eps"] = [float(OBJECTIVES[n].epsilon) if n in OBJECTIVES else np.nan
+    out["eps"] = [float(ENSEMBLE_OBJECTIVES[n].epsilon)
+                  if n in ENSEMBLE_OBJECTIVES else np.nan
                   for n in out["objective"]]
     out["k_floor"] = out["tau_floor"] / out["eps"]
     return out
-
-
-def split_half_null(baseline: rob.RawCube, grid=None, reps: int = None,
-                    seed: int = None) -> pd.DataFrame:
-    """Non-parametric null: the incumbent compared against itself.
-
-    Each SOW's realizations are split into two halves; one half's mean plays the
-    policy, the other the incumbent. Every flagged "harm" is then false by
-    construction, so the resulting frequencies are the false-harm rate of the
-    tolerance ladder.
-
-    The two halves are disjoint, so the difference is noisier than the real
-    (paired, full-sample) comparison. Differences are rescaled by
-    ``sqrt( (2/R) / (1/n1 + 1/n2) )`` to correspond to two independent full-R
-    estimates, which removes the half-sample penalty but NOT the pairing penalty;
-    what remains is the same unpaired upper bound the parametric floor reports,
-    measured without a normality assumption.
-
-    Returns:
-        Tidy frame: tau_k, objective (or ``__joint__``), false_harm_freq.
-    """
-    from src.objectives import OBJECTIVES
-
-    grid = sc.RTOL_TAU_GRID if grid is None else grid
-    reps = sc.RTOL_SPLIT_HALF_REPS if reps is None else int(reps)
-    rng = np.random.default_rng(sc.RTOL_SPLIT_HALF_SEED if seed is None else seed)
-
-    names = baseline.base_names
-    signs = baseline.direction_signs()
-    groups = baseline.sow_groups()
-    eps = np.array([float(OBJECTIVES[n].epsilon) if n in OBJECTIVES else np.nan
-                    for n in names])
-
-    acc = {k: {"joint": [], "per_obj": []} for k in grid}
-    for _rep in range(reps):
-        diffs = np.full((len(groups), len(names)), np.nan)
-        for g, (_sow, cols) in enumerate(groups):
-            cols = np.asarray(cols)
-            perm = rng.permutation(cols.size)
-            a, b = cols[perm[: cols.size // 2]], cols[perm[cols.size // 2:]]
-            if a.size == 0 or b.size == 0:
-                continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                ma = np.nanmean(baseline.cube[:, a, :], axis=(0, 1))
-                mb = np.nanmean(baseline.cube[:, b, :], axis=(0, 1))
-            scale = np.sqrt((2.0 / cols.size) / (1.0 / a.size + 1.0 / b.size))
-            diffs[g, :] = signs * (ma - mb) * scale
-        finite = np.isfinite(diffs)
-        for k in grid:
-            tau = k * eps
-            harm = (~finite) | (diffs < -tau[None, :])
-            acc[k]["per_obj"].append(harm.mean(axis=0))
-            acc[k]["joint"].append(float(harm.any(axis=1).mean()))
-
-    rows = []
-    for k in grid:
-        rows.append({"tau_k": float(k), "objective": "__joint__",
-                     "false_harm_freq": float(np.mean(acc[k]["joint"]))})
-        per = np.mean(np.vstack(acc[k]["per_obj"]), axis=0)
-        for name, v in zip(names, per):
-            rows.append({"tau_k": float(k), "objective": name,
-                         "false_harm_freq": float(v)})
-    return pd.DataFrame(rows)
 
 
 def ladder_shape_table(floors: pd.DataFrame) -> pd.DataFrame:
@@ -378,12 +396,11 @@ def paired_bootstrap_se(runs, design_a: str, design_b: str, k: float,
                        for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
                 continue
             base = rob.load_raw(bdir)
-            if raw.sow_ids is None or base.sow_ids is None:
+            if raw.n_sow <= 1 or base.n_sow <= 1:
                 continue
-            D = rob.incumbent_advantage(raw, base,
-                                        within_sow_agg=sc.RTOL_WITHIN_SOW_AGG)
-            tau = rob.tau_ladder(raw.base_names, k=k)
-            tv = np.array([tau[n] for n in raw.base_names], dtype=float)
+            D = rob.incumbent_advantage(raw, base)
+            tau = rob.tau_ladder(raw.obj_names, k=k)
+            tv = np.array([tau[n] for n in raw.obj_names], dtype=float)
             finite = np.isfinite(D)
             stacks.append((~((~finite) | (D < -tv[None, None, :]))).all(axis=2))
         return stacks
@@ -470,15 +487,14 @@ def joint_vs_independent(runs, k: float) -> pd.DataFrame:
                    for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
             continue
         base = rob.load_raw(bdir)
-        if raw.sow_ids is None or base.sow_ids is None:
+        if raw.n_sow <= 1 or base.n_sow <= 1:
             continue
-        tau = rob.tau_ladder(raw.base_names, k=k)
-        f = rob.regret_frequencies(raw, base, tau=tau,
-                                   within_sow_agg=sc.RTOL_WITHIN_SOW_AGG)
-        phi = f[[f"harm_freq__{n}" for n in raw.base_names]].to_numpy()
+        tau = rob.tau_ladder(raw.obj_names, k=k)
+        f = rob.regret_frequencies(raw, base, tau=tau)
+        phi = f[[f"harm_freq__{n}" for n in raw.obj_names]].to_numpy()
         indep = np.prod(1.0 - phi, axis=1)
         obs = f["no_harm_freq_tau"].to_numpy()
-        binding = [raw.base_names[i] for i in np.argmax(phi, axis=1)]
+        binding = [raw.obj_names[i] for i in np.argmax(phi, axis=1)]
         for j, sid in enumerate(f.index):
             rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
                          "solution_id": int(sid), "tau_k": float(k),
@@ -504,21 +520,27 @@ def run_pass_a(baseline_dir=None) -> dict:
             f"step-05 baseline re-evaluated on the test ensemble; run that first."
         )
     base = rob.load_raw(baseline_dir)
-    noise = within_sow_noise(base)
+    if base.n_sow <= 1:
+        raise SystemExit(
+            "[rtol] the incumbent cube has no SOW structure; the per-SOW "
+            "estimator whose noise floor pass A measures does not exist for it."
+        )
+    theta_m = theta_m_by_sow(base)
+    noise = sow_noise_floor(base, theta_m)
     floors = tolerance_floor(noise)
     shapes = ladder_shape_table(floors)
-    split = split_half_null(base)
     head = headline_k(floors)
 
     sc.RTOL_TABLES_DIR.mkdir(parents=True, exist_ok=True)
     floors.to_csv(sc.rtol_table_path("rtol_noise_floor"), index=False)
     shapes.to_csv(sc.rtol_table_path("rtol_ladder_shapes"), index=False)
-    split.to_csv(sc.rtol_table_path("rtol_split_half_null"), index=False)
     (sc.RTOL_TABLES_DIR / "rtol_floors.json").write_text(
         json.dumps(floors_dict(floors), indent=2))
 
-    print(f"[rtol] pass A: noise floor over {base.n_sow} SOWs x "
-          f"{base.realizations_per_sow} realizations")
+    print(f"[rtol] pass A: noise floor over {base.n_sow} SOWs "
+          f"(R={base.realizations_per_sow} pooled per SOW; within-bin SD over "
+          f"{int(sc.RTOL_M_BIN_SIZE)}-SOW bins on the m-sorted axis — an "
+          f"unpaired UPPER BOUND)")
     for _, r in floors.iterrows():
         print(f"[rtol]   {r['objective']:38s} tau_floor={r['tau_floor']:.4g} "
               f"eps={r['eps']:.4g} -> k_floor={r['k_floor']:.2f}")
@@ -546,7 +568,7 @@ def run_pass_a(baseline_dir=None) -> dict:
               f"'max' shape rather than stretching the ladder -- a rung that large "
               f"is far outside the noise on every other axis.")
     return {"noise": noise, "floors": floors, "shapes": shapes,
-            "split_half": split, "headline": head}
+            "headline": head}
 
 
 def run_pass_b(formulation: str = "ffmp", reeval_tag: str | None = None) -> dict:

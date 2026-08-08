@@ -57,22 +57,28 @@ epsilon-calibration experiment (see the `_ANNUAL_REGISTRY_SPEC` comment and
 active 8th objective. The inactive-registry entries carry calibrated values
 from the same experiment.
 
-Re-evaluation satisficing layer (retained)
-------------------------------------------
-The re-eval robustness pipeline (`src.reeval_core`, `src.robustness`) persists
-the PER-REALIZATION §1 base-metric matrix and scores the robustness metrics
-from it offline. Each :class:`AnnualUnitObjective` therefore also carries:
+Re-evaluation layer (unified currency)
+--------------------------------------
+The re-eval robustness pipeline (`src.reeval_core`, `src.robustness`) scores
+THE SAME annual-unit objectives, recomputed per deeply-uncertain state of the
+world (SOW): each E_test SOW's R realizations contribute their unit-years to
+one pooled sample, the §2 unit operator collapses that pool to the SOW's
+objective value, and robustness/regret are transformations of those per-SOW
+objective values (Herman et al. 2014, 2015; Trindade et al. 2017; McPhail et
+al. 2018). There is ONE metric currency: search, robustness, and regret all
+speak the annual-unit objective statistics.
 
-- ``base`` — the §1 single-trace ``Objective`` whose per-realization values
-  populate the persisted re-eval matrix (``src.simulation.evaluate_raw``);
-- ``aggregator`` — the per-realization :class:`SatisficingAgg` used by
-  ``reeval_core`` for the derived ``objectives_summary.csv`` and the
-  threshold/kind metadata of the robustness scorecard.
+Each :class:`AnnualUnitObjective` therefore also carries:
 
-The search path never touches these two; they exist so re-evaluation scoring
-is independent of the search-side annual-unit scheme. Thresholds are labelled
-by ``<base>__sat<thr>`` keys and remain overridable via
-``NYCOPT_SAT_THRESHOLDS`` (JSON name→threshold). No CLI flags.
+- ``base`` — the §1 single-trace ``Objective`` supplying the shared
+  windowed-series cores (provenance; the re-eval path never computes its
+  whole-trace scalar);
+- ``sat_threshold`` / ``sat_kind`` — the satisficing criterion applied to the
+  per-SOW objective values by the robustness layer (``sat_kind`` follows the
+  objective's own direction: maximize → "ge", minimize → "le").
+
+Thresholds are labelled by ``<annual name>__sat<thr>`` keys and remain
+overridable via ``NYCOPT_SAT_THRESHOLDS`` (JSON label→threshold). No CLI flags.
 
 Env overrides (JSON objects; pattern-matched, no CLI flags):
     NYCOPT_FAILURE_K       {"<annual objective name>": <k>, ...}
@@ -228,43 +234,6 @@ class PooledMeanOp:
 
 
 ###############################################################################
-# Re-evaluation satisficing aggregator (per-realization §1 metrics)
-###############################################################################
-
-class SatisficingAgg:
-    """Fraction of finite per-realization values that meet the threshold.
-
-    `kind="ge"` ⇒ raw >= threshold (use for maximize-base metrics).
-    `kind="le"` ⇒ raw <= threshold (use for minimize-base metrics).
-
-    NaN / non-finite values count as **unsatisfied** so a degenerate
-    realization can't masquerade as satisficing. If every value is non-finite
-    the result is 0.0 rather than NaN.
-
-    Used by the re-evaluation pipeline (`src.reeval_core` summary derivation +
-    robustness threshold/kind metadata) — NOT by the search path, which uses
-    the annual-unit operators above.
-    """
-
-    def __init__(self, threshold: float, kind: Literal["ge", "le"]):
-        if kind not in ("ge", "le"):
-            raise ValueError(f"kind must be 'ge' or 'le', got '{kind}'")
-        self.threshold = float(threshold)
-        self.kind = kind
-
-    def __call__(self, values) -> float:
-        arr = np.asarray(list(values), dtype=float)
-        if arr.size == 0:
-            return 0.0
-        finite = np.isfinite(arr)
-        if self.kind == "ge":
-            sat = finite & (arr >= self.threshold)
-        else:
-            sat = finite & (arr <= self.threshold)
-        return float(sat.sum()) / float(arr.size)
-
-
-###############################################################################
 # AnnualUnitObjective
 ###############################################################################
 
@@ -287,16 +256,18 @@ class AnnualUnitObjective:
             (stage i).
         unit_operator: Callable ``pooled_units -> float`` collapsing the
             pooled unit-years of the whole ensemble (stage ii).
-        base: The §1 single-trace ``Objective`` this annualizes. Used ONLY by
-            the re-evaluation path (``evaluate_raw`` per-realization matrix).
-        aggregator: Per-realization ``SatisficingAgg`` consumed ONLY by the
-            re-evaluation pipeline (summary derivation + threshold metadata).
+        base: The §1 single-trace ``Objective`` whose windowed-series cores the
+            annual metric reuses (formula provenance; its whole-trace scalar is
+            never computed by the re-evaluation path).
+        sat_threshold: Satisficing level applied by the robustness layer to the
+            per-SOW value of THIS objective (``None`` for objectives with no
+            satisficing role, e.g. inactive diagnostics).
     """
 
     def __init__(self, name: str, direction: str, epsilon: float,
                  description: str, annual_metric: Callable,
                  unit_operator: Callable, base: Objective,
-                 aggregator: Callable):
+                 sat_threshold: float | None = None):
         if direction not in ("maximize", "minimize"):
             raise ValueError(
                 f"direction must be 'maximize' or 'minimize', got '{direction}'"
@@ -308,12 +279,17 @@ class AnnualUnitObjective:
         self.annual_metric = annual_metric
         self.unit_operator = unit_operator
         self.base = base
-        self.aggregator = aggregator
+        self.sat_threshold = None if sat_threshold is None else float(sat_threshold)
 
     @property
     def sign(self) -> int:
         """Return 1 for maximize, -1 for minimize."""
         return 1 if self.direction == "maximize" else -1
+
+    @property
+    def sat_kind(self) -> Literal["ge", "le"]:
+        """Satisficing direction, derived from the objective's own direction."""
+        return "ge" if self.direction == "maximize" else "le"
 
     def annual_units(self, data: dict) -> np.ndarray:
         """Stage (i): per-unit-year annual metrics for ONE realization."""
@@ -525,35 +501,53 @@ def _resolve_failure_k() -> dict[str, int]:
 ###############################################################################
 # Re-evaluation satisficing thresholds & env override
 ###############################################################################
-# Per-BASE-objective satisficing levels applied to the PER-REALIZATION §1
-# metrics of the persisted re-eval matrix (reeval_core summary derivation and
-# robustness threshold/kind metadata). Labels use the `<base>__sat<thr>` form;
-# they are threshold labels, not objective names. ADOPTED 2026-08-07 from the
-# satisficing-threshold diagnostic run against the genuine status-quo E_test
-# cube (docs/notes/methods/robustness_threshold_diagnostics.md §0b rules;
-# per-objective basis in supplemental_config.RTD_RECOMMENDATION_BASIS).
-# Override via NYCOPT_SAT_THRESHOLDS. Already-persisted reeval_raw_meta.json
-# files keep their snapshotted pre-adoption thresholds by design.
+# Per-ANNUAL-objective satisficing levels applied by the robustness layer to
+# the PER-SOW annual-unit objective values (the same statistics the search
+# optimizes, pooled per deeply-uncertain state of the world at re-evaluation).
+# Labels use the `<annual name>__sat<thr>` form; they are threshold labels,
+# not objective names.
+#
+# STATUS: PROVISIONAL (2026-08-07). The metric substrate changed from
+# whole-trace §1 scalars to per-SOW annual-unit values, so the previously
+# adopted vector (anchored on whole-trace statistics) does not carry over.
+# External goalposts whose meaning survives the substrate change are carried
+# (flood ft-days/yr; the FFMP L5 26% storage floor); the re-anchored values
+# below follow §0b rule 1 (maintain-status-quo, stricter side) against the
+# incumbent's ANNUAL-UNIT historic anchors, recomputed 2026-08-07 from
+# outputs/baseline/ffmp_baseline.hdf5 via obj.compute([data]):
+#   nyc rel 0.6447 / nyc deficit P99 48.83 / montague rel 0.7895 /
+#   montague deficit P99 27.68 / trenton rel 0.8684 / flood 0.3467 /
+#   storage min P01 0.0000 / nj rel 0.7368.
+# FINAL adoption happens only after the satisficing-threshold diagnostic is
+# re-run against the status-quo E_test cube on the new substrate (TODO.md;
+# docs/notes/methods/robustness_threshold_diagnostics.md §0b rules). Note the
+# storage goalpost: the incumbent's historic P01-of-annual-minima is 0% (the
+# 1960s drought emptied storage), so the carried 26% floor is a criterion the
+# status quo itself fails on the historic trace — the diagnostic re-run
+# arbitrates. Override via NYCOPT_SAT_THRESHOLDS. Already-persisted
+# reeval_raw_meta.json files keep their snapshotted thresholds by design.
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
-    # Rule 1 (maintain-status-quo re-anchors, stricter side): historic-trace
-    # anchors 0.8692 / 29.17 / 0.9188.
-    "nyc_delivery_reliability_weekly__sat87":     0.87,
-    "nyc_delivery_deficit_cvar90_pct__sat29":     29.0,
-    "montague_flow_reliability_weekly__sat85":    0.85,
-    "montague_flow_deficit_cvar90_pct__sat25":    25.0,
-    "trenton_flow_reliability_weekly__sat85":     0.85,
-    "nj_delivery_reliability_weekly__sat92":      0.92,
-    # Flood threshold in ft-days/yr (the base metric is mean annual flood
-    # exceedance): rule 2 external goalpost — the observed WY2001-2023
-    # exceedance (supplemental_config.RTD_FLOOD_ANCHORS, provenance there).
-    "downstream_flood_exceedance_minor__sat1p17":   1.17,
-    # DIAGNOSTIC counterpart in days/yr (the retired count metric; not in the
-    # re-eval cube, untouched by the diagnostic).
-    "downstream_flood_days_minor__sat1":          1.0,
-    # Rule 2: the FFMP drought-emergency (L5) boundary's seasonal floor, 26%
-    # of combined capacity, replaces the round 25.
-    "nyc_storage_p5_pct__sat26":                  26.0,
+    # Rule 1 re-anchors (stricter side of the annual-unit historic anchors).
+    "nyc_delivery_reliability_annual__sat65":     0.65,
+    "nyc_delivery_deficit_p99_pct__sat48":        48.0,
+    "montague_flow_reliability_annual__sat79":    0.79,
+    "montague_flow_deficit_p99_pct__sat27":       27.0,
+    "trenton_flow_reliability_annual__sat87":     0.87,
+    "nj_delivery_reliability_annual__sat74":      0.74,
+    # Rule 2 external goalpost, CARRIED: the observed WY2001-2023 mean annual
+    # exceedance in ft-days/yr — the §2 flood objective is the same quantity
+    # (mean over unit-years of within-year ft-day sums), so the goalpost's
+    # meaning survives the substrate change.
+    "downstream_flood_exceedance_annual__sat1p17": 1.17,
+    # DIAGNOSTIC counterpart in days/yr (inactive objective).
+    "downstream_flood_days_annual__sat1":         1.0,
+    # Rule 2 external goalpost, CARRIED: the FFMP drought-emergency (L5)
+    # boundary's seasonal floor, 26% of combined capacity — now applied to the
+    # per-SOW P01 of annual minimum storage ("the worst ~1% of unit-years stay
+    # out of drought emergency"). See the status note above: the incumbent
+    # fails this on the historic trace.
+    "nyc_storage_min_p01_pct__sat26":             26.0,
 }
 
 
@@ -573,29 +567,31 @@ def _resolve_thresholds() -> dict[str, float]:
     return thresholds
 
 
-# (base_objective_name, threshold_label, kind) — the re-eval satisficing
-# layer. `kind` is the satisficing direction relative to the BASE objective
-# (maximize-base -> "ge", minimize-base -> "le").
-_REGISTRY_SPEC: list[tuple[str, str, Literal["ge", "le"]]] = [
-    ("nyc_delivery_reliability_weekly",
-     "nyc_delivery_reliability_weekly__sat87",   "ge"),
-    ("nyc_delivery_deficit_cvar90_pct",
-     "nyc_delivery_deficit_cvar90_pct__sat29",   "le"),
-    ("montague_flow_reliability_weekly",
-     "montague_flow_reliability_weekly__sat85",  "ge"),
-    ("montague_flow_deficit_cvar90_pct",
-     "montague_flow_deficit_cvar90_pct__sat25",  "le"),
-    ("trenton_flow_reliability_weekly",
-     "trenton_flow_reliability_weekly__sat85",   "ge"),
-    ("nj_delivery_reliability_weekly",
-     "nj_delivery_reliability_weekly__sat92",    "ge"),
-    ("downstream_flood_exceedance_minor",
-     "downstream_flood_exceedance_minor__sat1p17", "le"),
-    ("downstream_flood_days_minor",
-     "downstream_flood_days_minor__sat1",        "le"),
-    ("nyc_storage_p5_pct",
-     "nyc_storage_p5_pct__sat26",                "ge"),
-]
+# annual_objective_name -> threshold_label. The satisficing direction is NOT
+# recorded here: it is the objective's own direction (maximize -> "ge",
+# minimize -> "le"; ``AnnualUnitObjective.sat_kind``) — one fewer way for the
+# criterion and the objective to disagree. The p99 flood-days diagnostic
+# carries no satisficing role.
+_SAT_LABELS: dict[str, str] = {
+    "nyc_delivery_reliability_annual":
+        "nyc_delivery_reliability_annual__sat65",
+    "nyc_delivery_deficit_p99_pct":
+        "nyc_delivery_deficit_p99_pct__sat48",
+    "montague_flow_reliability_annual":
+        "montague_flow_reliability_annual__sat79",
+    "montague_flow_deficit_p99_pct":
+        "montague_flow_deficit_p99_pct__sat27",
+    "trenton_flow_reliability_annual":
+        "trenton_flow_reliability_annual__sat87",
+    "nj_delivery_reliability_annual":
+        "nj_delivery_reliability_annual__sat74",
+    "downstream_flood_exceedance_annual":
+        "downstream_flood_exceedance_annual__sat1p17",
+    "downstream_flood_days_annual":
+        "downstream_flood_days_annual__sat1",
+    "nyc_storage_min_p01_pct":
+        "nyc_storage_min_p01_pct__sat26",
+}
 
 
 ###############################################################################
@@ -689,27 +685,18 @@ _BASE_TO_ENSEMBLE: dict[str, str] = {
 
 
 def _build_registry() -> dict[str, AnnualUnitObjective]:
-    """Build the annual-unit registry, resolving k and re-eval thresholds."""
+    """Build the annual-unit registry, resolving k and satisficing thresholds."""
     failure_k = _resolve_failure_k()
     thresholds = _resolve_thresholds()
-    sat_by_base = {
-        base: (thresholds[label], kind)
-        for base, label, kind in _REGISTRY_SPEC
-    }
     registry: dict[str, AnnualUnitObjective] = {}
     for name, base_name, direction, eps, metric, op, desc in _ANNUAL_REGISTRY_SPEC:
         if base_name not in OBJECTIVES:
             raise KeyError(
                 f"annual registry references unknown base objective '{base_name}'"
             )
-        if base_name not in sat_by_base:
-            raise KeyError(
-                f"annual registry base '{base_name}' missing from the re-eval "
-                f"satisficing layer (_REGISTRY_SPEC)"
-            )
         if op == "frequency":
             op = FailureFrequencyOp(k=failure_k[name])
-        thr, kind = sat_by_base[base_name]
+        label = _SAT_LABELS.get(name)
         registry[name] = AnnualUnitObjective(
             name=name,
             direction=direction,
@@ -718,7 +705,7 @@ def _build_registry() -> dict[str, AnnualUnitObjective]:
             annual_metric=metric,
             unit_operator=op,
             base=OBJECTIVES[base_name],
-            aggregator=SatisficingAgg(threshold=thr, kind=kind),
+            sat_threshold=None if label is None else thresholds[label],
         )
     return registry
 

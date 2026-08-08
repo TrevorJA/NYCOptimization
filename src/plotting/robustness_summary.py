@@ -5,7 +5,7 @@ reports it (Herman et al. 2015; Trindade et al. 2017; Gold et al. 2022, 2023):
 
   Panel A -- the PRIMARY metric. Starr's (1962) multivariate domain criterion on
     the SOW unit: the fraction of deeply-uncertain states of the world in which a
-    policy meets ALL seven objective thresholds jointly. Distribution across the
+    policy meets ALL objective thresholds jointly. Distribution across the
     acceptable Pareto policies, with the status-quo FFMP baseline drawn as a fixed
     external reference (Kasprzyk et al. 2013) and the most-robust policy marked.
 
@@ -15,9 +15,9 @@ reports it (Herman et al. 2015; Trindade et al. 2017; Gold et al. 2022, 2023):
     the lowest single-criterion satisficing is what caps robustness. Baseline
     overlaid per objective.
 
-Both panels use the SOW unit consistently (the R realizations within each theta
-collapsed first via ``within_sow_agg``), so Panel B decomposes exactly the Panel A
-number rather than a differently-defined realization-unit quantity.
+Both panels read the same per-SOW annual-unit objective cube (each SOW's value
+pools its realizations' unit-years through the objective's own operator), so
+Panel B decomposes exactly the Panel A number.
 """
 from __future__ import annotations
 
@@ -29,24 +29,22 @@ import numpy as np
 from src.plotting.style import label_for
 
 
-def _sow_satisficing(raw, within_sow_agg: str = "mean"):
-    """SOW-unit satisficing from a re-eval cube.
+def _sow_satisficing(raw):
+    """SOW-unit satisficing from a per-SOW re-eval cube.
 
     Returns:
         ``(multivariate, univariate)`` where ``multivariate`` is ``(S,)`` -- the
         fraction of SOWs meeting ALL thresholds jointly -- and ``univariate`` is
         ``(S, M)`` -- the fraction of SOWs meeting each objective's threshold.
     """
-    from src.robustness import collapse_within_sow, _satisfy
-    cube_sow, _ = collapse_within_sow(raw, within_sow_agg)          # (S, n_sow, M)
-    sat = _satisfy(cube_sow, raw.base_names, raw.thresholds, raw.kinds)
+    from src.robustness import _satisfaction_cube
+    sat = _satisfaction_cube(raw)                                  # (S, n_sow, M)
     univariate = sat.mean(axis=1)                                  # (S, M)
     multivariate = sat.all(axis=2).mean(axis=1)                    # (S,)
     return multivariate, univariate
 
 
 def plot_du_robustness(reeval_dir, accepted_ids, out_file,
-                       within_sow_agg: str = "mean",
                        most_robust_id: int | None = None,
                        figsize: tuple = (14, 5.6)) -> dict:
     """Draw the two-panel DU robustness summary and return headline numbers.
@@ -56,8 +54,6 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
         accepted_ids: Re-eval ``solution_id``\\ s surviving the stakeholder screen
             (from :mod:`src.pareto_filter`). Only these are shown.
         out_file: PNG path.
-        within_sow_agg: Within-SOW risk attitude (``"mean"`` risk-neutral, the
-            Triangle-lineage default; ``"worst"`` risk-averse).
         most_robust_id: solution_id to highlight; if None, the max-robustness
             policy among ``accepted_ids`` is used.
         figsize: Figure size.
@@ -72,12 +68,12 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
     raw = load_raw(reeval_dir)
     base = load_raw(reeval_dir / "baseline")
 
-    multi, uni = _sow_satisficing(raw, within_sow_agg)
-    b_multi, b_uni = _sow_satisficing(base, within_sow_agg)
+    multi, uni = _sow_satisficing(raw)
+    b_multi, b_uni = _sow_satisficing(base)
     b_multi = float(b_multi[0])
     b_uni = b_uni[0]
 
-    names = list(raw.base_names)
+    names = list(raw.obj_names)
     pos = {sid: i for i, sid in enumerate(raw.solution_ids)}
     keep = np.array([pos[s] for s in accepted_ids if s in pos], dtype=int)
     if keep.size == 0:

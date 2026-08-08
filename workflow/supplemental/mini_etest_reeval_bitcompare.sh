@@ -5,9 +5,9 @@
 #   (a) legacy path: NYCOPT_CHUNK_INCREMENTAL=0, serial, s-major contiguous;
 #   (b) new path:    incremental + claim scheduling, 4 MPI ranks
 # — and require the persisted reeval_raw tables to be BIT-IDENTICAL (same
-# evaluate_raw calls, same batch boundaries => no FP tolerance). Complements
-# the analytic-stub tests in tests/test_chunk_reeval.py with the real
-# pywrdrb/evaluate_raw integration.
+# evaluate_annual_units calls, same batch boundaries, same per-SOW pooling =>
+# no FP tolerance). Complements the analytic-stub tests in
+# tests/test_chunk_reeval.py with the real pywrdrb integration.
 #
 # Idempotent: the mini E_test stages once and is reused (delete
 # outputs/synthetic_ensembles/etest_kn_10yr_n4* to force).
@@ -87,13 +87,13 @@ dirs = [reeval_output_dir(active_scenario_name(), derive_slug("ffmp"), spec, s)
 def load(d: Path) -> pd.DataFrame:
     p = d / "reeval_raw.parquet"
     df = pd.read_parquet(p) if p.exists() else pd.read_csv(d / "reeval_raw.csv.gz")
-    return df.sort_values(["solution_id", "realization_id", "objective"]
+    return df.sort_values(["solution_id", "sow_id", "objective"]
                           ).reset_index(drop=True)
 
 a, b = load(dirs[0]), load(dirs[1])
 assert a.shape == b.shape and a.shape[0] > 0, (a.shape, b.shape)
 assert (a["solution_id"].values == b["solution_id"].values).all()
-assert (a["realization_id"].values == b["realization_id"].values).all()
+assert (a["sow_id"].values == b["sow_id"].values).all()
 assert (a["objective"].values == b["objective"].values).all()
 va, vb = a["value"].to_numpy(), b["value"].to_numpy()
 exact = np.array_equal(va, vb) or (

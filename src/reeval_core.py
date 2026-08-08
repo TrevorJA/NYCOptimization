@@ -11,6 +11,18 @@ ensembles is invalid — each arm's scores are computed on its own ensemble. The
 only sound cross-design comparison re-evaluates every arm's Pareto **policies**
 (decision-variable vectors) on ONE common ensemble and compares those scores.
 
+One metric currency
+-------------------
+Re-evaluation computes THE SAME annual-unit objectives the search optimized
+(``src.objectives_ensemble``), recomputed per deeply-uncertain state of the
+world (SOW): each SOW's R realizations contribute their stage-(i) unit-years
+to one pooled sample, and the objective's §2 unit operator collapses that pool
+to the SOW's objective value. The persisted artifact is the per-SOW objective
+matrix — the substrate every robustness and regret metric in
+``src.robustness`` is a transformation of (Herman et al. 2014, 2015; Trindade
+et al. 2017; McPhail et al. 2018). No second metric definition exists at
+re-evaluation.
+
 Flexibility
 -----------
 The common ensemble is whatever ``config.REEVAL_ENSEMBLE_SPEC`` resolves to,
@@ -20,15 +32,12 @@ carrying a ``_meta.json`` (see ``src.ensembles.get_ensemble_spec``). Swap the
 re-eval ensemble by changing that one env var — nothing else. Outputs are
 written under a per-ensemble subdir (``reeval/{tag}/``) so re-evals on different
 common ensembles never clobber each other.
-
-The objective *set* is resolved against the re-eval ensemble (ensemble
-satisficing objectives when it ``is_ensemble``, else the single-trace set),
-using the same objective names (``config.ACTIVE_OBJECTIVES``) for every arm —
-so scores are directly comparable across arms.
 """
 from __future__ import annotations
 
 import re
+
+import numpy as np
 
 # Lazily-built, process-local cache of (objective_set, ensemble_spec, is_ensemble)
 # for the default (config-driven) re-eval target. Avoids rebuilding per solution
@@ -43,6 +52,10 @@ def resolve_reeval(objectives=None, reeval_spec=None):
     With no args, reads ``config.REEVAL_ENSEMBLE_SPEC`` and
     ``config.ACTIVE_OBJECTIVES`` and caches the result. Pass explicit
     ``objectives`` / ``reeval_spec`` to override (not cached).
+
+    The objective set is ALWAYS the annual-unit set — re-evaluation speaks the
+    search's metric currency on every ensemble, including a single-trace spec
+    (the N = 1 case over that trace's unit-years).
     """
     global _REEVAL_CACHE
     if _REEVAL_CACHE is not None and objectives is None and reeval_spec is None:
@@ -52,14 +65,10 @@ def resolve_reeval(objectives=None, reeval_spec=None):
     spec = reeval_spec if reeval_spec is not None else REEVAL_ENSEMBLE_SPEC
     names = objectives if objectives is not None else ACTIVE_OBJECTIVES
 
-    is_ensemble = bool(spec is not None and spec.is_ensemble)
-    if is_ensemble:
-        from src.objectives_ensemble import build_ensemble_objective_set
-        obj_set = build_ensemble_objective_set(names)
-    else:
-        from src.objectives import build_objective_set
-        obj_set = build_objective_set(names)
+    from src.objectives_ensemble import build_ensemble_objective_set
+    obj_set = build_ensemble_objective_set(names)
 
+    is_ensemble = bool(spec is not None and spec.is_ensemble)
     result = (obj_set, spec, is_ensemble)
     if objectives is None and reeval_spec is None:
         _REEVAL_CACHE = result
@@ -85,85 +94,110 @@ def reeval_output_dir(scenario: str, slug: str, spec, seed=None):
 def reeval_obj_names() -> list:
     """Column names for ``objectives_summary.csv``, naming what the cells CONTAIN.
 
-    For an ensemble re-eval the cells are **realization-level Starr satisficing
-    fractions** (``SatisficingAgg`` over the per-realization whole-trace metric),
-    so the columns are ``sat__{base_objective}``. They are NOT the search-time
-    annual-unit objectives: the search path pools per-unit-year annual metrics
-    through the §2 unit operators (``FailureFrequencyOp`` / ``PooledPercentileOp``
-    / ``PooledMeanOp``), which are never invoked at re-evaluation. Naming these
-    columns after the annual objectives (e.g. ``nyc_delivery_deficit_p99_pct``)
-    promised a percentile in percent and delivered a fraction in [0, 1].
-
-    The re-eval metric does not need to equal the search metric; it only needs to
-    be IDENTICAL ACROSS DESIGNS, which is what makes the comparison commensurable.
-
-    For a single-trace re-eval (R == 1) the row IS the natural objective vector,
-    so the base names are used unchanged.
+    For an ensemble re-eval the cells are the MEAN over SOWs of the per-SOW
+    annual-unit objective values (the Laplace / risk-neutral summary of the
+    persisted per-SOW matrix), so the columns are ``sowmean__{objective}``.
+    For a single-trace re-eval the row IS the natural annual-unit objective
+    vector of that trace, so the objective names are used unchanged.
     """
     obj_set, _, is_ensemble = resolve_reeval()
     if not is_ensemble:
         return list(obj_set.names)
-    return [f"sat__{o.base.name}" for o in obj_set]
+    return [f"sowmean__{o.name}" for o in obj_set]
+
+
+def sow_objective_matrix(units: np.ndarray, obj_set, sow_ids) -> tuple:
+    """Pool each SOW's unit-years through the §2 unit operators.
+
+    Stage (i) already happened in the simulation worker
+    (``src.simulation.evaluate_annual_units``); this is the re-evaluation's
+    stage (ii): for each SOW, the unit-years of its R realizations are pooled
+    into ONE sample per objective and collapsed with that objective's own unit
+    operator — the search aggregation recomputed per deeply-uncertain state.
+
+    Failed realizations (all-NaN slabs, e.g. a crashed simulation batch) are
+    EXCLUDED from their SOW's pool so a failed run cannot masquerade as bad
+    performance; a SOW with no surviving realization is NaN. Non-finite
+    unit-years inside a surviving realization keep the search-side convention
+    (the unit operator counts them as failure-years / worst-sentinels).
+
+    Args:
+        units: ``(R, M, U)`` stage-(i) tensor in realization order.
+        obj_set: The annual-unit ObjectiveSet (column order = objective order).
+        sow_ids: Length-R SOW id of each realization row.
+
+    Returns:
+        ``(J, sow_labels)`` — ``J`` float array ``(n_sow, M)`` of per-SOW
+        objective values in natural units; ``sow_labels`` the ascending SOW ids
+        its rows are keyed by.
+    """
+    ens_objs = list(obj_set)
+    units = np.asarray(units, dtype=float)
+    if units.ndim != 3 or units.shape[1] != len(ens_objs):
+        raise ValueError(
+            f"units tensor has shape {units.shape}; expected "
+            f"(R, {len(ens_objs)}, U)"
+        )
+    sow_ids = [int(s) for s in sow_ids]
+    if len(sow_ids) != units.shape[0]:
+        raise ValueError(
+            f"{len(sow_ids)} sow_ids for {units.shape[0]} realizations"
+        )
+
+    groups: dict[int, list[int]] = {}
+    for r, s in enumerate(sow_ids):
+        groups.setdefault(s, []).append(r)
+    labels = sorted(groups)
+
+    alive = ~np.all(~np.isfinite(units), axis=(1, 2))  # (R,) simulation survived
+    J = np.full((len(labels), len(ens_objs)), np.nan, dtype=float)
+    for g, label in enumerate(labels):
+        rows = [r for r in groups[label] if alive[r]]
+        if not rows:
+            continue
+        for k, obj in enumerate(ens_objs):
+            J[g, k] = obj.unit_operator(units[rows, k, :].ravel())
+    return J, labels
 
 
 def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str):
-    """Re-evaluate one policy and return its raw per-realization base matrix.
+    """Re-evaluate one policy and return its per-SOW objective matrix.
 
-    The re-eval work unit for the decoupled robustness path: instead of
-    collapsing the ensemble to satisficing fractions, return the full
-    ``(n_realizations, n_base_objs)`` matrix of base-objective values in NATURAL
-    units so robustness metrics are scored offline (see ``src.robustness``).
-    Reuses the search-path :func:`src.simulation.evaluate_raw`, so re-eval base
-    metrics match search byte-for-byte; only the ensemble differs.
+    The re-eval work unit: simulate the policy on the common ensemble, reduce
+    each realization to its stage-(i) annual metrics, and pool each SOW's
+    unit-years through the §2 unit operators. Robustness and regret are scored
+    offline from the persisted per-SOW matrix (see ``src.robustness``). The
+    stage-(i) reduction is the search path's own
+    (``AnnualUnitObjective.annual_units``), so re-eval metrics match search
+    byte-for-byte; only the ensemble and the pooling unit differ.
 
     Returns:
-        ``(solution_id, base_matrix | None, base_names | None, error | None)``.
-        ``base_matrix`` is ``(n_realizations, n_base_objs)``; for a single-trace
-        re-eval spec it is ``(1, n_obj)``.
+        ``(solution_id, sow_matrix | None, obj_names | None, error | None)``.
+        ``sow_matrix`` is ``(n_sow, n_objs)`` in natural units, rows keyed by
+        ascending SOW id; for a single-trace re-eval spec it is ``(1, n_objs)``
+        (the trace's own annual-unit objective vector).
     """
     try:
-        obj_set, spec, _ = resolve_reeval()
-        from src.simulation import evaluate_raw
-        base_matrix, base_names = evaluate_raw(
+        obj_set, spec, is_ensemble = resolve_reeval()
+        from src.simulation import evaluate_annual_units
+        units, obj_names = evaluate_annual_units(
             dv_vector, formulation_name=formulation,
             objective_set=obj_set, ensemble_spec=spec,
         )
-        return solution_id, base_matrix, base_names, None
+        if is_ensemble:
+            sow_ids, _n_sow, _rps = sow_grouping(spec, spec.realization_indices)
+            if sow_ids is None:
+                raise ValueError(
+                    "the re-eval ensemble carries no SOW grouping (no forcing "
+                    "profiles), so the per-SOW objective unit is undefined for "
+                    "it. Robustness re-evaluation requires a DU-forced ensemble."
+                )
+            sow_matrix, _labels = sow_objective_matrix(units, obj_set, sow_ids)
+        else:
+            sow_matrix, _labels = sow_objective_matrix(units, obj_set, [0])
+        return solution_id, sow_matrix, obj_names, None
     except Exception as e:
         return solution_id, None, None, f"{type(e).__name__}: {e}"
-
-
-def satisficing_from_raw(base_matrix, base_names=None) -> list:
-    """Reproduce the re-eval summary's natural satisficing fractions.
-
-    Aggregates each column of the raw base matrix with its ensemble objective's
-    aggregator (natural, un-negated), so ``objectives_summary.csv``
-    can be derived from the persisted matrix instead of a second simulation —
-    guaranteeing the two are consistent. For a single-trace re-eval set the matrix
-    row IS the natural objective vector, so it is returned directly.
-
-    Args:
-        base_matrix: ``(n_realizations, n_base_objs)`` natural-unit array.
-        base_names: Optional column names for validation against the resolved set.
-
-    Returns:
-        List of natural objective values aligned to :func:`reeval_obj_names`.
-    """
-    import numpy as np
-
-    obj_set, _, is_ensemble = resolve_reeval()
-    arr = np.asarray(base_matrix, dtype=float)
-    if not is_ensemble:
-        return [float(x) for x in arr[0, :]]
-    ens_objs = list(obj_set)
-    if base_names is not None:
-        expected = [o.base.name for o in ens_objs]
-        if list(base_names) != expected:
-            raise ValueError(
-                f"base_names {list(base_names)} do not match resolved re-eval "
-                f"objective set {expected}"
-            )
-    return [float(o.aggregator(arr[:, k])) for k, o in enumerate(ens_objs)]
 
 
 def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, int | None]:
@@ -172,25 +206,20 @@ def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, in
     A *SOW* is one forcing profile theta. When the ensemble was generated with
     ``realizations_per_profile = R``, realization ``k`` was generated under profile
     ``p = k // R``, so the R realizations sharing a theta are R samples of natural
-    variability WITHIN one deeply-uncertain state — the unit of the Triangle-lineage
-    robustness measure (Herman et al. 2014; Trindade et al. 2017; Gold et al. 2022,
-    2023), which collapses the stochastic traces inside each SOW before applying the
-    Starr domain criterion across SOWs.
-
-    Persisting the grouping is what makes that metric computable OFFLINE from the
-    re-eval cube. The cube records ``realization_id``; without ``sow_ids`` the two
-    robustness units cannot be told apart after the fact, and re-simulating to recover
-    a grouping that generation already knew would be absurd.
+    variability WITHIN one deeply-uncertain state — the pooling unit of the re-eval
+    objective matrix and of the Triangle-lineage robustness measure (Herman et al.
+    2014; Trindade et al. 2017; Gold et al. 2022, 2023).
 
     Read from the staged ensemble's ``forcing_profiles.npz`` (which stores
     ``realizations_per_profile`` alongside the per-realization theta), falling back to
     the staged ``_meta.json``. An ensemble with NO forcing profiles — a stationary
     ensemble, or the historic single trace — has no SOW structure, so this returns
-    ``(None, None, None)`` and the SOW metrics are N/A. A grouping is never fabricated.
+    ``(None, None, None)`` and the per-SOW objective unit is undefined for it. A
+    grouping is never fabricated.
 
     Args:
         spec: The re-eval ``EnsembleSpec``.
-        realization_indices: The realization ids the matrix rows map to.
+        realization_indices: The realization ids to group.
 
     Returns:
         ``(sow_ids, n_sow, realizations_per_sow)``; ``sow_ids`` is aligned 1:1 with
@@ -209,7 +238,6 @@ def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, in
 
     npz = staged / "forcing_profiles.npz"
     if npz.exists():
-        import numpy as np
         with np.load(npz, allow_pickle=True) as z:
             if "realizations_per_profile" in z:
                 r_per_sow = int(z["realizations_per_profile"])
@@ -235,35 +263,34 @@ def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, in
 
 
 def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
-    """Self-describing metadata sidecar for the persisted raw matrix.
+    """Self-describing metadata sidecar for the persisted per-SOW matrix.
 
     Snapshots everything the offline scorer needs to compute robustness WITHOUT
     re-importing the live objective registry or honoring a changed
     ``NYCOPT_SAT_THRESHOLDS`` at scoring time (the moving-measuring-stick guard,
-    McPhail et al. 2020). Carries per-objective thresholds/kinds/directions, the
-    base-objective column order, the realization indices each matrix row maps to,
-    the SOW each realization belongs to (:func:`sow_grouping`), and the run
-    provenance ``(scenario_design, slug, seed)`` so re-evals are poolable across
-    designs for cross-design comparison.
+    McPhail et al. 2020). Carries per-objective thresholds/kinds/directions and
+    unit-operator provenance, the objective column order, the SOW labels each
+    matrix row maps to, and the run provenance ``(scenario_design, slug, seed)``
+    so re-evals are poolable across designs for cross-design comparison.
     """
     obj_set, spec, is_ensemble = resolve_reeval()
+    ens_objs = list(obj_set)
+
+    obj_names = [o.name for o in ens_objs]
+    thresholds = {o.name: o.sat_threshold for o in ens_objs}
+    kinds = {o.name: o.sat_kind for o in ens_objs}
+    directions = {o.name: o.direction for o in ens_objs}
+    unit_operators = {o.name: _op_descriptor(o.unit_operator) for o in ens_objs}
 
     if is_ensemble:
-        ens_objs = list(obj_set)
-        base_names = [o.base.name for o in ens_objs]
-        thresholds = {o.base.name: getattr(o.aggregator, "threshold", None)
-                      for o in ens_objs}
-        kinds = {o.base.name: getattr(o.aggregator, "kind", None)
-                 for o in ens_objs}
-        directions = {o.base.name: o.base.direction for o in ens_objs}
         realization_indices = [int(i) for i in spec.realization_indices]
+        sow_ids, n_sow, realizations_per_sow = sow_grouping(
+            spec, realization_indices)
+        sow_labels = sorted(set(sow_ids)) if sow_ids is not None else None
     else:
-        base_names = list(obj_set.names)
-        thresholds, kinds = {}, {}
-        directions = {o.name: o.direction for o in obj_set}
         realization_indices = [0]
-
-    sow_ids, n_sow, realizations_per_sow = sow_grouping(spec, realization_indices)
+        sow_ids, n_sow, realizations_per_sow = None, None, None
+        sow_labels = [0]
 
     from config import active_scenario_name, derive_slug
     return {
@@ -273,37 +300,52 @@ def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
         "seed": seed,
         "reeval_tag": reeval_tag(spec),
         "is_ensemble": bool(is_ensemble),
+        "substrate": "sow_annual_unit",
         "n_solutions": int(n_solutions),
         "n_realizations": len(realization_indices),
-        "base_names": base_names,
-        "ensemble_obj_names": list(obj_set.names),
-        "realization_indices": realization_indices,
-        # SOW grouping, aligned 1:1 with realization_indices. None when the ensemble
-        # carries no forcing profiles (stationary / historic) -- the SOW-unit metrics
-        # are then N/A rather than silently falling back to the realization unit.
-        "sow_ids": sow_ids,
+        "obj_names": obj_names,
+        # SOW labels the matrix rows are keyed by (ascending). None when the
+        # ensemble carries no forcing profiles -- the per-SOW unit is then
+        # undefined and the scorer reports robustness N/A.
+        "sow_labels": sow_labels,
         "n_sow": n_sow,
         "realizations_per_sow": realizations_per_sow,
         "thresholds": thresholds,
         "kinds": kinds,
         "directions": directions,
+        "unit_operators": unit_operators,
     }
+
+
+def _op_descriptor(op) -> dict:
+    """JSON-able provenance for a §2 unit operator (which statistic was pooled)."""
+    from src.objectives_ensemble import (
+        FailureFrequencyOp, PooledMeanOp, PooledPercentileOp,
+    )
+    if isinstance(op, FailureFrequencyOp):
+        return {"type": "failure_frequency", "k": op.k}
+    if isinstance(op, PooledPercentileOp):
+        return {"type": "pooled_percentile", "q": op.q, "worst_value": op.worst_value}
+    if isinstance(op, PooledMeanOp):
+        return {"type": "pooled_mean", "worst_value": op.worst_value}
+    return {"type": type(op).__name__}
 
 
 def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
                        seed=None):
-    """Write the raw per-realization matrix + self-describing meta, derive summary.
+    """Write the per-SOW objective matrix + self-describing meta, derive summary.
 
-    The single persistence path shared by the multiprocessing and MPI drivers.
-    Writes ``reeval_raw.parquet`` (long format; ``reeval_raw.csv.gz`` fallback if
-    ``pyarrow`` is unavailable) and ``reeval_raw_meta.json``, then derives
-    ``objectives_summary.csv`` from the SAME matrix via :func:`satisficing_from_raw`
-    (no second simulation, so summary and matrix are guaranteed consistent).
+    The single persistence path shared by the multiprocessing, MPI, and chunked
+    drivers. Writes ``reeval_raw.parquet`` (long format keyed by ``sow_id``;
+    ``reeval_raw.csv.gz`` fallback if ``pyarrow`` is unavailable) and
+    ``reeval_raw_meta.json``, then derives ``objectives_summary.csv`` from the
+    SAME matrix (mean over SOWs; no second simulation, so summary and matrix
+    are guaranteed consistent).
 
     Args:
         reeval_dir: Output directory (already created).
-        raw_results: Iterable of ``(solution_id, base_matrix | None,
-            base_names | None, error | None)`` from :func:`evaluate_solution_raw`.
+        raw_results: Iterable of ``(solution_id, sow_matrix | None,
+            obj_names | None, error | None)`` from :func:`evaluate_solution_raw`.
         formulation: Formulation name (for meta provenance).
         n_solutions: Total solutions attempted (for meta).
         seed: Optional seed (for meta provenance).
@@ -312,8 +354,8 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
         ``(summary_csv_path, raw_path, meta_path)``.
     """
     import json
+    import warnings
 
-    import numpy as np
     import pandas as pd
 
     raw_results = list(raw_results)
@@ -321,42 +363,41 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
     # Record every attempted solution id (including fully-failed ones that
     # contribute no rows) so the offline scorer reconstructs the full solution
     # axis instead of inferring it from the rows present — otherwise an
-    # all-realizations-failed solution silently vanishes from the scorecard while
-    # still appearing (NaN) in objectives_summary.csv (schema drift across
+    # all-failed solution silently vanishes from the scorecard while still
+    # appearing (NaN) in objectives_summary.csv (schema drift across
     # designs/seeds at join time).
     meta["solution_ids"] = sorted(int(sid) for sid, *_ in raw_results)
-    realization_indices = meta["realization_indices"]
-    base_names = meta["base_names"]
+    obj_names = list(meta["obj_names"])
+    sow_labels = meta["sow_labels"] or [0]
 
-    # Long-format raw matrix; failed solutions contribute no rows. Rows carry the
-    # actual realization index (not batch position) so they join to the ensemble's
-    # hazard coordinates. Built vectorized per solution (np.repeat/np.tile) rather
-    # than cell-by-cell so persistence stays cheap as the ensemble grows toward
-    # 1e3-1e4 realizations (row order:
-    # row-major over (realization, objective)).
-    ri = np.asarray(realization_indices, dtype=int)
+    # Long-format per-SOW matrix; failed solutions contribute no rows. Rows
+    # carry the SOW label (not matrix position) so they join to the ensemble's
+    # hazard coordinates. Built vectorized per solution (np.repeat/np.tile);
+    # row order: row-major over (sow, objective).
+    sl = np.asarray(sow_labels, dtype=int)
     frames = []
     for sid, mat, names, _err in raw_results:
         if mat is None:
             continue
         arr = np.asarray(mat, dtype=float)
-        r_i, m_i = arr.shape
-        cols = list(names) if names is not None else base_names
-        if r_i <= ri.shape[0]:
-            rid_row = ri[:r_i]
-        else:  # more matrix rows than known indices -> fall back to position
-            rid_row = np.concatenate([ri, np.arange(ri.shape[0], r_i, dtype=int)])
+        g_i, m_i = arr.shape
+        cols = list(names) if names is not None else obj_names
+        if g_i != sl.shape[0]:
+            raise ValueError(
+                f"solution {sid}: sow matrix has {g_i} rows but the ensemble "
+                f"has {sl.shape[0]} SOWs"
+            )
         frames.append(pd.DataFrame({
-            "solution_id": np.full(r_i * m_i, int(sid), dtype=int),
-            "realization_id": np.repeat(rid_row, m_i),
-            "objective": np.tile(np.asarray(cols, dtype=object), r_i),
+            "solution_id": np.full(g_i * m_i, int(sid), dtype=int),
+            "sow_id": np.repeat(sl, m_i),
+            "objective": np.tile(np.asarray(cols, dtype=object), g_i),
             "value": arr.reshape(-1),
         }))
     long_df = (
         pd.concat(frames, ignore_index=True) if frames
         else pd.DataFrame({
             "solution_id": np.array([], dtype=int),
-            "realization_id": np.array([], dtype=int),
+            "sow_id": np.array([], dtype=int),
             "objective": np.array([], dtype=object),
             "value": np.array([], dtype=float),
         })
@@ -373,17 +414,23 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
     with open(meta_path, "w") as fh:
         json.dump(meta, fh, indent=2)
 
-    # Derive objectives_summary.csv from the matrix (one simulation source).
-    obj_names = reeval_obj_names()
-    by_sid = {sid: (mat, names) for sid, mat, names, _e in raw_results}
+    # Derive objectives_summary.csv from the matrix (one simulation source):
+    # the mean over SOWs of the per-SOW objective values (single-trace rows
+    # pass through unchanged, mean over one row being an identity).
+    summary_cols = reeval_obj_names()
+    by_sid = {sid: mat for sid, mat, _names, _e in raw_results}
     index = sorted(by_sid)
     rows = []
     for sid in index:
-        mat, names = by_sid[sid]
-        rows.append([np.nan] * len(obj_names) if mat is None
-                    else satisficing_from_raw(mat, names))
+        mat = by_sid[sid]
+        if mat is None:
+            rows.append([np.nan] * len(summary_cols))
+            continue
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN column
+            rows.append(list(np.nanmean(np.asarray(mat, dtype=float), axis=0)))
     summary_df = pd.DataFrame(
-        rows, columns=obj_names, index=pd.Index(index, name="solution_id"),
+        rows, columns=summary_cols, index=pd.Index(index, name="solution_id"),
     )
     summary_csv = reeval_dir / "objectives_summary.csv"
     summary_df.to_csv(summary_csv)

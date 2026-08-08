@@ -18,9 +18,13 @@ image and asserts the machinery recovers it:
      two would not be a test of the mechanism.
   5. cdf_transform maps a second point set into the REFERENCE's rank space (not
      its own) — the join that makes the two ensembles comparable at all.
-  6. End-to-end: discover_for_design on a synthetic re-eval cube picks the
-     compromise policy, labels failures by the all-criteria conjunction, recovers
-     the planted axis, and returns a supported-mechanism verdict.
+  6. End-to-end: discover_for_design on a synthetic per-SOW re-eval cube picks
+     the compromise policy, labels each SOW by the all-criteria conjunction on
+     its per-SOW annual-unit objective values, recovers the planted axis, and
+     returns a supported-mechanism verdict.
+  7. align_hazard_to_cube joins the per-REALIZATION hazard image onto the
+     cube's SOW axis by label (realization_id // R == sow_id) and collapses
+     each SOW's realizations to their hazard-coordinate MEAN.
 
 Run:
     venv/bin/python -m pytest tests/test_scenario_discovery.py -v
@@ -250,23 +254,27 @@ def test_cdf_transform_uses_the_reference_not_the_input():
 # 6. End-to-end on a synthetic re-eval cube
 # ---------------------------------------------------------------------------
 
-def _write_reeval(tmp_path: Path, cube: np.ndarray, rids, base_names,
-                  thresholds, kinds, directions) -> Path:
-    """Persist an (S, R, M) cube in the reeval_raw long format load_raw expects."""
+def _write_reeval(tmp_path: Path, cube: np.ndarray, sow_ids, obj_names,
+                  thresholds, kinds, directions,
+                  realizations_per_sow: int = 1) -> Path:
+    """Persist an (S, G, M) per-SOW cube in the reeval_raw long format."""
     rows = []
     for si in range(cube.shape[0]):
-        for ri, rid in enumerate(rids):
-            for k, name in enumerate(base_names):
-                rows.append((si, int(rid), name, float(cube[si, ri, k])))
-    df = pd.DataFrame(rows, columns=["solution_id", "realization_id",
+        for gi, g in enumerate(sow_ids):
+            for k, name in enumerate(obj_names):
+                rows.append((si, int(g), name, float(cube[si, gi, k])))
+    df = pd.DataFrame(rows, columns=["solution_id", "sow_id",
                                      "objective", "value"])
     out = tmp_path / "reeval"
     out.mkdir(parents=True, exist_ok=True)
     with gzip.open(out / "reeval_raw.csv.gz", "wt") as fh:
         df.to_csv(fh, index=False)
     (out / "reeval_raw_meta.json").write_text(json.dumps({
-        "base_names": base_names, "thresholds": thresholds, "kinds": kinds,
+        "obj_names": obj_names, "thresholds": thresholds, "kinds": kinds,
         "directions": directions, "is_ensemble": True,
+        "sow_labels": sorted(int(g) for g in sow_ids),
+        "realizations_per_sow": realizations_per_sow,
+        "substrate": "sow_annual_unit",
         "solution_ids": list(range(cube.shape[0])),
     }))
     return out
@@ -275,9 +283,12 @@ def _write_reeval(tmp_path: Path, cube: np.ndarray, rids, base_names,
 def test_end_to_end_recovers_planted_axis_and_mechanism(tmp_path, image, screen,
                                                         monkeypatch):
     H, y_planted = image
-    rids = np.arange(N_TEST)
+    # One realization per SOW here, so SOW g's hazard coordinate is exactly
+    # H[g] and the planted per-realization labels ARE the per-SOW labels.
+    sow_ids = np.arange(N_TEST)
 
-    # Two policies, one objective ("deficit", minimize, satisfice at <= 1.0):
+    # Two policies, one objective ("deficit", minimize, satisfice at <= 1.0);
+    # the cells are per-SOW annual-unit values:
     #   solution 0 — the compromise: fails EXACTLY on the planted corner.
     #   solution 1 — a strictly worse policy that fails everywhere (so the
     #                compromise rule has a real choice to make).
@@ -285,14 +296,15 @@ def test_end_to_end_recovers_planted_axis_and_mechanism(tmp_path, image, screen,
     cube[0, :, 0] = np.where(y_planted, 2.0, 0.5)
     cube[1, :, 0] = 3.0
     reeval_dir = _write_reeval(
-        tmp_path, cube, rids, ["deficit"],
+        tmp_path, cube, sow_ids, ["deficit"],
         thresholds={"deficit": 1.0}, kinds={"deficit": "le"},
         directions={"deficit": "minimize"},
     )
     raw = rob.load_raw(reeval_dir)
 
     etest = {"H": H, "hazard_axes": AXES, "chosen_axes": AXES,
-             "realization_ids": rids, "selected_rows": np.arange(N_TEST)}
+             "realization_ids": np.arange(N_TEST),
+             "selected_rows": np.arange(N_TEST)}
 
     # The design's SEARCH ensemble never sampled the failure corner.
     search_H = np.zeros((N_SEARCH, len(AXES)))
@@ -311,7 +323,9 @@ def test_end_to_end_recovers_planted_axis_and_mechanism(tmp_path, image, screen,
     # The compromise rule must pick the policy that actually satisfices somewhere.
     assert res.solution_id == 0
     assert res.compromise["satisficing"] == pytest.approx(1.0 - y_planted.mean())
-    # Failure labels are the all-criteria conjunction, joined on realization_id.
+    # Failure labels are per SOW: the all-criteria conjunction on the per-SOW
+    # values, one label per state of the world, joined on the SOW label.
+    assert len(res.y) == raw.n_sow
     assert np.array_equal(res.y, y_planted)
     # The classifier recovers the planted axis...
     assert res.model.axes[int(np.argmax(res.model.importances))] == PLANTED_AXIS
@@ -321,23 +335,39 @@ def test_end_to_end_recovers_planted_axis_and_mechanism(tmp_path, image, screen,
     assert res.n_search == N_SEARCH
 
 
-def test_align_hazard_to_cube_joins_on_realization_id(tmp_path, image, screen):
-    """A positional join would silently attach the WRONG hazard row to each label."""
+def test_align_hazard_to_cube_aggregates_realizations_to_sow_means(tmp_path,
+                                                                   image, screen):
+    """The hazard image stays per-REALIZATION; the cube's unit is the SOW.
+
+    Each SOW's coordinate must be the MEAN over its realizations' hazard rows,
+    joined on realization_id // realizations_per_sow == sow_id — a positional
+    join would silently attach the WRONG hazard coordinates to every label.
+    """
     H, _ = image
-    rids = np.arange(N_TEST)
-    # Re-eval covers only a shuffled subset of E_test (as a partial re-eval would).
-    subset = np.array([311, 4, 97, 250])
+    rps = 2                                        # 200 SOWs of 2 realizations
+    # Re-eval covers only a shuffled subset of the SOWs (as a partial re-eval would).
+    subset = [151, 4, 97]
     cube = np.ones((1, len(subset), 1))
     reeval_dir = _write_reeval(
         tmp_path, cube, subset, ["deficit"], thresholds={"deficit": 1.0},
         kinds={"deficit": "le"}, directions={"deficit": "minimize"},
+        realizations_per_sow=rps,
     )
     raw = rob.load_raw(reeval_dir)
-    aligned = sd.align_hazard_to_cube(raw, {"H": H, "realization_ids": rids},
-                                      screen["retained_idx"])
-    expected = H[np.ix_(sorted(subset), screen["retained_idx"])]
+    aligned = sd.align_hazard_to_cube(
+        raw, {"H": H, "realization_ids": np.arange(N_TEST)},
+        screen["retained_idx"])
+    idx = screen["retained_idx"]
+    expected = np.vstack([
+        H[np.ix_([g * rps, g * rps + 1], idx)].mean(axis=0)
+        for g in sorted(subset)                    # rows keyed by ascending sow_id
+    ])
+    assert aligned.shape == (len(subset), len(idx))
     assert np.allclose(aligned, expected)
 
+    # A re-evaluated SOW with no hazard coordinates is a hard error, never a
+    # positional guess.
     with pytest.raises(KeyError):
-        sd.align_hazard_to_cube(raw, {"H": H[:10], "realization_ids": rids[:10]},
+        sd.align_hazard_to_cube(raw, {"H": H[:10],
+                                      "realization_ids": np.arange(10)},
                                 screen["retained_idx"])

@@ -431,14 +431,15 @@ _DEFAULT_OBJECTIVES = [
 
 ACTIVE_OBJECTIVES = _parse_list_env("NYCOPT_OBJECTIVES", _DEFAULT_OBJECTIVES)
 
-# Stakeholder floor on NYC weekly delivery reliability, enforced during search
-# as the formal post-simulation Borg constraint `nyc_reliability_floor`
-# (violation = max(0, floor - reliability), NATURAL 0-1 scale; see
-# src.formulations.make_post_sim_constraint_function). A policy delivering NYC
-# water below this weekly reliability is unacceptable to stakeholders
-# regardless of the rest of the trade-off. src/pareto_filter.py applies the
-# same floor as a post-hoc screen for archives that predate the formal
-# constraint.
+# Stakeholder floor on NYC delivery reliability, enforced during search as the
+# formal post-simulation Borg constraint `nyc_reliability_floor` (violation =
+# max(0, floor - reliability), NATURAL 0-1 scale; see
+# src.formulations.make_post_sim_constraint_function). The floor reads the
+# active set's reliability objective — the ANNUAL non-failure frequency in
+# every ensemble search context. A policy failing in half of all years is
+# unacceptable to stakeholders regardless of the rest of the trade-off.
+# src/pareto_filter.py applies the same floor as a post-hoc screen for
+# archives that predate the formal constraint.
 NYC_RELIABILITY_FLOOR = _parse_float_env("NYCOPT_NYC_RELIABILITY_FLOOR", 0.5)
 
 
@@ -691,10 +692,13 @@ DIAGNOSTICS_SETTINGS = {
 REEVAL_MODE = _parse_str_env("NYCOPT_REEVAL_MODE", "single")
 
 REEVALUATION_SETTINGS = {
-    # Metric identifiers scored offline by src.robustness from the persisted raw
-    # per-realization matrix. The manuscript metric set; `src.robustness
-    # --metrics` overrides. The realization count comes from the resolved
-    # REEVAL_ENSEMBLE_SPEC (the test ensemble), never from a static label here.
+    # Metric identifiers scored offline by src.robustness from the persisted
+    # per-SOW annual-unit objective matrix — the SAME statistics the search
+    # optimizes, recomputed per deeply-uncertain state of the world (one metric
+    # currency across search, robustness, and regret). The manuscript metric
+    # set; `src.robustness --metrics` overrides. The SOW count comes from the
+    # resolved REEVAL_ENSEMBLE_SPEC (the test ensemble), never from a static
+    # label here.
     #
     # NO PERFECT-FORESIGHT OPTIMIZATION APPEARS IN ANY OF THESE. Deliberately
     # absent: `regret_from_best` (set-relative and design-coupled -- dropping one
@@ -704,22 +708,13 @@ REEVALUATION_SETTINGS = {
     # 2020, and structurally invalid when the in-sample term is coverage-weighted
     # and the out-of-sample term is measure-weighted). See src/robustness.py.
     "robustness_metrics": [
-        "satisficing_multivariate_sow",  # PRIMARY: Starr domain criterion, SOW unit
+        "satisficing_multivariate_sow",  # PRIMARY: Starr domain criterion over SOWs
         "satisficing_univariate_sow",    # the PRIMARY's per-objective decomposition
-        "satisficing_multivariate",      # the same criterion pooled over realizations
-        "satisficing_univariate",        # its decomposition (realization unit)
         "laplace_mean",                  # McPhail T3 = mean  (risk-neutral anchor)
         "maximin",                       # McPhail T3 = worst (risk-averse anchor)
-        "improvement_vs_baseline",       # fixed external reference; no optimization
+        "regret_magnitudes",             # incumbent-relative regret, natural units
+        "regret_frequencies",            # its unit-free harm frequencies
     ],
-    # Risk attitude applied to the R realizations WITHIN one deeply-uncertain state of
-    # the world, before the Starr criterion is applied ACROSS states. This is the
-    # collapse of the PRIMARY metric (satisficing_multivariate_sow, the Herman 2014 /
-    # Trindade 2017 / Gold 2023 lineage), and the same collapse the incumbent-regret
-    # family consumes. "mean" is risk-neutral (what those papers do); "worst" is the
-    # risk-averse sensitivity. It is a real methodological choice, it moves the
-    # number, and it is recorded in robustness_meta.json next to the scores.
-    "within_sow_aggregator": _parse_str_env("NYCOPT_WITHIN_SOW_AGG", "mean"),
 }
 
 

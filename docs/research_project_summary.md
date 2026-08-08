@@ -104,18 +104,20 @@ Operational how-to: `workflow/README.md` and the step scripts `workflow/00–09_
 
 ## Objectives
 
-Eight active objectives (NYC delivery reliability + CVaR₉₀ deficit, Montague reliability
-+ CVaR₉₀ deficit, Trenton reliability, downstream flood exceedance (ft·days above NWS
-minor flood stage), NYC storage 5th percentile, NJ delivery reliability), defined in
-`src/objectives.py` and documented in `notes/methods/objective_definitions.md`. During
-search, each objective's per-realization temporal metric is collapsed across
-realizations by a two-layer annual-unit scheme (annual metric per realization ×
-water-year unit; a per-objective unit operator over the pooled unit-years). The
-annual-unit epsilons are calibrated per `notes/methods/epsilon_calibration_experiment.md`
-(max over the two ensemble designs, the historic arm excluded and disclosed); the
-satisficing-threshold vector is measured
-(`notes/methods/robustness_threshold_diagnostics.md`) and awaits adoption into the
-registry.
+Eight active objectives (NYC delivery reliability + P99 deficit tail, Montague
+reliability + P99 deficit tail, Trenton reliability, expected annual downstream flood
+exceedance (ft·days above NWS minor flood stage), NYC storage annual-minimum P01, NJ
+delivery reliability), computed by the two-layer annual-unit scheme (annual metric per
+realization × water-year unit; a per-objective unit operator over the pooled
+unit-years) and documented in `notes/methods/objective_definitions.md`. **These
+annual-unit statistics are the study's single metric currency**: search pools all
+realizations' unit-years; robustness and regret recompute the same statistics per
+E_test state of the world. The annual-unit epsilons are calibrated per
+`notes/methods/epsilon_calibration_experiment.md` (max over the two ensemble designs,
+the historic arm excluded and disclosed). The satisficing thresholds in the registry
+are PROVISIONAL: the substrate change superseded the previously measured vector, and
+the threshold diagnostic must be re-run on the per-SOW annual-unit values before
+adoption (`notes/methods/robustness_threshold_diagnostics.md`; tracked in `TODO.md`).
 
 ## Comparison controls
 
@@ -167,25 +169,24 @@ designs*, not because it is probability-faithful. The campaign uses one construc
 (Kirsch–Nowak over the wide DU box); rankings are conditional on it, a declared
 limitation; a structurally different second construction (multi-site HMM) is registered
 but parked outside the campaign — the DRB-fitted HMM is near-memoryless, so it would
-vary the generator family without adding a persistence stress. **The full (solution × realization × objective)
-matrix is persisted** in natural units with each realization's SOW id, so any robustness
-metric — at the SOW unit or the realization unit — is scored offline without
-re-simulating.
+vary the generator family without adding a persistence stress. **The (solution × SOW ×
+objective) matrix is persisted** in natural units — each state's 25 realizations pool
+their unit-years through the objectives' own unit operators — so every robustness and
+regret metric is scored offline without re-simulating.
 
 ## Comparison metrics
 
-Two families. The RQ1 endpoint is the re-evaluated **multivariate Starr satisficing
-fraction** of the policies a design produces, counted on the **SOW unit**: the 25
-realizations sharing a forcing point are collapsed by their mean, and the
-all-criteria conjunction is counted over the 1,000 states. This keeps the designed
-DU box and the fitted stochastic generator from being integrated into one number,
-matches the precision the SOW count supports, and puts RQ1 on the same unit as the
-regret family below; the pooled realization unit is co-reported as a sensitivity.
-The run-level scalar is the maximum satisficing fraction attained in the run's
-re-evaluated set, reported with its per-objective satisficing decomposition (the
-maximum-over-a-set bias is disclosed).
-Secondary metrics are univariate satisficing, the coverage-weighted mean (Laplace),
-maximin, and signed improvement-over-status-quo.
+Two families, both transformations of the same per-SOW annual-unit objective values
+(the search objectives recomputed per state of the world — Herman et al. 2014, 2015;
+Trindade et al. 2017; McPhail et al. 2018). The RQ1 endpoint is the re-evaluated
+**multivariate Starr satisficing fraction**: the all-criteria conjunction counted
+over the 1,000 states. This keeps the designed DU box and the fitted stochastic
+generator from being integrated into one number, matches the precision the SOW count
+supports, and puts RQ1 on the same unit as the regret family below. The run-level
+scalar is the maximum satisficing fraction attained in the run's re-evaluated set,
+reported with its per-objective satisficing decomposition (the maximum-over-a-set
+bias is disclosed). Secondary metrics are univariate satisficing, the
+coverage-weighted mean (Laplace), and maximin.
 
 The RQ2 endpoint is **incumbent-relative regret**: how much worse a candidate policy is
 than the status-quo 2017 FFMP policy *in the same state of the world*. Magnitudes are
@@ -236,9 +237,12 @@ reserve. First call on the reserve is an additional draw for both matched design
 (~134k); the RQ3 variable-resolution sweep (~200k) is deprioritized and runs only on
 whatever SU remains at the end of the campaign.
 
-**Remaining before campaign launch:** adopt the measured satisficing thresholds into
-the registry; the confirmatory search under the adopted epsilon vector; the Anvil
-shakeout (hazard-filling step-06 smoke + pilot go/no-go). Tracked in `TODO.md`.
+**Remaining before campaign launch:** regenerate the re-evaluation artifacts on the
+unified per-SOW annual-unit substrate (steps 05, 08/09), re-run the
+satisficing-threshold diagnostic on it and adopt the final threshold vector; the
+regret-tolerance noise floors (pass A); the confirmatory search under the adopted
+epsilon vector; the Anvil shakeout (hazard-filling step-06 smoke + pilot go/no-go).
+Tracked in `TODO.md`.
 
 **Open decisions:** the satisficing criterion values and sweep-grid centre; the
 scenario design under which the RQ3 variable-resolution sweep is run, if the leftover

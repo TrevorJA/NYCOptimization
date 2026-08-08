@@ -30,8 +30,8 @@
 # (NYCOPT_RTD_REFRESH=1 forces the recompute).
 #
 # Sizing: the anchor step is one pywrdrb.Data() load of a ~133 MB HDF5 plus 8
-# base-metric reductions (~1-2 min); the figures step is pandas/numpy over a
-# 200k-row parquet (~1 min).
+# annual-unit objective reductions (~1-2 min); the figures step is pandas/numpy
+# over the per-SOW parquet (~1 min).
 
 set -euo pipefail
 

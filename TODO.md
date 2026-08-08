@@ -10,20 +10,33 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 1. Remaining method closures
 
+- [ ] **[HPC]** UNIFIED METRIC CURRENCY re-runs (2026-08-07 substrate change:
+  robustness/regret now score the per-SOW annual-unit search objectives; the
+  whole-trace re-eval metrics are retired). All previously persisted re-eval
+  artifacts are on the OLD substrate and unreadable by the new scorer (by
+  design — `robustness.load_raw` raises on old metas). Regenerate in order:
+  1. step 05 `--reeval` (incumbent per-SOW matrix; supersedes the DV-ripple
+     rerun below — one rerun covers both),
+  2. steps 08/09(+09b) for every design already re-evaluated,
+  3. re-run the satisficing-threshold diagnostic
+     (`workflow/supplemental/robustness_threshold_diagnostics.sh`) on the new
+     incumbent cube and ADOPT the final annual-space threshold vector into
+     `objectives_ensemble._DEFAULT_THRESHOLDS` (current values are
+     PROVISIONAL: carried external goalposts + placeholder re-anchors),
+  4. regenerate steps 10/11/13 artifacts.
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test re-evaluation of the Pareto sets).
 - [ ] **[HPC→local]** Regret-tolerance pass A, the moment the step-05 incumbent
-  cube lands and **before any re-evaluated policy set is inspected**:
-  `workflow/supplemental/regret_tolerance_diagnostics.sh`. It measures the
-  per-objective noise floor, picks the ladder SHAPE (`max(eps, floor)` — the
-  synthetic check already shows the flood epsilon sitting ~7x under its floor)
-  and the headline rung `k`. Adopt both into `RTOL_ADOPTED_K` /
-  `NYCOPT_REGRET_TAU_K` (or `NYCOPT_REGRET_TAU` for an explicit vector).
-  Rules and the SI plan: `docs/notes/methods/regret_tolerance_diagnostics.md`.
-  Also confirm the §1 base-metric epsilons in `src/objectives.py` are current —
-  their *ratios* across objectives are load-bearing for the ladder in a way they
-  never were for Borg archiving.
+  cube lands (new substrate) and **before any re-evaluated policy set is
+  inspected**: `workflow/supplemental/regret_tolerance_diagnostics.sh`. It
+  measures the per-objective noise floor of the per-SOW estimator, picks the
+  ladder SHAPE (`max(eps, floor)`) and the headline rung `k`. Adopt both into
+  `RTOL_ADOPTED_K` / `NYCOPT_REGRET_TAU_K` (or `NYCOPT_REGRET_TAU` for an
+  explicit vector). Rules and the SI plan:
+  `docs/notes/methods/regret_tolerance_diagnostics.md`. The ladder units are
+  now the ANNUAL-UNIT epsilons (`src/objectives_ensemble.py`) — one
+  calibration with the search resolution; confirm their ratios are current.
 - [ ] **[local]** Regret-tolerance pass B after step 08: discrimination band,
   seed/draw empirical nulls, paired SOW bootstrap, and the assay-sensitivity
   control against `historic`. It derives the non-inferiority margin `delta` and
@@ -95,10 +108,11 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 3. Production gates
 
-- [ ] **[HPC]** Launch campaign searches. All production inputs (pools d0–d2,
-  search ensembles, E_test + presim, baseline-on-E_test matrix) are staged,
-  verified, and adequacy-gated (campaign 6-axis min tail share
-  0.311 / 0.306 / 0.303 across draws).
+- [ ] **[HPC]** Launch campaign searches. Production inputs (pools d0–d2,
+  search ensembles, E_test + presim) are staged, verified, and adequacy-gated
+  (campaign 6-axis min tail share 0.311 / 0.306 / 0.303 across draws). The
+  baseline-on-E_test matrix must be REGENERATED on the unified substrate first
+  (item 1 above).
 
 ## 4. Post-campaign deliverables
 

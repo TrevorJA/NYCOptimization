@@ -2,10 +2,11 @@
 
 Reusable postprocessing: drop Pareto-approximate solutions that violate a hard
 stakeholder floor/ceiling on one or more objectives, in NATURAL units. The
-canonical use is the NYC delivery-reliability floor -- a policy that delivers NYC
-water at < 50% weekly reliability on the reference trace is unacceptable to
-stakeholders no matter how well it trades off other objectives, so it is removed
-before any figure or robustness summary is produced.
+canonical use is the NYC delivery-reliability floor -- a policy whose NYC
+delivery reliability falls below 0.5 (the annual non-failure frequency in
+ensemble archives) is unacceptable to stakeholders no matter how well it trades
+off other objectives, so it is removed before any figure or robustness summary
+is produced.
 
 This is a *screening* filter applied AFTER search, not a new optimization: it
 never changes an objective value, only which solutions are carried forward.
@@ -33,10 +34,14 @@ from pathlib import Path
 import numpy as np
 
 #: Hard stakeholder floors (minimum acceptable NATURAL value), by objective name.
-#: A solution is dropped if any listed objective falls BELOW its floor. NYC weekly
-#: delivery reliability < 0.5 is unacceptable to DRB stakeholders regardless of the
-#: rest of the trade-off, so 0.5 is the default screen.
+#: A solution is dropped if any listed objective falls BELOW its floor. NYC
+#: delivery reliability < 0.5 is unacceptable to DRB stakeholders regardless of
+#: the rest of the trade-off, so 0.5 is the default screen. The same floor is
+#: keyed under BOTH registry spellings because absent names are silently
+#: ignored: ensemble archives carry the annual objective, single-trace (§1)
+#: archives the weekly one — one dict serves both without a dead screen.
 DEFAULT_STAKEHOLDER_FLOORS: dict[str, float] = {
+    "nyc_delivery_reliability_annual": 0.5,
     "nyc_delivery_reliability_weekly": 0.5,
 }
 

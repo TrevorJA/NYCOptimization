@@ -54,6 +54,8 @@ $E_{\text{test}}$ is sampled by **LHS, not i.i.d.** The i.i.d. rule applies only
 
 **Robustness.** Performance of a policy across the re-evaluation ensemble, computed with explicitly named metrics (satisficing, regret, percentile), since metric choice changes rankings (Herman et al. 2015; McPhail et al. 2018, *Earth's Future*).
 
+**Per-SOW objective value** ($J_i(x,\theta)$). The study's single metric currency: the annual-unit search objective recomputed per E_test state of the world, by pooling that state's realizations' unit-years through the objective's own unit operator. Every robustness and regret metric is a transformation of $J_i(x,\theta)$ — the standard construction in which the performance measure inside a robustness calculation *is* the optimization objective re-evaluated per state (Herman et al. 2014, 2015; Trindade et al. 2017; McPhail et al. 2018). There is no separate re-evaluation metric set, and no whole-trace robustness statistic.
+
 **Regret.** Never write "regret" unqualified — it has four incompatible references in this literature, and conflating two of them is a mistake this project has already made once. Use the qualified names:
 
 - **Incumbent regret** (the one computed). The amount by which a candidate policy is worse than the **status-quo 2017 FFMP policy** evaluated *in the same state of the world*, in the objective's own natural units, oriented so that positive advantage means better than current operations. Reference: McPhail et al. (2018) §3.1 for the licensed T1; Herman et al. (2015) R1/R2 for the per-objective → tail-quantile shape; Kwakkel et al. (2016b) for the adverse-subset restriction. Its unit-free companions are the **harm frequencies** and the **no-harm frequency** $\Pi_\tau$.

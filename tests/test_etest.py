@@ -7,12 +7,14 @@ broken, which is why they are asserted here rather than left to review:
 1. **It is LHS over the FULL DU range, with R > 1 realizations per LHS point.** The i.i.d.
    requirement of ``src/scenario_designs.py`` belongs to the SEARCH-side candidate pools, which are
    subsampled; E_test is never subsampled and is never a control, so it is exempt. If someone
-   "fixes" E_test to be i.i.d. with R = 1, nothing breaks except that the SOW-unit robustness
-   metric quietly becomes the realization-unit metric.
+   "fixes" E_test to be i.i.d. with R = 1, nothing breaks except that each SOW's pooled annual-unit
+   objective value quietly becomes a single-realization estimate with no within-state sample of
+   natural variability behind it.
 
-2. **The SOW grouping survives generation.** ``sow_ids`` must round-trip from the staged ensemble
-   into ``reeval_raw_meta.json``, or the SOW unit (Herman 2014; Trindade 2017; Gold 2022) cannot be
-   computed offline from the persisted cube — which is the whole point of persisting the cube.
+2. **The SOW grouping survives generation.** The grouping must round-trip from the staged ensemble
+   into the re-eval layer (``reeval_core.sow_grouping`` -> the per-SOW matrix and its
+   ``reeval_raw_meta.json`` SOW labels), or the SOW unit (Herman 2014; Trindade 2017; Gold 2022)
+   cannot be computed offline from the persisted cube — which is the whole point of persisting it.
 
 3. **Its seed stream is disjoint from every search ensemble's.** Otherwise the held-out
    re-evaluation is not held out (Bonham et al. 2024).
@@ -113,10 +115,13 @@ def test_construction_contract_holds():
 
 
 def test_every_variant_replicates_within_each_sow():
-    """R_test > 1 is what makes the SOW unit a DIFFERENT quantity from the realization unit.
+    """R_test > 1 is what gives each SOW a within-state sample to pool.
 
-    With R = 1 each SOW holds one realization, the within-SOW collapse is the identity, and
-    ``sat_multivariate_sow`` silently equals ``sat_multivariate``.
+    Each SOW's annual-unit objective value pools its R realizations' unit-years
+    through the §2 unit operator; with R = 1 that pool holds a single
+    realization's unit-years, so every per-SOW value — and everything
+    ``sat_multivariate_sow`` counts — is a one-realization estimate with no
+    sample of natural variability inside the state.
     """
     for name, v in E_TEST_VARIANTS.items():
         assert v.realizations_per_theta > 1, f"'{name}' has R_test == 1"
@@ -241,8 +246,9 @@ def test_sow_grouping_falls_back_to_meta_without_the_npz(tmp_path, monkeypatch):
 
 
 def test_no_forcing_profiles_means_no_grouping_not_a_fabricated_one(tmp_path, monkeypatch):
-    """A stationary ensemble has no SOWs. Inventing one (e.g. one realization each) would
-    make the SOW metric silently equal the realization metric."""
+    """A stationary ensemble has no SOWs. Inventing a grouping (e.g. one realization
+    each) would fabricate per-SOW objective values where the per-SOW unit is
+    undefined, instead of the re-eval layer reporting robustness N/A."""
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
     _stage_etest(tmp_path, "fixprob_10yr_n8_d0", n_theta=8, r=1,
                  population="stationary", seed_domain="fixed", with_npz=False)

@@ -178,7 +178,13 @@ def _merge_shards(shard_paths: list[Path], out_path: Path, R: int) -> None:
     rid ranges per chunk, so the output is independent of shard completion
     order and of row order within a shard. Shards are unlinked after the write.
     """
-    parts = [np.load(p, allow_pickle=True) for p in shard_paths]
+    # Materialize then close each shard's npz handle before the unlinks below —
+    # an open handle makes the unlink fail on Windows (WinError 32).
+    parts = []
+    for p in shard_paths:
+        with np.load(p, allow_pickle=True) as z:
+            parts.append({k: z[k] for k in ("H", "realization_ids",
+                                            "window_index", "hazard_axes")})
     H = np.vstack([p["H"] for p in parts])
     rid = np.concatenate([p["realization_ids"] for p in parts])
     win = np.concatenate([p["window_index"] for p in parts])
