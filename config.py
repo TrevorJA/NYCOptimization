@@ -198,6 +198,36 @@ def run_output_dir(scenario: str, moea_slug: str, artifact: str) -> Path:
     return p
 
 
+def baseline_objectives_csv(formulation: str = "ffmp",
+                            scenario: str = None) -> Path:
+    """Path of the baseline FFMP objective vector comparable to a scenario.
+
+    A baseline vector is only comparable to a front evaluated on the SAME
+    substrate, so the file is scenario-partitioned: the historic baseline
+    (single trace, full model, step 05 default path) keeps its legacy flat
+    location, while every other scenario design points at the same default
+    policy scored on that design's search ensemble (step 05
+    ``--search-ensemble``). Consumers get "no file" — not a historic-record
+    vector — when a scenario has not been scored yet.
+
+    Args:
+        formulation: Problem formulation name.
+        scenario: Scenario-design name; defaults to the active design.
+
+    Returns:
+        ``outputs/baseline/{formulation}_baseline_objectives.csv`` for the
+        historic design, else
+        ``outputs/baseline/{scenario}/{formulation}_baseline_objectives.csv``
+        (parent NOT created — this is a locator, not a writer).
+    """
+    if scenario is None:
+        scenario = active_scenario_name()
+    name = f"{formulation}_baseline_objectives.csv"
+    if scenario == "historic":
+        return OUTPUT_BASELINE_DIR / name
+    return OUTPUT_BASELINE_DIR / scenario / name
+
+
 def figure_dir_for(scenario: str, moea_slug: str, kind: str) -> Path:
     """Return a two-axis-partitioned figure subdir, creating it if needed.
 

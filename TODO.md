@@ -12,35 +12,37 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 - [ ] **[HPC]** UNIFIED METRIC CURRENCY re-runs (2026-08-07 substrate change:
   robustness/regret now score the per-SOW annual-unit search objectives; the
-  whole-trace re-eval metrics are retired). All previously persisted re-eval
-  artifacts are on the OLD substrate and unreadable by the new scorer (by
-  design — `robustness.load_raw` raises on old metas). Regenerate in order:
-  1. step 05 `--reeval` (incumbent per-SOW matrix; supersedes the DV-ripple
-     rerun below — one rerun covers both),
-  2. steps 08/09(+09b) for every design already re-evaluated,
-  3. re-run the satisficing-threshold diagnostic
-     (`workflow/supplemental/robustness_threshold_diagnostics.sh`) on the new
-     incumbent cube and ADOPT the final annual-space threshold vector into
-     `objectives_ensemble._DEFAULT_THRESHOLDS` (current values are
-     PROVISIONAL: carried external goalposts + placeholder re-anchors),
-  4. regenerate steps 10/11/13 artifacts.
+  whole-trace re-eval metrics are retired). Items 1 and 3 DONE 2026-08-08
+  (incumbent cube regenerated at
+  `outputs/historic/ffmp_obj8_mm_full/reeval/etest_kn_50yr_n25000/baseline/`
+  — jobs 19733672 + 19738752, old cube archived alongside as
+  `baseline_oldsubstrate_20260803/`; threshold vector ADOPTED into
+  `objectives_ensemble._DEFAULT_THRESHOLDS`, values unchanged from
+  provisional, storage arbitration documented in the status comment).
+  Remaining:
+  1. steps 08/09(+09b) re-evals — wait for FRESH campaign Pareto sets; the
+     prior `.set`/`.ref` archives use the retired factor DV encoding and
+     `reeval_core` has no encoding-version handling, so re-simulating them
+     under the new decoder would silently misdecode DVs,
+  2. regenerate steps 10/11/13 artifacts (needs the step-08 policy cubes).
+  GEOMETRY NOTE for step-09 chunk re-evals on E_test: submit on `shared`
+  with ~8 cpus per rank and an explicit realization batch (job 19738752:
+  1 node x 16 ranks x 8 cpus, `NYCOPT_SEARCH_REALIZATION_BATCH=50`, 4h14m,
+  ~1.7 GB/rank RSS). Denser packings (64x2, 32x4) OOM the job cgroup —
+  each rank streams a DIFFERENT ~7.3 GB chunk-HDF5 set and the page cache
+  is charged to the job (jobs 19733674/19733773; single-rank code peak is
+  only ~1.7 GB, so it is concurrency, not a leak).
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test re-evaluation of the Pareto sets).
-- [ ] **[HPC→local]** Regret-tolerance pass A, the moment the step-05 incumbent
-  cube lands (new substrate) and **before any re-evaluated policy set is
-  inspected**: `workflow/supplemental/regret_tolerance_diagnostics.sh`. It
-  measures the per-objective noise floor of the per-SOW estimator, picks the
-  ladder SHAPE (`max(eps, floor)`) and the headline rung `k`. Adopt both into
-  `RTOL_ADOPTED_K` / `NYCOPT_REGRET_TAU_K` (or `NYCOPT_REGRET_TAU` for an
-  explicit vector). Rules and the SI plan:
-  `docs/notes/methods/regret_tolerance_diagnostics.md`. The ladder units are
-  now the ANNUAL-UNIT epsilons (`src/objectives_ensemble.py`) — one
-  calibration with the search resolution; confirm their ratios are current.
 - [ ] **[local]** Regret-tolerance pass B after step 08: discrimination band,
   seed/draw empirical nulls, paired SOW bootstrap, and the assay-sensitivity
-  control against `historic`. It derives the non-inferiority margin `delta` and
-  refuses to run before a rung is adopted.
+  control against `historic`. It derives the non-inferiority margin `delta`.
+  Pass A ADOPTED 2026-08-08 (max(eps, floor) shape, headline rung k = 1;
+  record in `regret_tolerance_diagnostics.md` §8 and
+  `supplemental_config.RTOL_ADOPTED_K`; tau vector in the run env files as
+  `NYCOPT_REGRET_TAU`). NOTE: run the pass-B k-sweep with `NYCOPT_REGRET_TAU`
+  unset so the ladder does not degenerate to the single adopted rung.
 - [ ] **[local]** SI estimator-stability + convergence diagnostics:
   block-bootstrap effective-sample-size analysis of the annual-unit
   aggregation (Text S5) and the MOEA runtime convergence content (Text S7).
@@ -48,17 +50,6 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   downstream-stress correlation as a required build diagnostic plus the
   selected-ensemble event-seasonality span check.
 
-- [ ] **[HPC]** DV re-parameterization ripple (allocation-reduction DVs,
-  2026-08-06): rerun the step-05 baseline (same policy, new DV encoding in the
-  persisted matrix; the staged one is 2026-08-03 and uses the retired factor
-  encoding). Prior `.set`/`.ref` archives and re-eval matrices also use the
-  retired encoding — never mix them with new runs, but don't delete them until
-  the next optimization is run.
-  No JAR rebuild is required: step 00 bakes only `nvars`/`nobjs` and a
-  hardcoded `RealVariable(-1e6, 1e6)` into the problem class — the real DV
-  bounds live in Python and never reach the JAR. Verified 2026-08-07 that the
-  built JARs (36/45/55/64 vars, 8 objs) still match `get_n_vars`/`get_n_objs`.
-  Rebuild only when a DV or objective is added/removed.
 
 ## 2. Anvil shakeout (before production submissions)
 
@@ -75,8 +66,9 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 - [ ] **[HPC]** Launch campaign searches. Production inputs (pools d0–d2,
   search ensembles, E_test + presim) are staged, verified, and adequacy-gated
   (campaign 6-axis min tail share 0.311 / 0.306 / 0.303 across draws). The
-  baseline-on-E_test matrix must be REGENERATED on the unified substrate first
-  (item 1 above).
+  baseline-on-E_test matrix is regenerated on the unified substrate
+  (2026-08-08) and the threshold + regret-tolerance parameters are adopted —
+  no metric-side blockers remain.
 
 ## 4. Post-campaign deliverables
 

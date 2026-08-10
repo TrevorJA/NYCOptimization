@@ -27,6 +27,9 @@ Usage:
 Outputs:
     outputs/baseline/{formulation}_baseline.hdf5
     outputs/baseline/{formulation}_baseline_objectives.csv
+    outputs/baseline/{scenario}/{formulation}_baseline_objectives.csv
+        (--search-ensemble: the same policy scored on an ensemble scenario's
+        search ensemble — the vector comparable to that scenario's fronts)
 """
 
 import sys
@@ -131,6 +134,74 @@ def run_baseline_reeval(formulation: str = "ffmp", seed=None):
     return raw_path
 
 
+def run_baseline_search_ensemble(formulation: str = "ffmp"):
+    """Score the default FFMP policy on the active scenario's search ensemble.
+
+    Runs the baseline DV vector through ``src.simulation.evaluate`` — the
+    exact evaluation path (search ensemble, model mode, realization batching,
+    active annual-unit objective set) used for every candidate during that
+    scenario's search — so the resulting vector is directly comparable to the
+    scenario's Pareto-front objectives, which the historic single-trace
+    baseline is not. Writes the scenario-partitioned CSV located by
+    ``config.baseline_objectives_csv`` (natural orientation, same column
+    convention as the historic baseline CSV) plus a provenance sidecar.
+
+    Returns:
+        Tuple of (natural objective values, csv path).
+    """
+    import json
+
+    from config import (SEARCH_ENSEMBLE_SPEC, active_scenario_name,
+                        baseline_objectives_csv)
+    from src.formulations import get_obj_directions
+    from src.simulation import evaluate
+
+    scenario = active_scenario_name()
+    if not SEARCH_ENSEMBLE_SPEC.is_ensemble:
+        raise SystemExit(
+            f"--search-ensemble: active scenario '{scenario}' evaluates on a "
+            f"single trace; use the default historic baseline path instead."
+        )
+
+    _ACTIVE_OBJS = get_objective_set()
+    dv_values = get_baseline_values(formulation)
+
+    print(f"\n--- Baseline on search ensemble ({formulation}, "
+          f"scenario={scenario}) ---")
+    t0 = time.perf_counter()
+    objs_min = evaluate(dv_values, formulation_name=formulation)
+    elapsed = time.perf_counter() - t0
+    if any(v >= 1e6 for v in objs_min):
+        raise RuntimeError(
+            "baseline search-ensemble evaluation returned the failure "
+            f"penalty vector: {objs_min}"
+        )
+
+    directions = get_obj_directions()
+    natural = [-v if d == 1 else v for v, d in zip(objs_min, directions)]
+    obj_names = _ACTIVE_OBJS.names
+    print(f"  Elapsed: {elapsed:.1f}s")
+    for name, val in zip(obj_names, natural):
+        print(f"  {name} = {val:.6f}")
+
+    obj_csv = baseline_objectives_csv(formulation, scenario)
+    obj_csv.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([natural], columns=obj_names).to_csv(obj_csv, index=False)
+    meta = {
+        "scenario": scenario,
+        "formulation": formulation,
+        "ensemble_spec": repr(SEARCH_ENSEMBLE_SPEC),
+        "objective_names": list(obj_names),
+        "eval_seconds": round(elapsed, 1),
+        "written": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    meta_path = obj_csv.with_name(obj_csv.stem + "_meta.json")
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+    print(f"\n  Objectives saved: {obj_csv}")
+    print(f"  Meta saved      : {meta_path}")
+    return natural, obj_csv
+
+
 def run_inmemory_test(formulation: str = "ffmp", use_trimmed: bool = False):
     """Test the in-memory simulation path against the disk-based result.
 
@@ -185,6 +256,13 @@ if __name__ == "__main__":
         help="Run the baseline through the common re-eval ensemble and persist "
              "its per-SOW matrix (for the incumbent-relative regret family)."
     )
+    parser.add_argument(
+        "--search-ensemble", action="store_true",
+        help="Score the baseline policy on the active scenario's SEARCH "
+             "ensemble via the same evaluate() path the search used, and "
+             "write the scenario-partitioned objectives CSV. Requires an "
+             "ensemble scenario design (env file)."
+    )
     parser.add_argument("--seed", type=int, default=None,
                         help="Seed subdir for --reeval baseline output.")
     args = parser.parse_args()
@@ -192,6 +270,11 @@ if __name__ == "__main__":
     if args.reeval:
         run_baseline_reeval(args.formulation, seed=args.seed)
         print("\n--- Baseline re-eval complete ---")
+        sys.exit(0)
+
+    if args.search_ensemble:
+        run_baseline_search_ensemble(args.formulation)
+        print("\n--- Baseline search-ensemble scoring complete ---")
         sys.exit(0)
 
     print("=" * 50)

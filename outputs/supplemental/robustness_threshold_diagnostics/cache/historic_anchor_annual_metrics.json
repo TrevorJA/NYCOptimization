@@ -1,0 +1,25 @@
+{
+  "anchor": {
+    "nyc_delivery_reliability_annual": 0.6447368421052632,
+    "nyc_delivery_deficit_p99_pct": 48.828776570377755,
+    "montague_flow_reliability_annual": 0.7894736842105263,
+    "montague_flow_deficit_p99_pct": 27.67634882927276,
+    "trenton_flow_reliability_annual": 0.868421052631579,
+    "downstream_flood_exceedance_annual": 0.3467372492486944,
+    "nyc_storage_min_p01_pct": 0.0,
+    "nj_delivery_reliability_annual": 0.7368421052631579
+  },
+  "obj_names": [
+    "nyc_delivery_reliability_annual",
+    "nyc_delivery_deficit_p99_pct",
+    "montague_flow_reliability_annual",
+    "montague_flow_deficit_p99_pct",
+    "trenton_flow_reliability_annual",
+    "downstream_flood_exceedance_annual",
+    "nyc_storage_min_p01_pct",
+    "nj_delivery_reliability_annual"
+  ],
+  "source_hdf5": "/home/x-tamestoy/Research/DRB/Pywr-DRB/NYCOptimization/outputs/baseline/ffmp_baseline.hdf5",
+  "source_mtime": 1786160895.9805663,
+  "computed": "2026-08-08"
+}

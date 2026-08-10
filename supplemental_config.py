@@ -1299,14 +1299,60 @@ RTD_NEAR_HISTORIC_K: int = 25
 #: columns NaN). Keys are ANNUAL objective names; basis strings are the short
 #: per-objective justification carried into the summary table.
 #:
-#: SUPERSEDED 2026-08-07: the vector adopted that morning was measured on the
-#: retired whole-trace substrate and does not carry over to the per-SOW
-#: annual-unit objective values. The PROVISIONAL annual-space thresholds live
-#: in objectives_ensemble._DEFAULT_THRESHOLDS; these dicts stay empty (pass 1
-#: pending) until the diagnostic is re-run against the status-quo E_test cube
-#: on the new substrate and the §0b placement rules are re-applied.
-RTD_RECOMMENDED_THRESHOLDS: dict = {}
-RTD_RECOMMENDATION_BASIS: dict = {}
+#: ADOPTED 2026-08-08 (pass 1 re-run against the regenerated status-quo E_test
+#: cube on the per-SOW annual-unit substrate; §0b rules re-applied). The
+#: recommendation equals the provisional vector — every rule-1 maintain-
+#: status-quo re-anchor and both rule-2 external goalposts survive the
+#: measured placements — so no threshold labels changed. Measured SOW pass
+#: fractions at the vector (n = 1,000): nyc rel 0.005, nyc deficit 0.980,
+#: montague rel 0.000, montague deficit 0.965, trenton rel 0.054, flood
+#: 0.443, storage 0.014, nj rel 0.020; joint Starr 0.000 (binding: montague
+#: rel). Degenerate incumbent fractions are motivation results per §0; the
+#: montague-rel anchor lies OUTSIDE the incumbent's E_test support (max
+#: 0.746 vs 0.79, the only criterion for which that holds) and is kept per
+#: rule 1's stricter-side rounding because no §0b-admissible inside-support
+#: anchor exists (rule 4 forbids distribution features) and candidate
+#: policies optimize this objective directly; its ranking-criticality is
+#: tested by the framing-diagnostic-3 OAT stringency sweep. Storage
+#: arbitration recorded in objectives_ensemble._DEFAULT_THRESHOLDS.
+RTD_RECOMMENDED_THRESHOLDS: dict = {
+    "nyc_delivery_reliability_annual":     0.65,
+    "nyc_delivery_deficit_p99_pct":        48.0,
+    "montague_flow_reliability_annual":    0.79,
+    "montague_flow_deficit_p99_pct":       27.0,
+    "trenton_flow_reliability_annual":     0.87,
+    "downstream_flood_exceedance_annual":  1.17,
+    "nyc_storage_min_p01_pct":             26.0,
+    "nj_delivery_reliability_annual":      0.74,
+}
+RTD_RECOMMENDATION_BASIS: dict = {
+    "nyc_delivery_reliability_annual":
+        "rule 1: historic-trace anchor 0.6447, stricter side (in support, "
+        "q0.992 of per-SOW values)",
+    "nyc_delivery_deficit_p99_pct":
+        "rule 1: anchor 48.83, stricter side; near-all-pass guardrail kept "
+        "per rule 3",
+    "montague_flow_reliability_annual":
+        "rule 1: anchor 0.7895, stricter side; outside incumbent E_test "
+        "support (max 0.746) — all-fail is the Starr-binding motivation "
+        "finding; OAT sweep tests ranking-criticality",
+    "montague_flow_deficit_p99_pct":
+        "rule 1: anchor 27.68, stricter side; near-all-pass guardrail kept "
+        "per rule 3",
+    "trenton_flow_reliability_annual":
+        "rule 1: anchor 0.8684, stricter side (in support, q0.944)",
+    "downstream_flood_exceedance_annual":
+        "rule 2: observed WY2001-2023 basin experience 1.17 ft-days/yr; "
+        "discriminating (0.443 pass, critical m* = +0.035)",
+    "nyc_storage_min_p01_pct":
+        "rule 2 kept over rule 1's vacuous re-anchor: FFMP L5 drought-"
+        "emergency floor 26%; the incumbent's historic P01 is 0% (1960s "
+        "drought), so maintain-status-quo would be an all-pass 0% line; 26% "
+        "is inside E_test support (incumbent max 28.8%, 0.014 pass) and is "
+        "adopted as a stringent aspirational criterion",
+    "nj_delivery_reliability_annual":
+        "rule 1: anchor 0.7368, stricter side (in support, q0.980)",
+}
 
 # ---------------------------------------------------------------------------
 # Output tree (gitignored, regenerable)
@@ -1422,9 +1468,23 @@ RTOL_MARGIN_RULE: str = (
     "number that could only be computed later."
 )
 
-#: Filled AFTER pass A, from the measured floors. Empty leaves the headline rung
-#: unset and the note's checklist open.
-RTOL_ADOPTED_K: float | None = None
+#: ADOPTED 2026-08-08 from pass A on the regenerated step-05 incumbent cube
+#: (per-SOW annual-unit substrate; 1,000 SOWs x R=25). Ladder SHAPE = `max`
+#: (tau_i = k * max(eps_i, tau_floor_i)): 6 of 8 epsilons sit BELOW their
+#: measured noise floors (reliability axes 5.5-8.1x, flood 3.1x, storage
+#: 1.2x; rtol_ladder_shapes.csv), so the eps-shape ladder cannot carry a
+#: shared k. Under the max shape the S3 rule (smallest rung clearing every
+#: floor) gives k = 1; the eps-shape answer (k = 10, binding
+#: trenton_flow_reliability_annual, k_floor 8.12) is reported in
+#: rtol_noise_floor.csv and rejected — a rung that large is far outside the
+#: noise on every other axis. The adopted tau vector (the unit_max column,
+#: = the floors where noise binds, eps where resolution binds) is recorded
+#: as NYCOPT_REGRET_TAU in the run env files; floors artifact:
+#: outputs/supplemental/regret_tolerance_diagnostics/tables/rtol_floors.json.
+#: The floors are unpaired UPPER BOUNDS — pass B replaces them with the
+#: paired estimate once any policy cube exists (note S2/S8), and records
+#: whether the rung moves.
+RTOL_ADOPTED_K: float | None = 1.0
 
 RTOL_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "regret_tolerance_diagnostics"
 RTOL_TABLES_DIR: Path = RTOL_OUTPUT_ROOT / "tables"

@@ -289,9 +289,23 @@ in the same place the result is.
 
 ## 8. Open items
 
-1. Adopt the ladder **shape** (§2b) and then $k_{\text{headline}}$ (§3) from pass
-   A. Both are blocked on the step-05 rerun on the per-SOW annual-unit
-   substrate, and both must be fixed before any re-evaluated policy set is
-   read.
+1. ~~Adopt the ladder **shape** (§2b) and then $k_{\text{headline}}$ (§3) from
+   pass A.~~ **ADOPTED 2026-08-08**, from pass A on the regenerated step-05
+   incumbent cube (1,000 SOWs × R = 25, per-SOW annual-unit substrate), before
+   any re-evaluated policy set existed on the new substrate. Shape = **`max`**:
+   6 of 8 epsilons sit below their measured noise floors (reliability axes
+   5.5–8.1×, flood 3.1×, storage 1.2×; `rtol_ladder_shapes.csv`), confirming
+   §2b's structural prediction. Headline rung under the max-shape units:
+   $k_{\text{headline}} = 1$ (the smallest grid rung whose $\tau_i = k\,u_i$
+   clears every floor, since $u_i$ absorbs the floors). The eps-shape answer
+   ($k = 10$, binding `trenton_flow_reliability_annual`, $k^{\text{floor}} =
+   8.12$) is reported in `rtol_noise_floor.csv` and rejected per §2b — a rung
+   that large is far outside the noise on every other axis. Recorded in
+   `supplemental_config.RTOL_ADOPTED_K = 1.0` and as the whole-vector
+   `NYCOPT_REGRET_TAU` (= the `unit_max` column at k = 1) in the replication
+   env files; floors artifact `rtol_floors.json`. NOTE for pass B: the env
+   vector pins one τ for scoring — the §4 sweep must be run with
+   `NYCOPT_REGRET_TAU` unset (or via `tau_ladder(k, floors=...)`) so the
+   $k$-curve does not degenerate to a single rung.
 2. Replace the unpaired noise floor with the paired estimate once any policy cube
    exists on the test ensemble (§2), and record whether it moves the rung.

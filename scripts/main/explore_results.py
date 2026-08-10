@@ -99,20 +99,31 @@ def _slugify(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
 
 
-def _load_baseline(formulation: str, obj_names: list) -> np.ndarray:
-    """Baseline objective vector aligned to the front's objectives BY NAME.
+def _load_baseline(formulation: str, scenario: str,
+                   obj_names: list) -> np.ndarray:
+    """Scenario-matched baseline vector aligned to the front's objectives.
 
-    Stale baselines from earlier objective sets exist in this project's
-    history, so a header that is not exactly the active objective set is a hard
-    error rather than a silent positional read.
+    Resolves through ``config.baseline_objectives_csv`` so an ensemble
+    scenario reads the baseline scored on ITS search ensemble (step 05
+    ``--search-ensemble``) — never the historic-record vector, which is not
+    comparable to ensemble-evaluated fronts. Stale baselines from earlier
+    objective sets exist in this project's history, so a header that is not
+    exactly the active objective set is a hard error rather than a silent
+    positional read.
 
     Raises:
-        FileNotFoundError: If the baseline CSV is missing.
+        FileNotFoundError: If the scenario's baseline CSV is missing.
         ValueError: If its header is not exactly ``obj_names``, in order.
     """
-    path = Path("outputs/baseline") / f"{formulation}_baseline_objectives.csv"
+    path = config.baseline_objectives_csv(formulation, scenario)
     if not path.exists():
-        raise FileNotFoundError(f"baseline objectives not found: {path}")
+        raise FileNotFoundError(
+            f"baseline objectives not found: {path}\n"
+            f"Score the baseline on this scenario's search ensemble first:\n"
+            f"  sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env>,"
+            f"NYCOPT_BASELINE_SKIP_REEVAL=1 \\\n"
+            f"      workflow/05_run_baseline.sh --search-ensemble\n"
+            f"(or pass --no-baseline to skip the comparison)")
     df = pd.read_csv(path)
     if list(df.columns) != list(obj_names):
         raise ValueError(
@@ -162,20 +173,29 @@ def _build_selections(natural, directions, obj_names, dom_mask,
     # The highlighted set: the balanced compromise plus spread-out members of
     # the baseline-dominating subset, so the plotted policies are genuinely
     # different operating strategies rather than neighbours on one axis. Falls
-    # back to the whole front when nothing dominates the baseline.
-    pool = np.where(dom_mask)[0]
-    if pool.size == 0:
-        print("[selection] nothing dominates the baseline — "
-              "spreading over the whole front instead")
+    # back to the whole front when nothing dominates the baseline. A None
+    # dom_mask means no baseline screening at all (ensemble-evaluated fronts
+    # have no comparable baseline vector): spread over the whole front.
+    if dom_mask is None:
         pool = np.arange(natural.shape[0])
+    else:
+        pool = np.where(dom_mask)[0]
+        if pool.size == 0:
+            print("[selection] nothing dominates the baseline — "
+                  "spreading over the whole front instead")
+            pool = np.arange(natural.shape[0])
     balanced = compromise_scores(natural, directions, method="mean_scaled")
     seed = int(np.argmax(np.where(dom_mask, balanced, -np.inf))
-               if dom_mask.any() else np.argmax(balanced))
+               if dom_mask is not None and dom_mask.any()
+               else np.argmax(balanced))
     spread = select_diverse(natural, directions, n_diverse,
                             seed_indices=[seed], candidates=pool)
+    first_label = "Balanced" if dom_mask is None else "Balanced (dominating)"
+    first_rule = ("mean_scaled_balanced" if dom_mask is None
+                  else "mean_scaled_dominating")
     highlighted = [
-        Selection("Balanced (dominating)" if i == 0 else f"Diverse {i}",
-                  "mean_scaled_dominating" if i == 0 else f"diverse_{i}", idx)
+        Selection(first_label if i == 0 else f"Diverse {i}",
+                  first_rule if i == 0 else f"diverse_{i}", idx)
         for i, idx in enumerate(spread)
     ]
     all_sel.extend(highlighted)
@@ -184,14 +204,20 @@ def _build_selections(natural, directions, obj_names, dom_mask,
 
 def _write_selection_csv(path: Path, selections, natural, obj_names, baseline,
                          directions) -> pd.DataFrame:
-    """Write one row per selection: index, rule, and natural objective vector."""
-    beaten = n_objectives_beaten(natural, baseline, directions)
-    dom = dominance_mask(natural, baseline, directions)
+    """Write one row per selection: index, rule, and natural objective vector.
+
+    The baseline-comparison columns are omitted when ``baseline`` is None
+    (no comparable baseline vector for ensemble-evaluated fronts).
+    """
+    if baseline is not None:
+        beaten = n_objectives_beaten(natural, baseline, directions)
+        dom = dominance_mask(natural, baseline, directions)
     rows = []
     for sel in selections:
-        row = {"row_index": sel.index, "rule": sel.rule, "label": sel.label,
-               "dominates_baseline": bool(dom[sel.index]),
-               "n_objectives_beaten": int(beaten[sel.index])}
+        row = {"row_index": sel.index, "rule": sel.rule, "label": sel.label}
+        if baseline is not None:
+            row["dominates_baseline"] = bool(dom[sel.index])
+            row["n_objectives_beaten"] = int(beaten[sel.index])
         row.update({n: float(v) for n, v in zip(obj_names, natural[sel.index])})
         rows.append(row)
     df = pd.DataFrame(rows)
@@ -323,6 +349,14 @@ def main() -> int:
                     help="Figure directory override (default: figures/{scenario}/{slug})")
     ap.add_argument("--n-diverse", type=int, default=3,
                     help="Highlighted representatives to spread over the front")
+    ap.add_argument("--no-baseline", action="store_true",
+                    help="Skip every baseline-objective comparison (figure 01, "
+                         "overlays, CSV columns). The default loads the "
+                         "scenario-matched baseline from "
+                         "config.baseline_objectives_csv — for ensemble "
+                         "scenarios that is the search-ensemble-scored vector "
+                         "(step 05 --search-ensemble), never the historic-"
+                         "record one.")
     ap.add_argument("--skip-timeseries", action="store_true",
                     help="Never render the simulation-dependent timeseries figures")
     ap.add_argument("--simulate-timeseries", action="store_true",
@@ -348,8 +382,15 @@ def main() -> int:
     print(f"out dir  : {out_dir}\n")
     dv, natural, obj_names, directions = load_natural_front(set_file,
                                                             args.formulation)
-    baseline = _load_baseline(args.formulation, obj_names)
-    dom_mask = _report_dominance(natural, baseline, directions, obj_names)
+    if args.no_baseline:
+        baseline, dom_mask = None, None
+        print(f"front size                       : {natural.shape[0]}")
+        print("[baseline] skipped (--no-baseline)")
+    else:
+        baseline = _load_baseline(args.formulation, args.scenario, obj_names)
+        print(f"[baseline] "
+              f"{config.baseline_objectives_csv(args.formulation, args.scenario)}")
+        dom_mask = _report_dominance(natural, baseline, directions, obj_names)
     print()
 
     all_sel, highlighted = _build_selections(natural, directions, obj_names,
@@ -368,9 +409,11 @@ def main() -> int:
                                              plot_objective_tradeoffs,
                                              plot_selected_policies)
 
-    _figure("explore_01_baseline_dominance",
-            lambda p: plot_baseline_dominance(natural, directions, obj_names,
-                                              baseline, output_file=p), out_dir)
+    if baseline is not None:
+        _figure("explore_01_baseline_dominance",
+                lambda p: plot_baseline_dominance(natural, directions,
+                                                  obj_names, baseline,
+                                                  output_file=p), out_dir)
     _figure("explore_02_selected_policies",
             lambda p: plot_selected_policies(natural, directions, obj_names,
                                              highlighted, baseline=baseline,

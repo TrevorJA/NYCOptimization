@@ -507,25 +507,34 @@ def _resolve_failure_k() -> dict[str, int]:
 # Labels use the `<annual name>__sat<thr>` form; they are threshold labels,
 # not objective names.
 #
-# STATUS: PROVISIONAL (2026-08-07). The metric substrate changed from
-# whole-trace §1 scalars to per-SOW annual-unit values, so the previously
-# adopted vector (anchored on whole-trace statistics) does not carry over.
-# External goalposts whose meaning survives the substrate change are carried
-# (flood ft-days/yr; the FFMP L5 26% storage floor); the re-anchored values
-# below follow §0b rule 1 (maintain-status-quo, stricter side) against the
-# incumbent's ANNUAL-UNIT historic anchors, recomputed 2026-08-07 from
-# outputs/baseline/ffmp_baseline.hdf5 via obj.compute([data]):
-#   nyc rel 0.6447 / nyc deficit P99 48.83 / montague rel 0.7895 /
-#   montague deficit P99 27.68 / trenton rel 0.8684 / flood 0.3467 /
-#   storage min P01 0.0000 / nj rel 0.7368.
-# FINAL adoption happens only after the satisficing-threshold diagnostic is
-# re-run against the status-quo E_test cube on the new substrate (TODO.md;
-# docs/notes/methods/robustness_threshold_diagnostics.md §0b rules). Note the
-# storage goalpost: the incumbent's historic P01-of-annual-minima is 0% (the
-# 1960s drought emptied storage), so the carried 26% floor is a criterion the
-# status quo itself fails on the historic trace — the diagnostic re-run
-# arbitrates. Override via NYCOPT_SAT_THRESHOLDS. Already-persisted
-# reeval_raw_meta.json files keep their snapshotted thresholds by design.
+# STATUS: ADOPTED 2026-08-08, from the satisficing-threshold diagnostic re-run
+# against the regenerated status-quo E_test re-eval cube (per-SOW annual-unit
+# substrate, 1,000 SOWs x R=25; §0b rules applied — see
+# docs/notes/methods/robustness_threshold_diagnostics.md and the measured
+# basis in supplemental_config.RTD_RECOMMENDED_THRESHOLDS/_BASIS). The final
+# vector equals the 2026-08-07 provisional values — every rule-1
+# maintain-status-quo re-anchor (stricter-side rounding of the annual-unit
+# historic anchors: nyc rel 0.6447 / nyc deficit P99 48.83 / montague rel
+# 0.7895 / montague deficit P99 27.68 / trenton rel 0.8684 / nj rel 0.7368)
+# and both rule-2 external goalposts survive the measured placements, so no
+# label changed. Measured incumbent SOW pass fractions: nyc rel 0.005 /
+# nyc deficit 0.980 / montague rel 0.000 / montague deficit 0.965 /
+# trenton rel 0.054 / flood 0.443 / storage 0.014 / nj rel 0.020; joint
+# Starr 0.000 (binding: montague rel, the one criterion whose anchor lies
+# outside the incumbent's E_test support, max 0.746) — a motivation finding
+# per §0, with ranking-criticality deferred to the OAT stringency sweep.
+# STORAGE GOALPOST RESOLUTION: the carried 26% FFMP L5 floor is a criterion
+# the incumbent itself fails on the historic trace (P01-of-annual-minima =
+# 0%, the 1960s drought emptied storage), so §0b rule 1's re-anchor at
+# maintain-status-quo would place the line at 0% — an all-pass, vacuous
+# criterion. The diagnostic arbitrates FOR keeping the 26% rule-2 external
+# goalpost: it is inside the E_test support (incumbent max 28.8%, 1.4% of
+# SOWs pass), operationally meaningful (the FFMP drought-emergency
+# boundary), and is adopted as a stringent ASPIRATIONAL criterion rather
+# than an acceptable-performance line; the incumbent's historic failure of
+# it is part of the motivation finding. Override via NYCOPT_SAT_THRESHOLDS.
+# Already-persisted reeval_raw_meta.json files keep their snapshotted
+# thresholds by design.
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
     # Rule 1 re-anchors (stricter side of the annual-unit historic anchors).

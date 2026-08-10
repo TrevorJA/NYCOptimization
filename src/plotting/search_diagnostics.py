@@ -13,7 +13,10 @@ Figures (under ``figures/{scenario}/{slug}/``):
       Per-seed merged Pareto-approximate sets overlaid on common axes (up =
       preferred, raw best/worst annotated at the axis ends) with the FFMP
       baseline bold — cross-seed agreement and dominance of the baseline are
-      readable directly.
+      readable directly. The baseline vector is the scenario-matched one from
+      ``config.baseline_objectives_csv`` (historic record for historic runs,
+      the search-ensemble-scored vector for ensemble scenario designs);
+      scenarios not yet scored draw no baseline.
   search_02_hypervolume_convergence.png
       Hypervolume vs NFE, one line per island x seed.
   search_03_runtime_indicators.png
@@ -36,7 +39,8 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from config import active_scenario_name, run_output_dir
+from config import (active_scenario_name, baseline_objectives_csv,
+                    run_output_dir)
 from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
 from src.plotting.style import apply_style, OBJ_AXIS_LABELS, FIGSIZE_WIDE
@@ -105,9 +109,14 @@ def plot_seed_parallel_axes(
         seeds.append(f.stem.replace(f"{slug}_", "").replace("_merged", ""))
         groups.append(raw)
 
+    # A baseline vector is only overlaid when it shares the front's evaluation
+    # substrate: config.baseline_objectives_csv points at the historic-record
+    # vector for historic fronts and at the scenario's search-ensemble-scored
+    # vector (step 05 --search-ensemble) otherwise. A scenario not yet scored
+    # simply has no file and gets no line — never the historic values.
     baseline_raw = None
     if baseline_csv is None:
-        baseline_csv = Path("outputs/baseline") / f"{formulation}_baseline_objectives.csv"
+        baseline_csv = baseline_objectives_csv(formulation, scenario)
     if baseline_csv.exists():
         header, values = baseline_csv.read_text().splitlines()[:2]
         vals = dict(zip(header.split(","), map(float, values.split(","))))
