@@ -56,7 +56,12 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 2. Production gates
 
-- [ ] **[HPC]** Launch campaign searches. Production inputs (pools d0–d2,
+- [ ] **[HPC]** Launch campaign searches. IN PROGRESS (2026-08-10): go/no-go
+  cell (draw 0 / seed 1, 500k NFE `production`, 8 nodes x 128, 1,021 ranks)
+  submitted for all three designs — jobs 19770937 (historic, 10 h wall),
+  19770938 (hazard_filling_stationary, 40 h wall), 19770939
+  (fixed_probabilistic, 40 h wall). Verify these before fanning out to the
+  remaining draws x seeds. Production inputs (pools d0–d2,
   search ensembles, E_test + presim) are staged, verified, and adequacy-gated
   (campaign 6-axis min tail share 0.311 / 0.306 / 0.303 across draws). The
   baseline-on-E_test matrix is regenerated on the unified substrate
