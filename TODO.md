@@ -23,7 +23,10 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   1. steps 08/09(+09b) re-evals — wait for FRESH campaign Pareto sets; the
      prior `.set`/`.ref` archives use the retired factor DV encoding and
      `reeval_core` has no encoding-version handling, so re-simulating them
-     under the new decoder would silently misdecode DVs,
+     under the new decoder would silently misdecode DVs. The 2026-08-08 50k
+     runs (both designs, draw 0 / seed 1) ARE on the current encoding and
+     could be re-evaluated, but they will be superseded by the scaled-NFE
+     campaign — re-evaluate the campaign sets, not these,
   2. regenerate steps 10/11/13 artifacts (needs the step-08 policy cubes).
   GEOMETRY NOTE for step-09 chunk re-evals on E_test: submit on `shared`
   with ~8 cpus per rank and an explicit realization batch (job 19738752:
@@ -51,26 +54,30 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   selected-ensemble event-seasonality span check.
 
 
-## 2. Anvil shakeout (before production submissions)
-
-- [ ] **[HPC]** `pilot` MOEA config go/no-go run. Measure the feasibility rate
-  (fraction of NFE rejected in <0.1 s by `flood_zone_ordering`) — it sets how
-  far below the upper-bound cost projections real runs land. `mm_moderate` is
-  finalized for the runs after it (2026-08-07): 50k total NFE, 511 ranks =
-  2 islands x 254 workers on 4 Anvil `wholenode` nodes at 128/node
-  (<=6.5 h / ~3,340 SU per seed, upper bound; rationale in
-  `src/moea_config.py`).
-
-## 3. Production gates
+## 2. Production gates
 
 - [ ] **[HPC]** Launch campaign searches. Production inputs (pools d0–d2,
   search ensembles, E_test + presim) are staged, verified, and adequacy-gated
   (campaign 6-axis min tail share 0.311 / 0.306 / 0.303 across draws). The
   baseline-on-E_test matrix is regenerated on the unified substrate
   (2026-08-08) and the threshold + regret-tolerance parameters are adopted —
-  no metric-side blockers remain.
+  no metric-side blockers remain. The Anvil shakeout is closed (see Done),
+  so nothing gates the scale-up. Remaining fan-out: the 2026-08-08 runs cover
+  draw 0 / seed 1 only, so the campaign still needs the draw (d0–d2) x seed
+  replication for both designs, at the scaled NFE.
+  SIZING for the scale-up (measured, not projected): 50k NFE = 3 h 17 m and
+  ~1,680 SU per seed at 511 ranks, i.e. ~0.034 SU per NFE per seed. So
+  2 designs x 3 draws x 2 seeds is ~20k SU at 50k NFE and ~81k SU at 200k
+  NFE, against 679k SU remaining (2026-08-10). Budget is not the binding
+  constraint; the SLURM `--time` wall is. Runs are NFE-bounded
+  (`max_time_hours=None`), so `--time` must scale with NFE or it silently
+  truncates the search: ~13 h at 200k NFE. Convergence evidence that the
+  scale-up is warranted, from the 25k NFE/island endpoint: hypervolume still
+  rising monotonically (island 0: 0.0642 -> 0.0673 -> 0.0705), archive still
+  growing (1003 -> 1029 over the last 1k NFE), Improvements still accruing
+  (3382 -> 3498), `Restarts=0`.
 
-## 4. Post-campaign deliverables
+## 3. Post-campaign deliverables
 
 - [ ] **[local]** Results figure plan + the scripts to build them. First
   tranche landed: `src/solution_selection.py` (dominance / scaling /
@@ -104,6 +111,22 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 
 ## Done (can be deleted when info is no longer needed)
+- [x] **[HPC]** Anvil shakeout / `pilot` go/no-go — CLOSED 2026-08-08, answered
+  by the first full `mm_moderate` runs rather than a separate pilot. Jobs
+  19733754 (`hazard_filling_stationary`) and 19733755 (`fixed_probabilistic`),
+  both COMPLETED on `wholenode`: 4 nodes / 511 ranks (2 islands x 254 workers),
+  50k total NFE, 3 h 17 m, ~1,680 SU per seed — HALF the ~3,340 SU upper bound
+  in `src/moea_config.py`, which is what the feasibility-rate check existed to
+  establish (the cheap DV-space `flood_zone_ordering` rejections are real and
+  roughly halve the cost; the rejected-NFE fraction itself is not logged
+  directly, only its cost effect). Archives: 1466 solutions (hazfill) and 1657
+  (fixedprob) at draw 0 / seed 1. Use the measured 0.034 SU/NFE/seed for all
+  further sizing.
+- [x] **[HPC]** Baseline-on-E_test re-eval under the unified substrate and the
+  first 50k-NFE searches under both `hazard_filling_stationary` and
+  `fixed_probabilistic` — DONE 2026-08-08/09 (commit 16599bc; sets, runtime
+  archives, `.metrics`, and the `explore_results` / search-diagnostic figure
+  tranche are committed under `outputs/`).
 - [x] **[HPC]** End-to-end smoke of `hazard_filling_stationary` — DONE
   2026-08-07 (job 19731839, `shared`, 41 ranks, 3m10s, ~2 SU;
   `workflow/envs/smoke_hazfill.env`). Exercised MPI fan-out, MM-Borg, the
