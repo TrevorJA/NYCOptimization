@@ -12,17 +12,20 @@
 # step 08/09 re-evaluation (src/reevaluate{,_mpi}.py), so this step must run
 # between search and re-evaluation for every optimization configuration.
 #
-# By default, runs ffmp + variable-resolution FFMP at each N in
-# FFMP_VR_N_SWEEP in parallel as background jobs. The MOEAFramework CLI
-# is I/O bound so there's no contention issue. Pass specific slug names
-# (identifiers, not values) to run a subset.
+# Run identity comes from the env file (optional here): NYCOPT_ENV_FILE picks
+# the scenario design + MOEA config, and DRAW=k (default 0) the ensemble draw,
+# exactly as in step 06 — with no positional args the target is the active
+# config's own derived slug (plus the variable-resolution sweep slugs).
+# Positional args are LITERAL moea slugs (an escape hatch for ad-hoc dirs) and
+# are used as given. Runs targets in parallel as background jobs; the
+# MOEAFramework CLI is I/O bound so there's no contention issue.
 #
 # Usage (from repo root):
-#   bash workflow/07_run_diagnostics.sh                         # all default slugs (parallel)
-#   bash workflow/07_run_diagnostics.sh ffmp ffmp_8             # subset
-#   bash workflow/07_run_diagnostics.sh smoke_ffmp              # custom slugs
-#   bash workflow/07_run_diagnostics.sh --serial ffmp           # single, serial
-#   sbatch workflow/07_run_diagnostics.sh
+#   NYCOPT_ENV_FILE=workflow/envs/<file>.env bash workflow/07_run_diagnostics.sh   # active slug + VR sweep
+#   DRAW=1 NYCOPT_ENV_FILE=... bash workflow/07_run_diagnostics.sh                 # a d1 replicate's outputs
+#   bash workflow/07_run_diagnostics.sh ffmp_obj8_mm_moderate                      # explicit slug(s)
+#   bash workflow/07_run_diagnostics.sh --serial ffmp_obj8_mm_moderate             # single, serial
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=... workflow/07_run_diagnostics.sh
 #
 #SBATCH --job-name=diagnostics
 #SBATCH --account=ees260021
@@ -37,6 +40,10 @@ set -euo pipefail
 
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
+nycopt_source_env_file optional
+# Ensemble-draw identifier (same contract as step 06): selects which searched
+# run's outputs to diagnose — the derived slug gains "_d{k}" for k>0.
+export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 
 SERIAL=false
 ARGS=()
@@ -49,10 +56,17 @@ for a in "$@"; do
 done
 
 if [[ ${#ARGS[@]} -eq 0 ]]; then
-    # Default: base FFMP + variable-resolution FFMP sweep values.
-    N_SWEEP=$(python3 -c "from config import FFMP_VR_N_SWEEP; print(' '.join(str(n) for n in FFMP_VR_N_SWEEP))")
-    TARGETS=(ffmp)
-    for N in ${N_SWEEP}; do TARGETS+=("ffmp_${N}"); done
+    # Default: the active config's derived slug for base FFMP + each
+    # variable-resolution sweep formulation (draw-aware via the env above).
+    mapfile -t TARGETS < <(python3 -c "
+import contextlib, io, sys
+_buf = io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    from config import FFMP_VR_N_SWEEP, derive_slug
+sys.stderr.write(_buf.getvalue())
+for f in ['ffmp'] + [f'ffmp_{n}' for n in FFMP_VR_N_SWEEP]:
+    print(derive_slug(f))
+")
 else
     TARGETS=("${ARGS[@]}")
 fi

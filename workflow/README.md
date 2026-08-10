@@ -35,8 +35,8 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
 | 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs (MPI across realizations); `--preset NAME` stages an arbitrary ensemble (e.g. the held-out re-eval ensemble) |
 | 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy + persist its re-eval matrix for improvement-vs-baseline |
-| 06 | `06_run_mmborg.sh` | `wholenode`, 5×33, 96 h | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array=1-10` = seed replicates; config-derived pre-flight |
-| 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | — | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); positional slug identifiers select targets |
+| 06 | `06_run_mmborg.sh` | `wholenode`, 5×33, 96 h | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed replicates, `DRAW=k` = ensemble draw (default 0); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
+| 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
 | 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the trimmed model (step-04 presim reused across all Pareto sets); opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
 | 09 | `09_simulate_test_chunks.sh` | `wholenode`, 4×16, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked test ensemble, metrics-only (MPI chunk-and-aggregate) |
 | 12 | `12_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build the held-out test ensemble E_test: LHS over the FULL DU box × R>1 realizations per SOW, chunked, hazard image streamed. `--variant kn` is the campaign's E_test; `hmm` is an opt-in generator sensitivity |
@@ -82,14 +82,28 @@ once (array tasks k>0 are no-ops), and the two DU hazard designs share one pool.
 ## Optimization runs are independent jobs
 
 Each optimization is one self-contained multi-day sbatch job — one submission
-per (env file × formulation), no campaign wrapper:
+per (env file × formulation × ensemble draw), no campaign wrapper. `DRAW=k`
+selects the staged ensemble draw (default 0) and the `--array` index is the
+Borg seed, so the K draws × S seeds replication grid is submitted one cell (or
+one seed-array row) at a time:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env               --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_8   --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_10  --array=1-10 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12  --array=1-10 workflow/06_run_mmborg.sh
+# Single go/no-go replicate (draw 0, seed 1) before committing the full grid:
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,DRAW=0          --array=1 workflow/06_run_mmborg.sh
+# Full seed row for one draw:
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,DRAW=1          --array=1-2 workflow/06_run_mmborg.sh
+# Variable-resolution FFMP (same launcher, formulation from the identifier):
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12   --array=1-10 workflow/06_run_mmborg.sh
 ```
+
+What has already run is readable from the output tree alone: draw k > 0
+appends `_d{k}` to the moea slug (draw 0 is the unsuffixed default), each
+completed seed writes `outputs/{scenario}/{moea_slug}/sets/seed_{SS}_{slug}.set`,
+and every job records its full identity (including the draw) in
+`outputs/run_manifests/`. The step-06 pre-flight refuses to relaunch a
+(design, slug, seed) whose `.set` file already exists — pass
+`NYCOPT_OVERWRITE=1` to deliberately redo one. A crashed run leaves no `.set`
+file and may simply be resubmitted.
 
 ## Geometry contract and scaling on Anvil
 

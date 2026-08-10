@@ -56,7 +56,9 @@ nycopt_source_env_file required
 : "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set E_test explicitly — the SAME preset step 08 re-evaluated on}"
 FORMULATION="${FORMULATION:-ffmp}"
 SEED="${SEED:-}"
-ENSEMBLE_DRAW="${ENSEMBLE_DRAW:-0}"
+# DRAW is the cross-step identifier (steps 06/08/09); ENSEMBLE_DRAW kept as
+# this step's documented name.
+ENSEMBLE_DRAW="${DRAW:-${ENSEMBLE_DRAW:-0}}"
 DESIGNS="${DESIGNS:-}"
 
 ARGS="--formulation ${FORMULATION} --draw ${ENSEMBLE_DRAW}"

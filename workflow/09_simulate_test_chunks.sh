@@ -22,6 +22,9 @@
 #                                    #SBATCH geometry below is the single
 #                                    source of the rank count
 #   FORMULATION                      identifier, default ffmp
+#   DRAW                             optional, default 0 — ensemble draw of the
+#                                    searched run being re-evaluated (selects
+#                                    the "_d{k}" slug for k>0, like step 06)
 #   SEED                             optional
 #   NYCOPT_CHUNK_INCREMENTAL         1 (default): per-unit atomic flush +
 #                                    resume — resubmitting the same command
@@ -62,6 +65,9 @@ set -euo pipefail
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
 nycopt_source_env_file required
+# Ensemble-draw identifier (same contract as step 06): selects which searched
+# run's outputs to score — the slug gains "_d{k}" for k>0.
+export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 
 : "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the chunked master slug explicitly, e.g. master_5yr_n128000}"

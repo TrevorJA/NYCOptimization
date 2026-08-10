@@ -9,7 +9,7 @@
 # missing units unless NYCOPT_CHUNK_MERGE_ALLOW_PARTIAL=1.
 #
 # Env identity MUST match the step-09 submission (same env file, same
-# NYCOPT_REEVAL_ENSEMBLE_PRESET, same NYCOPT_CHUNK_POLICIES).
+# NYCOPT_REEVAL_ENSEMBLE_PRESET, same NYCOPT_CHUNK_POLICIES, same DRAW).
 #
 # Submit (from repo root, after the last simulate job):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<arm>.env,\
@@ -31,6 +31,8 @@ set -euo pipefail
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
 nycopt_source_env_file required
+# Ensemble-draw identifier (same contract as steps 06/09).
+export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 
 : "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the chunked master slug explicitly, e.g. etest_kn_50yr_n25000}"

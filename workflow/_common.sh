@@ -157,8 +157,14 @@ nycopt_read_run_identity() {
     fi
 
     local _cfg
+    # config may print import-time notes (e.g. an unstaged search ensemble);
+    # divert them to stderr so only the identity lines reach the mapfile.
     mapfile -t _cfg < <(python3 -c "
-import config
+import contextlib, io, sys
+_buf = io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    import config
+sys.stderr.write(_buf.getvalue())
 mc = config.ACTIVE_MOEA_CONFIG
 print(config.active_scenario_name())
 print(config.derive_slug('${FORMULATION}'))
@@ -167,7 +173,14 @@ print(mc.total_ntasks_mpi if mc.total_ntasks_mpi is not None else '')
 print(mc.n_islands if mc.n_islands is not None else '')
 print(mc.max_evaluations if mc.max_evaluations is not None else '')
 print(mc.runtime_frequency if mc.runtime_frequency is not None else '')
+print(config.SCENARIO_ENSEMBLE_DRAW)
 ")
+    if [[ "${#_cfg[@]}" -lt 8 || -z "${_cfg[0]:-}" ]]; then
+        echo "ERROR: config import failed while reading the run identity" \
+             "(see the traceback above; e.g. an invalid NYCOPT_ENSEMBLE_DRAW" \
+             "for this design)." >&2
+        exit 4
+    fi
     SCENARIO="${_cfg[0]}"
     # RUN_SLUG escape hatch wins outright; otherwise use the derived moea slug.
     if [[ -z "${RUN_SLUG:-}" ]]; then
@@ -177,6 +190,7 @@ print(mc.runtime_frequency if mc.runtime_frequency is not None else '')
     N_ISLANDS="${_cfg[4]}"
     NFE="${_cfg[5]}"
     RUNTIME_FREQ="${_cfg[6]}"
+    ENSEMBLE_DRAW="${_cfg[7]}"
 
     if [[ -n "${NTASKS_MPI:-}" ]]; then
         :  # caller override wins (e.g. submit_smoke.sh sizing to its allocation)
@@ -238,6 +252,7 @@ nycopt_write_manifest() {
         echo "MOEA config:     ${MOEA_CONFIG_NAME}"
         echo "Slug:            ${RUN_SLUG}"
         echo "Seed:            ${SEED}"
+        echo "Ensemble draw:   ${ENSEMBLE_DRAW:-0}"
         echo "N islands:       ${N_ISLANDS}"
         echo "NFE/island:      ${NFE}"
         echo "Runtime freq:    ${RUNTIME_FREQ}"
@@ -265,9 +280,12 @@ nycopt_write_manifest() {
 
 # Config-derived pre-flight for the MM-Borg launcher: echo the resolved run
 # identity for the job log, and fail fast only on genuine inconsistencies
-# (unstaged scenario design, schema-only MOEA config, bad formulation name).
+# (unstaged scenario design, schema-only MOEA config, bad formulation name,
+# out-of-range ensemble draw, or an already-completed (design, slug, seed)
+# replicate — the last so no optimization is ever silently repeated;
+# NYCOPT_OVERWRITE=1 overrides).
 # Expectations come FROM config — nothing here hardcodes an experiment.
-# Requires: FORMULATION exported.
+# Requires: FORMULATION, SEED exported.
 nycopt_preflight_mmborg() {
     echo "=== Pre-flight verification (config-derived) ==="
     python3 -c "
@@ -276,11 +294,15 @@ import config
 from src.formulations import get_n_vars
 
 f = os.environ['FORMULATION']
+seed = int(os.environ.get('SEED', '1'))
 mc = config.ACTIVE_MOEA_CONFIG
 spec = config.SEARCH_ENSEMBLE_SPEC
 obj = config.get_objective_set()
+design = config.ACTIVE_SCENARIO_DESIGN
+draw = config.SCENARIO_ENSEMBLE_DRAW
 
 print('Scenario design :', config.active_scenario_name())
+print('Ensemble draw   :', draw, f'| design K = {design.n_ensemble_draws}')
 print('Search ensemble :', None if spec is None else spec.preset_name,
       '| is_ensemble =', None if spec is None else spec.is_ensemble)
 print('MOEA config     :', mc.name, '| islands =', mc.n_islands,
@@ -293,6 +315,9 @@ print('n_objs          :', obj.n_objs)
 print('Objectives      :', obj.names)
 print('Epsilons        :', obj.epsilons)
 
+assert 0 <= draw < design.n_ensemble_draws, (
+    f'NYCOPT_ENSEMBLE_DRAW={draw} is out of range for scenario design '
+    f'{design.name!r} (valid draws: 0..{design.n_ensemble_draws - 1}).')
 assert spec is not None, (
     'SEARCH_ENSEMBLE_SPEC is None: the scenario design '
     f'{config.active_scenario_name()!r} could not resolve its search ensemble. '
@@ -300,6 +325,18 @@ assert spec is not None, (
 assert None not in (mc.n_islands, mc.n_workers_per_island, mc.max_evaluations), (
     f'MOEA config {mc.name!r} is schema-only (unset numbers) and cannot launch; '
     'set NYCOPT_MOEA_CONFIG to a concrete config (see src/moea_config.py).')
+
+# Duplicate-run guard: the .set file is written once, at successful completion,
+# so its existence means this exact (design, slug, seed) replicate already ran.
+# (A crashed run leaves runtime/ files but no .set and may be relaunched.)
+slug = config.derive_slug(f)
+set_file = (config.OUTPUTS_DIR / config.active_scenario_name() / slug
+            / 'sets' / f'seed_{seed:02d}_{slug}.set')
+if set_file.exists() and os.environ.get('NYCOPT_OVERWRITE') != '1':
+    raise SystemExit(
+        f'REFUSING to relaunch: {set_file} already exists, so this '
+        f'(design, draw, seed) optimization already completed. Pick an unused '
+        f'DRAW=/--array seed, or pass NYCOPT_OVERWRITE=1 to overwrite it.')
 print('Pre-flight OK.')
 "
 }

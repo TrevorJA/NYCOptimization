@@ -14,6 +14,9 @@
 #                                  choice, never a silent default.
 #   NYCOPT_REEVAL_MODE             single | mpi (from env file; default single)
 #   FORMULATION                    identifier, default ffmp
+#   DRAW                           optional, default 0 — ensemble draw of the
+#                                  searched run being re-evaluated (selects the
+#                                  "_d{k}" slug for k>0, like step 06)
 #   SEED                           optional, per-seed output subdir
 #   MAX_SOLUTIONS                  default 0 = all Pareto solutions
 #   NYCOPT_REEVAL_SCORE=1          opt-in offline robustness scoring
@@ -48,6 +51,9 @@ set -euo pipefail
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
 nycopt_source_env_file required
+# Ensemble-draw identifier (same contract as step 06): selects which searched
+# run's outputs to re-evaluate — the slug gains "_d{k}" for k>0.
+export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 
 : "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the common held-out re-eval ensemble explicitly, e.g. etest_kn_50yr_n25000}"
@@ -60,8 +66,8 @@ NJOBS="${SLURM_CPUS_ON_NODE:-1}"
 ARGS="--formulation ${FORMULATION} --max ${MAX_SOLUTIONS} --njobs ${NJOBS}"
 [[ -n "${SEED}" ]] && ARGS="${ARGS} --seed ${SEED}"
 
-echo "=== Re-evaluation: formulation=${FORMULATION} mode=${MODE} seed=${SEED:-all}" \
-     "ensemble=${NYCOPT_REEVAL_ENSEMBLE_PRESET} ==="
+echo "=== Re-evaluation: formulation=${FORMULATION} draw=${NYCOPT_ENSEMBLE_DRAW}" \
+     "mode=${MODE} seed=${SEED:-all} ensemble=${NYCOPT_REEVAL_ENSEMBLE_PRESET} ==="
 
 case "${MODE}" in
     single)

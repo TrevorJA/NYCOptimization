@@ -18,6 +18,18 @@
 #          --array=1-10 workflow/06_run_mmborg.sh
 #
 # --array index = Borg seed; array tasks are independent seed replicates.
+# DRAW=k (default 0) selects the staged ensemble draw, so one submission is
+# one (env file x formulation x draw x seed-array) cell of the K x S
+# replication grid. The recommended first full-scale run is a single cell —
+# verify it before committing the remaining draws and seeds:
+#
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<file>.env,DRAW=0 \
+#          --array=1 workflow/06_run_mmborg.sh
+#
+# Outputs partition by draw and seed (slug gains "_d{k}" for k>0; set files
+# are seed_{SS}_{slug}.set), and the pre-flight REFUSES to relaunch a
+# (design, slug, seed) whose .set file already exists (NYCOPT_OVERWRITE=1
+# overrides) — completed optimizations are never silently repeated.
 # NYCOPT_ENV_FILE is REQUIRED (no default) — the job aborts immediately with
 # a listing of workflow/envs/*.env otherwise.
 #
@@ -55,7 +67,7 @@ set -euo pipefail
 
 # Identifiers only — algorithm settings come from the env file + registries.
 export FORMULATION="${FORMULATION:-ffmp}"   # ffmp | ffmp_N (registry-validated in pre-flight)
-SEED="${SEED:-${SLURM_ARRAY_TASK_ID:-1}}"
+export SEED="${SEED:-${SLURM_ARRAY_TASK_ID:-1}}"
 DEBUG_SIM="${DEBUG_SIM:-false}"
 CHECKPOINT="${CHECKPOINT:-false}"           # disabled by default: islands share a checkpoint file (race-prone)
 export DEBUG_SIM
@@ -63,6 +75,11 @@ export DEBUG_SIM
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
 nycopt_source_env_file required
+# Ensemble-draw identifier: DRAW= at submission wins, then an env-file or
+# inherited NYCOPT_ENSEMBLE_DRAW, else draw 0. Exported BEFORE the first
+# config import so the moea slug ("_d{k}" for k>0) and the staged-ensemble
+# resolution both see the same draw.
+export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 nycopt_read_run_identity
 nycopt_check_allocation
@@ -72,6 +89,6 @@ nycopt_preflight_mmborg
 ARGS="--seed ${SEED} --formulation ${FORMULATION}"
 [[ "${CHECKPOINT}" == "true" ]] && ARGS="${ARGS} --checkpoint"
 
-echo "=== Launching MM-Borg: ${SCENARIO}/${RUN_SLUG} seed=${SEED} (${MOEA_CONFIG_NAME}, ${NTASKS_MPI} ranks) ==="
+echo "=== Launching MM-Borg: ${SCENARIO}/${RUN_SLUG} draw=${NYCOPT_ENSEMBLE_DRAW} seed=${SEED} (${MOEA_CONFIG_NAME}, ${NTASKS_MPI} ranks) ==="
 mpirun -np "${NTASKS_MPI}" python3 -u src/mmborg_cli.py ${ARGS}
 echo "=== Completed: $(date) ==="
