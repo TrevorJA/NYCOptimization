@@ -60,8 +60,17 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   cell (draw 0 / seed 1, 500k NFE `production`, 8 nodes x 128, 1,021 ranks)
   submitted for all three designs — jobs 19770937 (historic, 10 h wall),
   19770938 (hazard_filling_stationary, 40 h wall), 19770939
-  (fixed_probabilistic, 40 h wall). Verify these before fanning out to the
-  remaining draws x seeds. Production inputs (pools d0–d2,
+  (fixed_probabilistic, 40 h wall). All three started 2026-08-10 20:24.
+  STATUS: 19770938 (hazfill) FAILED OUT_OF_MEMORY at 56 min (~19 evals/worker;
+  rank 741 killed on node a466; typical per-node RSS ~139 GB of ~240 GB
+  limit, so the OOM was a spike on one node, not steady-state pressure).
+  No .set written, so the relaunch guard did not block the resubmit:
+  RESUBMITTED as-is (8x128) 2026-08-11 as job 19782745 per Trevor's call
+  (16x64 memory-headroom option declined; revisit if it OOMs again). historic COMPLETED 2026-08-11 00:29
+  (4 h 04 m, ~4,200 SU, 2,685 solutions in
+  outputs/historic/ffmp_obj8/sets/seed_01_ffmp_obj8.set). fixedprob still
+  running (healthy at 12 h, ~62%, per-node RSS flat at ~140 GB).
+  Verify surviving runs before fanning out to the remaining draws x seeds. Production inputs (pools d0–d2,
   search ensembles, E_test + presim) are staged, verified, and adequacy-gated
   (campaign 6-axis min tail share 0.311 / 0.306 / 0.303 across draws). The
   baseline-on-E_test matrix is regenerated on the unified substrate
