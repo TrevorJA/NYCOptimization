@@ -209,7 +209,9 @@ def part3_moea_crosscheck(run_dir, slug, names, eps, scratch_dir):
 
 
 def part4_figure(archives, names, directions, eps, out_png):
-    from src.plotting.parallel_coordinates import render_parallel_coordinates
+    import pandas as pd
+    from src.plotting.parallel_coordinates import (custom_parallel_coordinates,
+                                                   minmaxs_from_directions)
     from src.plotting.style import OBJ_AXIS_LABELS
 
     objs = archives["merged"] if "merged" in archives else next(iter(archives.values()))
@@ -219,11 +221,14 @@ def part4_figure(archives, names, directions, eps, out_png):
     mask[keep_idx] = True
 
     natural = objs * np.where(directions == 1, -1.0, 1.0)
-    render_parallel_coordinates(
-        natural, [OBJ_AXIS_LABELS.get(n, n) for n in names], directions,
+    custom_parallel_coordinates(
+        pd.DataFrame(natural, columns=list(names)),
+        axis_labels=[OBJ_AXIS_LABELS.get(n, n) for n in names],
+        minmaxs=minmaxs_from_directions(directions),
         title=f"Re-filter under {PREFERRED}",
-        output_file=out_png, keep_mask=mask, figsize=(13, 5.5),
-        keep_label="retained", drop_label="merged by coarser ε",
+        highlight_mask=mask, figsize=(13, 5.5),
+        highlight_label="retained", exclude_label="merged by coarser ε",
+        save_fig_filename=out_png,
     )
     _two_panel_figure(natural, mask, names, directions,
                       out_png.with_name(out_png.stem + "_2panel.png"))

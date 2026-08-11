@@ -6,6 +6,10 @@ reliability >= 0.5 -- see :mod:`src.pareto_filter`):
 
   1. Pareto parallel-coordinates over the objective set, accepted policies vs the
      screened-out ones, with the FFMP baseline overlaid.
+  1b/1c. Pairwise objective tradeoff scatters (headline pairs + full
+     lower-triangle matrix), colored by NYC delivery reliability, baseline starred.
+  1d. Bound-normalized decision-variable ranges of criterion-satisfying subsets
+     (baseline dominance, NYC-storage floors) against the full front.
   2. Hypervolume convergence vs NFE (from step-07 .metrics).
   3. DU performance distributions: each objective's DU-expected value across the
      acceptable policies vs the baseline and its satisficing threshold (the raw
@@ -19,8 +23,8 @@ reliability >= 0.5 -- see :mod:`src.pareto_filter`):
      (NYC-diversion-priority, Montague-flow-priority, most-robust) vs baseline.
 
 All figures land under ``figures/{scenario}/{slug}/``. Every panel is wrapped so
-one failure never blocks the others. Figures 1-2 also work after step 07 alone;
-3-6 need step 08 (the re-eval + robustness outputs).
+one failure never blocks the others. Figures 1 (a-d) and 2 also work after step
+07 alone; 3-6 need step 08 (the re-eval + robustness outputs).
 
 Usage (from repo root, venv active):
   python3 -m scripts.main.plot_run_results \
@@ -58,26 +62,70 @@ def _load_reeval_long(reeval_dir: Path) -> pd.DataFrame | None:
     return pd.read_parquet(p)
 
 
+def _load_baseline_vec(formulation, obj_names):
+    """Baseline objectives (natural units) aligned to the front, or None."""
+    bcsv = Path("outputs/baseline") / f"{formulation}_baseline_objectives.csv"
+    if not bcsv.exists():
+        return None
+    row = pd.read_csv(bcsv).iloc[0]
+    try:
+        return np.array([float(row[n]) for n in obj_names])
+    except KeyError:
+        return None
+
+
 # --------------------------------------------------------------------------- #
 # Fig 1: Pareto parallel-coordinates, accepted vs screened out
 # --------------------------------------------------------------------------- #
 def fig_parallel_coords(ref_set, formulation, filt, out_dir):
     from src.plotting.parallel_coordinates import plot_parallel_coordinates
-    # baseline objectives (natural units) for the overlay
-    baseline = None
-    bcsv = Path("outputs/baseline") / f"{formulation}_baseline_objectives.csv"
-    if bcsv.exists():
-        row = pd.read_csv(bcsv).iloc[0]
-        try:
-            baseline = np.array([float(row[n]) for n in filt.obj_names])
-        except KeyError:
-            baseline = None
     plot_parallel_coordinates(ref_set, formulation,
                               out_dir / "01_pareto_parallel_coords.png",
-                              baseline_objs=baseline, figsize=(13, 5.5),
-                              keep_mask=filt.mask)
+                              baseline_objs=_load_baseline_vec(formulation,
+                                                               filt.obj_names),
+                              figsize=(13, 5.5), keep_mask=filt.mask)
     print(f"[fig1] {filt.n_accepted}/{filt.n_total} acceptable "
           f"-> 01_pareto_parallel_coords.png")
+
+
+# --------------------------------------------------------------------------- #
+# Fig 1b/1c: pairwise objective tradeoff scatters (headline pairs + matrix)
+# --------------------------------------------------------------------------- #
+def fig_tradeoff_scatter(filt, formulation, out_dir):
+    from src.plotting.tradeoff_scatter import (plot_key_tradeoffs,
+                                               plot_scatter_matrix)
+    baseline = _load_baseline_vec(formulation, filt.obj_names)
+    color_by = ("nyc_delivery_reliability_annual"
+                if "nyc_delivery_reliability_annual" in filt.obj_names
+                else filt.obj_names[0])
+    plot_key_tradeoffs(filt.natural_obj, filt.obj_names, filt.directions,
+                       color_by=color_by, baseline=baseline,
+                       output_file=out_dir / "01b_tradeoff_scatter")
+    plt.close("all")
+    plot_scatter_matrix(filt.natural_obj, filt.obj_names, filt.directions,
+                        color_by=color_by, baseline=baseline,
+                        output_file=out_dir / "01c_tradeoff_scatter_matrix")
+    plt.close("all")
+    print("[fig1b/c] -> 01b_tradeoff_scatter.png, "
+          "01c_tradeoff_scatter_matrix.png")
+
+
+# --------------------------------------------------------------------------- #
+# Fig 1d: DV ranges of criterion-satisfying subsets vs the full front
+# --------------------------------------------------------------------------- #
+def fig_dv_ranges(filt, formulation, out_dir):
+    from src.plotting.dv_ranges import default_criteria, plot_dv_ranges
+    baseline = _load_baseline_vec(formulation, filt.obj_names)
+    criteria = default_criteria(filt.natural_obj, filt.obj_names,
+                                filt.directions, baseline=baseline)
+    if not criteria:
+        print("[fig1d] skipped: no computable criteria "
+              "(no baseline and no NYC-storage objective)")
+        return
+    plot_dv_ranges(filt.dv, formulation, criteria,
+                   output_file=out_dir / "01d_dv_ranges")
+    plt.close("all")
+    print("[fig1d] -> 01d_dv_ranges.png")
 
 
 # --------------------------------------------------------------------------- #
@@ -292,6 +340,8 @@ def main():
 
     tasks = [
         ("parallel_coords", lambda: fig_parallel_coords(ref_set, args.formulation, filt, out_dir)),
+        ("tradeoff_scatter", lambda: fig_tradeoff_scatter(filt, args.formulation, out_dir)),
+        ("dv_ranges", lambda: fig_dv_ranges(filt, args.formulation, out_dir)),
         ("hypervolume", lambda: fig_hypervolume(run_dir, args.formulation, out_dir)),
         ("du_distributions", lambda: fig_du_distributions(reeval_dir, filt, out_dir)),
         ("robustness", lambda: fig_robustness(reeval_dir, filt, most_robust_id, out_dir)),

@@ -77,7 +77,7 @@ from src.objectives_ensemble import (  # noqa: E402
     build_ensemble_objective_set,
 )
 from src.plotting.parallel_coordinates import (  # noqa: E402
-    render_parallel_coordinates,
+    custom_parallel_coordinates,
 )
 from src.plotting.style import (  # noqa: E402
     apply_style,
@@ -536,7 +536,7 @@ def _fig_parallel_axes(res: dict, active: list,
     campaign vector is highlighted, the merged remainder is faint grey, and
     the FFMP baseline is bold. The visual check that the adopted resolution
     thins the set without collapsing the span of any tradeoff axis. Rendered
-    by the shared :func:`render_parallel_coordinates` (same normalization and
+    by the shared :func:`custom_parallel_coordinates` (same normalization and
     annotation conventions as the Pareto-set viewer).
     """
     st = _design_style(res["design"])
@@ -555,20 +555,22 @@ def _fig_parallel_axes(res: dict, active: list,
     baseline_raw = (res["natural"][baseline_rows[0], ka]
                     if baseline_rows.size else None)
 
-    render_parallel_coordinates(
-        raw,
-        [label_for(n) for n in active],
-        [ENSEMBLE_OBJECTIVES[n].sign for n in active],
+    custom_parallel_coordinates(
+        pd.DataFrame(raw, columns=list(active)),
+        axis_labels=[label_for(n) for n in active],
+        minmaxs=["max" if ENSEMBLE_OBJECTIVES[n].direction == "maximize"
+                 else "min" for n in active],
         title=("Effect of the adopted campaign epsilons — "
                f"{st['label']}"),
-        output_file=scfg.epsilon_figure_path("parallel_axes", res["design"]),
-        baseline_raw=baseline_raw,
-        keep_mask=keep,
+        baseline=baseline_raw,
+        highlight_mask=keep,
         baseline_label="FFMP baseline (status quo)",
-        keep_label="retained in the epsilon-archive",
-        drop_label="merged by epsilon-dominance",
+        highlight_label="retained in the epsilon-archive",
+        exclude_label="merged by epsilon-dominance",
         legend_loc="center left",
         legend_bbox=(1.005, 0.5),  # outside right: the cloud fills the axes
+        legend_ncol=1,
+        save_fig_filename=scfg.epsilon_figure_path("parallel_axes", res["design"]),
     )
 
 

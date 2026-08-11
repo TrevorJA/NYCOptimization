@@ -111,25 +111,53 @@ def label_for(name: str) -> str:
     return OBJECTIVE_LABELS.get(name, name)
 
 
+#: Very short per-objective labels for dense layouts (scatter-matrix edges).
+OBJ_SHORT_LABELS: dict[str, str] = {
+    "nyc_delivery_reliability_weekly":  "NYC Rel. (wk)",
+    "nyc_delivery_reliability_annual":  "NYC Rel. (ann)",
+    "nyc_delivery_deficit_cvar90_pct":  "NYC Def. CVaR90 %",
+    "nyc_delivery_deficit_p99_pct":     "NYC Def. P99 %",
+    "montague_flow_reliability_weekly": "Montague Rel. (wk)",
+    "montague_flow_reliability_annual": "Montague Rel. (ann)",
+    "montague_flow_deficit_cvar90_pct": "Montague Def. CVaR90 %",
+    "montague_flow_deficit_p99_pct":    "Montague Def. P99 %",
+    "trenton_flow_reliability_weekly":  "Trenton Rel. (wk)",
+    "trenton_flow_reliability_annual":  "Trenton Rel. (ann)",
+    "downstream_flood_exceedance_minor":  "Flood Exc. (ft·d/yr)",
+    "downstream_flood_exceedance_annual": "Flood Exc. (ann)",
+    "downstream_flood_days_minor":      "Flood Days",
+    "downstream_flood_days_annual":     "Flood Days (ann)",
+    "nyc_storage_p5_pct":               "Storage P5 %",
+    "nyc_storage_min_p01_pct":          "Storage P1 %",
+    "nj_delivery_reliability_weekly":   "NJ Rel. (wk)",
+    "nj_delivery_reliability_annual":   "NJ Rel. (ann)",
+}
+
+
+def short_label_for(name: str) -> str:
+    """Very short display label for an objective name; falls back to label_for."""
+    return OBJ_SHORT_LABELS.get(name, label_for(name))
+
+
 #: Parallel-coordinates axis labels (multi-line: metric, timescale + statistic +
 #: unit, optimization direction).
 OBJ_AXIS_LABELS: dict[str, str] = {
     "nyc_delivery_reliability_weekly":   "NYC Delivery\nReliability (weekly)\n(max)",
     "nyc_delivery_reliability_annual":   "NYC Delivery\nReliability (annual)\n(max)",
     "nyc_delivery_deficit_cvar90_pct":   "NYC Delivery Deficit\nweekly CVaR90 %\n(min)",
-    "nyc_delivery_deficit_p99_pct":      "NYC Delivery Deficit\nP99 of annual CVaR90 %\n(min)",
+    "nyc_delivery_deficit_p99_pct":      "NYC Delivery Deficit\nP99 of ann. CVaR90 %\n(min)",
     "montague_flow_reliability_weekly":  "Montague Flow\nReliability (weekly)\n(max)",
     "montague_flow_reliability_annual":  "Montague Flow\nReliability (annual)\n(max)",
     "montague_flow_deficit_cvar90_pct":  "Montague Flow Deficit\nweekly CVaR90 %\n(min)",
-    "montague_flow_deficit_p99_pct":     "Montague Flow Deficit\nP99 of annual CVaR90 %\n(min)",
+    "montague_flow_deficit_p99_pct":     "Montague Flow Deficit\nP99 of ann. CVaR90 %\n(min)",
     "trenton_flow_reliability_weekly":   "Trenton Flow\nReliability (weekly)\n(max)",
     "trenton_flow_reliability_annual":   "Trenton Flow\nReliability (annual)\n(max)",
     "downstream_flood_exceedance_minor":   "Flood Exceedance\nNWS minor, ft·d/yr\n(min)",
-    "downstream_flood_exceedance_annual":  "Flood Exceedance\nNWS minor, annual mean\n(min)",
+    "downstream_flood_exceedance_annual":  "Flood Exceedance\nNWS minor, ann. mean\n(min)",
     "downstream_flood_days_minor":       "Flood Days\nNWS minor, days/yr\n(min)",
     "downstream_flood_days_annual":      "Flood Days\nNWS minor, annual mean\n(min)",
     "nyc_storage_p5_pct":                "NYC Storage\ndaily 5th pctile %\n(max)",
-    "nyc_storage_min_p01_pct":           "NYC Storage\nannual-min 1st pctile %\n(max)",
+    "nyc_storage_min_p01_pct":           "NYC Storage\nP1 of ann. min %\n(max)",
     "nj_delivery_reliability_weekly":    "NJ Delivery\nReliability (weekly)\n(max)",
     "nj_delivery_reliability_annual":    "NJ Delivery\nReliability (annual)\n(max)",
 }

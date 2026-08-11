@@ -50,7 +50,7 @@ from src.plotting.style import (  # noqa: E402
     label_for as _label,
     save_figure,
 )
-from src.plotting.parallel_coordinates import render_parallel_coordinates  # noqa: E402
+from src.plotting.parallel_coordinates import custom_parallel_coordinates  # noqa: E402
 from src.sensitivity_common import spearman_and_flagged  # noqa: E402
 
 import matplotlib  # noqa: E402
@@ -220,24 +220,23 @@ def fig_parallel_coordinates(samples: pd.DataFrame, baseline: pd.Series | None,
     its NATIVE scale (raw min/max annotated at the ends), so the actual value
     range of every objective is legible while the axes stay aligned. Axes are
     oriented so "up" is the preferred direction. Reuses
-    :func:`src.plotting.parallel_coordinates.render_parallel_coordinates`.
+    :func:`src.plotting.parallel_coordinates.custom_parallel_coordinates`.
     """
     s = samples[obj_names].dropna()
     if s.empty:
         return
-    directions = [1 if _ALL_OBJ[n].direction == "maximize" else -1
-                  for n in obj_names]
+    minmaxs = ["max" if _ALL_OBJ[n].direction == "maximize" else "min"
+               for n in obj_names]
     labels = [_label(n) for n in obj_names]
     baseline_raw = None
     if baseline is not None and all(n in baseline for n in obj_names):
         baseline_raw = baseline[obj_names].to_numpy(dtype=float)
-    render_parallel_coordinates(
-        s.to_numpy(dtype=float), labels, directions,
-        title=f"Objective spread across {len(s)} random policies "
-              "(raw axes; ↑ better)",
-        output_file=out_png, baseline_raw=baseline_raw,
+    custom_parallel_coordinates(
+        s, axis_labels=labels, minmaxs=minmaxs,
+        title=f"Objective spread across {len(s)} random policies (raw axes)",
+        baseline=baseline_raw, alpha_base=0.35,
         figsize=(1.5 * len(obj_names) + 2, 5),
-        line_color="steelblue", line_alpha=0.35,
+        save_fig_filename=out_png,
     )
 
 

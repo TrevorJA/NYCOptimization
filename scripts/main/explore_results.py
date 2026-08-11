@@ -16,6 +16,14 @@ Figures (under ``figures/{scenario}/{slug}/``):
     explore_05_historic_timeseries.png  simulated behaviour vs the baseline
     explore_06_historic_timeseries_drought.png   the same, zoomed on the
                                         1960s drought of record
+    explore_07_tradeoff_scatter.png     headline pairwise tradeoff scatters,
+                                        colored by NYC delivery reliability
+    explore_08_tradeoff_scatter_matrix.png   lower-triangle scatter matrix
+                                        over every objective pair
+    explore_09_dv_ranges.png            bound-normalized DV ranges of
+                                        criterion-satisfying subsets vs the
+                                        full front (baseline dominance,
+                                        NYC-storage floors)
 
 Tables (same directory):
 
@@ -421,6 +429,30 @@ def main() -> int:
     _figure("explore_03_objective_tradeoffs",
             lambda p: plot_objective_tradeoffs(natural, directions, obj_names,
                                                output_file=p), out_dir)
+
+    from src.plotting.dv_ranges import default_criteria, plot_dv_ranges
+    from src.plotting.tradeoff_scatter import (plot_key_tradeoffs,
+                                               plot_scatter_matrix)
+    color_by = ("nyc_delivery_reliability_annual"
+                if "nyc_delivery_reliability_annual" in obj_names
+                else obj_names[0])
+    _figure("explore_07_tradeoff_scatter",
+            lambda p: plot_key_tradeoffs(natural, obj_names, directions,
+                                         color_by=color_by, baseline=baseline,
+                                         output_file=p), out_dir)
+    _figure("explore_08_tradeoff_scatter_matrix",
+            lambda p: plot_scatter_matrix(natural, obj_names, directions,
+                                          color_by=color_by, baseline=baseline,
+                                          output_file=p), out_dir)
+    criteria = default_criteria(natural, obj_names, directions,
+                                baseline=baseline, dom_mask=dom_mask)
+    if criteria:
+        _figure("explore_09_dv_ranges",
+                lambda p: plot_dv_ranges(dv, args.formulation, criteria,
+                                         output_file=p), out_dir)
+    else:
+        print("[figure] skipping explore_09_dv_ranges: no computable criteria "
+              "(no baseline and no NYC-storage objective)")
 
     if args.formulation == "ffmp":
         from src.plotting.policy_rules import plot_policy_rules
