@@ -42,6 +42,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from config import baseline_objectives_csv
 from src.pareto_filter import filter_reference_set
 
 
@@ -62,10 +63,19 @@ def _load_reeval_long(reeval_dir: Path) -> pd.DataFrame | None:
     return pd.read_parquet(p)
 
 
-def _load_baseline_vec(formulation, obj_names):
-    """Baseline objectives (natural units) aligned to the front, or None."""
-    bcsv = Path("outputs/baseline") / f"{formulation}_baseline_objectives.csv"
+def _load_baseline_vec(formulation, obj_names, scenario):
+    """Baseline objectives (natural units) aligned to the front, or None.
+
+    Resolved through ``config.baseline_objectives_csv`` — a baseline vector is
+    only comparable to a front evaluated on the SAME substrate, so ensemble
+    scenarios must get the search-ensemble-scored vector (step 05
+    ``--search-ensemble``), never the flat historic record. An unscored
+    scenario yields None and the panels omit the overlay.
+    """
+    bcsv = baseline_objectives_csv(formulation, scenario)
     if not bcsv.exists():
+        print(f"[baseline] not scored for scenario '{scenario}' ({bcsv}); "
+              "omitting baseline overlay")
         return None
     row = pd.read_csv(bcsv).iloc[0]
     try:
@@ -77,12 +87,13 @@ def _load_baseline_vec(formulation, obj_names):
 # --------------------------------------------------------------------------- #
 # Fig 1: Pareto parallel-coordinates, accepted vs screened out
 # --------------------------------------------------------------------------- #
-def fig_parallel_coords(ref_set, formulation, filt, out_dir):
+def fig_parallel_coords(ref_set, formulation, filt, out_dir, scenario):
     from src.plotting.parallel_coordinates import plot_parallel_coordinates
     plot_parallel_coordinates(ref_set, formulation,
                               out_dir / "01_pareto_parallel_coords.png",
                               baseline_objs=_load_baseline_vec(formulation,
-                                                               filt.obj_names),
+                                                               filt.obj_names,
+                                                               scenario),
                               figsize=(13, 5.5), keep_mask=filt.mask)
     print(f"[fig1] {filt.n_accepted}/{filt.n_total} acceptable "
           f"-> 01_pareto_parallel_coords.png")
@@ -91,10 +102,10 @@ def fig_parallel_coords(ref_set, formulation, filt, out_dir):
 # --------------------------------------------------------------------------- #
 # Fig 1b/1c: pairwise objective tradeoff scatters (headline pairs + matrix)
 # --------------------------------------------------------------------------- #
-def fig_tradeoff_scatter(filt, formulation, out_dir):
+def fig_tradeoff_scatter(filt, formulation, out_dir, scenario):
     from src.plotting.tradeoff_scatter import (plot_key_tradeoffs,
                                                plot_scatter_matrix)
-    baseline = _load_baseline_vec(formulation, filt.obj_names)
+    baseline = _load_baseline_vec(formulation, filt.obj_names, scenario)
     color_by = ("nyc_delivery_reliability_annual"
                 if "nyc_delivery_reliability_annual" in filt.obj_names
                 else filt.obj_names[0])
@@ -113,9 +124,9 @@ def fig_tradeoff_scatter(filt, formulation, out_dir):
 # --------------------------------------------------------------------------- #
 # Fig 1d: DV ranges of criterion-satisfying subsets vs the full front
 # --------------------------------------------------------------------------- #
-def fig_dv_ranges(filt, formulation, out_dir):
+def fig_dv_ranges(filt, formulation, out_dir, scenario):
     from src.plotting.dv_ranges import default_criteria, plot_dv_ranges
-    baseline = _load_baseline_vec(formulation, filt.obj_names)
+    baseline = _load_baseline_vec(formulation, filt.obj_names, scenario)
     criteria = default_criteria(filt.natural_obj, filt.obj_names,
                                 filt.directions, baseline=baseline)
     if not criteria:
@@ -339,9 +350,9 @@ def main():
     most_robust_id, examples = _select_examples(filt, scorecard)
 
     tasks = [
-        ("parallel_coords", lambda: fig_parallel_coords(ref_set, args.formulation, filt, out_dir)),
-        ("tradeoff_scatter", lambda: fig_tradeoff_scatter(filt, args.formulation, out_dir)),
-        ("dv_ranges", lambda: fig_dv_ranges(filt, args.formulation, out_dir)),
+        ("parallel_coords", lambda: fig_parallel_coords(ref_set, args.formulation, filt, out_dir, args.scenario)),
+        ("tradeoff_scatter", lambda: fig_tradeoff_scatter(filt, args.formulation, out_dir, args.scenario)),
+        ("dv_ranges", lambda: fig_dv_ranges(filt, args.formulation, out_dir, args.scenario)),
         ("hypervolume", lambda: fig_hypervolume(run_dir, args.formulation, out_dir)),
         ("du_distributions", lambda: fig_du_distributions(reeval_dir, filt, out_dir)),
         ("robustness", lambda: fig_robustness(reeval_dir, filt, most_robust_id, out_dir)),

@@ -186,3 +186,152 @@ Final-row indicators are finite and cross-seed consistent (hypervolume
 Hypervolume is NOT comparable to the shakeout's 0.0704/0.0672: those were
 scored against a different reference set (per-seed, then the 7,544-member
 plain union), whereas these are scored against the 1,761-member ε-front.
+
+## Ensemble-front ε re-assessment (2026-08-12, INTERIM — hazfill pending)
+
+The 500k-NFE production searches (draw 0 / seed 1) exposed the 2026-08-05
+calibration as under-resolving ENSEMBLE fronts: the fixed_probabilistic
+archive returned 6,353 solutions, 100% ε-consistent under the adopted vector
+(cross-seed ε-front 6,170), vs 2,685/2,604 for the single-trace historic run
+— ensemble-averaged objectives are far smoother, so box occupancy explodes.
+Both are far above the ~1,000–1,200 merged-policy re-evaluation sizing.
+
+Diagnostic: `scripts/supplemental/epsilon_ensemble_refilter.py` (jobs
+19839023 + 19840678 on `shared`, minutes each) re-filters the production
+sets under GROUPED candidate vectors — one ε shared by the four
+`*_reliability_annual` axes, one by the two `*_deficit_p99_pct` axes, flood
+and storage each their own (Trevor's family-symmetry rule, extending the
+2026-08-05 deficit pairing; the grouping raises Trenton 0.015 and NJ 0.025
+to the reliability-group value). Substrates: each seed's own `.set` archive
+(validation) and the step-07 `*_merged_raw.set` plain union (canonical).
+Fast exact reimplementation of the ε-box filter (sum-sorted dominance
+sweep), cross-checked in-run against `sensitivity_common.
+epsilon_nondominated` and against Borg's own archive membership: exact on
+fixed_probabilistic (6,353; union filter reproduces the step-07 6,170
+exactly), 2,683/2,685 on historic — both misses are box-boundary
+write-precision artifacts (a coordinate exactly on a box edge), tolerated
+at ≤0.1%.
+
+Findings on historic + fixed_probabilistic (union sizes; ×1.10 = measured
+cross-seed live-search inflation, band 1,000–1,200 on the LARGEST design —
+fronts differ ~2.5× across designs, so a per-design band is unsatisfiable):
+
+- The reliability group is the dominant cardinality lever: 0.02 → 0.04
+  alone cuts the fixedprob union 6,170 → 2,675 (historic 2,604 → 1,059).
+  Grouping alone (Trenton/NJ → 0.02) already cuts 6,170 → 5,384.
+- The flood axis is size-inert: production flood values span ~1.6 ε-boxes
+  at the adopted 0.3 (axis_structure tables), so flood coarsening barely
+  moves cardinality (and is non-monotone via box-boundary placement).
+- Deficit and storage coarsening are secondary levers (~35–45% and ~30–40%
+  cuts respectively at their measured-recommendation values).
+- Band bracketing on fixedprob: rel_x4 (0.08) → 1,205 (adj 1,326, just
+  over); rel_x5 (0.10) → 948 (adj 1,043, in band but Trenton collapses to
+  2 boxes / 52% span); joint_x1.5 (0.03, 7.5, 0.45, 7.5) → 901 (adj 991, a
+  hair under band, with every axis ≥ 87% span retained and Trenton at 8
+  boxes). Mixed shapes at rel 0.04–0.05 with def 7.5 / flood 0.5 / storage
+  5–7.5 are staged for the next round to fill the 991–1,326 gap with
+  better-resolved reliability axes.
+
+Outputs: `outputs/supplemental/epsilon_refilter/{scenario}_ffmp_obj8/`
+(axis_structure, grouped_size_sweep, grouped_axis_coverage, two-panel
+parallel axes) and `.../combined_ffmp_obj8_grouped/` (recommendation.csv/.md,
+size_vs_coarsening.png). NEXT: re-run across all three designs once the
+hazard_filling_stationary step-07 merge lands, then recommend a vector for
+adoption (part 2: registry edit, JAR rebuild, env re-pin; the production
+`.set`/`_merged*.set` artifacts are preserved verbatim — re-filtered copies
+get new filenames).
+
+### Final three-design results (2026-08-12, job 19844656)
+
+hazard_filling_stationary production landed (seed archive 5,761; step-07
+ε-front 5,544; raw union 32,661) and validates exactly (both reproduction
+checks PASS). Full grid (19 candidates), union sizes with the ×1.10
+cross-seed inflation, band 1,000–1,200 on the largest design:
+
+| candidate | (rel, def, flood, stor) | historic | fixedprob | hazfill | max adj110 | in band |
+| --- | --- | --- | --- | --- | --- | --- |
+| adopted | ungrouped | 2,604 | 6,170 | 5,544 | 6,787 | no |
+| rel_x5 | 0.10, 5.0, 0.3, 5.0 | 334 | 948 | 734 | 1,043 | **yes** |
+| mixed_r2.5f | 0.05, 7.5, 0.5, 5.0 | 352 | 952 | 779 | 1,047 | **yes** |
+| mixed_r2f | 0.04, 7.5, 0.5, 5.0 | 487 | 1,173 | 980 | 1,290 | just over |
+| mixed_r2fs | 0.04, 7.5, 0.5, 7.5 | 342 | 864 | 753 | 950 | just under |
+
+The two in-band candidates trade resolution very differently
+(grouped_axis_coverage tables): rel_x5 concentrates all coarsening on the
+reliability family — on fixedprob Trenton falls to 2 boxes / 52% span and
+NJ to 6 boxes / 62% span — while mixed_r2.5f keeps reliability at 0.05
+(fixedprob: NYC 10 / Montague 15 / Trenton 5 / NJ 16 boxes, every axis
+≥ 85% span except Trenton hazfill 73%) by spending the difference on the
+deficit pair (7.5% of target) and the size-inert flood axis (0.5 — note
+this leaves the historic flood axis single-boxed; it spans < 1 box there
+regardless of any ε ≥ 0.5). RECOMMENDED: **mixed_r2.5f = reliabilities
+0.05, deficit-P99s 7.5, flood 0.5, storage 5.0** — reliability is the
+study's headline objective family and 0.10-step resolution under-serves
+it; storage keeps the "5% of capacity is significant" rationale; all four
+values are clean and family-symmetric. Adoption pending Trevor's
+acceptance (part 2: registry edit, step-00 JAR rebuild, env re-pin,
+regret-τ recheck; production artifacts preserved verbatim, re-filtered
+copies under new filenames).
+
+### Flood-0.3-preserving round and final recommendation (2026-08-12, job 19845321)
+
+Trevor rejected the flood-0.5 component of mixed_r2.5f, and rightly: the
+flood axis spans only 0.35–0.80 ft-days/yr across all three production
+fronts (2 / 2 / 4 occupied ε-boxes at the adopted 0.3), so flood-ε
+cardinality effects are BOX-BOUNDARY PLACEMENT artifacts, not resolution —
+ε=0.6 reproduces the fixedprob base archive exactly while ε=0.5 cuts 34%.
+That is fragile across draws/seeds and indefensible in the SI. Third round
+kept flood at 0.3 and moved the cut to the deficit group (10.0 = the
+measured hazfill eps_rec, externally anchored):
+
+| candidate | (rel, def, flood, stor) | historic | fixedprob | hazfill | max adj110 |
+| --- | --- | --- | --- | --- | --- |
+| keepf_a | 0.05, 10.0, 0.3, 5.0 | 335 | 991 | 784 | **1,090 — in band** |
+| keepf_b | 0.06, 7.5, 0.3, 5.0 | 352 | 1,105 | 816 | 1,216 (just over) |
+| keepf_c | 0.05, 7.5, 0.3, 5.0 | 426 | 1,287 | 1,089 | 1,416 |
+| keepf_d | 0.06, 10.0, 0.3, 5.0 | 292 | 818 | 632 | 900 |
+
+keepf_a coverage (grouped_axis_coverage): reliabilities 4–14 boxes per
+design with span ≥ 0.68 everywhere (NYC 11 boxes / ~1.00 span in all three
+designs); deficits 6–9 boxes; flood and storage identical to adopted.
+FINAL RECOMMENDATION: **keepf_a — reliabilities 0.05, deficit-P99s 10.0,
+flood 0.3, storage 5.0** = full 8-vector
+[0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05]. Only two families move
+from the 2026-08-05 vector, both to interpretable, externally-anchored
+values; flood and storage rationales carry over unchanged.
+
+### Adoption record (2026-08-12)
+
+Trevor ACCEPTED keepf_a. New campaign vector:
+**[0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05]**
+(reliabilities 0.05 grouped incl. Trenton/NJ; deficit-P99s 10.0 paired;
+flood 0.3 and storage 5.0 unchanged from 2026-08-05). Landed same day:
+
+- Registry: `src/objectives_ensemble.py::_ANNUAL_REGISTRY_SPEC` epsilons
+  edited (6 entries); spec comment records the revision rationale.
+- Regret τ (k·max(ε, floor)): only the two deficit entries move (5.0 →
+  10.0, now ε-bound); reliabilities (floors 0.122–0.137), flood (0.927)
+  and storage (5.758) stay floor-bound. `NYCOPT_REGRET_TAU` re-pinned in
+  all 10 env files carrying it.
+- JARs: NO rebuild required for ε-only changes — only DV/objective COUNTS
+  reach the problem JARs (`workflow/00_setup_borg_jars.sh` header); ε
+  enters Borg at runtime via `config.get_epsilons()` (`src/mmborg.py`) and
+  MOEAFramework CLIs via `--epsilon` strings (`src/diagnostics.py`).
+  Step 00 re-run anyway (idempotent; JARs byte-identical). This corrects
+  the 2026-08-05 note's implication that ε changes need a JAR rebuild.
+- Preserved re-filter (job 19845739,
+  `scripts/supplemental/write_refiltered_sets.py`): the raw unions
+  filtered under the new vector into NEW files
+  `outputs/{design}/ffmp_obj8/sets/ffmp_obj8_merged_eps20260812.set` —
+  historic 335, fixed_probabilistic 991, hazard_filling_stationary 784,
+  matching the sweep's keepf_a row exactly. The 2026-08-05-ε
+  `{slug}_merged.set` files and every other production artifact are
+  untouched. Step 08/09 should consume the `_eps20260812` refs.
+- Tests: the seven ε/τ-touching suites pass against the edited registry
+  (173 passed / 2 skipped, same job).
+
+Disclosure carried forward: ε steers the live search, so campaign
+archives under the new vector will run ~10–35% larger than these static
+re-filter counts (measured 2026-08-05 confirmatory search). The draw-0 /
+seed-1 production archives were SEARCHED at the old resolution; only
+their re-filtered reference sets are at the new one.

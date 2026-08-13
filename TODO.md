@@ -28,6 +28,39 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
      could be re-evaluated, but they will be superseded by the scaled-NFE
      campaign — re-evaluate the campaign sets, not these,
   2. regenerate steps 10/11/13 artifacts (needs the step-08 policy cubes).
+  INTERIM SUBSET RE-EVAL staged 2026-08-12 (Trevor approved): the first-round
+  500k-NFE fronts will be re-evaluated on a 200-SOW chunk-prefix subset of
+  E_test (`etest_kn_50yr_n25000_first10ch`, 10/50 chunks, R=25 untouched —
+  per-SOW values stay in the final metric currency; worst-case Starr-fraction
+  SE +/-3.5 pp) to shape the robustness message ahead of the converged
+  production fronts. Metadata-only: no data regenerated/copied/re-prepped
+  (`scripts/supplemental/make_etest_subset.py`; subset dir points at the
+  existing staged chunk dirs). Incumbent baseline symlinked under the subset
+  tag for all three designs
+  (`scripts/supplemental/stage_etest_subset_baseline.py`; label-based join
+  makes the full cube a valid superset baseline). Acceptance gate PASSED
+  2026-08-12: job 19845743 (`workflow/supplemental/etest_subset_reeval_check.sh`)
+  — subset rows bit-identical to the full mini-fixture run's SOW-0 rows in the
+  same job, subset meta records exactly its own SOWs. Step-09 SUBMITTED
+  2026-08-12 (Trevor approved) on the eps20260812 re-filtered sets
+  (`outputs/{design}/ffmp_obj8/sets/ffmp_obj8_merged_eps20260812.set`;
+  335 / 991 / 784 policies, loader-verified): jobs 19845823 (fixedprob, 18 h)
+  + 19845825 (hazfill, 16 h) RUNNING healthily 2026-08-13 (unit wall ~1.2 h,
+  rank RSS 1.65 GB, ~62%/78% done at t+8 h); 19845822 (historic) died
+  OUT_OF_MEMORY at 11 min during rank startup (one-node spike, sacct step .0,
+  ~195 GB peak; siblings at identical geometry are fine — same signature as
+  the 2026-08-10 search OOM); resubmit 19859148 (8x128) was cancelled while
+  still pending and re-shaped as job 19859233: 14 wholenode x 128 = 1,792
+  ranks, so 3,350 units run in exactly 2 claim rounds (~93% parallel
+  efficiency, ~2.5-3 h wall, --time=05:00) instead of 4 quantized rounds at
+  1,024 ranks (~82%, ~5.4 h) — slightly LESS SU than the 8-node shape. If it
+  OOMs again, drop to 96 ranks/node. Ensemble jobs: 8 wholenode x 128 ranks.
+  All jobs: batch=50, claim scheduling, CHUNK_MERGE=off, wall guard at
+  4,900 s/unit; est. ~28.5k SU total (~4.5k/13.4k/10.6k). After completion run
+  09b per design with the SAME env identity (env file + subset preset + same
+  .set path, no SEED). Prefix-only subsets (rows keyed by global SOW id);
+  interim cubes live under `reeval/etest_kn_50yr_n25000_first10ch/` and must
+  never be mixed with full-cube numbers in the manuscript.
   GEOMETRY NOTE for step-09 chunk re-evals on E_test: submit on `shared`
   with ~8 cpus per rank and an explicit realization batch (job 19738752:
   1 node x 16 ranks x 8 cpus, `NYCOPT_SEARCH_REALIZATION_BATCH=50`, 4h14m,
@@ -35,6 +68,30 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   each rank streams a DIFFERENT ~7.3 GB chunk-HDF5 set and the page cache
   is charged to the job (jobs 19733674/19733773; single-rank code peak is
   only ~1.7 GB, so it is concurrency, not a leak).
+- [x] **[local→HPC]** RE-ASSESS EPSILON VALUES under ensemble evaluation —
+  DONE 2026-08-12, new vector ADOPTED (Trevor accepted `keepf_a`):
+  **[0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05]** — one ε per objective
+  family (reliabilities 0.05, deficit-P99s 10.0 = the measured hazfill
+  eps_rec, flood 0.3 and storage 5.0 UNCHANGED). Full record in
+  `epsilon_calibration_experiment.md` (three sweep rounds, jobs
+  19839023/19840678/19844656/19845321; diagnostic:
+  `scripts/supplemental/epsilon_ensemble_refilter.py`, outputs under
+  `outputs/supplemental/epsilon_refilter/`). Adoption landed (job 19845739,
+  tests 173 passed / 2 skipped): registry edited
+  (`objectives_ensemble._ANNUAL_REGISTRY_SPEC`), regret-τ deficit entries
+  re-pinned 5.0→10.0 in all env files (reliability/flood/storage τ stay
+  floor-bound), and the re-filtered production reference sets written as
+  `outputs/{design}/ffmp_obj8/sets/ffmp_obj8_merged_eps20260812.set`
+  (historic 335 / fixedprob 991 / hazfill 784 — these are the coarser-eps
+  re-filtered refs the step-09 item waits on; expect live-search archives
+  ~10-35% larger). ALL 500k-NFE originals kept verbatim. NOTE: NO JAR
+  rebuild is required for ε-only changes — only DV/obj COUNTS reach the
+  JARs (per `workflow/00_setup_borg_jars.sh` header; ε enters Borg at
+  runtime via `config.get_epsilons()` in `src/mmborg.py`); step 00 was
+  re-run anyway (idempotent, JARs byte-identical). Campaign fan-out
+  draws/seeds will search at the new resolution automatically. Point step
+  08/09 at the `_eps20260812.set` refs (or swap names keeping the
+  2026-08-05 file under a preserved name) — decide at submit time.
 - [ ] **[local→HPC]** Satisficing-criterion OAT stringency + threshold-margin
   CDFs (framing diagnostic 3) — waits on the persisted re-evaluation cube
   (post E_test re-evaluation of the Pareto sets).
@@ -65,11 +122,19 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   rank 741 killed on node a466; typical per-node RSS ~139 GB of ~240 GB
   limit, so the OOM was a spike on one node, not steady-state pressure).
   No .set written, so the relaunch guard did not block the resubmit:
-  RESUBMITTED as-is (8x128) 2026-08-11 as job 19782745 per Trevor's call
-  (16x64 memory-headroom option declined; revisit if it OOMs again). historic COMPLETED 2026-08-11 00:29
+  RESUBMITTED as-is (8x128) 2026-08-11 as job 19782745 per Trevor's call:
+  COMPLETED 2026-08-12 16:25 (21 h 37 m, ~22,100 SU, 5,761 solutions, RSS
+  flat ~140 GB throughout — the 08-10 OOM was a one-off spike). ALL THREE
+  go/no-go cells are now in; total spend ~48k SU incl. the OOM loss.
+  Step-07 diagnostics + full figure suites DONE for all three (2026-08-12);
+  hazfill ref set 5,544. Like fixedprob, ZERO hazfill solutions dominate
+  the scenario-matched incumbent on all 8 axes (historic: 188/2,604). historic COMPLETED 2026-08-11 00:29
   (4 h 04 m, ~4,200 SU, 2,685 solutions in
-  outputs/historic/ffmp_obj8/sets/seed_01_ffmp_obj8.set). fixedprob still
-  running (healthy at 12 h, ~62%, per-node RSS flat at ~140 GB).
+  outputs/historic/ffmp_obj8/sets/seed_01_ffmp_obj8.set; step-07
+  diagnostics + explore_results figures done, ref set 2,604 solutions).
+  fixedprob COMPLETED 2026-08-11 17:29 (21 h 04 m, ~21,600 SU, 6,353
+  solutions in outputs/fixed_probabilistic/ffmp_obj8/sets/); per-node RSS
+  flat at ~140 GB throughout — no memory creep at 128/node.
   Verify surviving runs before fanning out to the remaining draws x seeds. Production inputs (pools d0–d2,
   search ensembles, E_test + presim) are staged, verified, and adequacy-gated
   (campaign 6-axis min tail share 0.311 / 0.306 / 0.303 across draws). The

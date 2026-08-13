@@ -88,3 +88,4 @@ docs/notes/literature/fulltext/
 scripts/temporary/*
 !scripts/temporary/.gitkeep
 !scripts/temporary/build_proposal_motivation_deck.py
+archive/*

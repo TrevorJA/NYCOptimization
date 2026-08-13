@@ -611,35 +611,40 @@ _SAT_LABELS: dict[str, str] = {
 # `operator` is either the string "frequency" (built with the resolved
 # per-objective k) or a stage-(ii) operator instance whose `worst_value` is
 # the metric's orientation-aware non-finite sentinel.
-# Epsilons are the FINAL campaign vector in native metric units, calibrated
-# by the epsilon-calibration experiment as the clean-ceil of
-# max(signal IQR/10, bootstrap noise floor, frequency granularity) over the
-# ensemble campaign designs. Derivation, per-axis exceptions, and disclosures:
+# Epsilons are the FINAL campaign vector in native metric units. Base
+# calibration (2026-08-05): clean-ceil of max(signal IQR/10, bootstrap noise
+# floor, frequency granularity) over the ensemble campaign designs. Revised
+# 2026-08-12 from the grouped re-filter sweep on the 500k-NFE production
+# fronts (ensemble-averaged objectives are far smoother than the single
+# trace, so the 2026-08-05 vector under-resolved ensemble fronts): one
+# shared epsilon per objective family — reliabilities 0.05, deficit-P99s
+# 10.0 (the measured hazfill recommendation), flood and storage unchanged.
+# Derivation, per-axis exceptions, and disclosures:
 # docs/notes/methods/epsilon_calibration_experiment.md.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
-     "nyc_delivery_reliability_weekly", "maximize", 0.02,
+     "nyc_delivery_reliability_weekly", "maximize", 0.05,
      _nyc_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NYC delivery "
      "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
-     "nyc_delivery_deficit_cvar90_pct", "minimize", 5.0,
+     "nyc_delivery_deficit_cvar90_pct", "minimize", 10.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
      "delivery deficit, % of Decree cap [0-100]"),
     ("montague_flow_reliability_annual",
-     "montague_flow_reliability_weekly", "maximize", 0.02,
+     "montague_flow_reliability_weekly", "maximize", 0.05,
      _montague_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of weekly-mean Montague "
      "flow < 1131.05 MGD Decree target"),
     ("montague_flow_deficit_p99_pct",
-     "montague_flow_deficit_cvar90_pct", "minimize", 5.0,
+     "montague_flow_deficit_cvar90_pct", "minimize", 10.0,
      _montague_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
      "flow deficit, % of Decree target [0-100]"),
     ("trenton_flow_reliability_annual",
-     "trenton_flow_reliability_weekly", "maximize", 0.015,
+     "trenton_flow_reliability_weekly", "maximize", 0.05,
      _trenton_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of weekly-mean Trenton "
      "flow < 1938.95 MGD Decree target"),
@@ -669,7 +674,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "P01 across pooled unit-years of the annual minimum daily aggregate "
      "NYC storage, % of capacity [0-100]"),
     ("nj_delivery_reliability_annual",
-     "nj_delivery_reliability_weekly", "maximize", 0.025,
+     "nj_delivery_reliability_weekly", "maximize", 0.05,
      _nj_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NJ diversion "
      "< 99% of the running-average entitlement"),

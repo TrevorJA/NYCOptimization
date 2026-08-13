@@ -234,12 +234,15 @@ def part4_figure(archives, names, directions, eps, out_png):
                       out_png.with_name(out_png.stem + "_2panel.png"))
 
 
-def _two_panel_figure(natural, mask, names, directions, out_png):
+def _two_panel_figure(natural, mask, names, directions, out_png, label=None):
     """Full set (top) vs ε-filtered set (bottom), shared normalization.
 
     Both panels normalize on the FULL set's ranges so the filtered panel is
     directly comparable — any span loss would appear as untouched headroom.
+    ``label`` names the candidate in the bottom-panel title (default: the
+    module's PREFERRED candidate).
     """
+    label = PREFERRED if label is None else label
     import matplotlib.pyplot as plt
     from src.plotting.style import apply_style, OBJ_AXIS_LABELS
     from src.plotting.parallel_coordinates import _format_value
@@ -257,7 +260,7 @@ def _two_panel_figure(natural, mask, names, directions, out_png):
     panels = [
         (ax_top, normed, 0.05, f"Full merged set (n={len(normed)})"),
         (ax_bot, normed[mask], 0.15,
-         f"ε-box filtered, {PREFERRED} (n={int(mask.sum())})"),
+         f"ε-box filtered, {label} (n={int(mask.sum())})"),
     ]
     for ax, rows, alpha, label in panels:
         for row in rows:
