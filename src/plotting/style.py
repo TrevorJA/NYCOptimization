@@ -39,6 +39,57 @@ for _i, _n in enumerate(FFMP_VR_N_SWEEP):
     ARCH_COLORS[f"ffmp_{_n}"] = _vr_cmap(_t)
 
 # ---------------------------------------------------------------------------
+# Scenario-design metadata
+# ---------------------------------------------------------------------------
+
+#: Campaign scenario designs in canonical display order (ensemble designs first,
+#: the historic reference trace last).
+DESIGN_ORDER: tuple = ("fixed_probabilistic", "hazard_filling_stationary", "historic")
+
+#: Per-design plotting identity: Okabe-Ito colors keyed to the DESIGN (never to
+#: plot order; the palette is validated for CVD + normal-vision separation) plus
+#: the display name and reference-trace flag.
+DESIGN_STYLE: dict[str, dict] = {
+    "fixed_probabilistic": {
+        "color": "#0072B2", "label": "Fixed probabilistic (i.i.d. control)",
+        "reference": False},
+    "hazard_filling_stationary": {
+        "color": "#D55E00", "label": "Hazard-filling (stationary)",
+        "reference": False},
+    "historic": {
+        "color": "#B0B0B0", "label": "Historic trace (reference)",
+        "reference": True},
+}
+
+#: Fallback colors for designs outside the campaign trio (assigned by sorted
+#: name so the mapping is deterministic across runs, not by plot order).
+DESIGN_FALLBACK_COLORS: list[str] = ["#56B4E9", "#CC79A7", "#E69F00"]
+
+#: Reserved non-design colors: the FFMP incumbent (status quo) polyline/marker
+#: and the satisficing-threshold reference line. Never reuse for a design.
+INCUMBENT_COLOR: str = "firebrick"
+THRESHOLD_COLOR: str = "crimson"
+
+
+def design_style(design: str, fallback_rank: int = 0) -> dict:
+    """Entity-stable style dict for ``design`` (deterministic fallback if unknown)."""
+    if design in DESIGN_STYLE:
+        return DESIGN_STYLE[design]
+    return {"color": DESIGN_FALLBACK_COLORS[fallback_rank % len(DESIGN_FALLBACK_COLORS)],
+            "label": design.replace("_", " "), "reference": False}
+
+
+def design_color(design: str) -> str:
+    """Okabe-Ito color for ``design``."""
+    return design_style(design)["color"]
+
+
+def design_label(design: str) -> str:
+    """Display name for ``design``."""
+    return design_style(design)["label"]
+
+
+# ---------------------------------------------------------------------------
 # Objective labels
 # ---------------------------------------------------------------------------
 
@@ -137,6 +188,30 @@ OBJ_SHORT_LABELS: dict[str, str] = {
 def short_label_for(name: str) -> str:
     """Very short display label for an objective name; falls back to label_for."""
     return OBJ_SHORT_LABELS.get(name, label_for(name))
+
+
+# The RESULTS-figure sequence uses exactly TWO objective naming conventions
+# (project rule, 2026-08-14): the long form (`label_for` / OBJECTIVE_LABELS,
+# metric + statistic + unit) and the abbreviation (`short_label_for` /
+# OBJ_SHORT_LABELS). Any other rendering -- e.g. the multi-line parallel-axis
+# label below -- is DERIVED from the long form, never a third hand-written set.
+
+def axis_label_for(name: str, direction: str) -> str:
+    """Multi-line parallel-axis label derived from the long-form label.
+
+    Splits the long form at its "(...)" qualifier and appends the
+    optimization direction, e.g. ``NYC Delivery Reliability\n(annual)\n(max)``.
+
+    Args:
+        name: Objective name.
+        direction: "maximize" or "minimize".
+    """
+    long = label_for(name)
+    arrow = "(max)" if direction == "maximize" else "(min)"
+    if "(" in long:
+        head, _, tail = long.partition("(")
+        return f"{head.strip()}\n({tail}\n{arrow}"
+    return f"{long}\n{arrow}"
 
 
 #: Parallel-coordinates axis labels (multi-line: metric, timescale + statistic +
@@ -299,6 +374,61 @@ def save_manuscript_figure(fig, out_stub) -> list:
         fig.savefig(path)
         written.append(path)
     return written
+
+
+def criterion_condition(name: str, threshold: float, kind: str) -> str:
+    """One satisficing condition as compact text, e.g. ``NYC Rel. (ann) >= 0.65``.
+
+    A non-finite threshold (the axis-disabling convention of
+    ``src.results_data.relax_axes``) renders as "no requirement".
+    """
+    label = short_label_for(name)
+    if threshold is None or not np.isfinite(threshold):
+        return f"{label}: no requirement"
+    op = "≥" if kind == "ge" else "≤"
+    unit = ""
+    if name.endswith("_pct"):
+        unit = "%"
+        label = label.removesuffix(" %")
+    elif "flood_exceedance" in name:
+        unit = " ft·d/yr"
+    return f"{label} {op} {threshold:g}{unit}"
+
+
+def criteria_lines(thresholds: dict, kinds: dict, obj_order=None,
+                   header: str = "Satisficing criteria (all must hold):") -> list:
+    """The full criterion vector as an explicit bulleted text block.
+
+    Every results figure that depends on a satisficing criterion carries this
+    in its footer (project rule: the exact thresholds are stated on the figure
+    as one bullet per condition, never just a shorthand criterion name).
+    """
+    names = list(obj_order) if obj_order is not None else list(thresholds)
+    return [header] + [f"  •  {criterion_condition(n, thresholds[n], kinds[n])}"
+                       for n in names]
+
+
+def add_figure_footer(fig, lines, *, x: float = 0.5, y: float = 0.0,
+                      ha: str = "center", fontsize: float = 7.0) -> None:
+    """Attach a boxed provenance/criteria footer below a figure.
+
+    Args:
+        fig: The figure.
+        lines: Text lines (policy provenance first, then the bulleted
+            criterion block from :func:`criteria_lines`).
+        x: Figure-fraction x of the box anchor (with ``ha``); several boxes
+            can sit side by side for multi-criterion figures.
+        y: Figure-fraction y of the box top; tune per figure so it clears
+            axis labels and legends (``savefig.bbox='tight'`` keeps it in
+            frame even at negative y).
+        ha: Horizontal anchor of the box at ``x``.
+        fontsize: Footer text size.
+    """
+    fig.text(x, y, "\n".join(lines), ha=ha, va="top",
+             fontsize=fontsize, linespacing=1.55, color="0.15",
+             multialignment="left",
+             bbox=dict(boxstyle="round,pad=0.55", facecolor="0.965",
+                       edgecolor="0.75", lw=0.8))
 
 
 def annotated_corr_heatmap(ax, data, labels, *, label_fn=label_for,

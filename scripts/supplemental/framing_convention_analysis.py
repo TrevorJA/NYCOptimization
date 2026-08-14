@@ -65,6 +65,7 @@ from src.objectives_ensemble import (  # noqa: E402
     _DEFAULT_FAILURE_K,
 )
 from src.sensitivity_common import kendall_tau_b, spearman_and_flagged  # noqa: E402
+from src.plotting import style  # noqa: E402
 from src.plotting.style import (  # noqa: E402
     annotated_corr_heatmap,
     apply_style,
@@ -77,17 +78,10 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-#: Campaign designs analyzed, in display order (labels/colors match the
-#: epsilon-calibration SI figures: Okabe-Ito keyed to the DESIGN).
-_DESIGNS: tuple = ("fixed_probabilistic", "hazard_filling_stationary", "historic")
-_DESIGN_STYLE: dict = {
-    "fixed_probabilistic": {
-        "color": "#0072B2", "label": "Fixed probabilistic (i.i.d. control)"},
-    "hazard_filling_stationary": {
-        "color": "#D55E00", "label": "Hazard-filling (stationary)"},
-    "historic": {
-        "color": "#B0B0B0", "label": "Historic trace (reference)"},
-}
+#: Campaign designs analyzed, in display order (canonical map lives in
+#: src.plotting.style: Okabe-Ito keyed to the DESIGN).
+_DESIGNS: tuple = style.DESIGN_ORDER
+_DESIGN_STYLE: dict = style.DESIGN_STYLE
 
 #: Frequency objectives screened by the k sweep (registry display order).
 _FREQ_OBJECTIVES: tuple = (

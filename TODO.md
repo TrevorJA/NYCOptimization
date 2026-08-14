@@ -41,24 +41,34 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   makes the full cube a valid superset baseline). Acceptance gate PASSED
   2026-08-12: job 19845743 (`workflow/supplemental/etest_subset_reeval_check.sh`)
   — subset rows bit-identical to the full mini-fixture run's SOW-0 rows in the
-  same job, subset meta records exactly its own SOWs. Step-09 SUBMITTED
-  2026-08-12 (Trevor approved) on the eps20260812 re-filtered sets
+  same job, subset meta records exactly its own SOWs. INTERIM WORKFLOW
+  COMPLETE THROUGH STEP 13, 2026-08-13, on the eps20260812 re-filtered sets
   (`outputs/{design}/ffmp_obj8/sets/ffmp_obj8_merged_eps20260812.set`;
-  335 / 991 / 784 policies, loader-verified): jobs 19845823 (fixedprob, 18 h)
-  + 19845825 (hazfill, 16 h) RUNNING healthily 2026-08-13 (unit wall ~1.2 h,
-  rank RSS 1.65 GB, ~62%/78% done at t+8 h); 19845822 (historic) died
-  OUT_OF_MEMORY at 11 min during rank startup (one-node spike, sacct step .0,
-  ~195 GB peak; siblings at identical geometry are fine — same signature as
-  the 2026-08-10 search OOM); resubmit 19859148 (8x128) was cancelled while
-  still pending and re-shaped as job 19859233: 14 wholenode x 128 = 1,792
-  ranks, so 3,350 units run in exactly 2 claim rounds (~93% parallel
-  efficiency, ~2.5-3 h wall, --time=05:00) instead of 4 quantized rounds at
-  1,024 ranks (~82%, ~5.4 h) — slightly LESS SU than the 8-node shape. If it
-  OOMs again, drop to 96 ranks/node. Ensemble jobs: 8 wholenode x 128 ranks.
-  All jobs: batch=50, claim scheduling, CHUNK_MERGE=off, wall guard at
-  4,900 s/unit; est. ~28.5k SU total (~4.5k/13.4k/10.6k). After completion run
-  09b per design with the SAME env identity (env file + subset preset + same
-  .set path, no SEED). Prefix-only subsets (rows keyed by global SOW id);
+  335 / 991 / 784 policies). Step 09 simulate: historic job 19859233
+  (14x128, 2h29m — reshaped after 19845822 died in a one-node startup OOM
+  spike at 8x128; 14 nodes fits 3,350 units in exactly 2 claim rounds),
+  fixedprob 19845823 (12h20m), hazfill 19845825 (9h49m); 21,100/21,100
+  units, ZERO .failed, ~28k SU. 09b merges: 19861619 / 19862021 / 19860835.
+  All three cubes verified (n_sow=200, R=25, zero NaN; 72-metric scorecards
+  incl. regret vs the symlinked incumbent baseline). Step 10 (job 19862033):
+  tables -> `outputs/comparison/ffmp_obj8/etest_kn_50yr_n25000_first10ch/`,
+  figures -> `outputs/figures/comparison/ffmp_obj8/robustness/`. Step 11:
+  the default satisficing label is DEGENERATE on this substrate (joint
+  Starr = 0 for every policy in every design — Trenton rel/flood/storage
+  bind; step-10 attainability: 100% of E_test unwinnable, and 2 saturated
+  objectives flagged non-discriminating: nyc deficit p99, nj rel), so the
+  mechanism test ran with NYCOPT_SD_LABEL=regret (job 19862058; job 19862034
+  documents the degeneracy): historic = mechanism SUPPORTED (197/200 regret
+  SOWs at HIGH coverage deficit), hazfill = null (11/200), fixedprob =
+  CONTRADICTED (132/200 at LOW deficit); tables ->
+  `outputs/comparison/scenario_discovery/`. Step 13 (job 19862035): fig03
+  rendered (registry currently holds only fig03). Subset hazard image is
+  staged (make_etest_subset now slices hazard_image.npz too).
+  REMAINING for the FINAL (converged, full-E_test) pass: re-run 08/09-13 on
+  the production fan-out fronts; author the re-eval/robustness results-figure
+  tranche (section 3); revisit whether the joint-satisficing thresholds
+  should be re-anchored given the degeneracy findings.
+  Prefix-only subsets (rows keyed by global SOW id);
   interim cubes live under `reeval/etest_kn_50yr_n25000_first10ch/` and must
   never be mixed with full-cube numbers in the manuscript.
   GEOMETRY NOTE for step-09 chunk re-evals on E_test: submit on `shared`
@@ -163,8 +173,80 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   compromise / diverse selection), `src/plotting/front_overview.py`,
   `src/plotting/historic_timeseries.py`, driven by
   `scripts/main/explore_results.py` (+ `workflow/supplemental/sim_selected_policies.sh`
-  for the simulation-dependent panels). Still to come: re-eval / robustness
-  result figures and the manuscript-final styling pass.
+  for the simulation-dependent panels). SECOND TRANCHE (ground-up re-eval
+  results sequence) STARTED 2026-08-13: registry driver
+  `scripts/main/results_figures.py` + `workflow/14_results_figures.sh`
+  (`NYCOPT_REEVAL_TAG` selects the tag; reusable verbatim for the full-E_test
+  rerun), substrate loader `src/results_data.py` (cubes + scorecards +
+  label-joined incumbent; criterion vectors with ±inf axis-disabling), phase-1
+  satisficing diagnostics `src/plotting/satisficing_diagnostics.py` (5 figures
+  + companion CSVs -> `outputs/figures/comparison/ffmp_obj8/satisficing/`,
+  rendered on the interim tag; cube-vs-scorecard consistency asserted
+  in-builder). The old step-10 robustness figure set
+  (`outputs/figures/comparison/ffmp_obj8/robustness/`, 5 PNGs) was RETIRED
+  and deleted — compare_designs.py still writes the tables, but its figures
+  are superseded by the results_figures registry. Okabe-Ito design style map
+  promoted to `src/plotting/style.py::DESIGN_STYLE` (epsilon_calibration /
+  framing_convention SI scripts now alias it). Phase-1 finding: the
+  trenton×flood pincer is STRUCTURAL (pairwise best-policy joint 0.03/0.07/
+  0.01 across designs — wet SOWs fail flood, dry SOWs fail trenton), so ANY
+  defensible 8-axis conjunction leaves median-policy joint Starr at 0 on the
+  DU-forced E_test; criterion sets A/B/C approved at check-in 2026-08-14.
+  PHASE 2 LANDED 2026-08-14: named criterion vectors in
+  `src/satisficing_criteria.py` (adopted + A NYC-supply + B downstream/Decree
+  + C compromise, each deviation anchored in the threshold-response curves /
+  incumbent medians), figures in `src/plotting/criteria_comparison.py`
+  (criterion_robustness_matrix, criterion_collapse, drought_flood_split,
+  axes_satisfied_cdf -> `outputs/figures/comparison/ffmp_obj8/criteria/`).
+  Every results figure now carries the boxed provenance + explicit bulleted
+  criteria footer (Trevor's standing requirement;
+  `style.add_figure_footer`/`criteria_lines`). Nonzero-joint-Starr policy
+  counts: A 69/32/0, B 192/116/0, C 11/12/0 (fp/hf/hist); incumbent 0 under
+  every framing (Montague rel binds it regardless). FOCAL CRITERION = B
+  (downstream/Decree) selected at check-in #2 (2026-08-14). PHASE 3 LANDED
+  2026-08-14 in `src/plotting/robustness_comparison.py`, fully
+  criterion-parameterized (env `NYCOPT_FOCAL_CRITERION`, default
+  "downstream"; filenames carry the criterion key so future focal changes
+  coexist): parallel_coords_downstream (9th robustness axis drives viridis
+  coloring; `custom_parallel_coordinates` gained backward-compatible
+  `axis_ranges` + `add_colorbar` params for identical cross-panel scales),
+  robustness_cdf_downstream (joint Starr + mean-fraction exceedance),
+  regret_robustness_plane_downstream (joint Starr vs no_harm_freq_tau with
+  per-design frontiers) -> figures/comparison/ffmp_obj8/{parallel_coords,
+  robustness_cdf,robustness}/. Headline: fp has MORE nonzero-robustness
+  policies (192 vs 116) but hf owns the tail (0.245 vs 0.100); fp's frontier
+  is a single dominating policy #793 (joint 0.100 AND no-harm 1.0); hf
+  frontier spans #637 (0.135, 1.0) to #516 (0.245, 0.055). PHASE 4 LANDED
+  2026-08-14 (theta DU space only, per check-in #3 — no hazard-space maps):
+  `src/plotting/factor_maps.py` -> factor_maps_theta_downstream in
+  figures/comparison/ffmp_obj8/factor_maps/. Rule-based policy selection
+  (max joint Starr with no-harm tie-break + best near-never-harmful policy;
+  mean-fraction fallback for all-zero designs; env override
+  NYCOPT_FACTOR_POLICIES) picked fp#793 (20/200 pass), hf#516 (49/200),
+  hf#637 (27/200), hist#7 (0/200), incumbent (0/200). Mechanism: every pass
+  sits at e^m ~ 0.95-1.3 with LOW seasonal amplitude r1; drier (low e^m),
+  much wetter (high e^m), or strongly summer-dried (high r1) worlds fail for
+  every policy; r2 shows little structure (consistent with GBC importances).
+  hf#516's edge over fp#793 = a wider pass region in (e^m, r1), not a
+  different region. REVISIONS 2026-08-14 (Trevor review round 1): (1) a
+  "uniform" round-number criterion set (reliabilities >= 0.70, deficits
+  <= 30%, flood <= 1.5, storage >= 25) was trialed as the analysis default
+  and REVERTED the same day — too strict on this ensemble (best joint 0.030
+  fp / 0.010 hf / 0 hist; storage-25 + flood-1.5 bind); defaults are BACK to
+  the adopted snapshot (phase 1) and focal criterion B "downstream" (phases
+  3/4); "uniform" remains in `src/satisficing_criteria.py::CRITERION_SETS`
+  as a comparison framing documenting that stringency; (2) the
+  mean-fraction-of-criteria metric REMOVED everywhere (Trevor: no mean
+  aggregations; factor-map fallback now maximin worst-axis; robustness_cdf
+  is single-panel joint Starr); (3) companion CSVs moved out of
+  outputs/figures/ (PNGs only) into
+  `outputs/comparison/ffmp_obj8/{tag}/figure_tables/{kind}/`; (4) objective
+  naming capped at 2 conventions (label_for + short_label_for;
+  parallel-axis labels derived via style.axis_label_for). 9-figure registry
+  re-rendered under the reverted defaults (phase-3/4 files keyed
+  *_downstream). REMAINING: canonical sbatch re-render job 19878006
+  (verify on completion), figure-quality iteration round with Trevor, then
+  the manuscript-final styling pass + full-E_test rerun reuse.
 - [ ] **[local]** Manuscript Results / Discussion / Conclusions; SI sections
   beyond S8 are outline-only.
 - [ ] **[local]** Import the manuscript's † references into Zotero before

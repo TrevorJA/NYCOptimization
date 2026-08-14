@@ -79,6 +79,7 @@ from src.objectives_ensemble import (  # noqa: E402
 from src.plotting.parallel_coordinates import (  # noqa: E402
     custom_parallel_coordinates,
 )
+from src.plotting import style  # noqa: E402
 from src.plotting.style import (  # noqa: E402
     apply_style,
     label_for,
@@ -111,21 +112,11 @@ _UNIT_PHRASES: list[tuple[str, str]] = [
     ("storage_min_p01_pct", "% of NYC capacity (P1 annual minimum)"),
 ]
 
-#: Per-design plotting identity (color + SI display name + reference flag).
-_DESIGN_STYLE: dict[str, dict] = {
-    "fixed_probabilistic": {
-        "color": "#0072B2", "label": "Fixed probabilistic (i.i.d. control)",
-        "reference": False},
-    "hazard_filling_stationary": {
-        "color": "#D55E00", "label": "Hazard-filling (stationary)",
-        "reference": False},
-    "historic": {
-        "color": "#B0B0B0", "label": "Historic trace (reference)",
-        "reference": True},
-}
+#: Per-design plotting identity (canonical map lives in src.plotting.style).
+_DESIGN_STYLE = style.DESIGN_STYLE
 #: Fallback colors for designs outside the campaign trio (assigned by sorted
 #: name so the mapping is deterministic across runs, not by plot order).
-_FALLBACK_COLORS = ["#56B4E9", "#CC79A7", "#E69F00"]
+_FALLBACK_COLORS = style.DESIGN_FALLBACK_COLORS
 
 _CAMPAIGN_COLOR = "#009E73"   # adopted campaign epsilon vector
 _PREVIOUS_COLOR = "#000000"   # previous provisional registry vector
@@ -137,12 +128,8 @@ _NON_DEFAULT_NOTE = {
 }
 
 
-def _design_style(design: str, fallback_rank: int = 0) -> dict:
-    """Entity-stable style for ``design`` (deterministic fallback if unknown)."""
-    if design in _DESIGN_STYLE:
-        return _DESIGN_STYLE[design]
-    return {"color": _FALLBACK_COLORS[fallback_rank % len(_FALLBACK_COLORS)],
-            "label": design, "reference": False}
+#: Entity-stable style for a design (deterministic fallback if unknown).
+_design_style = style.design_style
 
 
 def _unit_phrase(name: str) -> str:

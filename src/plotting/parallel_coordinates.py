@@ -106,6 +106,8 @@ def custom_parallel_coordinates(
     title: str = None,
     ax: plt.Axes = None,
     save_fig_filename=None,
+    axis_ranges=None,
+    add_colorbar: bool = True,
 ):
     """Render a customizable parallel-coordinates plot of natural-unit objectives.
 
@@ -162,6 +164,11 @@ def custom_parallel_coordinates(
         ax: Optional existing axes to draw on (for panel figures).
         save_fig_filename: If given, save (300 dpi, tight) and close; otherwise
             return the figure for further composition.
+        axis_ranges: Optional ``(2, n_axes)`` raw (lo, hi) per axis, widened to
+            include the drawn rows -- pass the same array across several calls
+            to give panel figures identical axis (and colorbar) scales.
+        add_colorbar: Set False to suppress the per-call colorbar when a panel
+            figure shares one colorbar across axes (continuous coloring only).
 
     Returns:
         ``(fig, ax)`` when not saving, else ``None``.
@@ -190,6 +197,10 @@ def custom_parallel_coordinates(
     all_rows = data if baseline is None else np.vstack([data, baseline])
     col_min = np.nanmin(all_rows, axis=0)
     col_max = np.nanmax(all_rows, axis=0)
+    if axis_ranges is not None:
+        ar = np.asarray(axis_ranges, dtype=float)
+        col_min = np.minimum(col_min, ar[0])
+        col_max = np.maximum(col_max, ar[1])
     col_rng = np.where(col_max - col_min == 0, 1.0, col_max - col_min)
     base_norm = (data - col_min) / col_rng  # unflipped: 0 = raw min, 1 = raw max
     flip = np.array([(ideal_direction == "top") != (mm == "max") for mm in minmaxs])
@@ -317,7 +328,7 @@ def custom_parallel_coordinates(
             kwargs["bbox_to_anchor"] = legend_bbox
         ax.legend(handles=handles, **kwargs)
 
-    if color_by_continuous is not None:
+    if color_by_continuous is not None and add_colorbar:
         mappable = cm.ScalarMappable(cmap=cmap)
         mappable.set_clim(vmin=col_min[ci], vmax=col_max[ci])
         cb = fig.colorbar(mappable, ax=ax, orientation="horizontal",

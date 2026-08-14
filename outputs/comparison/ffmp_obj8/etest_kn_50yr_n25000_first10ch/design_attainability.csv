@@ -1,0 +1,5 @@
+design,n_sow,n_attainable,frac_attainable,frac_unwinnable,unmet__nyc_delivery_reliability_annual,unmet__nyc_delivery_deficit_p99_pct,unmet__montague_flow_reliability_annual,unmet__montague_flow_deficit_p99_pct,unmet__trenton_flow_reliability_annual,unmet__downstream_flood_exceedance_annual,unmet__nyc_storage_min_p01_pct,unmet__nj_delivery_reliability_annual
+fixed_probabilistic,200,0,0.0,1.0,0.0,0.0,0.0,0.0,0.675,0.485,0.045,0.0
+hazard_filling_stationary,200,0,0.0,1.0,0.0,0.0,0.0,0.0,0.68,0.35,0.045,0.0
+historic,200,0,0.0,1.0,0.0,0.0,0.0,0.0,0.905,0.37,0.0,0.0
+POOLED_ALL_DESIGNS,200,0,0.0,1.0,0.0,0.0,0.0,0.0,0.675,0.35,0.0,0.0

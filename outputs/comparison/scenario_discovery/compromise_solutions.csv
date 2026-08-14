@@ -1,0 +1,4 @@
+design,rule,index,solution_id,best_satisficing_id,min_dist_ideal_id,satisficing,distance_to_ideal
+fixed_probabilistic,best_satisficing,179,179,179,179,0.0,1.2139180331273434
+hazard_filling_stationary,best_satisficing,273,273,273,273,0.0,1.2397437616902978
+historic,best_satisficing,284,284,284,284,0.0,1.313240864140531

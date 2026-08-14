@@ -1,0 +1,9 @@
+axis,retained,degenerate,cluster
+drought_deficit_volume,True,False,0
+drought_duration,False,False,0
+drought_peak_depth,True,False,3
+drought_onset_rate,True,False,1
+drought_recovery_rate,True,False,2
+flood_peak_magnitude,True,False,4
+flood_pulse_duration,True,False,5
+flood_rise_rate,False,False,4

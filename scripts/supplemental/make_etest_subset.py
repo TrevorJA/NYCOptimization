@@ -191,10 +191,17 @@ def main() -> None:
     }
     (out_dir / "chunk_index.json").write_text(json.dumps(sub_idx, indent=2))
 
-    # --- forcing_profiles.npz: per-realization / per-theta arrays sliced to the prefix. ---
+    # --- Per-realization npz sidecars sliced to the prefix: forcing_profiles.npz
+    # (SOW grouping + step-11 theta joins) and hazard_image.npz (step-11 scenario
+    # discovery runs in HAZARD space and loads the image from the re-eval spec's
+    # staged dir; rows/ids are per-realization, so the prefix slice stays aligned). ---
     npz_notes = _subset_npz(pool_dir / "forcing_profiles.npz",
                             out_dir / "forcing_profiles.npz",
                             n_pool, n_theta_pool, n_sub, n_theta_sub)
+    if (pool_dir / "hazard_image.npz").exists():
+        npz_notes += _subset_npz(pool_dir / "hazard_image.npz",
+                                 out_dir / "hazard_image.npz",
+                                 n_pool, n_theta_pool, n_sub, n_theta_sub)
 
     # --- Verify the subset resolves exactly as the re-eval stack will consume it. ---
     from src.ensembles import get_ensemble_spec, pool_chunk_specs

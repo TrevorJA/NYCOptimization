@@ -235,15 +235,17 @@ def figure_dir_for(scenario: str, moea_slug: str, kind: str) -> Path:
         scenario: Scenario-design name (top-level partition).
         moea_slug: The moea slug from ``derive_slug()``.
         kind: e.g. "convergence", "pareto", "parallel_coords",
-            "policy_inspection", "robustness". Free-form names land under an
-            ``_exploratory/`` subdir.
+            "policy_inspection", "robustness", or one of the results-figure
+            kinds ("satisficing", "criteria", "robustness_cdf", "factor_maps").
+            Free-form names land under an ``_exploratory/`` subdir.
 
     Returns:
         ``outputs/figures/{scenario}/{moea_slug}/{kind}/`` (created), or the
         ``_exploratory`` variant for non-stable kinds.
     """
     stable = {"convergence", "pareto", "parallel_coords",
-              "policy_inspection", "robustness"}
+              "policy_inspection", "robustness",
+              "satisficing", "criteria", "robustness_cdf", "factor_maps"}
     if kind in stable:
         p = FIGURES_DIR / scenario / moea_slug / kind
     else:
