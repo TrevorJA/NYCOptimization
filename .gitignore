@@ -44,7 +44,7 @@ outputs/**/sets/*.set
 !outputs/**/sets/*_eps*.set
 
 # Figures — machine-local, never shared (regenerate from tracked scripts+data)
-outputs/**/*.png
+# outputs/**/*.png
 outputs/**/*.pdf
 outputs/**/*.svg
 outputs/**/*.jpg
