@@ -8,11 +8,12 @@
 #      Currently just the flow-duration-curve cache behind Figure 3 panel (d),
 #      which reads ~11 GB of E_test daily flows across 50 staged chunks.
 #      Skipped when the cache already exists (NYCOPT_FIG_REFRESH=1 forces it).
-#   2. Render the sequence from scripts/main/manuscript_figures.py, whose
-#      FIGURES registry defines what "the sequence" is.
+#   2. Render the manuscript tier from the unified registry
+#      (src/figures/registry.py) through scripts/main/figures.py; figures
+#      whose data needs are absent are skipped with a message.
 #
-# SI and diagnostic figures are NOT rendered here — they have their own,
-# denser style and their own drivers:
+# SI-tier figures render in step 14 (same driver, --tier si); off-pipeline
+# diagnostic figures keep their own drivers:
 #   workflow/supplemental/si_figures_design.sh   (pre-campaign, design support)
 #   workflow/supplemental/si_figures_results.sh  (needs campaign outputs)
 #
@@ -77,9 +78,9 @@ if [[ -n "${FIGURES}" ]]; then
     ARGS=""
     for f in ${FIGURES//,/ }; do ARGS="${ARGS} --figure ${f}"; done
     # shellcheck disable=SC2086
-    python3 -u -m scripts.main.manuscript_figures ${ARGS}
+    python3 -u -m scripts.main.figures ${ARGS}
 else
-    python3 -u -m scripts.main.manuscript_figures --all
+    python3 -u -m scripts.main.figures --tier manuscript --contact-sheet
 fi
 
 echo "[main_figures] done: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

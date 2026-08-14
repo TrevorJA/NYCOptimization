@@ -6,7 +6,7 @@ and renders the figure suite. Everything except the historic-timeseries figure
 is pure post-processing and runs instantly on any run (any scenario / slug /
 formulation).
 
-Figures (under ``figures/{scenario}/{slug}/``):
+Figures (under ``outputs/figures/_exploratory/{scenario}/{slug}/explore/``):
 
     explore_01_baseline_dominance.png   front vs baseline on parallel axes,
                                         the dominating subset highlighted
@@ -354,7 +354,8 @@ def main() -> int:
     ap.add_argument("--set-file", default=None,
                     help="Reference set override (default: the run's merged set)")
     ap.add_argument("--out-dir", default=None,
-                    help="Figure directory override (default: figures/{scenario}/{slug})")
+                    help="Figure directory override (default: the exploratory "
+                         "tree, outputs/figures/_exploratory/{scenario}/{slug}/explore)")
     ap.add_argument("--n-diverse", type=int, default=3,
                     help="Highlighted representatives to spread over the front")
     ap.add_argument("--no-baseline", action="store_true",
@@ -382,8 +383,9 @@ def main() -> int:
     set_file = Path(args.set_file) if args.set_file else (
         Path("outputs") / args.scenario / args.slug / "sets"
         / f"{args.slug}_merged.set")
-    out_dir = Path(args.out_dir) if args.out_dir else (
-        Path("figures") / args.scenario / args.slug)
+    import config
+    out_dir = Path(args.out_dir) if args.out_dir else config.figure_dir_for(
+        args.scenario, args.slug, "explore")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"set file : {set_file}")

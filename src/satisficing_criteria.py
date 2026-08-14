@@ -1,26 +1,63 @@
 """
-satisficing_criteria.py - Named alternative satisficing criterion sets.
+satisficing_criteria.py - Named satisficing criterion sets (explicit subsets).
 
-Phase-2 of the results sequence recomputes robustness under criterion vectors
-reflecting distinct stakeholder framings (approved at the 2026-08-14 check-in).
-Each set is a FULL 8-axis threshold dict in the same units/kinds as the adopted
-snapshot; only the listed axes deviate from it. Threshold placements are
-anchored in the phase-1 threshold-response curves
-(``outputs/figures/comparison/ffmp_obj8/satisficing/threshold_response.csv``)
-and in the incumbent's per-SOW medians, so every deviation has a stated,
-data-grounded rationale rather than a tuned number.
+Each criterion set thresholds only a small subset (1-3) of the eight annual-unit
+objectives and leaves every other axis unconstrained, following the satisficing
+pattern of Quinn et al. (2017): one robustness metric (the Starr domain
+criterion, ``src.robustness.satisficing_multivariate_sow``) evaluated under
+several alternative stakeholder framings of "acceptable performance". Reporting
+robustness under multiple criterion sets -- and whether the design ranking is
+invariant across them -- is itself a result, not a sensitivity afterthought.
+
+The previous all-8-axis conjunction is retained ONLY as ``reference_all8``:
+on E_test it is degenerate (joint Starr = 0.0 for every design and for the
+FFMP incumbent; see ``outputs/comparison/{slug}/{tag}/default_thresholds.csv``
+and the incumbent pass fractions recorded in ``src.objectives_ensemble``),
+which is reported as a finding, never used for selection.
+
+Axes deliberately excluded from every named set (visible in the univariate
+decomposition and the reference set, but never conjoined):
+
+- ``nyc_delivery_deficit_p99_pct`` (incumbent pass 0.980) and
+  ``nj_delivery_reliability_annual`` (> 0.98): saturated non-discriminators
+  (Bonham-style saturation flags fire for every design).
+- ``montague_flow_deficit_p99_pct`` (incumbent pass 0.965): likewise.
+
+Threshold placements follow the pre-declared rules of
+``docs/notes/methods/robustness_threshold_diagnostics.md`` (rule 1: re-anchor
+any criterion the status quo itself fails, rounding to the stricter side;
+rule 2: external goalposts beat round numbers). Placements marked PROVISIONAL
+below are finalized from the Anvil-side audit table
+``outputs/comparison/{slug}/{tag}/criteria_reanchoring.csv``
+(``scripts/supplemental/criteria_reanchoring.py``).
 
 These are POST-PROCESSING criteria only: they re-count the persisted per-SOW
-cube (``src.results_data.satisfaction``) and never touch the search-time
-registry (``src.objectives_ensemble``) or its ``NYCOPT_SAT_THRESHOLDS`` env
-override. The adopted vector always comes from the run's own
-``reeval_raw_meta.json`` snapshot (the moving-measuring-stick guard); the
-deviations below are absolute values on top of it.
+cube and never touch the search-time registry (``src.objectives_ensemble``) or
+its ``NYCOPT_SAT_THRESHOLDS`` env override. The adopted vector always comes
+from the run's own ``reeval_raw_meta.json`` snapshot (the
+moving-measuring-stick guard).
 """
 
 from __future__ import annotations
 
+import math
+import os
 from dataclasses import dataclass, field
+
+
+def nonbinding_threshold(kind: str) -> float:
+    """The threshold value that makes an axis pass for every finite value.
+
+    A "ge" axis becomes non-binding at ``-inf``, a "le" axis at ``+inf`` --
+    every finite objective value passes, so a joint criterion simply ignores
+    the axis while ``robustness._satisfaction_cube``'s missing-threshold guard
+    stays armed.
+    """
+    if kind == "ge":
+        return -math.inf
+    if kind == "le":
+        return math.inf
+    raise ValueError(f"unknown satisficing kind '{kind}'")
 
 
 @dataclass(frozen=True)
@@ -30,98 +67,122 @@ class CriterionSet:
     Attributes:
         key: Stable identifier used in file names and tables.
         label: Display name for legends/titles.
-        rationale: One-sentence justification of the deviations (anchors).
-        deviations: ``{objective: threshold}`` replacing the adopted values;
-            axes not listed keep the adopted snapshot value. Kinds (ge/le)
-            are never changed.
+        rationale: Evidence anchor for each thresholded axis.
+        criteria: ``{objective: threshold}`` for ONLY the thresholded axes
+            (1-3 of them); every other axis is unconstrained. Kinds (ge/le)
+            always come from the run's meta snapshot and are never changed.
+        reference: True only for the all-axes reference set, whose
+            ``thresholds`` are the adopted snapshot itself.
     """
 
     key: str
     label: str
     rationale: str
-    deviations: dict = field(default_factory=dict)
+    criteria: dict = field(default_factory=dict)
+    reference: bool = False
 
-    def thresholds(self, adopted: dict) -> dict:
-        """The full 8-axis vector: the adopted snapshot plus the deviations."""
-        out = dict(adopted)
-        for name, value in self.deviations.items():
-            if name not in out:
+    @property
+    def axes(self) -> tuple[str, ...]:
+        """The thresholded (member) axes, in declaration order."""
+        return tuple(self.criteria)
+
+    def thresholds(self, adopted: dict, kinds: dict) -> dict:
+        """The full threshold vector for this set.
+
+        Args:
+            adopted: The run's adopted threshold snapshot (all axes).
+            kinds: ``{objective: "ge"|"le"}`` from the same snapshot.
+
+        Returns:
+            ``{objective: threshold}`` over every axis of ``adopted``:
+            member axes at their set placement, all others non-binding.
+            For a ``reference`` set, the adopted snapshot unchanged.
+        """
+        if self.reference:
+            return dict(adopted)
+        for name in self.criteria:
+            if name not in adopted:
                 raise KeyError(f"{self.key}: unknown objective '{name}'")
-            out[name] = value
+        out = {name: nonbinding_threshold(kinds[name]) for name in adopted}
+        out.update(self.criteria)
         return out
 
 
-#: The phase-2 criterion sets, in display order. "adopted" (first) is the
-#: DEFAULT analysis criterion -- the search-time meta snapshot itself (the
-#: "uniform" round-number set was trialed as default 2026-08-14 and REVERTED
-#: same day: too strict on this ensemble; it stays here as a comparison
-#: framing that documents that stringency).
+#: The named criterion sets, in display order, followed by the all-axes
+#: reference. Placements per the pre-declared rules (module docstring);
+#: incumbent statistics cited from the interim-tag re-evaluation
+#: (criteria_reanchoring.csv is the audit trail).
 CRITERION_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
-        key="adopted",
-        label="Adopted (search-time criteria)",
-        rationale=("The thresholds adopted 2026-08-08 and snapshotted in "
-                   "reeval_raw_meta.json; historic-record anchors plus the "
-                   "NWS minor-flood and FFMP L5 storage goalposts."),
-    ),
-    CriterionSet(
-        key="uniform",
-        label="Uniform round-number criteria",
-        rationale=("Thresholds equalized across like objectives and rounded "
-                   "for interpretability (Trevor, 2026-08-14): every "
-                   "reliability >= 0.70, every deficit <= 30%, flood "
-                   "exceedance <= 1.5 ft-d/yr, storage P1 >= 25%."),
-        deviations={
-            "nyc_delivery_reliability_annual": 0.70,
-            "nyc_delivery_deficit_p99_pct": 30.0,
-            "montague_flow_reliability_annual": 0.70,
-            "montague_flow_deficit_p99_pct": 30.0,
-            "trenton_flow_reliability_annual": 0.70,
-            "downstream_flood_exceedance_annual": 1.5,
-            "nyc_storage_min_p01_pct": 25.0,
-            "nj_delivery_reliability_annual": 0.70,
-        },
-    ),
-    CriterionSet(
         key="nyc_supply",
-        label="A: NYC supply security",
-        rationale=("NYC delivery/storage axes kept at adopted values; the "
-                   "downstream Trenton and flood requirements relaxed to the "
-                   "placements the best ensemble-design policy meets in ~90% "
-                   "of E_test SOWs (threshold-response curves)."),
-        deviations={
-            "trenton_flow_reliability_annual": 0.65,
-            "downstream_flood_exceedance_annual": 2.0,
+        label="NYC supply security",
+        rationale=("NYC delivery reliability at the adopted historic anchor "
+                   "(0.65, discriminating: pooled stringency 0.32); storage "
+                   "re-anchored per rule 1 from the aspirational FFMP L5 "
+                   "goalpost (26%, incumbent pass 0.014) to the incumbent's "
+                   "median year (12.9 -> 13.0, stricter side). The 26% "
+                   "goalpost stays reported in the univariate decomposition."),
+        criteria={
+            "nyc_delivery_reliability_annual": 0.65,
+            "nyc_storage_min_p01_pct": 13.0,
         },
     ),
     CriterionSet(
-        key="downstream",
-        label="B: Downstream / Decree parties",
-        rationale=("Montague, NJ, and flood axes kept at adopted values; "
-                   "Trenton moved to the best-policy 75% placement (= the "
-                   "incumbent's median year, 0.73); NYC delivery relaxed to "
-                   "the 0.5 stakeholder floor and storage to the incumbent's "
-                   "median year (12.9%)."),
-        deviations={
-            "nyc_delivery_reliability_annual": 0.50,
-            "nyc_storage_min_p01_pct": 13.0,
+        key="downstream_flows",
+        label="Downstream flow targets",
+        rationale=("Montague re-anchored per rule 1: the adopted 0.79 lies "
+                   "outside the incumbent's E_test support (max 0.746, pass "
+                   "0.000); PROVISIONAL placement 0.70 pending "
+                   "criteria_reanchoring.csv (incumbent per-SOW median, "
+                   "stricter side). Trenton moved from 0.87 (excludes 90% of "
+                   "pooled cells) to the incumbent's median year "
+                   "(0.73 -> 0.75, stricter side)."),
+        criteria={
+            "montague_flow_reliability_annual": 0.70,
             "trenton_flow_reliability_annual": 0.75,
+        },
+    ),
+    CriterionSet(
+        key="flood",
+        label="Flood exposure",
+        rationale=("Rule-2 external goalpost: the observed WY2001-2023 minor "
+                   "flood exceedance (1.17 ft-d/yr); incumbent pass 0.443 -- "
+                   "discriminating, unchanged."),
+        criteria={
+            "downstream_flood_exceedance_annual": 1.17,
         },
     ),
     CriterionSet(
         key="compromise",
-        label="C: All-parties compromise",
-        rationale=("Every party's axes kept at adopted values except the two "
-                   "structurally-conflicting downstream axes, each moved to "
-                   "match-or-beat the incumbent's median year: Trenton 0.75, "
-                   "flood 1.5 ft·d/yr; storage stays at the aspirational "
-                   "FFMP L5 anchor (26%)."),
-        deviations={
+        label="All-parties compromise",
+        rationale=("One axis per Decree-party interest (Quinn et al. 2017 "
+                   "small-conjunction pattern): NYC delivery at the adopted "
+                   "anchor, Trenton at the incumbent median-year placement, "
+                   "flood at the rule-2 external goalpost."),
+        criteria={
+            "nyc_delivery_reliability_annual": 0.65,
             "trenton_flow_reliability_annual": 0.75,
-            "downstream_flood_exceedance_annual": 1.5,
+            "downstream_flood_exceedance_annual": 1.17,
         },
     ),
+    CriterionSet(
+        key="reference_all8",
+        label="Reference: all axes (adopted)",
+        rationale=("The adopted search-time snapshot conjoined over every "
+                   "axis. Degenerate on E_test (joint Starr = 0.0 for every "
+                   "design and the incumbent) -- reported as a finding, "
+                   "never used for selection."),
+        reference=True,
+    ),
 )
+
+#: The named (non-reference) sets, in display order.
+NAMED_SETS: tuple[CriterionSet, ...] = tuple(
+    c for c in CRITERION_SETS if not c.reference)
+
+#: All sets including the reference, reference last.
+ALL_SETS: tuple[CriterionSet, ...] = NAMED_SETS + tuple(
+    c for c in CRITERION_SETS if c.reference)
 
 
 def criterion_by_key(key: str) -> CriterionSet:
@@ -132,28 +193,17 @@ def criterion_by_key(key: str) -> CriterionSet:
     raise KeyError(f"unknown criterion set '{key}'")
 
 
-#: The default analysis criterion for the phase-1 diagnostics: the adopted
-#: search-time snapshot ("uniform" was trialed and reverted 2026-08-14).
-DEFAULT_CRITERION_KEY = "adopted"
+#: The default FOCAL criterion for policy-level robustness figures and the
+#: step-11 satisficing label: the all-parties compromise set.
+DEFAULT_FOCAL_KEY = "compromise"
 
-#: The default FOCAL criterion for the phase-3/4 policy-robustness figures:
-#: criterion B, selected at the 2026-08-14 check-in.
-DEFAULT_FOCAL_KEY = "downstream"
-
-#: Env var selecting the FOCAL criterion for the phase-3/4 figures. Default =
-#: :data:`DEFAULT_FOCAL_KEY`. Changing it re-parameterizes the whole figure
-#: tranche -- outputs carry the criterion key in their filenames, so runs
-#: under different focal criteria coexist rather than overwrite.
+#: Env var selecting the FOCAL criterion. Default = :data:`DEFAULT_FOCAL_KEY`.
+#: Outputs carry the criterion key in their filenames, so runs under different
+#: focal criteria coexist rather than overwrite.
 FOCAL_CRITERION_ENV = "NYCOPT_FOCAL_CRITERION"
-
-
-def default_criterion() -> CriterionSet:
-    """The default analysis criterion set (phase-1 diagnostics)."""
-    return criterion_by_key(DEFAULT_CRITERION_KEY)
 
 
 def focal_criterion() -> CriterionSet:
     """The focal criterion set for policy-level robustness figures."""
-    import os
-    return criterion_by_key(
-        os.environ.get(FOCAL_CRITERION_ENV, DEFAULT_FOCAL_KEY))
+    return criterion_by_key(os.environ.get(FOCAL_CRITERION_ENV,
+                                           DEFAULT_FOCAL_KEY))

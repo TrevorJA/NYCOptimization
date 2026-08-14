@@ -37,17 +37,19 @@ so the script does two things, per scenario design:
    from geometry alone. The verdict is therefore read off AUC MINUS its null, never
    off the raw AUC (see :func:`random_coverage_null`).
 
-What is novel here. Standard scenario discovery — Kasprzyk et al. (2013) with
-PRIM, Gold et al. (2022, 2023) with boosted trees — runs in the INPUT / forcing
-parameter space. This runs in HAZARD space (drought/flood event descriptors of
-the realized sequence), which is the space in which the coverage hypothesis is
-stated and the only space in which "the design under-covered here" is even
-definable.
+Where this sits. The study's PRIMARY scenario-discovery factor maps run in the
+sampled DU input space (theta), via ``src.factor_mapping`` and
+``scripts/main/factor_mapping_run.py`` -- the standard setting of Hadjimichael
+et al. (2020) and Gold et al. (2022). THIS script is the hazard-space
+supplement: the mechanism test lives here because the coverage hypothesis is
+stated in hazard space -- the only space in which "the design under-covered
+here" is even definable -- and the hazard-space classifier/factor map is the
+supplemental view of the same labels.
 
-Classifier. Gradient boosting with the Gold et al. (2023) settings: 250 trees,
-``max_depth=2``, ``learning_rate=0.1``. Trees are monotone-invariant, so the fit
-is done in rank space (where the factor map is plotted); importances are
-unchanged by that choice.
+Classifier. ``src.factor_mapping.fit_classifier`` (gradient boosting, 250
+trees, ``max_depth=2``, ``learning_rate=0.1``, stratified-CV AUC reported).
+Trees are monotone-invariant, so the fit is done in rank space (where the
+factor map is plotted); importances are unchanged by that choice.
 
 Correlated-axis caveat, IMPLEMENTED not just documented. Factor importances are
 unstable under correlated factors — Quinn et al. (2020) show Sobol first-order
@@ -66,10 +68,10 @@ Inputs (all pre-existing):
   * each design's SEARCH ensemble hazard image (loaded, or computed and cached
     from the staged daily inflows with the identical generation-time code path).
 
-Outputs:
-  * tables  -> ``outputs/comparison/scenario_discovery/*.csv``
-  * figures -> ``figures/_exploratory/{design}/{slug}/scenario_discovery/`` and
-    ``figures/_exploratory/comparison/{slug}/scenario_discovery/``
+Outputs (namespaced by slug, re-eval tag, and label -- runs never overwrite
+each other):
+  * tables  -> ``outputs/comparison/{slug}/{tag}/scenario_discovery/{label}/*.csv``
+  * figures -> ``{figure root}/{design or comparison}/{slug}/scenario_discovery/{tag}/{label}/``
 
 Settings are module constants (env-overridable), never CLI value flags; only
 identifiers (``--formulation``, ``--reeval-tag``, ``--seed``, ``--designs``,
@@ -87,7 +89,7 @@ import json
 import os
 import sys
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
@@ -103,12 +105,17 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 import config  # noqa: E402
+from src import factor_mapping as fm  # noqa: E402
 from src import robustness as rob  # noqa: E402
+from src.factor_mapping import (  # noqa: E402
+    FactorMapFit, align_hazard_to_cube, cdf_transform, fit_classifier,
+    screen_hazard_axes, select_compromise,
+)
 from src.plotting.style import apply_style, save_figure  # noqa: E402
+from src.satisficing_criteria import criterion_by_key, focal_criterion  # noqa: E402
 from src.scenario_designs import campaign_designs, get_scenario_design  # noqa: E402
 
-try:  # sklearn is the intended backend; the fallback is declared, never silent.
-    from sklearn.ensemble import GradientBoostingClassifier
+try:  # sklearn is optional here; used only for the descriptive logistic slope.
     from sklearn.linear_model import LogisticRegression
 
     _HAS_SKLEARN = True
@@ -120,20 +127,12 @@ except ImportError:  # pragma: no cover - exercised only on a stripped env
 # Settings (module constants; env-overridable. NO CLI value flags — repo rule)
 ###############################################################################
 
-#: Gradient-boosted classifier hyperparameters (Gold et al. 2023).
-GBC_N_ESTIMATORS: int = int(os.environ.get("NYCOPT_SD_N_TREES", "250"))
-GBC_MAX_DEPTH: int = int(os.environ.get("NYCOPT_SD_MAX_DEPTH", "2"))
-GBC_LEARNING_RATE: float = float(os.environ.get("NYCOPT_SD_LEARNING_RATE", "0.1"))
-
-#: Spearman |rho| above which two hazard axes are redundant (Olden & Poff 2003).
-REDUNDANCY_THRESHOLD: float = float(os.environ.get("NYCOPT_SD_RHO_THRESHOLD", "0.7"))
-
 #: Rule selecting the per-design analysis policy. Scenario discovery is run on a
 #: small number of COMPROMISE solutions, not the whole front (Kasprzyk et al.
 #: 2013). Both rules are always computed and written to
 #: ``compromise_solutions.csv``; this one names the policy actually analyzed.
-#:   "best_satisficing" -- highest multivariate (Starr) satisficing fraction on
-#:                         E_test; ties broken by min-distance-to-ideal.
+#:   "best_satisficing" -- highest satisficing fraction under the label's
+#:                         criterion set; ties broken by min-distance-to-ideal.
 #:   "min_dist_ideal"   -- minimum Euclidean distance to the ideal point in the
 #:                         min-max-normalized, direction-oriented mean re-evaluated
 #:                         objective space.
@@ -148,193 +147,68 @@ N_NULL_BOOT: int = int(os.environ.get("NYCOPT_SD_NULL_BOOT", "200"))
 #: Factor-map grid resolution per axis.
 GRID_RES: int = int(os.environ.get("NYCOPT_SD_GRID_RES", "60"))
 
-#: Table output root.
-TABLE_DIR = config.OUTPUTS_DIR / "comparison" / "scenario_discovery"
-
 _FIG_KIND = "scenario_discovery"
 
 
 ###############################################################################
-# Hazard-space normalization
+# Labels
 ###############################################################################
 
-def cdf_transform(values: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    """Map columns of ``values`` into the empirical-CDF/rank space of ``reference``.
+def resolve_sd_label() -> str:
+    """The label the classifier is fit to, from ``NYCOPT_SD_LABEL``.
 
-    The reference-anchored generalization of
-    ``scengen.subsample.empirical_cdf_normalize`` (which ranks a matrix against
-    itself). Anchoring is REQUIRED here: a search ensemble and E_test must land
-    in one common, comparable coordinate system before their distances mean
-    anything, and self-ranking each set separately would map each set's own
-    extremes to 0 and 1 — destroying exactly the gaps the mechanism test looks
-    for. Applied to the reference itself this reproduces
-    ``empirical_cdf_normalize`` up to tie handling (max rank vs average rank).
+    ``criterion:<set_key>`` (default ``criterion:<focal set>``) labels a SOW a
+    failure when the named criterion set's conjunction is False -- "where does
+    this policy fail this stakeholder framing's standard?". ``regret`` is the
+    incumbent-relative label -- "where would the Decree parties REGRET having
+    adopted this policy rather than keeping the FFMP?". They are different
+    questions and can localise in different hazard regions. The all-axes
+    reference conjunction stays reachable as ``criterion:reference_all8``.
 
-    Args:
-        values: ``(n, m)`` raw hazard coordinates to transform.
-        reference: ``(R, m)`` raw hazard coordinates defining the CDF (E_test).
-
-    Returns:
-        ``(n, m)`` array in ``[0, 1]``.
+    Raises:
+        SystemExit: For an unrecognized label form or unknown criterion key.
     """
-    values = np.atleast_2d(np.asarray(values, dtype=float))
-    reference = np.asarray(reference, dtype=float)
-    out = np.empty_like(values, dtype=float)
-    n_ref = reference.shape[0]
-    for a in range(values.shape[1]):
-        ref_sorted = np.sort(reference[:, a])
-        out[:, a] = np.searchsorted(ref_sorted, values[:, a], side="right") / n_ref
-    return np.clip(out, 0.0, 1.0)
+    label = os.environ.get("NYCOPT_SD_LABEL",
+                           f"criterion:{focal_criterion().key}")
+    if label == "regret":
+        return label
+    if label.startswith("criterion:"):
+        try:
+            criterion_by_key(label.split(":", 1)[1])
+        except KeyError as exc:
+            sys.exit(f"[scenario_discovery] {exc}")
+        return label
+    sys.exit(f"[scenario_discovery] unknown NYCOPT_SD_LABEL={label!r}; "
+             f"expected 'criterion:<set_key>' or 'regret'.")
 
 
-###############################################################################
-# Axis screening (Olden & Poff 2003; the Quinn et al. 2020 caveat, implemented)
-###############################################################################
-
-def screen_hazard_axes(H: np.ndarray, axes: list[str],
-                       threshold: float = REDUNDANCY_THRESHOLD) -> dict:
-    """Drop degenerate axes and keep one representative per redundant cluster.
-
-    A discovery-side reduction, deliberately STRONGER than the selection-side
-    axis screen (``scengen.hazard_filling.screen_hazard_axes``, which prunes
-    only near-duplicates at |rho_S| >= 0.95 and retains every other axis):
-    importances reported over correlated axes are not interpretable (Quinn et
-    al. 2020), so discovery clusters at the lower redundancy cut and keeps one
-    representative per cluster. That is why this runs BEFORE the fit rather
-    than as a footnote after it.
-
-    Args:
-        H: ``(R, m)`` hazard image (raw metric values).
-        axes: Length-``m`` axis names.
-        threshold: Spearman ``|rho|`` redundancy cut.
-
-    Returns:
-        Dict with ``retained`` (axis names), ``retained_idx``, ``clusters``,
-        ``degenerate``, ``rho`` (over the non-degenerate axes), and
-        ``residual_max_rho`` (largest ``|rho|`` still present among retained axes).
-    """
-    from scengen.diagnostics import per_metric_spread, spearman_clusters
-    from scengen.hazard_filling import DEFAULT_AXIS_PRIORITY
-
-    H = np.asarray(H, dtype=float)
-    spread = per_metric_spread(H, axes)
-    degenerate = [a for a in axes if spread[a]["degenerate"]]
-    kept = [a for a in axes if a not in degenerate]
-    if not kept:  # every axis degenerate: fall back to the full set, loudly
-        warnings.warn(
-            "Every hazard axis was flagged degenerate by the spread screen; "
-            "falling back to the unscreened axis set. Importances over these "
-            "axes are not interpretable."
-        )
-        kept = list(axes)
-        degenerate = []
-
-    keep_idx = [axes.index(a) for a in kept]
-    clusters = spearman_clusters(
-        H[:, keep_idx], kept, threshold=threshold, priority=DEFAULT_AXIS_PRIORITY,
-    )
-    retained = list(clusters["representatives"])
-    retained_idx = [axes.index(a) for a in retained]
-
-    rho = np.atleast_2d(clusters["rho"])
-    sub = [kept.index(a) for a in retained]
-    resid = rho[np.ix_(sub, sub)].copy() if len(sub) > 1 else np.ones((1, 1))
-    np.fill_diagonal(resid, 0.0)
-    residual_max = float(np.abs(resid).max()) if len(sub) > 1 else 0.0
-    if residual_max >= threshold:
-        warnings.warn(
-            f"Retained hazard axes still contain a pair with |rho_S| = "
-            f"{residual_max:.2f} >= {threshold}. Factor importances over "
-            f"correlated axes are unstable (Quinn et al. 2020) -- read the "
-            f"importance ranking as indicative only."
-        )
-    return {
-        "retained": retained,
-        "retained_idx": retained_idx,
-        "clusters": clusters["clusters"],
-        "degenerate": degenerate,
-        "rho": rho,
-        "screened_axes": kept,
-        "residual_max_rho": residual_max,
-    }
+def label_thresholds(label: str, raw: rob.RawCube) -> dict | None:
+    """The criterion-set threshold vector a ``criterion:`` label implies."""
+    if not label.startswith("criterion:"):
+        return None
+    cset = criterion_by_key(label.split(":", 1)[1])
+    return cset.thresholds(raw.thresholds, raw.kinds)
 
 
-###############################################################################
-# Failure labels + compromise-policy selection
-###############################################################################
-
-def failure_matrix(raw: rob.RawCube) -> np.ndarray:
-    """Boolean ``(S, G)`` failure matrix: the all-criteria conjunction, negated.
-
-    A SOW FAILS for a solution when the joint (all-objective) satisficing
-    conjunction on its per-SOW annual-unit objective values is False — the
-    multivariate Starr (1962) domain criterion. Discovery therefore inherits
-    exactly the robustness criteria AND the robustness unit (the SOW); that is
-    standard practice and must be stated when the result is reported. The SOW's
-    hazard coordinates are the within-SOW mean of its realizations' descriptors
-    (:func:`align_hazard_to_cube`).
-    """
-    return ~rob._satisfaction_cube(raw).all(axis=2)
-
-
-#: Which label the classifier is fit to. ``satisficing`` (default) is the
-#: all-criteria conjunction, negated -- "where does this policy fail an absolute
-#: standard?". ``regret`` is the incumbent-relative label -- "where would the
-#: Decree parties REGRET having adopted this policy rather than keeping the FFMP?".
-#: They are different questions and can localise in different hazard regions; the
-#: second is the one a Decree party asks. Set via NYCOPT_SD_LABEL (no CLI flag).
-SD_LABEL = os.environ.get("NYCOPT_SD_LABEL", "satisficing")
-
-
-def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
-                  tau: dict | None = None) -> np.ndarray:
-    """Boolean ``(S, G)`` regret matrix: some objective is worse than the incumbent.
-
-    A SOW is labelled REGRET for a solution when at least one per-SOW objective
-    is degraded by more than its tolerance ``tau_i`` relative to the status-quo
-    FFMP policy in that same state -- the complement of the ``no_harm`` condition
-    in ``robustness.regret_frequencies``, on the same unit as the reported regret
-    family.
-
-    Args:
-        raw: The design's re-eval cube on E_test.
-        baseline: The status-quo cube on the same ensemble.
-        tau: Per-objective tolerance in natural units; defaults to
-            ``robustness.tau_ladder`` at the configured ``k``.
-
-    Returns:
-        Boolean ``(S, G)``; True where the policy harms the incumbent's position.
-        Non-finite values count as regret, mirroring the non-finite-as-unsatisfied
-        rule of the satisficing label.
-    """
-    D = rob.incumbent_advantage(raw, baseline)                         # (S, G, M)
-    tau = rob.tau_ladder(raw.obj_names) if tau is None else tau
-    tau_vec = np.array([float(tau[n]) for n in raw.obj_names], dtype=float)
-    finite = np.isfinite(D)
-    return ((~finite) | (D < -tau_vec[None, None, :])).any(axis=2)
-
-
-def _label_matrix(raw: rob.RawCube, baseline: rob.RawCube | None) -> np.ndarray:
-    """The ``(S, R)`` label the classifier is fit to, per :data:`SD_LABEL`.
+def _label_matrix(raw: rob.RawCube, baseline: rob.RawCube | None,
+                  label: str) -> np.ndarray:
+    """The ``(S, G)`` failure/regret label matrix for ``label``.
 
     Raises:
         SystemExit: If the regret label is requested without a status-quo cube.
-            Falling back to the satisficing label would answer a different question
-            under the same figure caption.
+            Falling back to a satisficing label would answer a different
+            question under the same figure caption.
     """
-    if SD_LABEL == "satisficing":
-        return failure_matrix(raw)
-    if SD_LABEL != "regret":
-        sys.exit(f"[scenario_discovery] unknown NYCOPT_SD_LABEL={SD_LABEL!r}; "
-                 f"expected 'satisficing' or 'regret'.")
+    if label.startswith("criterion:"):
+        return fm.failure_matrix(raw, label_thresholds(label, raw))
     if baseline is None:
         sys.exit(
             "[scenario_discovery] NYCOPT_SD_LABEL=regret needs the status-quo "
             "re-eval cube beside the run (workflow step 05 with the SAME "
             "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08). Refusing to fall back to "
-            "the satisficing label -- that answers a different question."
+            "a satisficing label -- that answers a different question."
         )
-    return regret_matrix(raw, baseline)
+    return fm.regret_matrix(raw, baseline)
 
 
 def _load_baseline(reeval_dir: Path) -> rob.RawCube | None:
@@ -343,167 +217,6 @@ def _load_baseline(reeval_dir: Path) -> rob.RawCube | None:
     if any((bdir / f).exists() for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
         return rob.load_raw(bdir)
     return None
-
-
-def _normalized_mean_objectives(raw: rob.RawCube) -> np.ndarray:
-    """``(S, M)`` mean re-evaluated objectives, oriented so 0 = ideal, 1 = worst.
-
-    Direction-oriented (maximize objectives flipped) and min-max normalized over
-    the solution set, so the ideal point is the origin.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        means = np.nanmean(raw.cube, axis=1)  # (S, M)
-    signs = raw.direction_signs()
-    loss = means * -signs[None, :]  # lower = better, for every objective
-    lo = np.nanmin(loss, axis=0)
-    hi = np.nanmax(loss, axis=0)
-    span = np.where(np.abs(hi - lo) > 0, hi - lo, 1.0)
-    return (loss - lo[None, :]) / span[None, :]
-
-
-def select_compromise(raw: rob.RawCube, rule: str = COMPROMISE_RULE) -> dict:
-    """Choose the per-design analysis policy, and report both candidate rules.
-
-    Scenario discovery is run on a small number of compromise solutions, not the
-    whole Pareto front (Kasprzyk et al. 2013; Gold et al. 2022) — a factor map of
-    "the front" is not a statement about any policy anyone would adopt.
-
-    Args:
-        raw: The design's re-eval cube.
-        rule: ``"best_satisficing"`` or ``"min_dist_ideal"``.
-
-    Returns:
-        Dict with ``solution_id`` (the analyzed policy), ``rule``, the two
-        candidate ids (``best_satisficing_id``, ``min_dist_ideal_id``), the
-        chosen policy's ``satisficing`` fraction and ``distance_to_ideal``, and
-        ``index`` (row into the cube).
-
-    Raises:
-        ValueError: For an unknown ``rule``, or when every solution is all-NaN.
-    """
-    if rule not in ("best_satisficing", "min_dist_ideal"):
-        raise ValueError(
-            f"unknown compromise rule {rule!r}; expected 'best_satisficing' or "
-            f"'min_dist_ideal' (set NYCOPT_SD_COMPROMISE_RULE)."
-        )
-    # The PRIMARY metric, so the analyzed policy is the one the headline
-    # comparison favors.
-    sat = rob.satisficing_multivariate_sow(raw).to_numpy(dtype=float)  # (S,)
-    dist = np.linalg.norm(_normalized_mean_objectives(raw), axis=1)  # (S,)
-
-    alive = np.any(np.isfinite(raw.cube), axis=(1, 2))
-    if not alive.any():
-        raise ValueError("every solution in this re-eval cube is all-NaN (failed).")
-    masked_dist = np.where(alive, dist, np.inf)
-    masked_sat = np.where(alive, sat, -np.inf)
-
-    # Ties on satisficing are common (a saturated criterion ties everything —
-    # Bonham et al. 2024), so break them on distance-to-ideal rather than on
-    # solution-id order, which would be an arbitrary, ordering-dependent choice.
-    best_sat = int(np.lexsort((masked_dist, -masked_sat))[0])
-    best_dist = int(np.argmin(masked_dist))
-    idx = best_sat if rule == "best_satisficing" else best_dist
-    return {
-        "rule": rule,
-        "index": idx,
-        "solution_id": int(raw.solution_ids[idx]),
-        "best_satisficing_id": int(raw.solution_ids[best_sat]),
-        "min_dist_ideal_id": int(raw.solution_ids[best_dist]),
-        "satisficing": float(sat[idx]),
-        "distance_to_ideal": float(dist[idx]),
-    }
-
-
-###############################################################################
-# Failure classifier (Gold et al. 2022, 2023)
-###############################################################################
-
-@dataclass
-class FailureModel:
-    """A fitted failure classifier over the retained hazard axes.
-
-    Attributes:
-        axes: Retained axis names (feature order).
-        importances: Per-axis factor importance, summing to 1.
-        backend: ``"gradient_boosting"`` or the declared fallback.
-        predict_proba: Maps ``(n, m)`` rank-space points to failure probability.
-        train_accuracy: Resubstitution accuracy (a fit diagnostic, not a claim).
-    """
-
-    axes: list[str]
-    importances: np.ndarray
-    backend: str
-    predict_proba: object = field(repr=False, default=None)
-    train_accuracy: float = float("nan")
-
-
-def _knn_failure_prob(X: np.ndarray, y: np.ndarray, k: int = 25):
-    """k-NN failure-probability surface — the declared no-sklearn fallback."""
-    tree = cKDTree(X)
-    k = int(min(max(3, k), len(X)))
-
-    def _predict(grid: np.ndarray) -> np.ndarray:
-        _, idx = tree.query(np.atleast_2d(grid), k=k)
-        return y[np.atleast_2d(idx)].mean(axis=1)
-
-    return _predict
-
-
-def fit_failure_classifier(X: np.ndarray, y: np.ndarray,
-                           axes: list[str]) -> FailureModel:
-    """Fit failure ~ hazard coordinates with the Gold et al. (2023) settings.
-
-    Gradient boosting, 250 trees, ``max_depth=2``, ``learning_rate=0.1`` — the
-    boosted-tree scenario-discovery configuration of Gold et al. (2022, 2023),
-    used unchanged so the method is the literature's and only the SPACE (hazard,
-    not input) is ours.
-
-    If sklearn is unavailable the model degrades — loudly, never silently — to
-    KS-statistic importances with a k-NN failure-probability surface, which
-    preserves the factor map and the ranking but not the interaction structure.
-
-    Args:
-        X: ``(R, m)`` hazard coordinates (rank space; trees are monotone-invariant,
-            so this is equivalent to fitting on raw values).
-        y: Length-``R`` boolean/int failure labels.
-        axes: Length-``m`` feature names.
-
-    Returns:
-        A :class:`FailureModel`.
-    """
-    X = np.asarray(X, dtype=float)
-    y = np.asarray(y).astype(int)
-    if not _HAS_SKLEARN:
-        warnings.warn(
-            "scikit-learn is not installed: falling back to KS-statistic "
-            "importances + a k-NN failure surface. The reported importances are "
-            "NOT gradient-boosted factor importances -- say so when reporting."
-        )
-        ks = np.array([
-            ks_2samp(X[y == 1, a], X[y == 0, a]).statistic
-            if (y == 1).any() and (y == 0).any() else 0.0
-            for a in range(X.shape[1])
-        ])
-        imp = ks / ks.sum() if ks.sum() > 0 else np.full(len(ks), 1.0 / len(ks))
-        return FailureModel(
-            axes=list(axes), importances=imp, backend="ks_knn_fallback",
-            predict_proba=_knn_failure_prob(X, y),
-        )
-
-    clf = GradientBoostingClassifier(
-        n_estimators=GBC_N_ESTIMATORS,
-        max_depth=GBC_MAX_DEPTH,
-        learning_rate=GBC_LEARNING_RATE,
-        random_state=0,
-    ).fit(X, y)
-    return FailureModel(
-        axes=list(axes),
-        importances=np.asarray(clf.feature_importances_, dtype=float),
-        backend="gradient_boosting",
-        predict_proba=lambda g: clf.predict_proba(np.atleast_2d(g))[:, 1],
-        train_accuracy=float(clf.score(X, y)),
-    )
 
 
 def hazard_shift_stats(H: np.ndarray, y: np.ndarray, axes: list[str]) -> pd.DataFrame:
@@ -929,7 +642,7 @@ class DesignResult:
     design: str
     solution_id: int
     compromise: dict
-    model: FailureModel
+    model: FactorMapFit
     shifts: pd.DataFrame
     stats: dict
     bins: pd.DataFrame
@@ -940,49 +653,8 @@ class DesignResult:
     n_search: int
 
 
-def align_hazard_to_cube(raw: rob.RawCube, image: dict,
-                         axis_idx: list[int]) -> np.ndarray:
-    """SOW-level hazard coordinates aligned to the re-eval cube's SOW axis.
-
-    The hazard image carries one row per REALIZATION (a realized sequence's
-    drought/flood descriptors); the cube's unit is the SOW. Each SOW's
-    coordinate is the MEAN over its realizations' descriptors — the natural
-    variability inside the state collapses, matching how the objective values
-    themselves pool the state's realizations. The join is on
-    ``realization_id // realizations_per_sow == sow_id``, never positional: a
-    positional join would silently attach the wrong hazard coordinates to every
-    failure label and quietly invalidate the entire mechanism test.
-
-    Returns:
-        ``(G_cube, len(axis_idx))`` raw hazard coordinates aligned to
-        ``raw.sow_labels``.
-
-    Raises:
-        KeyError: If a re-evaluated SOW has no hazard coordinates.
-        ValueError: If the cube carries no ``realizations_per_sow``.
-    """
-    rps = raw.realizations_per_sow
-    if not rps:
-        raise ValueError(
-            "the re-eval cube records no realizations_per_sow, so the hazard "
-            "image's realization rows cannot be grouped into its SOWs."
-        )
-    H = np.asarray(image["H"], dtype=float)[:, axis_idx]
-    by_sow: dict[int, list[int]] = {}
-    for i, rid in enumerate(image["realization_ids"]):
-        by_sow.setdefault(int(rid) // int(rps), []).append(i)
-    missing = [g for g in raw.sow_labels if int(g) not in by_sow]
-    if missing:
-        raise KeyError(
-            f"{len(missing)} re-evaluated SOW(s) have no hazard coordinates in "
-            f"the E_test hazard image (e.g. {missing[:5]}). The hazard image "
-            f"and the re-eval ensemble are not the same ensemble."
-        )
-    return np.vstack([H[by_sow[int(g)], :].mean(axis=0) for g in raw.sow_labels])
-
-
 def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
-                        screen: dict, draw: int = 0,
+                        screen: dict, label: str, draw: int = 0,
                         baseline: rob.RawCube | None = None) -> DesignResult:
     """Run scenario discovery + the mechanism test for one design.
 
@@ -991,8 +663,9 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
         raw: The design's re-eval cube on E_test.
         etest: E_test's hazard image.
         screen: Output of :func:`screen_hazard_axes` on E_test's image.
+        label: The resolved SD label (``criterion:<set_key>`` | ``regret``).
         draw: Ensemble-draw index for resolving the search ensemble.
-        baseline: The status-quo cube, required when :data:`SD_LABEL` is
+        baseline: The status-quo cube, required when ``label`` is
             ``"regret"`` and ignored otherwise.
 
     Returns:
@@ -1005,10 +678,20 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
     H_ref = H
     X = cdf_transform(H, H_ref)                                        # rank space
 
-    compromise = select_compromise(raw)
-    y = _label_matrix(raw, baseline)[compromise["index"]]              # (G,)
+    # The analyzed policy is chosen under the label's own criterion set, so a
+    # criterion label analyzes the policy that framing favors (the compromise
+    # is set-specific; the set key is recorded in the stats row).
+    compromise = select_compromise(raw, rule=COMPROMISE_RULE,
+                                   thresholds=label_thresholds(label, raw))
+    y = _label_matrix(raw, baseline, label)[compromise["index"]]       # (G,)
+    if y.all() or not y.any():
+        warnings.warn(
+            f"[{design_name}] label {label!r} has one class on this cube "
+            f"({int(y.sum())}/{len(y)} failures) -- the criterion is degenerate "
+            f"here; classifier and mechanism test will report no discrimination."
+        )
 
-    model = fit_failure_classifier(X, y, axes)
+    model = fit_classifier(X, y, axes, space="hazard")
     shifts = hazard_shift_stats(H, y, axes)
 
     # -- the mechanism test -------------------------------------------------
@@ -1039,9 +722,10 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
             stats, bins = deficit_association(deficit, y, X_test=X, n_search=n_search)
 
     # The label is recorded next to every number it produced: a factor map fit to
-    # regret and one fit to satisficing look identical and mean different things.
+    # regret and one fit to a criterion set look identical and mean different
+    # things.
     stats = {"design": design_name, "solution_id": compromise["solution_id"],
-             "label": SD_LABEL, "n_search": n_search, **stats}
+             "label": label, "n_search": n_search, **stats}
     return DesignResult(
         design=design_name, solution_id=compromise["solution_id"],
         compromise=compromise, model=model, shifts=shifts, stats=stats, bins=bins,
@@ -1053,10 +737,12 @@ def discover_for_design(design_name: str, raw: rob.RawCube, etest: dict,
 # Figures
 ###############################################################################
 
-def plot_factor_map(res: DesignResult, slug: str) -> Path | None:
+def plot_factor_map(res: DesignResult, slug: str, fig_sub: Path) -> Path | None:
     """Factor map on the top-2 hazard axes + the factor-importance bars.
 
-    Left: the classifier's predicted failure-probability surface over the two most
+    The hazard-space SUPPLEMENTAL view (theta-space factor maps are the
+    primary; see ``scripts/main/factor_mapping_run.py``). Left: the
+    classifier's predicted failure-probability surface over the two most
     important retained hazard axes (remaining axes held at their E_test median,
     i.e. 0.5 in rank space), with the actual E_test realizations overlaid and
     colored by success/failure. Right: factor importances over the retained axes.
@@ -1099,13 +785,15 @@ def plot_factor_map(res: DesignResult, slug: str) -> Path | None:
     axb.set_title("Hazard-axis importance (screened axes)")
     fig.tight_layout()
 
-    out = config.figure_dir_for(res.design, slug, _FIG_KIND) / "factor_map"
+    out = (config.figure_dir_for(res.design, slug, _FIG_KIND) / fig_sub
+           / "factor_map")
     save_figure(fig, out)
     plt.close(fig)
     return out
 
 
-def plot_mechanism(results: list[DesignResult], slug: str) -> Path | None:
+def plot_mechanism(results: list[DesignResult], slug: str,
+                   fig_sub: Path) -> Path | None:
     """THE mechanism figure: failure rate vs coverage-deficit decile, per design.
 
     A rising line = that design's policies failed where its search ensemble left
@@ -1151,7 +839,8 @@ def plot_mechanism(results: list[DesignResult], slug: str) -> Path | None:
     axb.set_title("Excess association over random coverage\n(bars: +/-2 SD of the null)")
     fig.tight_layout()
 
-    out = config.figure_dir_for("comparison", slug, _FIG_KIND) / "coverage_deficit_vs_failure"
+    out = (config.figure_dir_for("comparison", slug, _FIG_KIND) / fig_sub
+           / "coverage_deficit_vs_failure")
     save_figure(fig, out)
     plt.close(fig)
     return out
@@ -1195,23 +884,31 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
     spec = get_ensemble_spec(reeval_tag) if reeval_tag else config.REEVAL_ENSEMBLE_SPEC
     tag = tag_of(spec)
     slug = config.derive_slug(formulation)
+    label = resolve_sd_label()
+    label_slug = label.replace(":", "_")
+    # Namespaced by slug/tag/label so successive runs never overwrite each
+    # other, and resolved here (not at import) because the tag is run identity.
+    table_dir = (config.OUTPUTS_DIR / "comparison" / slug / tag
+                 / "scenario_discovery" / label_slug)
+    fig_sub = Path(tag) / label_slug
 
     # After the E_test guard, so a failed pre-flight leaves no empty output dir.
     etest = load_etest_hazard_image(spec)
     screen = screen_hazard_axes(etest["H"], etest["hazard_axes"])
-    TABLE_DIR.mkdir(parents=True, exist_ok=True)
+    table_dir.mkdir(parents=True, exist_ok=True)
     print(f"[scenario_discovery] E_test='{spec.inflow_type}' "
-          f"R={etest['H'].shape[0]} | retained hazard axes: {screen['retained']} "
-          f"(dropped degenerate: {screen['degenerate']})")
+          f"R={etest['H'].shape[0]} | label={label} | retained hazard axes: "
+          f"{screen['retained']} (dropped degenerate: {screen['degenerate']})")
 
     pd.DataFrame([{
         "axis": a,
         "retained": a in screen["retained"],
         "degenerate": a in screen["degenerate"],
         "cluster": next((i for i, c in enumerate(screen["clusters"]) if a in c), -1),
-    } for a in etest["hazard_axes"]]).to_csv(TABLE_DIR / "axis_screen.csv", index=False)
+    } for a in etest["hazard_axes"]]).to_csv(table_dir / "axis_screen.csv", index=False)
 
     results: list[DesignResult] = []
+    meta_thresholds: dict | None = None
     for name in designs:
         rdir = _resolve_reeval_dir(name, slug, tag, seed)
         if rdir is None:
@@ -1223,15 +920,17 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
             warnings.warn(f"[{name}] single-trace re-eval (G={raw.n_sow}): "
                           f"per-SOW failure labels are undefined -- skipping.")
             continue
+        if meta_thresholds is None:
+            meta_thresholds = label_thresholds(label, raw)
         try:
-            res = discover_for_design(name, raw, etest, screen, draw=draw,
-                                      baseline=_load_baseline(rdir))
+            res = discover_for_design(name, raw, etest, screen, label,
+                                      draw=draw, baseline=_load_baseline(rdir))
         except (KeyError, ValueError) as exc:
             warnings.warn(f"[{name}] scenario discovery failed: {exc}")
             continue
         results.append(res)
-        plot_factor_map(res, slug)
-        label_word = "regret SOWs" if SD_LABEL == "regret" else "failures"
+        plot_factor_map(res, slug, fig_sub)
+        label_word = "regret SOWs" if label == "regret" else "failures"
         print(f"[scenario_discovery] {name}: solution {res.solution_id}, "
               f"{label_word} {int(res.y.sum())}/{len(res.y)} | "
               f"top axis '{res.model.axes[int(np.argmax(res.model.importances))]}' | "
@@ -1244,38 +943,50 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
     imp = pd.DataFrame(
         [{"design": r.design, "solution_id": r.solution_id,
           "backend": r.model.backend, "train_accuracy": r.model.train_accuracy,
+          "cv_auc": r.model.cv_auc, "cv_auc_std": r.model.cv_auc_std,
+          "cv_accuracy": r.model.cv_accuracy, "cv_note": r.model.cv_note,
           **dict(zip(r.model.axes, r.model.importances))} for r in results]
     )
-    imp.to_csv(TABLE_DIR / "factor_importances.csv", index=False)
+    imp.to_csv(table_dir / "factor_importances.csv", index=False)
 
     pd.concat([r.shifts.assign(design=r.design) for r in results]) \
-        .to_csv(TABLE_DIR / "hazard_shift_ks.csv", index=False)
+        .to_csv(table_dir / "hazard_shift_ks.csv", index=False)
     pd.DataFrame([r.stats for r in results]) \
-        .to_csv(TABLE_DIR / "coverage_deficit_association.csv", index=False)
+        .to_csv(table_dir / "coverage_deficit_association.csv", index=False)
     pd.DataFrame([{"design": r.design, **r.compromise} for r in results]) \
-        .to_csv(TABLE_DIR / "compromise_solutions.csv", index=False)
+        .to_csv(table_dir / "compromise_solutions.csv", index=False)
     bins = [r.bins.assign(design=r.design) for r in results if not r.bins.empty]
     if bins:
-        pd.concat(bins).to_csv(TABLE_DIR / "coverage_deficit_deciles.csv", index=False)
+        pd.concat(bins).to_csv(table_dir / "coverage_deficit_deciles.csv", index=False)
 
-    (TABLE_DIR / "scenario_discovery_meta.json").write_text(json.dumps({
+    meta = {
         "formulation": formulation, "moea_slug": slug, "etest": spec.inflow_type,
         "reeval_tag": tag, "seed": seed, "ensemble_draw": draw,
-        "compromise_rule": COMPROMISE_RULE, "classifier_backend": results[0].model.backend,
-        "gbc": {"n_estimators": GBC_N_ESTIMATORS, "max_depth": GBC_MAX_DEPTH,
-                "learning_rate": GBC_LEARNING_RATE},
-        "redundancy_threshold": REDUNDANCY_THRESHOLD,
+        "label": label,
+        "compromise_rule": COMPROMISE_RULE,
+        "classifier_backend": results[0].model.backend,
+        "gbc": {"n_estimators": fm.FM_N_TREES, "max_depth": fm.FM_MAX_DEPTH,
+                "learning_rate": fm.FM_LEARNING_RATE},
+        "redundancy_threshold": fm.FM_RHO_THRESHOLD,
         "hazard_axes_all": list(etest["hazard_axes"]),
         "hazard_axes_retained": screen["retained"],
         "redundancy_clusters": screen["clusters"],
         "residual_max_rho": screen["residual_max_rho"],
         "designs": [r.design for r in results],
-    }, indent=2))
+    }
+    if meta_thresholds is not None:
+        meta["criterion_thresholds"] = {
+            n: (None if not np.isfinite(v) else v)
+            for n, v in meta_thresholds.items()
+        }
+    (table_dir / "scenario_discovery_meta.json").write_text(
+        json.dumps(meta, indent=2))
 
-    plot_mechanism(results, slug)
-    print(f"[scenario_discovery] tables -> {TABLE_DIR}")
+    plot_mechanism(results, slug, fig_sub)
+    print(f"[scenario_discovery] tables -> {table_dir}")
     return {"designs": [r.design for r in results], "n_designs": len(results),
-            "tables": sorted(p.name for p in TABLE_DIR.glob("*"))}
+            "label": label,
+            "tables": sorted(p.name for p in table_dir.glob("*"))}
 
 
 def main() -> None:

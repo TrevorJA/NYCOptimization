@@ -118,7 +118,7 @@ def test_screen_drops_the_redundant_axis(screen):
     cluster = next(c for c in screen["clusters"] if PLANTED_AXIS in c)
     assert REDUNDANT_AXIS in cluster
     # And no correlated pair may survive into the fit.
-    assert screen["residual_max_rho"] < sd.REDUNDANCY_THRESHOLD
+    assert screen["residual_max_rho"] < sd.fm.FM_RHO_THRESHOLD
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ def test_classifier_recovers_planted_axis(image, screen):
     axes = screen["retained"]
     Hs = H[:, screen["retained_idx"]]
     X = sd.cdf_transform(Hs, Hs)
-    model = sd.fit_failure_classifier(X, y, axes)
+    model = sd.fit_classifier(X, y, axes, space="hazard")
 
     top = model.axes[int(np.argmax(model.importances))]
     assert top == PLANTED_AXIS, f"top importance was {top!r}, not the planted axis"
@@ -318,7 +318,8 @@ def test_end_to_end_recovers_planted_axis_and_mechanism(tmp_path, image, screen,
         "selected_rows": np.arange(N_SEARCH),
     })
 
-    res = sd.discover_for_design("fixed_probabilistic", raw, etest, screen)
+    res = sd.discover_for_design("fixed_probabilistic", raw, etest, screen,
+                                 label="criterion:reference_all8")
 
     # The compromise rule must pick the policy that actually satisfices somewhere.
     assert res.solution_id == 0

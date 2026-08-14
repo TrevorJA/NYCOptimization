@@ -104,19 +104,6 @@ def design_label(design: str) -> str:
 # (§2) search metric is marked "annual" (per-water-year metric). Labels therefore
 # differ between the two reductions exactly where the timescale/statistic differs.
 
-#: Short per-objective labels for scatter-plot axes (ordered to match the
-#: default whole-trace objective set).
-OBJ_SHORT: list[str] = [
-    "NYC Rel.\n(weekly)",
-    "NYC Deficit\n(wk CVaR90)",
-    "Montague Rel.\n(weekly)",
-    "Montague Def.\n(wk CVaR90)",
-    "Trenton Rel.\n(weekly)",
-    "Flood Exceedance\n(ft·d, minor)",
-    "Storage\n(daily P5)",
-    "NJ Rel.\n(weekly)",
-]
-
 #: Compact single-line objective labels; ``label_for`` falls back to the raw name.
 OBJECTIVE_LABELS: dict[str, str] = {
     # NYC delivery: satisficing reliability; CVaR90 of the deficit (% of Decree)
@@ -196,45 +183,62 @@ def short_label_for(name: str) -> str:
 # OBJ_SHORT_LABELS). Any other rendering -- e.g. the multi-line parallel-axis
 # label below -- is DERIVED from the long form, never a third hand-written set.
 
-def axis_label_for(name: str, direction: str) -> str:
+def objective_direction(name: str) -> str:
+    """The optimization direction of an objective, by name.
+
+    Every registered objective follows the naming rule "reliability and
+    storage are maximized; deficits, floods, and exceedances are minimized",
+    so the direction is derivable from the name alone -- which lets label
+    helpers work for both the weekly (whole-trace) and annual (search)
+    metric families without importing either registry.
+    """
+    return ("maximize" if ("reliability" in name or "storage" in name)
+            else "minimize")
+
+
+def axis_label_for(name: str, direction: str = None) -> str:
     """Multi-line parallel-axis label derived from the long-form label.
 
     Splits the long form at its "(...)" qualifier and appends the
     optimization direction, e.g. ``NYC Delivery Reliability\n(annual)\n(max)``.
+    The SOLE parallel-axis label convention -- derived from ``label_for``,
+    never a third hand-written set.
 
     Args:
         name: Objective name.
-        direction: "maximize" or "minimize".
+        direction: "maximize" or "minimize"; defaults to
+            :func:`objective_direction`.
     """
     long = label_for(name)
+    direction = direction or objective_direction(name)
     arrow = "(max)" if direction == "maximize" else "(min)"
     if "(" in long:
         head, _, tail = long.partition("(")
         return f"{head.strip()}\n({tail}\n{arrow}"
     return f"{long}\n{arrow}"
 
+# ---------------------------------------------------------------------------
+# Robustness / factor-map color tokens
+# ---------------------------------------------------------------------------
 
-#: Parallel-coordinates axis labels (multi-line: metric, timescale + statistic +
-#: unit, optimization direction).
-OBJ_AXIS_LABELS: dict[str, str] = {
-    "nyc_delivery_reliability_weekly":   "NYC Delivery\nReliability (weekly)\n(max)",
-    "nyc_delivery_reliability_annual":   "NYC Delivery\nReliability (annual)\n(max)",
-    "nyc_delivery_deficit_cvar90_pct":   "NYC Delivery Deficit\nweekly CVaR90 %\n(min)",
-    "nyc_delivery_deficit_p99_pct":      "NYC Delivery Deficit\nP99 of ann. CVaR90 %\n(min)",
-    "montague_flow_reliability_weekly":  "Montague Flow\nReliability (weekly)\n(max)",
-    "montague_flow_reliability_annual":  "Montague Flow\nReliability (annual)\n(max)",
-    "montague_flow_deficit_cvar90_pct":  "Montague Flow Deficit\nweekly CVaR90 %\n(min)",
-    "montague_flow_deficit_p99_pct":     "Montague Flow Deficit\nP99 of ann. CVaR90 %\n(min)",
-    "trenton_flow_reliability_weekly":   "Trenton Flow\nReliability (weekly)\n(max)",
-    "trenton_flow_reliability_annual":   "Trenton Flow\nReliability (annual)\n(max)",
-    "downstream_flood_exceedance_minor":   "Flood Exceedance\nNWS minor, ft·d/yr\n(min)",
-    "downstream_flood_exceedance_annual":  "Flood Exceedance\nNWS minor, ann. mean\n(min)",
-    "downstream_flood_days_minor":       "Flood Days\nNWS minor, days/yr\n(min)",
-    "downstream_flood_days_annual":      "Flood Days\nNWS minor, annual mean\n(min)",
-    "nyc_storage_p5_pct":                "NYC Storage\ndaily 5th pctile %\n(max)",
-    "nyc_storage_min_p01_pct":           "NYC Storage\nP1 of ann. min %\n(max)",
-    "nj_delivery_reliability_weekly":    "NJ Delivery\nReliability (weekly)\n(max)",
-    "nj_delivery_reliability_annual":    "NJ Delivery\nReliability (annual)\n(max)",
+#: Sequential colormap for robustness MAGNITUDE (fraction of SOWs satisficing)
+#: wherever robustness colors a mark: one hue family, light -> dark, CVD-safe.
+ROBUSTNESS_CMAP = "viridis"
+
+#: Diverging colormap for classified success/failure PROBABILITY surfaces
+#: (factor maps): P(success) runs red (fail) -> neutral -> blue (success), so
+#: the class boundary is the neutral midpoint at P = 0.5 and each class gains
+#: saturation toward certainty. A diverging ramp (ColorBrewer RdBu) is used
+#: instead of two flat class tints because two light tints are not
+#: CVD-separable (protan dE ~ 5 measured); lightness carries the message here.
+#: Draw the P = 0.5 contour explicitly so the boundary never relies on hue.
+FACTOR_MAP_CMAP = "RdBu"
+
+#: Factor-map SOW scatter marks over the probability shading: luminance- and
+#: shape-separated (white-filled circle vs black cross), never hue-only.
+FACTOR_MAP_MARKS = {
+    "success": {"marker": "o", "facecolor": "white", "edgecolor": "0.25"},
+    "failure": {"marker": "x", "color": "black"},
 }
 
 # ---------------------------------------------------------------------------
@@ -347,13 +351,15 @@ def save_figure(fig, out_stub) -> None:
         out_stub: Path or str without an extension (any existing suffix is replaced).
     """
     stub = Path(out_stub)
+    stub.parent.mkdir(parents=True, exist_ok=True)
     for ext in FIGURE_FORMATS:
         fig.savefig(stub.with_suffix(f".{ext}"))
 
 
-#: Output formats for main-manuscript figures: a raster copy to look at and a
-#: vector copy to submit.
-MANUSCRIPT_FIGURE_FORMATS: tuple = ("png", "pdf")
+#: Output formats for main-manuscript figures. PNG only during the iteration
+#: rounds (Trevor, 2026-08-14: no PDFs yet); the vector copy is added at the
+#: manuscript-final styling pass by extending this tuple to ("png", "pdf").
+MANUSCRIPT_FIGURE_FORMATS: tuple = ("png",)
 
 
 def save_manuscript_figure(fig, out_stub) -> list:
@@ -397,15 +403,28 @@ def criterion_condition(name: str, threshold: float, kind: str) -> str:
 
 def criteria_lines(thresholds: dict, kinds: dict, obj_order=None,
                    header: str = "Satisficing criteria (all must hold):") -> list:
-    """The full criterion vector as an explicit bulleted text block.
+    """The criterion vector as an explicit bulleted text block.
 
     Every results figure that depends on a satisficing criterion carries this
     in its footer (project rule: the exact thresholds are stated on the figure
     as one bullet per condition, never just a shorthand criterion name).
+
+    Axes with a non-finite/absent threshold (the non-binding convention of
+    subset criterion sets) are collapsed into one trailing "unconstrained"
+    line rather than bulleted individually, so a 2-axis criterion reads as
+    two conditions, not two conditions and six "no requirement" bullets.
     """
     names = list(obj_order) if obj_order is not None else list(thresholds)
-    return [header] + [f"  •  {criterion_condition(n, thresholds[n], kinds[n])}"
-                       for n in names]
+    bound = [n for n in names
+             if thresholds.get(n) is not None and np.isfinite(thresholds[n])]
+    lines = [header] + [
+        f"  •  {criterion_condition(n, thresholds[n], kinds[n])}" for n in bound
+    ]
+    unbound = [n for n in names if n not in bound]
+    if unbound:
+        lines.append(f"  •  other axes unconstrained "
+                     f"({len(unbound)} of {len(names)})")
+    return lines
 
 
 def add_figure_footer(fig, lines, *, x: float = 0.5, y: float = 0.0,

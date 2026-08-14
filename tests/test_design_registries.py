@@ -453,11 +453,18 @@ def test_run_output_dir_layout(tmp_path, monkeypatch):
     assert p.is_dir()
 
 
-def test_figure_dir_for_stable_vs_exploratory(tmp_path, monkeypatch):
+def test_figure_dir_for_routes_explicitly(tmp_path, monkeypatch):
+    """Stable kinds -> results tree; exploratory kinds -> _exploratory;
+    unknown kinds are a hard error (the old silent demotion mis-filed typos)."""
+    import pytest
+
     import config
     monkeypatch.setattr(config, "FIGURES_DIR", tmp_path)
     monkeypatch.setattr(config, "FIG_EXPLORATORY_DIR", tmp_path / "_exploratory")
     stable = config.figure_dir_for("historic", "ffmp_obj8", "pareto")
     assert stable == tmp_path / "historic" / "ffmp_obj8" / "pareto"
-    expl = config.figure_dir_for("historic", "ffmp_obj8", "made_up_kind")
-    assert expl == tmp_path / "_exploratory" / "historic" / "ffmp_obj8" / "made_up_kind"
+    expl = config.figure_dir_for("historic", "ffmp_obj8", "scenario_discovery")
+    assert expl == (tmp_path / "_exploratory" / "historic" / "ffmp_obj8"
+                    / "scenario_discovery")
+    with pytest.raises(ValueError):
+        config.figure_dir_for("historic", "ffmp_obj8", "made_up_kind")

@@ -266,14 +266,49 @@ to the measured placements — the rules first, then the numbers.
 
 ## 6. Threshold vector status
 
-The 2026-08-07 adopted vector is SUPERSEDED by the same-day substrate change
-to per-SOW annual-unit objective values (it was placed on whole-trace
-statistics that no longer exist as a reporting surface). The current
-`objectives_ensemble._DEFAULT_THRESHOLDS` vector is PROVISIONAL — external
-rule-2 goalposts carried (flood 1.17 ft·days/yr; FFMP L5 storage floor 26%),
-the rest re-anchor targets in the same spirit — and the final vector is
-adopted only after this diagnostic's pass 1 is re-run against the status-quo
-E_test cube on the new substrate and the §0b rules are re-applied.
+The pass-1 re-run against the status-quo E_test cube on the annual-unit
+substrate completed 2026-08-08 and the vector was ADOPTED into
+`objectives_ensemble._DEFAULT_THRESHOLDS` with values unchanged (recorded in
+TODO §1 and snapshotted per run in `reeval_raw_meta.json`). The adopted
+all-axes conjunction is retained as the `reference_all8` criterion set only;
+see §7 for its role after the subset-criteria redesign.
+
+## 7. Re-anchoring under subset criteria
+
+The interim 200-SOW re-evaluation showed the adopted all-8 conjunction is
+degenerate as an analysis criterion: joint Starr = 0.0 for every design and
+for the incumbent (binding axes Trenton reliability, whose 0.87 placement
+excludes ~90% of pooled per-SOW cells, and Montague reliability, whose 0.79
+anchor lies outside the incumbent's own E_test support, max 0.746), with
+`nyc_delivery_deficit_p99_pct`, `nj_delivery_reliability_annual`, and
+`montague_flow_deficit_p99_pct` saturated non-discriminators (pass > 0.96
+everywhere). The analysis criteria were therefore rebuilt as Quinn et al.
+(2017)-style SUBSETS (`src/satisficing_criteria.py`): each named set
+thresholds 1–3 objectives and leaves every other axis unconstrained, and
+robustness is reported under several sets with a cross-set ranking-agreement
+check. The §0b placement rules apply per member axis:
+
+- **Rule 1 re-anchors** (status quo fails the criterion, rounded stricter):
+  Trenton reliability 0.87 → 0.75 (incumbent median year 0.73); NYC storage
+  P1 26% → 13.0% (incumbent median year 12.9%; the 26% FFMP L5 goalpost
+  remains reported in the univariate decomposition, never conjoined);
+  Montague reliability 0.79 → incumbent per-SOW median rounded stricter
+  (PROVISIONAL 0.70 pending the audit table).
+- **Rule 2 external goalposts carried**: flood exceedance 1.17 ft·d/yr
+  (observed WY2001–2023); NYC delivery reliability 0.65 (historic anchor,
+  discriminating).
+- The measured evidence behind every placement is the audit table
+  `outputs/comparison/{slug}/{tag}/criteria_reanchoring.csv`
+  (`scripts/supplemental/criteria_reanchoring.py`): incumbent per-SOW
+  quantiles, incumbent pass fraction at the adopted threshold, pooled
+  stringency, and the stricter-side epsilon-granularity round of the
+  incumbent median. Placements are transcribed into
+  `src/satisficing_criteria.py` as literals citing that CSV; where epsilon
+  granularity is coarse (storage, ε = 5), the transcribed literal may use a
+  finer decimal step with the rationale stated in the set's docstring entry.
+- `reference_all8` (the adopted snapshot conjoined over every axis) is
+  retained as a reported reference; its zero is the motivating degeneracy
+  finding, never a selection criterion.
 
 ## Citations
 

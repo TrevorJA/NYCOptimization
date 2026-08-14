@@ -91,6 +91,19 @@ def load_design_results(
 # Criterion vectors
 ###############################################################################
 
+def criterion_thresholds(res: DesignResults, cset) -> dict:
+    """A criterion set's full threshold vector for one design's cube.
+
+    The one-liner every figure shares, so the kinds plumbing (non-member axes
+    non-binding at ``+/-inf``) is never re-implemented at a call site.
+
+    Args:
+        res: The design's loaded results.
+        cset: A :class:`src.satisficing_criteria.CriterionSet`.
+    """
+    return cset.thresholds(res.raw.thresholds, res.raw.kinds)
+
+
 def relax_axes(thresholds: dict, kinds: dict, drop: Iterable[str]) -> dict:
     """Return ``thresholds`` with the axes in ``drop`` made non-binding.
 

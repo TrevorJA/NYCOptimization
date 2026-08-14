@@ -90,7 +90,7 @@ def _load_baseline_vec(formulation, obj_names, scenario):
 def fig_parallel_coords(ref_set, formulation, filt, out_dir, scenario):
     from src.plotting.parallel_coordinates import plot_parallel_coordinates
     plot_parallel_coordinates(ref_set, formulation,
-                              out_dir / "01_pareto_parallel_coords.png",
+                              out_dir / "run01_pareto_parallel_coords.png",
                               baseline_objs=_load_baseline_vec(formulation,
                                                                filt.obj_names,
                                                                scenario),
@@ -111,14 +111,14 @@ def fig_tradeoff_scatter(filt, formulation, out_dir, scenario):
                 else filt.obj_names[0])
     plot_key_tradeoffs(filt.natural_obj, filt.obj_names, filt.directions,
                        color_by=color_by, baseline=baseline,
-                       output_file=out_dir / "01b_tradeoff_scatter")
+                       output_file=out_dir / "run01b_tradeoff_scatter")
     plt.close("all")
     plot_scatter_matrix(filt.natural_obj, filt.obj_names, filt.directions,
                         color_by=color_by, baseline=baseline,
-                        output_file=out_dir / "01c_tradeoff_scatter_matrix")
+                        output_file=out_dir / "run01c_tradeoff_scatter_matrix")
     plt.close("all")
     print("[fig1b/c] -> 01b_tradeoff_scatter.png, "
-          "01c_tradeoff_scatter_matrix.png")
+          "runrun01c_tradeoff_scatter_matrix.png")
 
 
 # --------------------------------------------------------------------------- #
@@ -134,7 +134,7 @@ def fig_dv_ranges(filt, formulation, out_dir, scenario):
               "(no baseline and no NYC-storage objective)")
         return
     plot_dv_ranges(filt.dv, formulation, criteria,
-                   output_file=out_dir / "01d_dv_ranges")
+                   output_file=out_dir / "run01d_dv_ranges")
     plt.close("all")
     print("[fig1d] -> 01d_dv_ranges.png")
 
@@ -148,7 +148,7 @@ def fig_hypervolume(run_dir, formulation, out_dir):
     if not metrics_dir.exists() or not any(metrics_dir.glob("*.metrics")):
         print("[fig2] no metrics dir/files"); return
     plot_hypervolume_convergence(metrics_dir, formulation,
-                                 out_dir / "02_hypervolume_convergence.png",
+                                 out_dir / "run02_hypervolume_convergence.png",
                                  figsize=(8, 5))
     print("[fig2] -> 02_hypervolume_convergence.png")
 
@@ -211,7 +211,7 @@ def fig_du_distributions(reeval_dir, filt, out_dir):
                  f"(n={filt.n_accepted}; mean over SOWs per policy)",
                  fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    fig.savefig(out_dir / "03_du_performance_distributions.png", dpi=200,
+    fig.savefig(out_dir / "run03_du_performance_distributions.png", dpi=200,
                 bbox_inches="tight")
     plt.close(fig)
     print("[fig3] -> 03_du_performance_distributions.png")
@@ -223,7 +223,7 @@ def fig_du_distributions(reeval_dir, filt, out_dir):
 def fig_robustness(reeval_dir, filt, most_robust_id, out_dir):
     from src.plotting.robustness_summary import plot_du_robustness
     info = plot_du_robustness(reeval_dir, filt.accepted_ids,
-                              out_dir / "04_du_robustness.png",
+                              out_dir / "run04_du_robustness.png",
                               most_robust_id=most_robust_id)
     print(f"[fig4] baseline sat_sow={info['baseline_sat_sow']:.2f}, "
           f"best accepted={info['best_accepted_sat_sow']:.2f}, "
@@ -243,7 +243,7 @@ def fig_regret(reeval_dir, filt, out_dir):
     """
     from src.plotting.regret_summary import plot_regret_decomposition
     try:
-        out = plot_regret_decomposition(reeval_dir, out_dir / "04b_regret",
+        out = plot_regret_decomposition(reeval_dir, out_dir / "run04b_regret",
                                         accepted_ids=filt.accepted_ids)
     except (FileNotFoundError, ValueError) as exc:
         print(f"[fig4b] skipped: {exc}")
@@ -261,7 +261,7 @@ def fig_scenario_discovery(reeval_dir, preset, most_robust_id, out_dir):
     if not (ensemble_dir / "forcing_profiles.npz").exists():
         print(f"[fig5] no forcing_profiles.npz under {ensemble_dir}"); return
     info = plot_scenario_discovery(reeval_dir, ensemble_dir, most_robust_id,
-                                   out_dir / "05_scenario_discovery.png")
+                                   out_dir / "run05_scenario_discovery.png")
     print(f"[fig5] id {info['solution_id']} passes {info['n_pass']}/"
           f"{info['n_sow']} SOWs -> 05_scenario_discovery.png")
 
@@ -273,7 +273,7 @@ def fig_operating_rules(filt, examples, out_dir, formulation="ffmp"):
     """One operating-rules panel figure per representative policy."""
     from src.plotting.policy_rules import plot_policy_rules
     for sel in examples:
-        stub = out_dir / f"06_operating_rules_{sel.rule}"
+        stub = out_dir / f"run06_operating_rules_{sel.rule}"
         plot_policy_rules(filt.dv[sel.index], formulation, show_baseline=True,
                           candidate_label=f"{sel.label} (id {sel.index})",
                           output_file=stub)

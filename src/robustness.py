@@ -612,7 +612,7 @@ def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
 
 
 def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
-                       parties: dict = None) -> pd.DataFrame:
+                       parties: dict = None, axes=None) -> pd.DataFrame:
     """Unit-free harm frequencies. These carry the scalar role.
 
     Because the magnitudes above stay in natural units, the cross-objective and
@@ -638,6 +638,12 @@ def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
 
     A non-finite ``D`` counts as HARM, mirroring the non-finite-as-unsatisfied rule
     of the satisficing path: a degenerate SOW must not read as "no harm".
+
+    ``axes`` restricts the whole computation to a subset of objectives (a
+    criterion set's member axes): per-objective columns are emitted only for
+    those axes, party disjunctions only for parties with a member among them,
+    and the joint no-harm conjunctions run over the subset. Default None =
+    all objectives (the global frequencies).
     """
     D = incumbent_advantage(raw, baseline)                          # (S, G, M)
     tau = tau_ladder(raw.obj_names) if tau is None else tau
@@ -646,17 +652,28 @@ def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
         raise KeyError(f"no tolerance supplied for {missing}")
     tau_vec = np.array([float(tau[n]) for n in raw.obj_names], dtype=float)
 
+    if axes is not None:
+        unknown = [n for n in axes if n not in raw.obj_names]
+        if unknown:
+            raise KeyError(f"axes not in this cube: {unknown}")
+        keep = [k for k, n in enumerate(raw.obj_names) if n in set(axes)]
+        D = D[:, :, keep]
+        tau_vec = tau_vec[keep]
+        names = [raw.obj_names[k] for k in keep]
+    else:
+        names = list(raw.obj_names)
+
     finite = np.isfinite(D)
-    harm = (~finite) | (D < 0)                                      # (S, G, M)
+    harm = (~finite) | (D < 0)                                      # (S, G, M')
     harm_tau = (~finite) | (D < -tau_vec[None, None, :])
 
     index = pd.Index(raw.solution_ids, name="solution_id")
     out = pd.DataFrame(index=index)
-    for k, name in enumerate(raw.obj_names):
+    for k, name in enumerate(names):
         out[f"harm_freq__{name}"] = harm[:, :, k].mean(axis=1)
 
     parties = DECREE_PARTY_OBJECTIVES if parties is None else parties
-    col_of = {n: k for k, n in enumerate(raw.obj_names)}
+    col_of = {n: k for k, n in enumerate(names)}
     for party, members in parties.items():
         idx = [col_of[n] for n in members if n in col_of]
         if not idx:
@@ -702,6 +719,155 @@ def incumbent_spread(baseline: RawCube) -> dict:
             f"cannot serve as a regret scale. Report natural units for these."
         )
     return {n: float(s) for n, s in zip(baseline.obj_names, spread)}
+
+
+###############################################################################
+# Criterion-set scoring (Quinn 2017 subset criteria)
+###############################################################################
+
+def criterion_shortfall(raw: RawCube, thresholds: dict,
+                        kinds: dict = None) -> pd.DataFrame:
+    """Satisficing-regret: how far below a criterion the failing SOWs sit.
+
+    The McPhail et al. (2021) satisficing-regret transform ``max(0, c - f)``:
+    per axis with a FINITE threshold, the shortfall of the per-SOW value from
+    the criterion -- ``max(0, thr - v)`` for "ge" axes, ``max(0, v - thr)``
+    for "le" -- aggregated over SOWs. Where the binary Starr count saturates
+    (all-pass or all-fail), the shortfall still discriminates: two policies
+    failing the same SOWs differ in how badly they miss.
+
+    Values stay in each objective's NATURAL units and are never summed across
+    objectives (the module's no-composite-scalar rule). Non-finite cells are
+    NaN -- a failed SOW has no defined shortfall magnitude; its frequency is
+    already carried by the satisficing fraction.
+
+    Args:
+        raw: The per-SOW re-eval cube.
+        thresholds: Full threshold vector; only axes with finite values are
+            scored (non-binding ``+/-inf`` axes are skipped).
+        kinds: ``{objective: "ge"|"le"}``; defaults to the cube's snapshot.
+
+    Returns:
+        Per-solution frame with ``shortfall_mean__{name}`` (mean over SOWs,
+        passes contributing 0) and ``shortfall_q90__{name}`` (90th percentile
+        over SOWs, the Herman et al. (2015) tail emphasis) for each scored
+        axis.
+    """
+    kinds = kinds if kinds is not None else raw.kinds
+    index = pd.Index(raw.solution_ids, name="solution_id")
+    out = pd.DataFrame(index=index)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        for k, name in enumerate(raw.obj_names):
+            thr = thresholds.get(name)
+            if thr is None or not np.isfinite(thr):
+                continue
+            slab = raw.cube[:, :, k]                                # (S, G)
+            miss = thr - slab if kinds[name] == "ge" else slab - thr
+            shortfall = np.where(np.isfinite(slab),
+                                 np.maximum(0.0, miss), np.nan)
+            out[f"shortfall_mean__{name}"] = np.nanmean(shortfall, axis=1)
+            out[f"shortfall_q90__{name}"] = np.nanquantile(shortfall, 0.90,
+                                                           axis=1)
+    return out
+
+
+def score_criteria(raw: RawCube, baseline: Optional[RawCube] = None,
+                   sets=None) -> tuple[pd.DataFrame, dict]:
+    """Per-solution scorecard under the named criterion sets.
+
+    For each :class:`~src.satisficing_criteria.CriterionSet`:
+
+    - ``sat_set__{key}``: the Starr domain criterion under the set's
+      threshold vector (member axes at their placement, all others
+      non-binding) -- the same SOW-counting unit as the primary metric.
+      ``reference_all8`` reproduces ``sat_multivariate_sow`` exactly.
+    - ``shortfall_{mean,q90}__{key}__{obj}``: satisficing-regret magnitudes
+      for the set's member axes (:func:`criterion_shortfall`), namespaced by
+      set because placements for a shared axis may differ between sets.
+    - ``no_harm_freq_tau__{key}`` (baseline runs only): the incumbent-relative
+      no-harm frequency with the harm conjunction restricted to the set's
+      member axes -- "does the policy avoid harming the incumbent on THIS
+      framing's axes", the criterion-conditional companion of the global
+      ``no_harm_freq_tau``.
+
+    Args:
+        raw: The per-SOW re-eval cube.
+        baseline: Status-quo cube on the same ensemble (enables the per-set
+            no-harm columns).
+        sets: Criterion sets; defaults to
+            ``satisficing_criteria.ALL_SETS``.
+
+    Returns:
+        ``(scorecard, higher_better)`` in the :func:`score_robustness` sense.
+    """
+    from src.satisficing_criteria import ALL_SETS
+
+    sets = ALL_SETS if sets is None else sets
+    # A set whose member axes are absent from this cube (synthetic fixtures,
+    # alternative formulations) is skipped with a warning rather than raised:
+    # the named sets describe the production 8-objective schema, and run()
+    # scores every cube it is pointed at.
+    skipped = [c.key for c in sets if not c.reference
+               and any(a not in raw.obj_names for a in c.axes)]
+    if skipped:
+        warnings.warn(
+            f"criterion sets {skipped} name objectives absent from this cube "
+            f"({list(raw.obj_names)}); skipping them."
+        )
+        sets = [c for c in sets if c.key not in skipped]
+
+    index = pd.Index(raw.solution_ids, name="solution_id")
+    if (not raw.is_ensemble) or raw.n_sow <= 1 or not sets:
+        cols = [f"sat_set__{c.key}" for c in sets]
+        return (pd.DataFrame(np.nan, index=index, columns=cols),
+                {c: True for c in cols})
+
+    try:
+        tau = tau_ladder(raw.obj_names)
+    except KeyError:
+        tau = None
+
+    pieces, higher_better = [], {}
+    for cset in sets:
+        thresholds = cset.thresholds(raw.thresholds, raw.kinds)
+        sat = satisficing_multivariate_sow(raw, thresholds)
+        col = f"sat_set__{cset.key}"
+        pieces.append(sat.rename(col).to_frame())
+        higher_better[col] = True
+
+        if not cset.reference:
+            shortfall = criterion_shortfall(raw, thresholds)
+            shortfall.columns = [
+                c.replace("__", f"__{cset.key}__", 1)
+                for c in shortfall.columns
+            ]
+            pieces.append(shortfall)
+            higher_better.update({c: False for c in shortfall.columns})
+
+        if baseline is not None and tau is not None and not cset.reference:
+            freq = regret_frequencies(raw, baseline, tau=tau, axes=cset.axes)
+            col = f"no_harm_freq_tau__{cset.key}"
+            pieces.append(freq["no_harm_freq_tau"].rename(col).to_frame())
+            higher_better[col] = True
+
+    scorecard = pd.concat(pieces, axis=1)
+    all_missing = np.all(~np.isfinite(raw.cube), axis=(1, 2))
+    if all_missing.any():
+        scorecard.iloc[all_missing, :] = np.nan
+    return scorecard, higher_better
+
+
+def criterion_ranking_stability(per_set: pd.DataFrame) -> pd.DataFrame:
+    """Kendall τ_b between the solution rankings of each criterion set.
+
+    The Quinn et al. (2017) conclusion-invariance check: if the same policies
+    rank as most robust under every stakeholder framing, the criteria choice
+    eases rather than raises tension. Operates on the ``sat_set__*`` columns
+    of :func:`score_criteria`'s scorecard (all higher-better).
+    """
+    cols = [c for c in per_set.columns if c.startswith("sat_set__")]
+    return ranking_stability(per_set[cols], {c: True for c in cols})
 
 
 ###############################################################################
@@ -1019,11 +1185,14 @@ def score_robustness(raw: RawCube, baseline: Optional[RawCube] = None,
 def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
     """Score a re-eval output dir and write the robustness artifacts.
 
-    Writes ``robustness_scorecard.csv``, ``robustness_ranking_stability.csv``,
-    ``robustness_threshold_spectrum.csv``, ``robustness_quantiles.csv``,
-    ``robustness_attainability.csv``, and ``robustness_meta.json``. Returns the
-    scorecard path.
+    Writes ``robustness_scorecard.csv``, ``robustness_scorecard_criteria.csv``
+    (the per-criterion-set companion), ``robustness_criterion_stability.csv``,
+    ``robustness_ranking_stability.csv``, ``robustness_threshold_spectrum.csv``,
+    ``robustness_quantiles.csv``, ``robustness_attainability.csv``, and
+    ``robustness_meta.json``. Returns the scorecard path.
     """
+    from src.satisficing_criteria import ALL_SETS
+
     reeval_dir = Path(reeval_dir)
     raw = load_raw(reeval_dir)
     baseline = load_raw(baseline_dir) if baseline_dir else None
@@ -1032,6 +1201,14 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
 
     out = reeval_dir / "robustness_scorecard.csv"
     scorecard.to_csv(out)
+
+    # Per-criterion-set companion scorecard (Quinn 2017 subset criteria) and
+    # the cross-set conclusion-invariance matrix. Written beside -- never
+    # into -- the main scorecard, so existing consumers are unaffected.
+    criteria_scorecard, _ = score_criteria(raw, baseline, ALL_SETS)
+    criteria_scorecard.to_csv(reeval_dir / "robustness_scorecard_criteria.csv")
+    criterion_ranking_stability(criteria_scorecard).to_csv(
+        reeval_dir / "robustness_criterion_stability.csv")
 
     # Every scoring-time choice that MOVES a number is recorded next to the
     # numbers rather than left implicit in a default: the no-harm tolerance
@@ -1050,6 +1227,22 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
         meta["regret_tau"] = tau_ladder(raw.obj_names)
     except KeyError:
         meta["regret_tau"] = None
+    # The criterion sets are scoring-time choices that move numbers, so the
+    # full resolved vectors are snapshotted (moving-measuring-stick guard,
+    # extended to sets). Sets naming axes absent from this cube are omitted,
+    # matching score_criteria's skip.
+    meta["criterion_sets"] = {
+        c.key: {
+            "axes": list(c.axes),
+            "thresholds": {
+                n: (None if not np.isfinite(v) else v)
+                for n, v in c.thresholds(raw.thresholds, raw.kinds).items()
+            },
+            "reference": c.reference,
+        }
+        for c in ALL_SETS
+        if c.reference or all(a in raw.obj_names for a in c.axes)
+    }
     (reeval_dir / "robustness_meta.json").write_text(json.dumps(meta, indent=2))
 
     ranking_stability(scorecard, higher_better).to_csv(

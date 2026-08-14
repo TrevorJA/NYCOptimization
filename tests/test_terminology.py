@@ -112,6 +112,19 @@ RETIRED_TERMS: dict[str, str] = {
         "persist-time per-SOW pooling (reeval_core.sow_objective_matrix)",
     "SatisficingAgg":
         "AnnualUnitObjective.sat_threshold/sat_kind + robustness._satisfy",
+    # 2026-08 subset-criteria redesign: criterion sets became Quinn-2017-style
+    # explicit subsets (1-3 thresholded objectives, others unconstrained); the
+    # deviations-merge construction and the all-8-axis analysis conjunction
+    # were retired (the latter survives only as the reference_all8 set).
+    "deviations from the adopted vector":
+        "CriterionSet.criteria (an explicit member-axis subset; non-member "
+        "axes non-binding at +/-inf), src/satisficing_criteria.py",
+    "all eight focal criteria":
+        "all criteria in the focal set (subset criterion sets threshold 1-3 "
+        "axes; the all-axes conjunction is the reference_all8 set only)",
+    "all eight criteria jointly":
+        "all criteria in the set jointly (see reference_all8 for the "
+        "all-axes reference conjunction)",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

@@ -212,7 +212,7 @@ def part4_figure(archives, names, directions, eps, out_png):
     import pandas as pd
     from src.plotting.parallel_coordinates import (custom_parallel_coordinates,
                                                    minmaxs_from_directions)
-    from src.plotting.style import OBJ_AXIS_LABELS
+    from src.plotting.style import axis_label_for
 
     objs = archives["merged"] if "merged" in archives else next(iter(archives.values()))
     v = _vector(eps, names, CANDIDATES[PREFERRED])
@@ -223,7 +223,10 @@ def part4_figure(archives, names, directions, eps, out_png):
     natural = objs * np.where(directions == 1, -1.0, 1.0)
     custom_parallel_coordinates(
         pd.DataFrame(natural, columns=list(names)),
-        axis_labels=[OBJ_AXIS_LABELS.get(n, n) for n in names],
+        axis_labels=[
+            axis_label_for(n, "maximize" if d == 1 else "minimize")
+            for n, d in zip(names, directions)
+        ],
         minmaxs=minmaxs_from_directions(directions),
         title=f"Re-filter under {PREFERRED}",
         highlight_mask=mask, figsize=(13, 5.5),
@@ -244,7 +247,7 @@ def _two_panel_figure(natural, mask, names, directions, out_png, label=None):
     """
     label = PREFERRED if label is None else label
     import matplotlib.pyplot as plt
-    from src.plotting.style import apply_style, OBJ_AXIS_LABELS
+    from src.plotting.style import apply_style, axis_label_for
     from src.plotting.parallel_coordinates import _format_value
 
     n_objs = len(names)
@@ -276,7 +279,10 @@ def _two_panel_figure(natural, mask, names, directions, out_png, label=None):
             ax.text(i, -0.04, _format_value(worst), ha="center", va="top",
                     fontsize=7, color="0.3")
     ax_bot.set_xticks(x)
-    ax_bot.set_xticklabels([OBJ_AXIS_LABELS.get(n, n) for n in names], fontsize=8)
+    ax_bot.set_xticklabels([
+        axis_label_for(n, "maximize" if d == 1 else "minimize")
+        for n, d in zip(names, directions)
+    ], fontsize=8)
 
     fig.tight_layout()
     fig.savefig(out_png, dpi=200, bbox_inches="tight")

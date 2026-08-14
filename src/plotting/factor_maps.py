@@ -1,15 +1,16 @@
 """
-factor_maps.py - Phase-4 results figures: focal-criterion pass/fail maps over
-the deeply uncertain theta forcing space.
+factor_maps.py - Focal-criterion pass/fail maps over the theta forcing space.
 
 For a small set of frontier policies (plus the FFMP incumbent), each E_test
-SOW is classified pass/fail under the FOCAL satisficing criterion (all eight
-criteria jointly; ``NYCOPT_FOCAL_CRITERION``) and mapped at its forcing-space
-coordinates ``theta = (m, r1, r2)`` -- the water-year log-mean shift and the
-annual/semiannual harmonic amplitudes of the DU forcing parameterization
-(``src.plotting.forcing_space``). Small multiples per policy with a shared
-legend show WHERE each policy fails and how the robust optimized policies
-differ from the incumbent.
+SOW is classified pass/fail under the FOCAL criterion set (the conjunction of
+that set's member axes only; ``NYCOPT_FOCAL_CRITERION``) and mapped at its
+forcing-space coordinates ``theta = (m, r1, r2)`` -- the water-year log-mean
+shift and the annual/semiannual harmonic amplitudes of the DU forcing
+parameterization (``src.plotting.forcing_space``). Small multiples per policy
+with a shared legend show WHERE each policy fails and how the robust
+optimized policies differ from the incumbent. The fitted probability-surface
+companions live in ``src.factor_mapping`` /
+``scripts/main/factor_mapping_run.py``; this figure is the raw-label view.
 
 Policy selection is rule-based so it restates automatically under a different
 focal criterion: per design, the maximum-robustness policy on the
@@ -60,7 +61,7 @@ def select_focal_policies(results: dict) -> list[dict]:
     picks: list[dict] = []
     for d in _designs(results):
         res = results[d]
-        thr = focal.thresholds(res.raw.thresholds)
+        thr = rd.criterion_thresholds(res, focal)
         sat = rd.satisfaction(res.raw, thresholds=thr)
         joint = rd.joint_fraction(sat)
         ids = np.asarray(res.raw.solution_ids, dtype=int)
@@ -96,7 +97,7 @@ def _pass_vector(results: dict, pick: dict) -> np.ndarray:
     """Per-SOW joint pass/fail (focal criterion) for one selected policy."""
     focal = focal_criterion()
     res = results[pick["design"]]
-    thr = focal.thresholds(res.raw.thresholds)
+    thr = rd.criterion_thresholds(res, focal)
     if pick["solution_id"] is None:
         inc = rd.incumbent_satisfaction(res, thresholds=thr)
         return inc.all(axis=1)
@@ -112,9 +113,9 @@ def fig_factor_maps_theta_focal(results: dict, out_dir: Path,
     Columns: the selected frontier policies + the incumbent. Rows: the
     (volume multiplier e^m, annual amplitude r1) plane on top and the
     (e^m, semiannual amplitude r2) plane below. Green = the SOW meets all
-    eight focal criteria under that policy; grey = it fails at least one.
-    Column titles carry the pass count (repo rule: titles carry at most the
-    pass fraction).
+    criteria in the focal set under that policy; grey = it fails at least
+    one. Column titles carry the pass count (repo rule: titles carry at most
+    the pass fraction).
     """
     focal = focal_criterion()
     designs = _designs(results)
@@ -160,9 +161,11 @@ def fig_factor_maps_theta_focal(results: dict, out_dir: Path,
                   "r2": float(c), "pass": bool(p)}
                  for s, a, b, c, p in zip(first.sow_labels, em, r1, r2, ok)]
 
+    n_axes = len(focal.axes) if not focal.reference else len(first.obj_names)
     handles = [
         Line2D([], [], marker="o", ls="none", ms=7, color=PASS_COLOR,
-               label="SOW meets all eight focal criteria under this policy"),
+               label=(f"SOW meets all focal criteria "
+                      f"({n_axes} axes) under this policy")),
         Line2D([], [], marker="o", ls="none", ms=6, color=FAIL_COLOR,
                label="SOW fails at least one focal criterion"),
     ]
@@ -176,7 +179,7 @@ def fig_factor_maps_theta_focal(results: dict, out_dir: Path,
                 f"champions ({sel_txt}) and the FFMP incumbent, each judged "
                 f"per SOW on {first.n_sow} held-out E_test SOWs.")
     _add_footer(results, fig, y=-0.10, policies=policies,
-                criteria=focal.thresholds(first.thresholds),
+                criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=(f"Focal satisficing criteria — {focal.label} "
                                  f"(all must hold):"))
 

@@ -10,12 +10,16 @@ and produces the cross-design tables and figures.
 
 What it produces, and why each piece exists
 -------------------------------------------
-1. **Satisficing-threshold sweep (the main-text figure).** Quinn et al. (2020)
-   found that robustness-rank agreement ACROSS scenario designs *degrades as the
-   satisficing criterion becomes more stringent*, so the design effect is largest
-   at the conservative end and a single threshold could manufacture or hide the
-   entire result. Our thresholds are still provisional, which makes this the
-   analysis that renders the comparison credible. The per-run
+1. **Satisficing-threshold sweep (the SI uniform-stringency sweep).** Quinn et
+   al. (2020) found that robustness-rank agreement ACROSS scenario designs
+   *degrades as the satisficing criterion becomes more stringent*, so the design
+   effect is largest at the conservative end and a single threshold could
+   manufacture or hide the entire result. The thresholds themselves are ADOPTED
+   (2026-08-08, into ``objectives_ensemble._DEFAULT_THRESHOLDS``); the named
+   criterion subsets of ``src.satisficing_criteria`` are the analysis framings,
+   and the pooled-quantile sweep here is the SI uniform-stringency sweep over
+   the all-axes reference conjunction (``reference_all8``), verifying the
+   comparison does not hinge on the adopted placement. The per-run
    ``robustness_threshold_spectrum.csv`` cannot answer this: it is univariate,
    and the primary metric is the MULTIVARIATE (all-criteria conjunction) Starr
    domain criterion over the per-SOW annual-unit objective values. So the sweep
@@ -28,7 +32,10 @@ What it produces, and why each piece exists
    the criterion excludes). Pooling across designs is load-bearing -- a per-design
    quantile would make "the same stringency" a different magnitude for each
    design and the comparison at fixed ``s`` would be meaningless. The
-   registry-default thresholds are located on the same axis and marked.
+   adopted-default thresholds are located on the same axis and marked, each
+   named criterion set's member placements are located on it too
+   (``criterion_stringency.csv``), and a subset-aware companion sweep moves
+   only each named set's member axes (``design_threshold_sweep_by_set.csv``).
 
 2. **Cross-design scorecard aggregation + ranking stability.** Metric choice
    changes rankings (Herman et al. 2015; McPhail et al. 2018), so if satisficing
@@ -106,6 +113,7 @@ import config  # noqa: E402
 import src.robustness as rob  # noqa: E402
 from src.plotting import style  # noqa: E402
 from src.reeval_core import reeval_tag as reeval_tag_of  # noqa: E402
+from src.satisficing_criteria import NAMED_SETS, nonbinding_threshold  # noqa: E402
 from src.scenario_designs import SCENARIO_DESIGNS, campaign_designs  # noqa: E402
 
 
@@ -423,6 +431,46 @@ def design_ranking_stability(level: pd.DataFrame,
     return rob.ranking_stability(level, higher_better)
 
 
+def design_criterion_agreement(runs: list[ReevalRun]) -> pd.DataFrame:
+    """Kendall tau_b agreement of DESIGN rankings across the criterion sets.
+
+    Each criterion set induces a design ranking through the design's best
+    ``sat_set__{key}`` (best solution per run, mean over that design's runs --
+    the :func:`design_level` convention). The tau_b matrix between those
+    rankings is the design-level companion of
+    ``robustness.criterion_ranking_stability`` (which ranks solutions). Reads
+    each run's ``robustness_scorecard_criteria.csv``; runs that predate it are
+    skipped with a warning, and the frame is empty when no run carries one.
+
+    Returns:
+        Square frame (rows/cols = criterion keys) of tau_b between the design
+        rankings, or an empty frame.
+    """
+    rows = []
+    missing = 0
+    for r in runs:
+        path = r.path / "robustness_scorecard_criteria.csv"
+        if not path.exists():
+            missing += 1
+            continue
+        sc = pd.read_csv(path, index_col="solution_id")
+        cols = [c for c in sc.columns if c.startswith("sat_set__")]
+        row: dict = {"design": r.design}
+        row.update({c: _best(sc[c].to_numpy(dtype=float), True) for c in cols})
+        rows.append(row)
+    if missing:
+        warnings.warn(
+            f"[compare] {missing} run(s) have no robustness_scorecard_criteria"
+            f".csv (older re-evals; re-run `python -m src.robustness`); "
+            f"design-level criterion agreement covers the rest."
+        )
+    if not rows:
+        return pd.DataFrame()
+    level = pd.DataFrame(rows).groupby("design").mean()
+    level.columns = [c[len("sat_set__"):] for c in level.columns]
+    return rob.ranking_stability(level, {c: True for c in level.columns})
+
+
 ###############################################################################
 # 2b. Variance components
 ###############################################################################
@@ -571,7 +619,9 @@ def _mixedlm_rows(df: pd.DataFrame, n_obs: int, n_draws: int) -> list[dict]:
 
 
 ###############################################################################
-# 1. Satisficing-threshold sweep
+# 1. Satisficing stringency: the SI uniform-stringency sweep over the all-axes
+#    reference conjunction, plus the named criterion sets' placements and their
+#    subset-aware companion sweeps
 ###############################################################################
 
 def pooled_cells(runs: Iterable[ReevalRun]) -> dict[str, np.ndarray]:
@@ -643,6 +693,48 @@ def default_stringency(pooled: dict[str, np.ndarray], thresholds: dict,
     return pd.DataFrame(rows)
 
 
+def criterion_stringency(pooled: dict[str, np.ndarray], adopted: dict,
+                         kinds: dict) -> pd.DataFrame:
+    """Locate each named set's member thresholds on the pooled stringency axis.
+
+    Reuses :func:`default_stringency` on each named criterion set's full
+    threshold vector (non-member axes non-binding at ``+/-inf``) and keeps
+    only the member (finite-threshold) rows, so every named placement is
+    directly comparable with the uniform-stringency sweep.
+
+    Args:
+        pooled: Per-objective pooled per-SOW values (:func:`pooled_cells`).
+        adopted: The adopted threshold snapshot of the first run.
+        kinds: ``{objective: "ge"|"le"}`` from the same snapshot.
+
+    Returns:
+        Frame: criterion, objective, kind, default_threshold,
+        default_stringency, axis_in_set (always True).
+    """
+    frames = []
+    for cset in _applicable_sets(adopted):
+        df = default_stringency(pooled, cset.thresholds(adopted, kinds), kinds)
+        df = df[np.isfinite(df["default_threshold"].astype(float))].copy()
+        df.insert(0, "criterion", cset.key)
+        df["axis_in_set"] = True
+        frames.append(df)
+    if not frames:
+        return pd.DataFrame(columns=["criterion", "objective", "kind",
+                                     "default_threshold", "default_stringency",
+                                     "axis_in_set"])
+    return pd.concat(frames, ignore_index=True)
+
+
+def _applicable_sets(adopted: dict) -> list:
+    """The named sets whose member axes exist in this cube schema.
+
+    Synthetic fixtures and alternative formulations carry other objective
+    names; a named set that references axes absent from the schema is skipped
+    (matching ``robustness.score_criteria``), not raised.
+    """
+    return [c for c in NAMED_SETS if all(a in adopted for a in c.axes)]
+
+
 def threshold_sweep(runs: list[ReevalRun], pooled: dict[str, np.ndarray],
                     kinds: dict, grid: Iterable[float] = STRINGENCY_GRID,
                     ) -> pd.DataFrame:
@@ -683,6 +775,67 @@ def threshold_sweep(runs: list[ReevalRun], pooled: dict[str, np.ndarray],
         rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,
                      "stringency": np.nan, "is_default": True,
                      "best": _best(v, True), "median": _median(v)})
+    return pd.DataFrame(rows)
+
+
+def threshold_sweep_by_set(runs: list[ReevalRun],
+                           pooled: dict[str, np.ndarray], kinds: dict,
+                           adopted: dict,
+                           grid: Iterable[float] = STRINGENCY_GRID,
+                           ) -> pd.DataFrame:
+    """Subset-aware stringency sweep: one curve per NAMED criterion set.
+
+    Same construction as :func:`threshold_sweep`, but for each named set the
+    scalar stringency ``s`` moves ONLY the set's member axes (their pooled
+    ``s``-quantile thresholds from :func:`thresholds_at`); every non-member
+    axis is pinned non-binding at ``+/-inf`` -- exactly the set mechanics of
+    ``src.satisficing_criteria``. The ``is_default`` row per (run, set) scores
+    the set's own adopted-anchored placement, locating each named criterion on
+    its own sweep.
+
+    Args:
+        runs: The discovered re-eval runs.
+        pooled: Per-objective pooled per-SOW values (:func:`pooled_cells`).
+        kinds: ``{objective: "ge"|"le"}`` from the runs' meta snapshot.
+        adopted: The adopted threshold snapshot of the first run.
+        grid: Stringency levels ``s``.
+
+    Returns:
+        Tidy frame: criterion, design, draw, seed, stringency, is_default,
+        best, median.
+    """
+    grid = list(grid)
+    sets = _applicable_sets(adopted)
+    thr_by_set: dict[str, dict[float, dict]] = {}
+    for cset in sets:
+        thr_by_set[cset.key] = {}
+        for s in grid:
+            full = thresholds_at(s, pooled, kinds)
+            thr_by_set[cset.key][s] = {
+                name: full[name] if name in cset.axes
+                else nonbinding_threshold(kind)
+                for name, kind in kinds.items()
+            }
+    rows = []
+    for r in runs:
+        raw = rob.load_raw(r.path)
+        if not raw.is_ensemble or raw.n_sow <= 1:
+            raise ValueError(
+                f"re-eval cube {r.path} has no SOW axis (single-trace "
+                f"re-eval), so the primary metric is undefined for it."
+            )
+        for cset in sets:
+            ident = {"criterion": cset.key, "design": r.design,
+                     "draw": r.draw, "seed": r.seed}
+            for s in grid:
+                v = rob.satisficing_multivariate_sow(
+                    raw, thresholds=thr_by_set[cset.key][s]).to_numpy()
+                rows.append({**ident, "stringency": s, "is_default": False,
+                             "best": _best(v, True), "median": _median(v)})
+            v = rob.satisficing_multivariate_sow(
+                raw, thresholds=cset.thresholds(adopted, kinds)).to_numpy()
+            rows.append({**ident, "stringency": np.nan, "is_default": True,
+                         "best": _best(v, True), "median": _median(v)})
     return pd.DataFrame(rows)
 
 
@@ -1363,21 +1516,36 @@ def run_comparison(formulation: str = "ffmp", reeval_tag: Optional[str] = None,
     written["design_metric_matrix"] = table_dir / "design_metric_matrix.csv"
     level_best.to_csv(written["design_metric_matrix"])
 
+    crit_tau = design_criterion_agreement(runs)
+    if not crit_tau.empty:
+        written["design_criterion_agreement"] = (
+            table_dir / "design_criterion_agreement.csv")
+        crit_tau.to_csv(written["design_criterion_agreement"])
+
     vc = pd.concat([variance_components(summary, PRIMARY_METRIC, "best"),
                     variance_components(summary, PRIMARY_METRIC, "median")],
                    ignore_index=True)
     written["design_variance_components"] = table_dir / "design_variance_components.csv"
     vc.to_csv(written["design_variance_components"], index=False)
 
-    # --- 1. threshold sweep (the deliverable) ------------------------------
+    # --- 1. stringency sweeps (SI uniform sweep + per-set companions) -------
     pooled = pooled_cells(runs)
     defaults = default_stringency(pooled, thresholds, kinds)
     written["default_thresholds"] = table_dir / "default_thresholds.csv"
     defaults.to_csv(written["default_thresholds"], index=False)
 
+    crit_str = criterion_stringency(pooled, thresholds, kinds)
+    written["criterion_stringency"] = table_dir / "criterion_stringency.csv"
+    crit_str.to_csv(written["criterion_stringency"], index=False)
+
     sweep = threshold_sweep(runs, pooled, kinds)
     written["design_threshold_sweep"] = table_dir / "design_threshold_sweep.csv"
     sweep.to_csv(written["design_threshold_sweep"], index=False)
+
+    sweep_by_set = threshold_sweep_by_set(runs, pooled, kinds, thresholds)
+    written["design_threshold_sweep_by_set"] = (
+        table_dir / "design_threshold_sweep_by_set.csv")
+    sweep_by_set.to_csv(written["design_threshold_sweep_by_set"], index=False)
 
     mats = []
     for statistic in ("best", "median"):

@@ -43,7 +43,7 @@ from config import (active_scenario_name, baseline_objectives_csv,
                     run_output_dir)
 from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
-from src.plotting.style import apply_style, OBJ_AXIS_LABELS, FIGSIZE_WIDE
+from src.plotting.style import apply_style, axis_label_for, FIGSIZE_WIDE
 from src.plotting.hypervolume_convergence import (
     plot_hypervolume_convergence, _load_metrics_file, _read_runtime_nfe,
 )
@@ -150,7 +150,10 @@ def plot_seed_parallel_axes(
                 marker="o", markersize=5, label="FFMP baseline", zorder=10)
 
     ax.set_xticks(x)
-    ax.set_xticklabels([OBJ_AXIS_LABELS.get(n, n) for n in obj_names], fontsize=8)
+    ax.set_xticklabels([
+        axis_label_for(n, "maximize" if d == 1 else "minimize")
+        for n, d in zip(obj_names, directions)
+    ], fontsize=8)
     ax.set_ylabel("Preference Direction  (↑ better)")
     ax.set_title(f"Pareto-approximate sets, {scenario}/{slug} "
                  f"(per-seed merged reference sets)")

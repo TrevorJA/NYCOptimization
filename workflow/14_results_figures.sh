@@ -1,27 +1,30 @@
 #!/bin/bash
-# Step 14: Render the cross-design RESULTS-figure sequence.
+# Step 14: Render the SI + exploratory figure tiers from the unified registry.
 #
-# Replaces the retired outputs/figures/comparison/*/robustness set. The
-# sequence lives in scripts/main/results_figures.py, whose FIGURES registry
-# defines what "the sequence" is (phase 1: satisficing diagnostics; later
-# phases extend the registry). Pure post-processing on the persisted per-SOW
-# re-eval cubes — no simulation, so the job is small and fast.
+# The figure sequence lives in src/figures/registry.py (one FigureSpec per
+# figure, tiered manuscript / si / exploratory) and renders through the single
+# driver scripts/main/figures.py. This step renders the SI tier (the
+# manuscript tier is step 13); figures whose data needs are absent are skipped
+# with a message naming the missing artifact. Pure post-processing on the
+# persisted per-SOW re-eval cubes and scored CSVs — no simulation.
 #
 # Requires: every campaign design's re-eval on the common E_test tag
-# (workflow steps 08/09) with robustness_scorecard.csv + baseline/ cubes.
+# (workflow steps 08/09) with robustness_scorecard.csv (+ the
+# robustness_scorecard_criteria.csv companion) and baseline/ cubes.
 #
 # Everything comes from the environment — no positional args, no value flags:
 #   NYCOPT_REEVAL_TAG    E_test re-eval tag; defaults to the campaign spec's
 #                        tag. The interim 200-SOW subset MUST set it, e.g.
 #                        NYCOPT_REEVAL_TAG=etest_kn_50yr_n25000_first10ch
 #   NYCOPT_RESULTS_SLUG  moea slug shared by the campaign runs (ffmp_obj8)
-#   FIGURES              optional comma-separated subset of the sequence
+#   NYCOPT_FOCAL_CRITERION  focal criterion set (default: compromise)
+#   FIGURES              optional comma-separated subset (names or stems)
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_REEVAL_TAG=etest_kn_50yr_n25000_first10ch \
 #       workflow/14_results_figures.sh
 #
-# Sizing: loads three <10 MB parquet cubes and renders matplotlib PNGs;
+# Sizing: loads three <10 MB parquet cubes and renders matplotlib figures;
 # minutes on a single shared core.
 #
 #SBATCH --job-name=results_figures
@@ -53,9 +56,9 @@ if [[ -n "${FIGURES}" ]]; then
     ARGS=""
     for f in ${FIGURES//,/ }; do ARGS="${ARGS} --figure ${f}"; done
     # shellcheck disable=SC2086
-    python3 -u -m scripts.main.results_figures ${ARGS}
+    python3 -u -m scripts.main.figures ${ARGS}
 else
-    python3 -u -m scripts.main.results_figures --all
+    python3 -u -m scripts.main.figures --tier si
 fi
 
 echo "[results_figures] done: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

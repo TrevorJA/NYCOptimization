@@ -2,12 +2,13 @@
 robustness_comparison.py - Phase-3 results figures: cross-design policy
 robustness under the FOCAL satisficing criterion.
 
-The focal criterion is selected by ``NYCOPT_FOCAL_CRITERION`` (default
-"downstream", criterion B, chosen at the 2026-08-14 check-in) and resolved
-through ``src.satisficing_criteria.focal_criterion`` -- the whole tranche
+The focal criterion is env-selected: ``NYCOPT_FOCAL_CRITERION`` (default
+``compromise``), resolved through
+``src.satisficing_criteria.focal_criterion`` -- the whole tranche
 re-parameterizes if the focal choice changes, and output filenames carry the
 criterion key so runs under different criteria coexist. The footer on every
-figure states the focal thresholds explicitly.
+figure states the focal thresholds explicitly (non-member axes are
+unconstrained and collapse to one footer line).
 
 Figures:
   * parallel coordinates of each design's Pareto set (search objectives + a
@@ -118,7 +119,7 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
     frames, baselines = {}, {}
     for d in designs:
         res = results[d]
-        thr = focal.thresholds(res.raw.thresholds)
+        thr = rd.criterion_thresholds(res, focal)
         jf = rd.joint_fraction(rd.satisfaction(res.raw, thresholds=thr))
         frames[d] = pd.DataFrame(
             np.column_stack([_natural_front(res, slug), jf]), columns=cols)
@@ -153,7 +154,7 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
                      "focal_robustness": float(baselines[d][-1])})
     fig.tight_layout()
     _add_footer(results, fig, y=-0.015,
-                criteria=focal.thresholds(first.thresholds),
+                criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=_focal_header(focal))
 
     save_figure(fig, out_dir / f"parallel_coords_{focal.key}")
@@ -177,13 +178,12 @@ def fig_robustness_cdf_focal(results: dict, out_dir: Path,
     """
     focal = focal_criterion()
     designs = _designs(results)
-    first = results[designs[0]].raw
 
     rows = []
     fig, ax = plt.subplots(figsize=(7.6, 5.0))
     for d in designs:
         res = results[d]
-        thr = focal.thresholds(res.raw.thresholds)
+        thr = rd.criterion_thresholds(res, focal)
         joint = rd.joint_fraction(rd.satisfaction(res.raw, thresholds=thr))
         xs = np.sort(joint)
         exceed = 1.0 - np.arange(len(xs)) / len(xs)
@@ -198,7 +198,7 @@ def fig_robustness_cdf_focal(results: dict, out_dir: Path,
                 rows.append({"design": "ffmp_incumbent", "solution_id": -1,
                              "joint_starr": ij})
 
-    ax.set_xlabel("Fraction of SOWs meeting all eight focal criteria jointly")
+    ax.set_xlabel("Fraction of SOWs meeting all criteria in the focal set jointly")
     ax.set_ylabel("Fraction of the design's policies\nat or above the score")
     ax.set_ylim(-0.02, 1.02)
     ax.set_xlim(left=-0.005)
@@ -209,7 +209,7 @@ def fig_robustness_cdf_focal(results: dict, out_dir: Path,
                frameon=False, bbox_to_anchor=(0.5, -0.14))
     fig.tight_layout()
     _add_footer(results, fig, y=-0.17,
-                criteria=focal.thresholds(first.thresholds),
+                criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=_focal_header(focal))
 
     save_figure(fig, out_dir / f"robustness_cdf_{focal.key}")
@@ -236,13 +236,12 @@ def fig_regret_robustness_plane_focal(results: dict, out_dir: Path,
     """
     focal = focal_criterion()
     designs = _designs(results)
-    first = results[designs[0]].raw
 
     rows = []
     fig, ax = plt.subplots(figsize=(7.8, 6.4))
     for d in designs:
         res = results[d]
-        thr = focal.thresholds(res.raw.thresholds)
+        thr = rd.criterion_thresholds(res, focal)
         joint = rd.joint_fraction(rd.satisfaction(res.raw, thresholds=thr))
         no_harm = res.scorecard["no_harm_freq_tau"].reindex(
             res.raw.solution_ids).to_numpy(dtype=float)
@@ -260,7 +259,7 @@ def fig_regret_robustness_plane_focal(results: dict, out_dir: Path,
                  for i, (sid, j, h) in enumerate(
                      zip(res.raw.solution_ids, joint, no_harm))]
 
-    ax.set_xlabel("Fraction of SOWs meeting all eight focal criteria jointly")
+    ax.set_xlabel("Fraction of SOWs meeting all criteria in the focal set jointly")
     ax.set_ylabel("Fraction of SOWs with no objective degraded\n"
                   "vs the FFMP incumbent beyond tolerance τ")
     ax.set_xlim(-0.01, None)
@@ -276,7 +275,7 @@ def fig_regret_robustness_plane_focal(results: dict, out_dir: Path,
                bbox_to_anchor=(0.5, -0.10))
     fig.tight_layout()
     _add_footer(results, fig, y=-0.13,
-                criteria=focal.thresholds(first.thresholds),
+                criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=_focal_header(focal))
 
     save_figure(fig, out_dir / f"regret_robustness_plane_{focal.key}")

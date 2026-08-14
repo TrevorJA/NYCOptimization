@@ -104,6 +104,11 @@ OUTPUTS_DIR = PROJECT_DIR / "outputs"
 FIGURES_DIR = OUTPUTS_DIR / "figures"
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
 NOTES_DIR = PROJECT_DIR / "local_notes"
+# Manuscript-candidate and SI figure trees: the only figure locations at the
+# repo root, git-tracked, rendered at manuscript style (PNG + PDF). Everything
+# else lives under the gitignored outputs tree.
+MANUSCRIPT_FIG_DIR = PROJECT_DIR / "figures" / "manuscript"
+SI_FIG_DIR = PROJECT_DIR / "figures" / "si"
 
 # Borg shared libraries (user must compile and place here)
 BORG_DIR = PROJECT_DIR / "lib" / "borg"
@@ -228,28 +233,45 @@ def baseline_objectives_csv(formulation: str = "ffmp",
     return OUTPUT_BASELINE_DIR / scenario / name
 
 
+#: Per-run figure kinds routed to the stable results tree.
+FIGURE_KINDS_STABLE = frozenset({
+    "convergence", "pareto", "parallel_coords", "policy_inspection",
+    "robustness", "satisficing", "criteria", "robustness_cdf", "factor_maps",
+})
+
+#: Figure kinds routed EXPLICITLY to the exploratory tree (internal
+#: understanding, never manuscript candidates).
+FIGURE_KINDS_EXPLORATORY = frozenset({"scenario_discovery", "explore"})
+
+
 def figure_dir_for(scenario: str, moea_slug: str, kind: str) -> Path:
     """Return a two-axis-partitioned figure subdir, creating it if needed.
 
     Args:
         scenario: Scenario-design name (top-level partition).
         moea_slug: The moea slug from ``derive_slug()``.
-        kind: e.g. "convergence", "pareto", "parallel_coords",
-            "policy_inspection", "robustness", or one of the results-figure
-            kinds ("satisficing", "criteria", "robustness_cdf", "factor_maps").
-            Free-form names land under an ``_exploratory/`` subdir.
+        kind: A registered figure kind: one of
+            :data:`FIGURE_KINDS_STABLE` (results tree) or
+            :data:`FIGURE_KINDS_EXPLORATORY` (exploratory tree).
 
     Returns:
         ``outputs/figures/{scenario}/{moea_slug}/{kind}/`` (created), or the
-        ``_exploratory`` variant for non-stable kinds.
+        ``_exploratory`` variant for exploratory kinds.
+
+    Raises:
+        ValueError: For an unregistered kind. Unknown kinds used to be
+            silently demoted to ``_exploratory/``, which mis-filed figures
+            with a typo'd kind; routing is now explicit.
     """
-    stable = {"convergence", "pareto", "parallel_coords",
-              "policy_inspection", "robustness",
-              "satisficing", "criteria", "robustness_cdf", "factor_maps"}
-    if kind in stable:
+    if kind in FIGURE_KINDS_STABLE:
         p = FIGURES_DIR / scenario / moea_slug / kind
-    else:
+    elif kind in FIGURE_KINDS_EXPLORATORY:
         p = FIG_EXPLORATORY_DIR / scenario / moea_slug / kind
+    else:
+        raise ValueError(
+            f"unregistered figure kind {kind!r}; add it to "
+            f"config.FIGURE_KINDS_STABLE or FIGURE_KINDS_EXPLORATORY."
+        )
     p.mkdir(parents=True, exist_ok=True)
     return p
 

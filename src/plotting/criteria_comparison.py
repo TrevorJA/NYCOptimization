@@ -1,14 +1,18 @@
 """
-criteria_comparison.py - Phase-2 results figures: robustness under alternative
+criteria_comparison.py - Phase-2 results figures: robustness under the named
 satisficing criterion sets.
 
-Recomputes joint/decomposed satisficing under the named stakeholder criterion
-sets of ``src.satisficing_criteria`` (pure post-processing on the per-SOW
-cubes) and shows how the criterion choice reshapes the cross-design robustness
-landscape. Every figure carries the provenance footer plus one explicit
-bulleted threshold block PER criterion set (project rule: the exact criteria
-are always stated on the figure). Layouts size themselves to however many
-criterion sets are registered.
+Recomputes joint/decomposed satisficing under the criterion sets of
+``src.satisficing_criteria`` (pure post-processing on the per-SOW cubes):
+Quinn et al. (2017)-style subsets that each threshold only 1-3 member axes
+and leave every other axis unconstrained, plus the all-axes reference
+conjunction (always last, visually separated). The spread across sets shows
+how much the cross-design robustness landscape -- including the design
+ranking -- depends on the stakeholder framing. Every figure carries the
+provenance footer plus one explicit bulleted threshold block PER criterion
+set (project rule: the exact criteria are always stated on the figure;
+``style.criteria_lines`` collapses the unconstrained axes into one line).
+Layouts size themselves to however many criterion sets are registered.
 
 Figure conventions follow ``satisficing_diagnostics``: Okabe-Ito design
 colors, firebrick incumbent, solid = best policy / open marker = median
@@ -19,6 +23,7 @@ to the figure-tables tree (never under outputs/figures/).
 from __future__ import annotations
 
 import math
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +32,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from src import results_data as rd
-from src.satisficing_criteria import CRITERION_SETS
+from src.satisficing_criteria import ALL_SETS
 from src.plotting.satisficing_diagnostics import (
     INCUMBENT_LABEL,
     _designs,
@@ -47,12 +52,13 @@ from src.plotting.style import (
 def _criteria_footer(results: dict, fig, *, y_policies: float,
                      y_criteria: float) -> None:
     """Provenance box plus one explicit bulleted criteria box per set."""
-    first = results[_designs(results)[0]].raw
+    res0 = results[_designs(results)[0]]
+    first = res0.raw
     add_figure_footer(fig, [_policies_line(results)], y=y_policies)
-    n = len(CRITERION_SETS)
+    n = len(ALL_SETS)
     fontsize = 6.4 if n <= 4 else 5.9
-    for i, cset in enumerate(CRITERION_SETS):
-        thr = cset.thresholds(first.thresholds)
+    for i, cset in enumerate(ALL_SETS):
+        thr = rd.criterion_thresholds(res0, cset)
         lines = criteria_lines(thr, first.kinds, obj_order=first.obj_names,
                                header=f"{cset.label}:")
         add_figure_footer(fig, lines, x=(i + 0.5) / n, y=y_criteria,
@@ -88,24 +94,25 @@ def _criterion_grid(n: int, panel_w: float, panel_h: float, ncols: int = 3):
 
 def fig_criterion_robustness_matrix(results: dict, out_dir: Path,
                                     table_dir: Path) -> dict:
-    """Joint (all-8-axes) satisficing under each criterion set, by design.
+    """Joint satisficing under each criterion set's conjunction, by design.
 
     For each criterion set: the best and median Pareto policy's joint SOW
     fraction per design, plus the incumbent's. The horizontal spread across
     criterion sets shows how much the robustness landscape -- including the
-    design ranking -- depends on the criterion framing.
+    design ranking -- depends on the criterion framing. The all-axes
+    reference set sits last, behind a divider.
     """
     designs = _designs(results)
-    xs = np.arange(len(CRITERION_SETS))
+    xs = np.arange(len(ALL_SETS))
     offsets = np.linspace(-0.25, 0.25, num=len(designs))
 
     rows = []
-    fig, ax = plt.subplots(figsize=(2.4 * len(CRITERION_SETS) + 1.5, 5.2))
+    fig, ax = plt.subplots(figsize=(2.4 * len(ALL_SETS) + 1.5, 5.2))
     for di, d in enumerate(designs):
         color = design_color(d)
         res = results[d]
-        for xi, cset in enumerate(CRITERION_SETS):
-            thr = cset.thresholds(res.raw.thresholds)
+        for xi, cset in enumerate(ALL_SETS):
+            thr = rd.criterion_thresholds(res, cset)
             jf = rd.joint_fraction(rd.satisfaction(res.raw, thresholds=thr))
             inc = rd.incumbent_satisfaction(res, thresholds=thr)
             incj = float(inc.all(axis=1).mean()) if inc is not None else np.nan
@@ -123,11 +130,16 @@ def fig_criterion_robustness_matrix(results: dict, out_dir: Path,
                          "n_policies_nonzero": int((jf > 0).sum()),
                          "rationale": cset.rationale})
 
+    # The reference conjunction is a diagnostic, not a framing peer: divide it
+    # off from the named sets.
+    ax.axvline(xs[-1] - 0.5, color="0.55", ls="--", lw=1.0)
+    ax.axvspan(xs[-1] - 0.5, xs[-1] + 0.5, color="0.94", zorder=0)
+    ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
     ax.set_xticks(xs)
-    ax.set_xticklabels([c.label.replace(" criteria", "\ncriteria")
-                        .replace(" (search-time", "\n(search-time")
-                        for c in CRITERION_SETS], fontsize=8.5)
-    ax.set_ylabel("Fraction of E_test SOWs meeting\nall eight criteria jointly")
+    ax.set_xticklabels(["\n".join(textwrap.wrap(c.label, 16))
+                        for c in ALL_SETS], fontsize=8.5)
+    ax.set_ylabel("Fraction of E_test SOWs meeting\n"
+                  "all criteria in the set jointly")
     ax.set_ylim(-0.012, max(0.32, 1.08 * max(r["best_policy"] for r in rows)))
     ax.grid(axis="y", color="0.9", lw=0.8)
     ax.set_axisbelow(True)
@@ -149,7 +161,7 @@ def fig_criterion_robustness_matrix(results: dict, out_dir: Path,
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / "criterion_robustness_matrix.csv",
                               index=False)
-    return {"criteria": [c.key for c in CRITERION_SETS]}
+    return {"criteria": [c.key for c in ALL_SETS]}
 
 
 ###############################################################################
@@ -170,11 +182,11 @@ def fig_criterion_collapse(results: dict, out_dir: Path,
     obj_names = results[designs[0]].raw.obj_names
 
     tables = []
-    fig, panels = _criterion_grid(len(CRITERION_SETS), 5.0, 3.9)
-    for ax, cset in zip(panels, CRITERION_SETS):
+    fig, panels = _criterion_grid(len(ALL_SETS), 5.0, 3.9)
+    for ax, cset in zip(panels, ALL_SETS):
         for d in designs:
             res = results[d]
-            thr = cset.thresholds(res.raw.thresholds)
+            thr = rd.criterion_thresholds(res, cset)
             sat = rd.satisfaction(res.raw, thresholds=thr)
             curve = rd.collapse_curve(sat, obj_names, order)
             curve.insert(0, "design", d)
@@ -194,7 +206,10 @@ def fig_criterion_collapse(results: dict, out_dir: Path,
                     tables.append(icurve)
                     ax.plot(depths, icurve["best_policy"], "-D", ms=3.5,
                             color=INCUMBENT_COLOR, lw=1.6, zorder=5)
-        ax.set_title(cset.label, fontsize=10)
+        ax.set_title(cset.label, fontsize=10,
+                     fontstyle="italic" if cset.reference else "normal")
+        if cset.reference:
+            ax.set_facecolor("0.965")
         ax.set_ylim(-0.03, 1.03)
         ax.grid(axis="y", color="0.92", lw=0.7)
         ax.set_axisbelow(True)
@@ -221,7 +236,7 @@ def fig_criterion_collapse(results: dict, out_dir: Path,
     plt.close(fig)
     pd.concat(tables, ignore_index=True).to_csv(
         table_dir / "criterion_collapse.csv", index=False)
-    return {"criteria": [c.key for c in CRITERION_SETS]}
+    return {"criteria": [c.key for c in ALL_SETS]}
 
 
 ###############################################################################
@@ -232,11 +247,14 @@ def fig_drought_flood_split(results: dict, out_dir: Path,
                             table_dir: Path) -> dict:
     """Each policy's supply/low-flow-side vs flood-side satisficing.
 
-    x: joint SOW fraction over the seven non-flood criteria (deliveries,
-    Decree flows, storage); y: SOW fraction meeting the flood criterion alone.
-    The empty upper-right corner IS the structural wet-dry pincer: policies
-    can buy low-flow robustness or flood robustness, and the frontier shows
-    the exchange rate under each criterion framing.
+    x: joint SOW fraction over the SET'S non-flood member criteria
+    (deliveries, Decree flows, storage -- non-member axes are non-binding);
+    y: SOW fraction meeting the flood criterion alone. For a set with no
+    flood member axis, y is scored at the ADOPTED flood threshold instead --
+    a diagnostic overlay, not a member criterion, flagged on the panel. The
+    empty upper-right corner IS the structural wet-dry pincer: policies can
+    buy low-flow robustness or flood robustness, and the frontier shows the
+    exchange rate under each criterion framing.
     """
     designs = _designs(results)
     obj_names = results[designs[0]].raw.obj_names
@@ -245,18 +263,25 @@ def fig_drought_flood_split(results: dict, out_dir: Path,
     dry_idx = [i for i, n in enumerate(obj_names) if n != flood]
 
     rows = []
-    fig, panels = _criterion_grid(len(CRITERION_SETS), 4.4, 4.0)
-    for ax, cset in zip(panels, CRITERION_SETS):
+    fig, panels = _criterion_grid(len(ALL_SETS), 4.4, 4.0)
+    for ax, cset in zip(panels, ALL_SETS):
+        flood_in_set = cset.reference or flood in cset.axes
         for d in designs:
             res = results[d]
-            thr = cset.thresholds(res.raw.thresholds)
+            thr = rd.criterion_thresholds(res, cset)
+            if not flood_in_set:
+                # y-axis diagnostic overlay: the adopted flood threshold.
+                thr[flood] = res.raw.thresholds[flood]
             sat = rd.satisfaction(res.raw, thresholds=thr)
+            # dry_idx spans every non-flood axis, but non-member axes are
+            # non-binding, so this is the SET'S non-flood conjunction.
             x = sat[:, :, dry_idx].all(axis=2).mean(axis=1)
             y = sat[:, :, k_flood].mean(axis=1)
             ax.scatter(x, y, s=14, color=design_color(d), alpha=0.45, lw=0,
                        zorder=3)
             rows += [{"criterion": cset.key, "design": d, "solution_id": sid,
-                      "lowflow_joint": float(xv), "flood_frac": float(yv)}
+                      "lowflow_joint": float(xv), "flood_frac": float(yv),
+                      "flood_axis_in_set": flood_in_set}
                      for sid, xv, yv in zip(res.raw.solution_ids, x, y)]
             if d == designs[0]:
                 inc = rd.incumbent_satisfaction(res, thresholds=thr)
@@ -266,8 +291,16 @@ def fig_drought_flood_split(results: dict, out_dir: Path,
                     ax.plot(ix, iy, "D", ms=7, color=INCUMBENT_COLOR, zorder=5)
                     rows.append({"criterion": cset.key,
                                  "design": "ffmp_incumbent", "solution_id": -1,
-                                 "lowflow_joint": ix, "flood_frac": iy})
-        ax.set_title(cset.label, fontsize=10)
+                                 "lowflow_joint": ix, "flood_frac": iy,
+                                 "flood_axis_in_set": flood_in_set})
+        ax.set_title(cset.label, fontsize=10,
+                     fontstyle="italic" if cset.reference else "normal")
+        if cset.reference:
+            ax.set_facecolor("0.965")
+        if not flood_in_set:
+            ax.text(0.02, 0.02, "flood axis not in set:\ny at the adopted "
+                    "threshold (diagnostic)", transform=ax.transAxes,
+                    fontsize=6.6, color="0.35", va="bottom")
         ax.set_xlim(-0.03, 1.03)
         ax.set_ylim(-0.03, 1.03)
         ax.grid(color="0.92", lw=0.7)
@@ -275,8 +308,8 @@ def fig_drought_flood_split(results: dict, out_dir: Path,
         if panels.index(ax) % 3 == 0:
             ax.set_ylabel("Fraction of SOWs meeting\nthe flood criterion")
         if panels.index(ax) + 3 >= len(panels):
-            ax.set_xlabel("Fraction of SOWs meeting all seven\n"
-                          "supply / low-flow criteria jointly")
+            ax.set_xlabel("Fraction of SOWs meeting the set's\n"
+                          "non-flood criteria jointly")
 
     handles = _design_legend(results)
     fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False,

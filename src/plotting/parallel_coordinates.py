@@ -376,7 +376,7 @@ def plot_parallel_coordinates(
             visible. None = all solutions drawn alike.
         **kwargs: Forwarded to :func:`custom_parallel_coordinates`.
     """
-    from src.plotting.style import OBJ_AXIS_LABELS, label_for
+    from src.plotting.style import axis_label_for
 
     n_vars = get_n_vars(formulation)
     _, obj_data = load_reference_set(set_file, n_vars, n_objs=get_n_objs())
@@ -400,7 +400,10 @@ def plot_parallel_coordinates(
                                f"({formulation}, {obj_data.shape[0]} solutions)")
     result = custom_parallel_coordinates(
         pd.DataFrame(natural, columns=obj_names),
-        axis_labels=[OBJ_AXIS_LABELS.get(n, label_for(n)) for n in obj_names],
+        axis_labels=[
+            axis_label_for(n, "maximize" if d == 1 else "minimize")
+            for n, d in zip(obj_names, directions)
+        ],
         minmaxs=minmaxs_from_directions(directions),
         baseline=baseline_objs,
         highlight_mask=keep_mask,

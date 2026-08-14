@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from src import results_data as rd
-from src.satisficing_criteria import default_criterion
+from src.satisficing_criteria import criterion_by_key
 from src.plotting.style import (
     DESIGN_ORDER,
     INCUMBENT_COLOR,
@@ -42,6 +42,11 @@ from src.plotting.style import (
 
 #: Display label for the status-quo policy in legends.
 INCUMBENT_LABEL = "FFMP incumbent (status quo)"
+
+
+def _reference_criterion():
+    """The all-axes reference (adopted snapshot) these diagnostics decompose."""
+    return criterion_by_key("reference_all8")
 
 
 def _policies_line(results: dict) -> str:
@@ -96,7 +101,7 @@ def fig_satisficing_decomposition(results: dict, out_dir: Path,
     saturated (non-discriminating), which are near-unsatisfiable, and where
     the designs differ.
     """
-    crit = default_criterion()
+    crit = _reference_criterion()
     designs = _designs(results)
     obj_names = results[designs[0]].raw.obj_names
     m = len(obj_names)
@@ -106,7 +111,7 @@ def fig_satisficing_decomposition(results: dict, out_dir: Path,
     fig, ax = plt.subplots(figsize=(8.6, 7.2))
     for di, d in enumerate(designs):
         res = results[d]
-        thr = crit.thresholds(res.raw.thresholds)
+        thr = rd.criterion_thresholds(res, crit)
         uni = rd.univariate_fraction(rd.satisfaction(res.raw, thresholds=thr))
         if thr == res.raw.thresholds:
             # Consistency guard against the persisted scorecard, valid only
@@ -158,7 +163,7 @@ def fig_satisficing_decomposition(results: dict, out_dir: Path,
               ncol=2, frameon=False)
     fig.tight_layout()
     _add_footer(results, fig, y=-0.15,
-                criteria=crit.thresholds(results[designs[0]].raw.thresholds),
+                criteria=rd.criterion_thresholds(results[designs[0]], crit),
                 criteria_header=f"{crit.label} (all must hold):")
 
     save_figure(fig, out_dir / "satisficing_decomposition")
@@ -183,7 +188,7 @@ def fig_conjunction_collapse(results: dict, out_dir: Path,
     incumbent. The right end of every solid curve is the primary Starr
     robustness under the full default criterion.
     """
-    crit = default_criterion()
+    crit = _reference_criterion()
     designs = _designs(results)
     order = list(rd.COLLAPSE_ORDER)
     depths = np.arange(1, len(order) + 1)
@@ -192,7 +197,7 @@ def fig_conjunction_collapse(results: dict, out_dir: Path,
     fig, ax = plt.subplots(figsize=(9.0, 5.4))
     for d in designs:
         res = results[d]
-        thr = crit.thresholds(res.raw.thresholds)
+        thr = rd.criterion_thresholds(res, crit)
         sat = rd.satisfaction(res.raw, thresholds=thr)
         curve = rd.collapse_curve(sat, res.raw.obj_names, order)
         curve.insert(0, "design", d)
@@ -231,7 +236,7 @@ def fig_conjunction_collapse(results: dict, out_dir: Path,
     ax.legend(handles=handles, loc="upper right", frameon=False)
     fig.tight_layout()
     _add_footer(results, fig, y=-0.06,
-                criteria=crit.thresholds(results[designs[0]].raw.thresholds),
+                criteria=rd.criterion_thresholds(results[designs[0]], crit),
                 criteria_header=f"{crit.label} (all must hold):")
 
     save_figure(fig, out_dir / "conjunction_collapse")
@@ -268,11 +273,11 @@ def fig_threshold_response(results: dict, out_dir: Path,
     median policy. Firebrick: incumbent. Crimson dashed vertical: the default
     criterion -- its intersection height IS the current satisficing fraction.
     """
-    crit = default_criterion()
+    crit = _reference_criterion()
     designs = _designs(results)
     first = results[designs[0]].raw
     obj_names, kinds = first.obj_names, first.kinds
-    thresholds = crit.thresholds(first.thresholds)
+    thresholds = rd.criterion_thresholds(results[designs[0]], crit)
 
     rows = []
     fig, axes = plt.subplots(2, 4, figsize=(13.4, 6.6), sharey=True)
@@ -379,14 +384,14 @@ def fig_attainability_blockers(results: dict, out_dir: Path,
 
     For each SOW, the set of axes that no policy in the design's Pareto set
     satisfies there ("blocked" axes); SOWs where every axis is individually
-    satisfiable but no single policy clears all eight are the cross-axis
+    satisfiable but no single policy clears every axis are the cross-axis
     conflict category; SOWs some policy fully satisfies count as attainable.
     Grouped horizontal bars over the shared pattern list.
     """
-    crit = default_criterion()
+    crit = _reference_criterion()
     designs = _designs(results)
     counts = {d: _blocking_patterns(
-        results[d], crit.thresholds(results[d].raw.thresholds))
+        results[d], rd.criterion_thresholds(results[d], crit))
         for d in designs}
     pooled = Counter()
     for c in counts.values():
@@ -417,7 +422,7 @@ def fig_attainability_blockers(results: dict, out_dir: Path,
     ax.set_axisbelow(True)
     ax.legend(loc="lower right", frameon=False)
     fig.tight_layout()
-    crit_thr = crit.thresholds(results[designs[0]].raw.thresholds)
+    crit_thr = rd.criterion_thresholds(results[designs[0]], crit)
     _add_footer(results, fig, y=-0.05, criteria=crit_thr, criteria_header=(
         f"Blocking is judged against: {crit.label} (all must hold):"))
 
@@ -444,7 +449,7 @@ def fig_pairwise_cosatisficing(results: dict, out_dir: Path,
     obj_names = results[designs[0]].raw.obj_names
     m = len(obj_names)
 
-    crit = default_criterion()
+    crit = _reference_criterion()
     rows = []
     fig, axes = plt.subplots(1, len(designs), figsize=(4.6 * len(designs), 4.9))
     axes = np.atleast_1d(axes)
@@ -453,7 +458,7 @@ def fig_pairwise_cosatisficing(results: dict, out_dir: Path,
     for ax, d in zip(axes, designs):
         sat = rd.satisfaction(
             results[d].raw,
-            thresholds=crit.thresholds(results[d].raw.thresholds))
+            thresholds=rd.criterion_thresholds(results[d], crit))
         mat = np.full((m, m), np.nan)
         for i in range(m):
             for j in range(i + 1):
@@ -478,7 +483,7 @@ def fig_pairwise_cosatisficing(results: dict, out_dir: Path,
     fig.colorbar(im, ax=list(axes), shrink=0.75, pad=0.02,
                  label="Best policy's joint SOW fraction (axis pair)")
     _add_footer(results, fig, y=-0.06,
-                criteria=crit.thresholds(results[designs[0]].raw.thresholds),
+                criteria=rd.criterion_thresholds(results[designs[0]], crit),
                 criteria_header=(
                     f"Pairs are judged against: {crit.label} (all must hold):"))
 

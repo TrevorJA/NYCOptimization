@@ -16,8 +16,8 @@ NATURAL units (see :func:`src.pareto_filter.to_natural`) and returning a
 Axis convention follows the rest of the repo (``search_diagnostics``,
 ``parallel_coordinates``): every axis is min-max normalized and flipped so UP
 is the preferred direction, with the raw best/worst values annotated at the
-top/bottom of each axis and the direction carried in the tick label from
-``style.OBJ_AXIS_LABELS``.
+top/bottom of each axis and the direction carried in the tick label derived
+by ``style.axis_label_for``.
 """
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
-from src.plotting.style import (FIGSIZE_WIDE, OBJ_AXIS_LABELS, annotated_corr_heatmap,
-                                label_for, save_figure)
+from src.plotting.style import (FIGSIZE_WIDE, annotated_corr_heatmap,
+                                axis_label_for, label_for, save_figure)
 from src.solution_selection import dominance_mask, orient_maximize
 
 #: Reference-line colour for the FFMP baseline, matching search_diagnostics.
@@ -98,8 +98,10 @@ class _ParallelAxes:
         """Apply ticks, annotations, title and legend; return the figure."""
         ax = self.ax
         ax.set_xticks(self.x)
-        ax.set_xticklabels([OBJ_AXIS_LABELS.get(n, n) for n in self.obj_names],
-                           fontsize=8)
+        ax.set_xticklabels([
+            axis_label_for(n, "maximize" if d == 1 else "minimize")
+            for n, d in zip(self.obj_names, self.directions)
+        ], fontsize=8)
         ax.set_ylabel("Preference direction  (↑ better)")
         ax.set_title(title)
         ax.set_ylim(-0.16, 1.14)

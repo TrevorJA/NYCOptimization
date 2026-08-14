@@ -89,6 +89,78 @@ def _mass_level_thresholds(hist: np.ndarray, fractions: tuple[float, ...]) -> li
     return out
 
 
+def draw_pair_panel(
+    ax,
+    pool_H: np.ndarray, pool_axes: list[str],
+    layers: list[OverlayLayer],
+    etest_H: np.ndarray, etest_axes: list[str],
+    ax_x: str, ax_y: str,
+    *,
+    xlim: tuple[float, float], ylim: tuple[float, float],
+    box_x: tuple[float, float] | None = None,
+    box_y: tuple[float, float] | None = None,
+    grid_bins: int = 120,
+    scatter_size: float = 11.0,
+) -> None:
+    """Draw one pairwise hazard-space overlay panel on ``ax``.
+
+    Layer order (bottom to top): candidate pool as a grayscale log-density
+    field, robust selection box (only when both ``box_x`` and ``box_y`` are
+    given), E_test's sub-window cloud as mass contours, then each search
+    ensemble as a categorical scatter. Shared by the SI corner figure
+    (:func:`build_overlay_figure`) and the manuscript composition figure
+    (``src.plotting.ensemble_composition``).
+
+    Args:
+        ax: Target axes.
+        pool_H: ``(P, m_all)`` candidate-pool hazard image.
+        pool_axes: Pool axis names (columns of ``pool_H``).
+        layers: Realized search-ensemble layers, in draw order.
+        etest_H: ``(n_sub, m_all)`` E_test sub-window hazard image.
+        etest_axes: E_test axis names.
+        ax_x: Hazard-axis name on x.
+        ax_y: Hazard-axis name on y.
+        xlim: Panel x limits (also the histogram range).
+        ylim: Panel y limits (also the histogram range).
+        box_x: Robust selection bounds ``(lo, hi)`` on x, or None for no box.
+        box_y: Robust selection bounds ``(lo, hi)`` on y, or None for no box.
+        grid_bins: 2-D histogram resolution for the pool density field.
+        scatter_size: Marker size for the search-ensemble scatters.
+    """
+    etest_color = LAYER_COLORS["etest"]
+    x_p = _col(pool_H, pool_axes, ax_x)
+    y_p = _col(pool_H, pool_axes, ax_y)
+    hist, xe, ye = np.histogram2d(x_p, y_p, bins=grid_bins, range=[xlim, ylim])
+    ax.pcolormesh(
+        xe, ye, np.ma.masked_equal(hist.T, 0), cmap="Greys",
+        norm=LogNorm(vmin=1, vmax=max(hist.max(), 2)),
+        rasterized=True, zorder=1,
+    )
+    if box_x is not None and box_y is not None:
+        (x0, x1), (y0, y1) = box_x, box_y
+        ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False,
+                               edgecolor="0.25", lw=0.9, ls="--", zorder=2))
+    eh, exe, eye = np.histogram2d(
+        _col(etest_H, etest_axes, ax_x), _col(etest_H, etest_axes, ax_y),
+        bins=ETEST_CONTOUR_BINS, range=[xlim, ylim],
+    )
+    eh_s = gaussian_filter(eh, ETEST_CONTOUR_SMOOTH_SIGMA)
+    levels = sorted(set(_mass_level_thresholds(eh_s, ETEST_MASS_LEVELS)))
+    levels = [lv for lv in levels if lv > 0]
+    if levels:
+        xc, yc = (exe[:-1] + exe[1:]) / 2, (eye[:-1] + eye[1:]) / 2
+        ax.contour(xc, yc, eh_s.T, levels=levels, colors=etest_color,
+                   linewidths=1.3, zorder=3)
+    for layer in layers:
+        ax.scatter(
+            _col(layer.H, layer.axes, ax_x), _col(layer.H, layer.axes, ax_y),
+            s=scatter_size, color=layer.color, edgecolors="white",
+            linewidths=0.4, alpha=0.9, zorder=4,
+        )
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+
+
 def overlap_stats(
     pool_H: np.ndarray, pool_axes: list[str],
     etest_H: np.ndarray, etest_axes: list[str],
@@ -187,38 +259,12 @@ def build_overlay_figure(
                 ax.set_xlim(*lims[ax_x])
                 ax.set_yticks([])
             else:
-                x_p = _col(pool_H, pool_axes, ax_x)
-                y_p = _col(pool_H, pool_axes, ax_y)
-                hist, xe, ye = np.histogram2d(
-                    x_p, y_p, bins=grid_bins, range=[lims[ax_x], lims[ax_y]]
+                draw_pair_panel(
+                    ax, pool_H, pool_axes, layers, etest_H, etest_axes,
+                    ax_x, ax_y, xlim=lims[ax_x], ylim=lims[ax_y],
+                    box_x=tuple(box[ax_x]), box_y=tuple(box[ax_y]),
+                    grid_bins=grid_bins,
                 )
-                ax.pcolormesh(
-                    xe, ye, np.ma.masked_equal(hist.T, 0), cmap="Greys",
-                    norm=LogNorm(vmin=1, vmax=max(hist.max(), 2)),
-                    rasterized=True, zorder=1,
-                )
-                (x0, x1), (y0, y1) = box[ax_x], box[ax_y]
-                ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False,
-                                       edgecolor="0.25", lw=0.9, ls="--", zorder=2))
-                eh, exe, eye = np.histogram2d(
-                    _col(etest_H, etest_axes, ax_x), _col(etest_H, etest_axes, ax_y),
-                    bins=ETEST_CONTOUR_BINS, range=[lims[ax_x], lims[ax_y]],
-                )
-                eh_s = gaussian_filter(eh, ETEST_CONTOUR_SMOOTH_SIGMA)
-                levels = sorted(set(_mass_level_thresholds(eh_s, ETEST_MASS_LEVELS)))
-                levels = [lv for lv in levels if lv > 0]
-                if levels:
-                    xc, yc = (exe[:-1] + exe[1:]) / 2, (eye[:-1] + eye[1:]) / 2
-                    ax.contour(xc, yc, eh_s.T, levels=levels, colors=etest_color,
-                               linewidths=1.3, zorder=3)
-                for layer in layers:
-                    ax.scatter(
-                        _col(layer.H, layer.axes, ax_x), _col(layer.H, layer.axes, ax_y),
-                        s=11, color=layer.color, edgecolors="white", linewidths=0.4,
-                        alpha=0.9, zorder=4,
-                    )
-                ax.set_xlim(*lims[ax_x])
-                ax.set_ylim(*lims[ax_y])
             if i < m - 1:
                 ax.set_xticklabels([])
             if j > 0 and i != j:
