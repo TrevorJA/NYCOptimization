@@ -10,6 +10,87 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 1. Remaining method closures
 
+- [x] **[local]** REGRET TOLERANCE tau RE-ADOPTED 2026-08-14 on ROUND values
+  (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;
+  k = 1 unchanged) after pass B ran (job 19910387) and the paired near-tie
+  floor came back 5.7-21.8x SMALLER than the unpaired pass-A bound on the five
+  axes where the floor set tau. At the old vector the RQ2 comparison was inert:
+  every design at no_harm_freq_tau = 1.000, all pairwise diffs exactly 0.000
+  with paired bootstrap SE 0.0000, and ASSAY SENSITIVITY FAILED. Written to all
+  10 `workflow/envs/*.env`, recorded in `supplemental_config.RTOL_ADOPTED_K`
+  and methods note S8; full chain re-run at the new tau (job 19910556).
+  ALSO FIXED: `tau_ladder` returned the whole-vector override UNSCALED by k, so
+  every rung of a k-sweep was identical and fig 07 panel (b) was a flat line by
+  construction. The override is the tolerance at the ADOPTED rung, so it is now
+  scaled by k/REGRET_TAU_K (identity at k = 1). Fig 07 panel (b) now sweeps and
+  shows historic separating from the matched pair over k = 0-2.
+  STILL OPEN from pass B: (i) `run_pass_b()` raises `KeyError: 'level'` at
+  K = 1 draw instead of degrading to "null not estimable"; (ii) the k-sweep
+  call sites (`compare_designs.py:955`, diagnostics 402/492) call
+  `tau_ladder(k=k)` with no `floors=`, so with the override unset they use the
+  eps-only ladder, not the adopted basis; (iii) `rtol_noise_floor.csv` carries
+  STALE epsilons - pass A should be re-run to refresh it; (iv) delta is only
+  `2 x paired SE` (0.102 all-8 / 0.065 compromise-3), a LOWER BOUND, until
+  K > 1 draws exist; (v) the matched-design ordering on the all-8 metric flips
+  with the flood tolerance alone (between 0.25 and 0.30) and must be reported
+  with that sensitivity shown.
+
+- [ ] **[local]** CHOOSE ONE of the three manuscript Figure 9 candidates
+  (DU-space regret) and cut the other two. All three were built 2026-08-14
+  (`src/plotting/factor_map_surfaces.py`, sharing one grid routine with fig 8;
+  artifacts `regret_map_{fits,labels,surfaces}` + `regret_exposure.csv` from
+  `factor_mapping_run.py`), all carry `number=9` so the numbering does not
+  churn, and all render:
+  * **A `fig09_regret_surfaces`** — the SAME compromise policies as fig 8.
+    DEGENERATE: 200/200 low regret in all three panels, uniform blue. At
+    tau = 0 (any degradation at all) it is still 0 / 0 / 17 SOWs, the 17 being
+    historic #115 on Trenton alone. Keep only if the intended message is "the
+    selected policies never harm the incumbent anywhere".
+  * **B `fig09_regret_surfaces_worst`** — each design's MOST-regretting Pareto
+    policy. The sharpest exhibit: a clean regret boundary near e^m ~ 1.1-1.2
+    with an r1 interaction (fixedprob #595, 79/200 regret, CV AUC 0.99;
+    hazfill #684, 78/200, AUC 0.94), and historic #143 regretting in all 200 —
+    i.e. historic's front CONTAINS a policy that harms everywhere.
+  * **C `fig09_regret_exposure`** — no policy selected: per SOW, the share of
+    the design's whole front that stays low-regret. Medians 1.00 / 1.00 / 0.48;
+    exposure rises monotonically with e^m. Immune to selection effects and
+    stays a frequency (no cross-objective normalization), so it is the safest
+    for a reviewer, though less striking than B.
+  RE-EVALUATED 2026-08-14 AT THE NEW ROUND tau - the ranking FLIPPED:
+  * A (compromise policy) is still degenerate: 200/200 low regret, all blue.
+  * B (worst policy) is NOW degenerate THE OTHER WAY: at the tighter tau the
+    max-regret policy of every design regrets in all 200 SOWs (0/200 low
+    regret, uniform red). Its selection rule is what breaks - "the most
+    regretting policy" is an extremum, so it degenerates at whichever tau. If
+    B is wanted, change the rule to the MEDIAN-regret policy (front medians of
+    no_harm_freq_tau__compromise are now 0.245 fixedprob / 0.705 hazfill /
+    0.000 historic, so median is informative for two of three designs).
+  * C (front-wide exposure) is NOW THE CLEAR WINNER and needs no selection
+    rule at all: share-low-regret spans 0.432-0.859 (fixedprob), 0.453-0.811
+    (hazfill), 0.063-0.146 (historic), with a clean dry-to-wet gradient and
+    unambiguous design separation.
+  RECOMMENDATION NOW: C as the manuscript figure. Cut A and B, or keep B with
+  the median-policy rule as an SI companion.
+  The underlying finding is unchanged and now visible: regret concentrates in
+  WET states of the world, and hazard-filling carries the least of it.
+
+- [ ] **[local]** RE-DESIGN manuscript Figure 4 (§4.1, realized hazard-space
+  composition of the search ensembles). The first attempt was CUT 2026-08-13
+  (`src/plotting/ensemble_composition.py` deleted, spec removed from
+  `src/figures/registry.py`): it was unreadable and carried no argument — a
+  13-entry legend with the design label repeated once per staged draw, every
+  ensemble drawn in the same color, the candidate-pool density field invisible
+  underneath, and the `fixed_probabilistic` arm missing outright because its
+  search ensemble is not staged under the campaign tag. Manuscript number 4 is
+  RESERVED (registry has a placeholder comment; figs 05-08 keep their numbers)
+  — decide whether the slot gets a redesign or is dropped and 05-08 renumbered.
+  What §4.1 actually needs to show: that the three designs sample DIFFERENT
+  regions of the hazard space and how each relates to E_test's support. The SI
+  corner overlay (`src/plotting/etest_hazard_overlay.py`) already does the
+  pairwise version and is the natural starting point. Prerequisite either way:
+  stage the `fixed_probabilistic` search ensemble under the campaign tag, or
+  the figure cannot be honest about all three arms.
+
 - [ ] **[HPC]** UNIFIED METRIC CURRENCY re-runs (2026-08-07 substrate change:
   robustness/regret now score the per-SOW annual-unit search objectives; the
   whole-trace re-eval metrics are retired). Items 1 and 3 DONE 2026-08-08
@@ -64,10 +145,71 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   `outputs/comparison/scenario_discovery/`. Step 13 (job 19862035): fig03
   rendered (registry currently holds only fig03). Subset hazard image is
   staged (make_etest_subset now slices hazard_image.npz too).
+  SUBSET-CRITERIA RE-ANCHORING + FULL FIGURE PASS DONE 2026-08-13 on the
+  interim tag (job 19882748, `shared` 1x8): the audit table
+  (`scripts/supplemental/criteria_reanchoring.py` ->
+  `outputs/comparison/ffmp_obj8/etest_kn_50yr_n25000_first10ch/criteria_reanchoring.csv`)
+  fired rule 1 on Montague reliability, and the PROVISIONAL 0.70 literal was
+  replaced by the transcribed **0.50** (incumbent per-SOW median 0.482,
+  stricter side at eps = 0.05; pooled stringency 0.53) in
+  `src/satisficing_criteria.py`. Trenton 0.75 and storage 13.0 were confirmed
+  unchanged by the audit. That kills the degeneracy for analysis purposes:
+  the `compromise` set now discriminates (129-163 failures / 200 SOWs per
+  design) where `reference_all8` is still 200/200 (re-run under
+  `NYCOPT_SD_LABEL=criterion:reference_all8` ->
+  `scenario_discovery/criterion_reference_all8/`, the documented degeneracy).
+  Steps 2-4 re-run end to end: three re-scored cubes (+ the new
+  `robustness_scorecard_criteria.csv` / `robustness_criterion_stability.csv`
+  companions), `compare_designs`, `scenario_discovery`, `factor_mapping_run`,
+  and the registry figures. Three defects in the pulled commit were FIXED the
+  same day and the whole pipeline re-run on top of them (job 19883470):
+  (a) the post-processing entry points called `config.derive_slug()`, which
+  builds the slug from the ACTIVE run identity and so silently resolved to
+  `ffmp_obj8_smoke` with no env file — replaced by `config.results_slug()`,
+  which takes `NYCOPT_RESULTS_SLUG`, else the derived slug IF it carries the
+  tag, else the unique on-disk slug that does (reported on stderr), else
+  raises; (b) `registry.legacy()` handed builders `out_stub.parent`, so all
+  11 `adapt=True` specs saved under a bare stem while `figures.py` printed
+  the numbered path and the contact sheet silently dropped fig06 — builders
+  now save to the stub they are given, `FigureSpec.per_focal` keeps the
+  criterion key on the three focal-parameterized figures, and `figures.py`
+  verifies the file exists before reporting it; (c) `tau_ladder` fell back to
+  the eps-only ladder in silence when `NYCOPT_REGRET_TAU` was unset — it now
+  warns that this is not the adopted basis (still non-fatal, since the
+  pass-B k-sweep unsets it deliberately). NOTE figs 07/08 are focal-
+  parameterized but NOT marked `per_focal`, so re-rendering under a different
+  `NYCOPT_FOCAL_CRITERION` overwrites them; left as-is deliberately (it
+  matches the pulled commit's naming) — decide at the manuscript-final pass.
+  FIGURE-DESIGN REVISION 2026-08-14 (job 19884369) after an independent
+  design review of the manuscript tier. One real DATA bug found and fixed:
+  `regret_headline` treated `pareto_frontier`'s return as a boolean mask when
+  it returns INDICES, so fig07 drew the wrong frontier rows and `zip()`
+  truncated its companion CSV to the frontier's length (the plane looked like
+  it topped out at robustness 0.09; the true max is 0.355). Layout defects
+  fixed across figs 05-08, all of one species — text anchored per-panel on
+  panels too narrow to hold it: per-panel axis labels replaced by shared
+  `supxlabel`/short labels, panel letters folded into titles (the corners hold
+  data), the 9 parallel axes moved to the project's ABBREVIATION convention
+  (`short_label_for`, wrapped) and the figure rebuilt at column-true width
+  (it was 13.5 in, printing at 7.48 in, so every annotation shrank ~1.8x —
+  fig06 is now 5 MB, not 15 MB), and `shared_legend(y=...)` added so
+  legend-above-footer stacking is anchored in the same coordinates instead of
+  colliding. Also: masked the definitional diagonal in fig05's Kendall panel
+  (it saturated the scale and hid the -0.22..0.45 findings) and gave it human
+  tick labels; `overlap_style()` makes exactly-coincident series visible
+  without ever offsetting data; degenerate panels now name the degeneracy in
+  their TITLE (fig05e, fig07b) rather than reading as broken plots; fig08's
+  failure marker is a white-outlined filled X (a plain black cross vanished
+  into the dark-red field where most crosses fall); one `ETEST` constant now
+  typesets $E_test$ everywhere. STILL OPEN from the review: figs 06 and 08
+  carry annotations below the 12 pt MANUSCRIPT_MIN_FONTSIZE floor (9 pt) —
+  9 parallel axes / 4 map panels do not fit a double-column width at 12 pt,
+  so these two likely need to be full-page or landscape; that is a layout
+  decision, not a code one.
   REMAINING for the FINAL (converged, full-E_test) pass: re-run 08/09-13 on
-  the production fan-out fronts; author the re-eval/robustness results-figure
-  tranche (section 3); revisit whether the joint-satisficing thresholds
-  should be re-anchored given the degeneracy findings.
+  the production fan-out fronts, then re-run the re-anchoring audit against
+  the full cube (the placements above are transcribed from the 200-SOW
+  interim table and must be re-confirmed).
   Prefix-only subsets (rows keyed by global SOW id);
   interim cubes live under `reeval/etest_kn_50yr_n25000_first10ch/` and must
   never be mixed with full-cube numbers in the manuscript.

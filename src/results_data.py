@@ -87,6 +87,45 @@ def load_design_results(
     return out
 
 
+def load_threshold_snapshot(reeval_tag: str, slug: str = "ffmp_obj8",
+                            designs: Sequence[str] = DESIGN_ORDER,
+                            outputs_root: Optional[Path] = None) -> tuple:
+    """The adopted objective order + threshold/kind snapshot, WITHOUT the cube.
+
+    Reads only ``reeval_raw_meta.json`` (a few KB) from the first design that
+    has one, so scorecard-backed figures can print the exact criteria in their
+    footer without paying for -- or declaring a need on -- the per-SOW cubes.
+    It is the same snapshot ``load_raw`` would expose, so the footer cannot
+    drift from the criteria the scores were computed under.
+
+    Args:
+        reeval_tag: The held-out ensemble tag.
+        slug: The moea slug shared by the campaign runs.
+        designs: Designs to try, in order.
+        outputs_root: Root of the output tree; defaults to ``config.OUTPUTS_DIR``.
+
+    Returns:
+        ``(obj_names, thresholds, kinds)``.
+
+    Raises:
+        FileNotFoundError: No design carries a re-eval meta on this tag.
+    """
+    import json
+
+    root = Path(outputs_root) if outputs_root is not None else config.OUTPUTS_DIR
+    for design in designs:
+        meta_path = (root / design / slug / "reeval" / reeval_tag
+                     / "reeval_raw_meta.json")
+        if meta_path.exists():
+            meta = json.loads(meta_path.read_text())
+            return (list(meta["obj_names"]), dict(meta["thresholds"]),
+                    dict(meta["kinds"]))
+    raise FileNotFoundError(
+        f"no reeval_raw_meta.json under any of {list(designs)} for slug "
+        f"'{slug}' and tag '{reeval_tag}'."
+    )
+
+
 ###############################################################################
 # Criterion vectors
 ###############################################################################

@@ -99,7 +99,17 @@ def _render(spec: FigureSpec, ctx: FigureContext) -> bool:
         print(f"[figures] FAILED {spec.stem}:")
         traceback.print_exc()
         return False
-    print(f"[figures]   -> {out_stub}.png")
+
+    # Report the file that EXISTS, never the one we asked for: a builder that
+    # saves somewhere other than its stub would otherwise be reported as a
+    # success at a path holding no figure, and the contact sheet (which globs
+    # the stem) would drop it silently.
+    written = Path(f"{out_stub}.png")
+    if not written.is_file():
+        print(f"[figures] FAILED {spec.stem}: builder wrote no "
+              f"'{written.name}' -- it must save to the stub it is given.")
+        return False
+    print(f"[figures]   -> {written}")
     return True
 
 

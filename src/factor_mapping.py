@@ -123,7 +123,7 @@ def failure_matrix(raw: rob.RawCube, thresholds: dict = None,
 
 
 def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
-                  tau: dict = None) -> np.ndarray:
+                  tau: dict = None, axes=None) -> np.ndarray:
     """Boolean ``(S, G)`` regret matrix: some objective is worse than the incumbent.
 
     A SOW is labelled REGRET for a solution when at least one per-SOW objective
@@ -132,10 +132,30 @@ def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
     condition in ``robustness.regret_frequencies``, on the same unit as the
     reported regret family. Non-finite values count as regret, mirroring the
     non-finite-as-unsatisfied rule of the satisficing label.
+
+    Args:
+        raw: The policy cube.
+        baseline: The incumbent cube.
+        tau: Per-objective tolerance; defaults to ``robustness.tau_ladder``.
+        axes: Restrict the disjunction to these objectives (a criterion set's
+            member axes), exactly as ``regret_frequencies(axes=...)`` does.
+            Passing a set's axes makes this the PER-SOW decomposition of that
+            set's ``no_harm_freq_tau__{key}`` scorecard column. Default None =
+            every objective.
+
+    Returns:
+        ``(S, G)`` boolean; True = the SOW is a regret SOW for that solution.
     """
     D = rob.incumbent_advantage(raw, baseline)                      # (S, G, M)
     tau = rob.tau_ladder(raw.obj_names) if tau is None else tau
     tau_vec = np.array([float(tau[n]) for n in raw.obj_names], dtype=float)
+    if axes is not None:
+        unknown = [n for n in axes if n not in raw.obj_names]
+        if unknown:
+            raise KeyError(f"axes not in this cube: {unknown}")
+        keep = [k for k, n in enumerate(raw.obj_names) if n in set(axes)]
+        D = D[:, :, keep]
+        tau_vec = tau_vec[keep]
     finite = np.isfinite(D)
     return ((~finite) | (D < -tau_vec[None, None, :])).any(axis=2)
 
@@ -176,27 +196,6 @@ def assert_theta_alignment(X: np.ndarray, raw: rob.RawCube) -> None:
             f"theta sample has {len(X)} SOWs, cube has {raw.n_sow} -- "
             f"ensemble/tag mismatch"
         )
-
-
-def reference_sows(X: np.ndarray, names: list) -> pd.DataFrame:
-    """Reference SOW markers for factor maps (Lau et al. 2023 convention).
-
-    ``expected`` = the per-axis median point (the center of the sampled DU
-    box); ``dry`` = the observed SOW with the smallest ``em`` (deepest
-    volume reduction) when an ``em`` axis exists, else the row closest to the
-    per-axis 5th percentile.
-    """
-    X = np.asarray(X, dtype=float)
-    rows = [{"role": "expected",
-             **{n: float(v) for n, v in zip(names, np.median(X, axis=0))}}]
-    if "em" in names:
-        dry_idx = int(np.argmin(X[:, names.index("em")]))
-    else:
-        q05 = np.quantile(X, 0.05, axis=0)
-        dry_idx = int(np.argmin(np.linalg.norm(X - q05[None, :], axis=1)))
-    rows.append({"role": "dry",
-                 **{n: float(v) for n, v in zip(names, X[dry_idx])}})
-    return pd.DataFrame(rows)
 
 
 def cdf_transform(values: np.ndarray, reference: np.ndarray) -> np.ndarray:

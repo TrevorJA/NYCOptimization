@@ -53,8 +53,24 @@ class FigureContext:
 
         self.tag = reeval_tag or os.environ.get(
             "NYCOPT_REEVAL_TAG", tag_of(config.REEVAL_ENSEMBLE_SPEC))
-        self.slug = slug or os.environ.get("NYCOPT_RESULTS_SLUG", "ffmp_obj8")
+        self.slug = slug or self._resolve_slug()
         self._results = None
+
+    def _resolve_slug(self) -> str:
+        """The campaign slug for this tag, non-fatally.
+
+        A render pass must survive a machine that holds no campaign outputs
+        for the tag: every figure then SKIPs with its own message naming what
+        it needs, which is far more useful than the whole pass dying while
+        constructing the context.
+        """
+        import sys
+
+        try:
+            return config.results_slug(self.tag)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"[figures] {exc}", file=sys.stderr)
+            return config.CAMPAIGN_RESULTS_SLUG
 
     def results(self) -> dict:
         """Every design's loaded re-eval cube + scorecard (+ incumbent)."""
@@ -97,6 +113,10 @@ class FigureSpec:
             {"cube", "scorecard", "figure_tables", "ensemble", "refset",
             "fdc_cache", "factor_mapping"} -- drives skip-with-message.
         caption: One-line description for ``--list`` and the contact sheet.
+        per_focal: The figure is parameterized by the FOCAL criterion, so its
+            stem carries the criterion key and renders under different
+            ``NYCOPT_FOCAL_CRITERION`` values coexist rather than overwrite
+            (the guarantee stated in ``src.satisficing_criteria``).
     """
 
     name: str
@@ -107,15 +127,27 @@ class FigureSpec:
     kind: str
     needs: frozenset = field(default_factory=frozenset)
     caption: str = ""
+    per_focal: bool = False
 
     @property
     def stem(self) -> str:
-        """Output filename stem, carrying the number on numbered tiers."""
+        """Output filename stem: number prefix, name, focal key.
+
+        This is the ONE place an output filename is decided -- builders are
+        handed the resulting stub and must save to it verbatim, so what
+        ``figures.py`` reports, what the contact sheet globs, and what lands
+        on disk cannot drift apart.
+        """
         if self.tier == "manuscript" and self.number is not None:
-            return f"fig{self.number:02d}_{self.name}"
-        if self.tier == "si" and self.number is not None:
-            return f"figS{self.number:02d}_{self.name}"
-        return self.name
+            stem = f"fig{self.number:02d}_{self.name}"
+        elif self.tier == "si" and self.number is not None:
+            stem = f"figS{self.number:02d}_{self.name}"
+        else:
+            stem = self.name
+        if self.per_focal:
+            from src.satisficing_criteria import focal_criterion
+            stem = f"{stem}_{focal_criterion().key}"
+        return stem
 
     def out_dir(self) -> Path:
         """The tier's output directory (created)."""
@@ -131,9 +163,16 @@ class FigureSpec:
 
 
 def legacy(builder: Callable) -> Callable:
-    """Adapt a legacy results builder ``(results, out_dir, table_dir)``."""
+    """Adapt a cube-backed builder ``(results, out_stub, table_dir)``.
+
+    Only the first argument is adapted: ``out_stub`` passes through untouched
+    so the builder saves under the spec's stem. (It used to pass
+    ``out_stub.parent``, which handed the builder a directory and let it pick
+    its own filename -- the stem the driver printed and the contact sheet
+    globbed was then not the file written.)
+    """
     def _run(ctx: FigureContext, out_stub: Path, table_dir: Path):
-        return builder(ctx.results(), out_stub.parent, table_dir)
+        return builder(ctx.results(), out_stub, table_dir)
     _run.__doc__ = builder.__doc__
     _run.__name__ = getattr(builder, "__name__", "legacy_builder")
     return _run
@@ -163,15 +202,12 @@ FIGURES: tuple[FigureSpec, ...] = (
         caption="Construction of the deeply uncertain forcing space "
                 "(harmonic model, CMIP6 fits, sampled box, FDCs).",
     ),
-    FigureSpec(
-        name="ensemble_composition",
-        builder=_lazy("src.plotting.ensemble_composition",
-                      "fig_ensemble_composition"),
-        tier="manuscript", number=4, section="4.1",
-        kind="ensemble_composition", needs=frozenset({"ensemble"}),
-        caption="Realized hazard-space composition of the search ensembles "
-                "vs the candidate pool and E_test.",
-    ),
+    # NOTE: manuscript number 4 (search-ensemble hazard-space composition) is
+    # deliberately VACANT -- the figure was cut 2026-08-13 and a replacement
+    # for the same slot is an open design question (see TODO.md). The number
+    # is reserved rather than reused so the surrounding figures keep their
+    # numbering; the SI corner overlay (figS-tier, src/plotting/
+    # etest_hazard_overlay.py) still covers ensemble composition meanwhile.
     FigureSpec(
         name="criteria_robustness",
         builder=_lazy("src.plotting.criteria_rank_curves",
@@ -189,6 +225,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         kind="parallel_coords", needs=frozenset({"cube", "scorecard"}),
         caption="Re-evaluated objective trade-offs recolored by focal-set "
                 "robustness, per design.",
+        per_focal=True,
     ),
     FigureSpec(
         name="regret_vs_incumbent",
@@ -208,6 +245,41 @@ FIGURES: tuple[FigureSpec, ...] = (
         kind="factor_maps", needs=frozenset({"factor_mapping"}),
         caption="Boosted-tree success/failure probability surfaces over the "
                 "DU forcing space, per design policy and the incumbent.",
+    ),
+    # Three CANDIDATES for manuscript slot 9, all carrying number 9 so the
+    # numbering does not churn while one is chosen (their names differ, so
+    # their stems do). They answer the same RQ2 question -- where in the DU
+    # space does reoptimization cost the Decree parties something? -- under
+    # three different policy selections. See TODO.md; two of these get cut.
+    FigureSpec(
+        name="regret_surfaces",
+        builder=_lazy("src.plotting.factor_map_surfaces",
+                      "fig_regret_surfaces"),
+        tier="manuscript", number=9, section="4.4",
+        kind="regret_map", needs=frozenset({"factor_mapping"}),
+        caption="Regret over the DU space for the SAME compromise policies "
+                "as fig 8 (candidate A).",
+        per_focal=True,
+    ),
+    FigureSpec(
+        name="regret_surfaces_worst",
+        builder=_lazy("src.plotting.factor_map_surfaces",
+                      "fig_regret_surfaces_worst"),
+        tier="manuscript", number=9, section="4.4",
+        kind="regret_map", needs=frozenset({"factor_mapping"}),
+        caption="Regret over the DU space for each design's MOST-regretting "
+                "Pareto policy (candidate B).",
+        per_focal=True,
+    ),
+    FigureSpec(
+        name="regret_exposure",
+        builder=_lazy("src.plotting.factor_map_surfaces",
+                      "fig_regret_exposure"),
+        tier="manuscript", number=9, section="4.4",
+        kind="regret_map", needs=frozenset({"factor_mapping"}),
+        caption="Per-SOW share of each design's WHOLE front that stays "
+                "low-regret (candidate C; no policy selected).",
+        per_focal=True,
     ),
     # --------------------------------------------------------------------- si
     FigureSpec(
@@ -281,6 +353,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         tier="si", number=9, section="4.3", kind="robustness_cdf",
         needs=frozenset({"cube", "scorecard"}),
         caption="Exceedance curves of joint focal-set robustness per design.",
+        per_focal=True,
     ),
     FigureSpec(
         name="factor_maps_theta",
@@ -290,6 +363,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         needs=frozenset({"cube", "scorecard", "ensemble"}),
         caption="Raw pass/fail labels over the theta forcing space "
                 "(the unfitted companion of the surface maps).",
+        per_focal=True,
     ),
     FigureSpec(
         name="search_convergence",

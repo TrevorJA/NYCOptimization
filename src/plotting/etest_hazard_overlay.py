@@ -107,9 +107,8 @@ def draw_pair_panel(
     Layer order (bottom to top): candidate pool as a grayscale log-density
     field, robust selection box (only when both ``box_x`` and ``box_y`` are
     given), E_test's sub-window cloud as mass contours, then each search
-    ensemble as a categorical scatter. Shared by the SI corner figure
-    (:func:`build_overlay_figure`) and the manuscript composition figure
-    (``src.plotting.ensemble_composition``).
+    ensemble as a categorical scatter. Used by the SI corner figure
+    (:func:`build_overlay_figure`).
 
     Args:
         ax: Target axes.

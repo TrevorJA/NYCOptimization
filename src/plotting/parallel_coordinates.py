@@ -108,6 +108,8 @@ def custom_parallel_coordinates(
     save_fig_filename=None,
     axis_ranges=None,
     add_colorbar: bool = True,
+    add_legend: bool = True,
+    colorbar_label: str = None,
 ):
     """Render a customizable parallel-coordinates plot of natural-unit objectives.
 
@@ -167,6 +169,12 @@ def custom_parallel_coordinates(
         axis_ranges: Optional ``(2, n_axes)`` raw (lo, hi) per axis, widened to
             include the drawn rows -- pass the same array across several calls
             to give panel figures identical axis (and colorbar) scales.
+        add_legend: Set False to suppress the per-call legend when several
+            panels share one figure-level legend; otherwise a multi-panel
+            figure repeats the same entries in every inter-panel gap.
+        colorbar_label: Override for the colorbar label; defaults to the
+            colored axis's own label, which carries a "(max)/(min)" direction
+            marker that means nothing on a colorbar.
         add_colorbar: Set False to suppress the per-call colorbar when a panel
             figure shares one colorbar across axes (continuous coloring only).
 
@@ -321,7 +329,7 @@ def custom_parallel_coordinates(
     if baseline is not None:
         handles.append(Line2D([0], [0], color=BASELINE_COLOR, lw=2.5, marker="o",
                               markersize=5, label=baseline_label))
-    if handles:
+    if handles and add_legend:
         kwargs = {"loc": legend_loc, "fontsize": fontsize - 1, "frameon": False,
                   "ncol": legend_ncol or min(4, len(handles))}
         if legend_bbox is not None:
@@ -333,7 +341,8 @@ def custom_parallel_coordinates(
         mappable.set_clim(vmin=col_min[ci], vmax=col_max[ci])
         cb = fig.colorbar(mappable, ax=ax, orientation="horizontal",
                           shrink=0.35, pad=0.02)
-        cb.set_label(axis_labels[ci].replace("\n", " "), fontsize=fontsize - 1)
+        cb.set_label(colorbar_label or axis_labels[ci].replace("\n", " "),
+                     fontsize=fontsize - 1)
         if colorbar_ticks_continuous is not None:
             cb.set_ticks(colorbar_ticks_continuous)
         cb.ax.tick_params(labelsize=fontsize - 2)

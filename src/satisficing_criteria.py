@@ -131,14 +131,14 @@ CRITERION_SETS: tuple[CriterionSet, ...] = (
         key="downstream_flows",
         label="Downstream flow targets",
         rationale=("Montague re-anchored per rule 1: the adopted 0.79 lies "
-                   "outside the incumbent's E_test support (max 0.746, pass "
-                   "0.000); PROVISIONAL placement 0.70 pending "
-                   "criteria_reanchoring.csv (incumbent per-SOW median, "
-                   "stricter side). Trenton moved from 0.87 (excludes 90% of "
-                   "pooled cells) to the incumbent's median year "
-                   "(0.73 -> 0.75, stricter side)."),
+                   "outside the incumbent's E_test support (pass 0.000); "
+                   "placed at the incumbent's median year rounded stricter at "
+                   "epsilon granularity (0.482 -> 0.50; pooled stringency "
+                   "0.53), transcribed from criteria_reanchoring.csv. Trenton "
+                   "moved from 0.87 (excludes 90% of pooled cells) to the "
+                   "incumbent's median year (0.73 -> 0.75, stricter side)."),
         criteria={
-            "montague_flow_reliability_annual": 0.70,
+            "montague_flow_reliability_annual": 0.50,
             "trenton_flow_reliability_annual": 0.75,
         },
     ),

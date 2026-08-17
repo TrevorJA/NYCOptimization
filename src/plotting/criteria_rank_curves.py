@@ -1,5 +1,5 @@
 """
-criteria_rank_curves.py - Manuscript Figure 6: robustness under criteria sets.
+criteria_rank_curves.py - Manuscript Figure 5: robustness under criteria sets.
 
 The RQ1 headline, in the Quinn et al. (2017, Fig. 8) idiom: one panel per
 criterion set, each showing every design's policies SORTED by their
@@ -25,12 +25,38 @@ import numpy as np
 import pandas as pd
 
 import config
+from src import results_data as rd
 from src.plotting.layout import (WIDTH_DOUBLE_COL, design_legend_handles,
-                                 panel_label, shared_legend)
-from src.plotting.style import (DESIGN_ORDER, INCUMBENT_COLOR,
-                                annotated_corr_heatmap, design_color,
+                                 shared_legend)
+from src.plotting.style import (DESIGN_ORDER, ETEST, INCUMBENT_COLOR,
+                                add_figure_footer, annotated_corr_heatmap,
+                                design_color, design_label,
                                 save_manuscript_figure)
-from src.satisficing_criteria import ALL_SETS
+from src.satisficing_criteria import ALL_SETS, criterion_by_key
+
+
+#: Compact human names for the agreement panel's tick labels. The full
+#: ``CriterionSet.label`` is the panel TITLE elsewhere in this figure, but at
+#: five ticks on a ~2.4-inch heatmap it does not fit -- and the raw registry
+#: keys (``nyc_supply``, ``reference_all8``) are code identifiers that should
+#: never surface in a manuscript figure.
+_SET_TICK_LABELS = {
+    "nyc_supply": "NYC supply",
+    "downstream_flows": "Downstream flows",
+    "flood": "Flood",
+    "compromise": "Compromise",
+    "reference_all8": "Reference (all 8)",
+}
+
+
+def _set_label(key: str) -> str:
+    """Compact display name for a criterion-set key (falls back to the key)."""
+    if key in _SET_TICK_LABELS:
+        return _SET_TICK_LABELS[key]
+    try:
+        return criterion_by_key(key).label
+    except KeyError:
+        return key
 
 
 def _criteria_scorecards(ctx) -> dict[str, pd.DataFrame]:
@@ -110,20 +136,29 @@ def fig_criteria_rank_curves(ctx, out_stub: Path, table_dir: Path) -> dict:
             rows.append({"criterion": cset.key, "design": "incumbent",
                          "rank_frac": np.nan,
                          "robustness": incumbent[cset.key]})
+        # Panel letter rides IN the title: as a separate text above the axes it
+        # collides with the title, and inside the axes it lands on the curves.
+        letter = chr(ord("a") + i)
         if cset.reference:
             ax.set_facecolor("0.96")
-            ax.set_title(f"{cset.label}", fontsize=9, style="italic")
+            # A panel where every series sits on zero reads as a broken plot.
+            # Name the degeneracy in the title (never as in-panel text) so the
+            # reader knows the flat line IS the finding.
+            ax.set_title(f"({letter}) {cset.label}\nall designs ≈ 0",
+                         style="italic", fontsize=10)
         else:
-            ax.set_title(cset.label, fontsize=9)
-        panel_label(ax, chr(ord("a") + i))
+            ax.set_title(f"({letter}) {cset.label}", fontsize=10)
         ax.set_ylim(-0.03, 1.03)
         ax.set_xlim(0, 1)
         ax.grid(color="0.92", lw=0.6)
         ax.set_axisbelow(True)
         if i % ncols == 0:
-            ax.set_ylabel("Fraction of E_test SOWs\nmeeting the set")
-        if i >= (nrows - 1) * ncols:
-            ax.set_xlabel("Policy rank (fraction of set)")
+            ax.set_ylabel(f"Fraction of {ETEST} SOWs\nmeeting the set")
+        if i >= len(sets) - ncols:
+            # Short label: at three panels across a double-column width the
+            # long form overprints the neighbouring panel's copy. What "rank"
+            # is normalized by is stated once, in the footer.
+            ax.set_xlabel("Policy rank")
 
     # Cross-set ranking agreement: mean of the per-design tau_b matrices.
     ax_tau = axes.flat[len(sets)]
@@ -136,21 +171,43 @@ def fig_criteria_rank_curves(ctx, out_stub: Path, table_dir: Path) -> dict:
     if taus:
         mean_tau = sum(t.to_numpy() for t in taus) / len(taus)
         keys = [c.replace("sat_set__", "") for c in taus[0].columns]
-        annotated_corr_heatmap(ax_tau, mean_tau, keys,
-                               label_fn=lambda k: k, fontsize=6,
-                               vmin=-1, vmax=1)
-        ax_tau.set_title("Ranking agreement between sets\n"
-                         "(Kendall tau_b, mean over designs)", fontsize=8.5)
+        # Mask the diagonal: a self-agreement of 1.0 is definitional, carries
+        # no result, and saturates the diverging scale so the findings that DO
+        # matter (roughly -0.3..0.5) all render near-white.
+        shown = np.array(mean_tau, dtype=float)
+        np.fill_diagonal(shown, np.nan)
+        finite = shown[np.isfinite(shown)]
+        lim = float(max(0.2, np.nanmax(np.abs(finite)))) if finite.size else 1.0
+        annotated_corr_heatmap(ax_tau, shown, keys,
+                               label_fn=_set_label, fontsize=7,
+                               vmin=-lim, vmax=lim)
+        ax_tau.set_title(f"({chr(ord('a') + len(sets))}) Cross-set ranking "
+                         "agreement\n" r"(mean Kendall $\tau_b$)",
+                         fontsize=10)
         pd.DataFrame(mean_tau, index=keys, columns=keys).to_csv(
             table_dir / "criteria_rank_agreement.csv")
     else:
         ax_tau.axis("off")
-    panel_label(ax_tau, chr(ord("a") + len(sets)))
     for j in range(n_panels, axes.size):
         axes.flat[j].axis("off")
 
-    shared_legend(fig, design_legend_handles(designs,
-                                             incumbent=bool(incumbent)))
+    handles = design_legend_handles(designs, incumbent=bool(incumbent))
+    # One row: at the default three columns the fourth entry wraps onto a
+    # second row and lands on the footer box.
+    shared_legend(fig, handles, ncol=len(handles), y=-0.01)
+
+    counts = ", ".join(f"{len(cards[d])} {design_label(d).split(' (')[0].lower()}"
+                       for d in designs)
+    obj_names, thresholds, kinds = rd.load_threshold_snapshot(ctx.tag, ctx.slug)
+    add_figure_footer(fig, [
+        f"Every Pareto-set policy per design ({counts}) re-evaluated on the "
+        f"held-out {ETEST} SOWs. Rank is a fraction of each design's OWN set, "
+        f"so the differently-sized fronts are comparable.",
+        "",
+        "Blank diagonal in the agreement panel: self-agreement is 1.0 by "
+        "definition. Grey cells: the reference set induces no ranking "
+        "(all policies tie at 0), so no correlation is defined.",
+    ], y=-0.10)
     save_manuscript_figure(fig, out_stub)
     plt.close(fig)
 

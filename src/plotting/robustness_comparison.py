@@ -23,6 +23,7 @@ Figures:
 from __future__ import annotations
 
 import os
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +38,7 @@ from src.formulations import get_n_vars
 from src.satisficing_criteria import focal_criterion
 from src.plotting.parallel_coordinates import custom_parallel_coordinates
 from src.plotting.regret_summary import pareto_frontier
+from src.plotting.layout import WIDTH_DOUBLE_COL, shared_legend
 from src.plotting.satisficing_diagnostics import (
     INCUMBENT_LABEL,
     _add_footer,
@@ -49,6 +51,7 @@ from src.plotting.style import (
     design_color,
     design_label,
     save_figure,
+    short_label_for,
 )
 
 #: Suffix of the merged Pareto ``.set`` file the parallel-coordinates panels
@@ -57,20 +60,42 @@ SET_SUFFIX = os.environ.get("NYCOPT_RESULTS_SET_SUFFIX", "_merged_eps20260812")
 
 #: Axis / colorbar label for the appended robustness axis.
 ROBUSTNESS_AXIS = "focal_robustness"
-ROBUSTNESS_AXIS_LABEL = "Robustness\nfraction of SOWs meeting\nall focal criteria (max)"
+ROBUSTNESS_AXIS_LABEL = "Robustness\n(focal set)\n(max)"
+
+#: Colorbar label for the same quantity. The colorbar is not an axis, so it
+#: carries no "(max)" direction marker.
+ROBUSTNESS_CBAR_LABEL = "Robustness: fraction of SOWs meeting all focal criteria"
+
+#: Character width the parallel-axis labels wrap to. Nine axes across a
+#: double-column figure leave ~0.8 in each, so the long-form label -- and even
+#: the unwrapped abbreviation -- overprints its neighbours. This is the
+#: project's ABBREVIATION convention (``short_label_for``), wrapped; it is not
+#: a third naming scheme.
+_AXIS_LABEL_WRAP = 11
+
+
+def _parallel_axis_label(name: str, direction: str) -> str:
+    """Wrapped abbreviation + direction marker, for a dense parallel axis."""
+    body = textwrap.fill(short_label_for(name), _AXIS_LABEL_WRAP)
+    return f"{body}\n({'max' if direction == 'maximize' else 'min'})"
 
 
 def _focal_header(focal) -> str:
     return f"Focal satisficing criteria — {focal.label} (all must hold):"
 
 
-def _natural_front(res: rd.DesignResults, slug: str) -> np.ndarray:
+def _natural_front(res: rd.DesignResults) -> np.ndarray:
     """The design's Pareto search objectives in natural units, cube-aligned.
 
     Loads the merged ``.set`` (objectives stored all-minimized), un-negates
     maximize objectives via the cube's own direction snapshot, and selects the
     rows re-evaluated in the cube (row index == ``solution_id``).
+
+    The slug comes from the loaded result's own path
+    (``outputs/{design}/{slug}/reeval/{tag}``), so the reference set can never
+    be read from a different run than the cube being plotted.
     """
+    slug = res.path.parents[1].name
     set_file = (config.OUTPUTS_DIR / res.design / slug / "sets"
                 / f"{slug}{SET_SUFFIX}.set")
     _, obj = load_reference_set(set_file, get_n_vars("ffmp"),
@@ -93,7 +118,7 @@ def _incumbent_search_vector(design: str, obj_names) -> np.ndarray:
 # P3.1 -- parallel coordinates with a robustness axis
 ###############################################################################
 
-def fig_parallel_coords_focal(results: dict, out_dir: Path,
+def fig_parallel_coords_focal(results: dict, out_stub: Path,
                               table_dir: Path) -> dict:
     """Each design's Pareto set on parallel axes, colored by focal robustness.
 
@@ -106,13 +131,12 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
     """
     focal = focal_criterion()
     designs = _designs(results)
-    slug = os.environ.get("NYCOPT_RESULTS_SLUG", "ffmp_obj8")
     first = results[designs[0]].raw
     obj_names = first.obj_names
     cols = list(obj_names) + [ROBUSTNESS_AXIS]
     minmaxs = ["max" if first.directions[n] == "maximize" else "min"
                for n in obj_names] + ["max"]
-    labels = [axis_label_for(n, first.directions[n]) for n in obj_names]
+    labels = [_parallel_axis_label(n, first.directions[n]) for n in obj_names]
     labels += [ROBUSTNESS_AXIS_LABEL]
 
     # Assemble per-design frames + incumbent vectors, then shared axis ranges.
@@ -122,7 +146,7 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
         thr = rd.criterion_thresholds(res, focal)
         jf = rd.joint_fraction(rd.satisfaction(res.raw, thresholds=thr))
         frames[d] = pd.DataFrame(
-            np.column_stack([_natural_front(res, slug), jf]), columns=cols)
+            np.column_stack([_natural_front(res), jf]), columns=cols)
         inc_sat = rd.incumbent_satisfaction(res, thresholds=thr)
         inc_j = float(inc_sat.all(axis=1).mean()) if inc_sat is not None else np.nan
         baselines[d] = np.append(
@@ -132,7 +156,14 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
     axis_ranges = np.vstack([np.nanmin(stacked, axis=0),
                              np.nanmax(stacked, axis=0)])
 
-    fig, axes = plt.subplots(len(designs), 1, figsize=(13.5, 4.9 * len(designs)))
+    # Column-TRUE width: built at 13.5 in and printed at 7.48 in, every
+    # annotation shrank by ~1.8x, which is why the axis end-values were
+    # unreadable on the page. Panels are sized here at the width they will
+    # actually be reproduced at, so what is legible on screen is legible in
+    # print.
+    fig, axes = plt.subplots(
+        len(designs), 1,
+        figsize=(WIDTH_DOUBLE_COL, 2.95 * len(designs)))
     rows = []
     for ax, d in zip(np.atleast_1d(axes), designs):
         n = len(frames[d])
@@ -140,12 +171,20 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
             frames[d], columns_axes=cols, axis_labels=labels, minmaxs=minmaxs,
             color_by_continuous=ROBUSTNESS_AXIS,
             zorder_by=ROBUSTNESS_AXIS,
+            # Finer z-binning: with ~10 bins the high-robustness lines that
+            # carry the message sat inside a bin with far more low-robustness
+            # lines and were overdrawn by them.
+            zorder_num_classes=40,
             alpha_base=float(np.clip(300.0 / n, 0.10, 0.60)),
-            fontsize=8,
+            fontsize=9,
             baseline=baselines[d], baseline_label=INCUMBENT_LABEL,
-            title=f"{design_label(d)} ({n} policies)",
+            title=f"{design_label(d)}, n = {n}",
             ax=ax, axis_ranges=axis_ranges,
             add_colorbar=(d == designs[-1]),
+            colorbar_label=ROBUSTNESS_CBAR_LABEL,
+            # ONE figure-level legend below; the per-panel legend otherwise
+            # repeats the incumbent entry in every inter-panel gap.
+            add_legend=False,
         )
         rows += [{"design": d, "solution_id": sid, "focal_robustness": v}
                  for sid, v in zip(results[d].raw.solution_ids,
@@ -153,11 +192,14 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
         rows.append({"design": f"{d}__incumbent", "solution_id": -1,
                      "focal_robustness": float(baselines[d][-1])})
     fig.tight_layout()
-    _add_footer(results, fig, y=-0.015,
+    shared_legend(fig, [Line2D([], [], color=INCUMBENT_COLOR, lw=2.5,
+                               marker="o", markersize=5,
+                               label=INCUMBENT_LABEL)], y=-0.005)
+    _add_footer(results, fig, y=-0.05,
                 criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=_focal_header(focal))
 
-    save_figure(fig, out_dir / f"parallel_coords_{focal.key}")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / f"parallel_coords_{focal.key}.csv",
                               index=False)
@@ -168,7 +210,7 @@ def fig_parallel_coords_focal(results: dict, out_dir: Path,
 # P3.2 -- robustness exceedance curves
 ###############################################################################
 
-def fig_robustness_cdf_focal(results: dict, out_dir: Path,
+def fig_robustness_cdf_focal(results: dict, out_stub: Path,
                              table_dir: Path) -> dict:
     """Exceedance curves of focal joint satisficing per design, shared axes.
 
@@ -212,7 +254,7 @@ def fig_robustness_cdf_focal(results: dict, out_dir: Path,
                 criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=_focal_header(focal))
 
-    save_figure(fig, out_dir / f"robustness_cdf_{focal.key}")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / f"robustness_cdf_{focal.key}.csv",
                               index=False)
@@ -223,7 +265,7 @@ def fig_robustness_cdf_focal(results: dict, out_dir: Path,
 # P3.3 -- regret vs robustness plane
 ###############################################################################
 
-def fig_regret_robustness_plane_focal(results: dict, out_dir: Path,
+def fig_regret_robustness_plane_focal(results: dict, out_stub: Path,
                                       table_dir: Path) -> dict:
     """Focal satisficing robustness against no-harm frequency vs the incumbent.
 
@@ -278,7 +320,7 @@ def fig_regret_robustness_plane_focal(results: dict, out_dir: Path,
                 criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=_focal_header(focal))
 
-    save_figure(fig, out_dir / f"regret_robustness_plane_{focal.key}")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(
         table_dir / f"regret_robustness_plane_{focal.key}.csv", index=False)

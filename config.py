@@ -41,6 +41,7 @@ Environment overrides (selected):
 """
 
 import os
+import sys
 import numpy as np
 from pathlib import Path
 
@@ -1061,6 +1062,111 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
         parts.append(tag)
 
     return "_".join(parts)
+
+
+###############################################################################
+# Reading a campaign's outputs back (post-processing slug resolution)
+###############################################################################
+# derive_slug() above answers "where does the run I am ABOUT TO EXECUTE write?"
+# — it is built from the ACTIVE run identity, so it needs NYCOPT_ENV_FILE (or
+# the equivalent NYCOPT_* knobs) to be set. Post-processing asks the opposite
+# question — "where did the campaign I am READING already write?" — and there
+# the same call is a trap: with no env file, ACTIVE_MOEA_CONFIG falls back to
+# the dev-smoke config and derive_slug() returns `ffmp_obj8_smoke`, which
+# either fails with a confusing missing-file error or, worse, silently scores
+# leftover smoke-scale results. results_slug() below is the resolver every
+# read-side entry point uses instead; it never guesses quietly.
+
+#: Env var pinning the moea slug that post-processing reads campaign outputs
+#: from. Explicit always wins over the inference in :func:`results_slug`.
+RESULTS_SLUG_ENV = "NYCOPT_RESULTS_SLUG"
+
+#: Nominal campaign slug, used only where a resolution failure must not be
+#: fatal (e.g. the figure driver on a machine holding no campaign outputs, so
+#: each figure can SKIP with its own message instead of the pass dying).
+CAMPAIGN_RESULTS_SLUG = "ffmp_obj8"
+
+
+def slugs_carrying_reeval(reeval_tag: str) -> list[str]:
+    """Moea slugs holding a re-eval on ``reeval_tag`` for EVERY campaign design.
+
+    Args:
+        reeval_tag: The held-out ensemble tag (a re-eval leaf directory name).
+
+    Returns:
+        Sorted slugs present under every campaign design, so a slug that only
+        one design happens to carry is never a resolution candidate.
+    """
+    from src.scenario_designs import campaign_designs
+
+    common: set | None = None
+    for design in campaign_designs():
+        root = OUTPUTS_DIR / design
+        here = ({s.name for s in root.iterdir()
+                 if s.is_dir() and (s / "reeval" / reeval_tag).is_dir()}
+                if root.is_dir() else set())
+        common = here if common is None else (common & here)
+    return sorted(common or ())
+
+
+def results_slug(reeval_tag: str, formulation: str | None = None) -> str:
+    """The moea slug carrying the campaign re-eval outputs for ``reeval_tag``.
+
+    Resolution order, first match wins:
+
+    1. ``NYCOPT_RESULTS_SLUG`` when set — explicit beats every inference.
+    2. ``derive_slug(formulation)`` when that slug actually carries the tag
+       for every campaign design (i.e. the ambient run identity is the
+       campaign's). Skipped when ``formulation`` is None.
+    3. The unique on-disk slug that does, reported on stderr so a discovered
+       resolution is never invisible in a job log.
+
+    Args:
+        reeval_tag: The held-out ensemble tag being post-processed.
+        formulation: Formulation name enabling step 2; None to skip it.
+
+    Returns:
+        The resolved moea slug.
+
+    Raises:
+        FileNotFoundError: no slug carries the tag for every campaign design.
+        ValueError: several do — ambiguous, so the caller must pin
+            ``NYCOPT_RESULTS_SLUG``.
+    """
+    from src.scenario_designs import campaign_designs
+
+    explicit = os.environ.get(RESULTS_SLUG_ENV, "").strip()
+    if explicit:
+        return explicit
+
+    candidates = slugs_carrying_reeval(reeval_tag)
+    derived = derive_slug(formulation) if formulation else None
+    if derived is not None and derived in candidates:
+        return derived
+
+    if len(candidates) == 1:
+        slug = candidates[0]
+        why = (f"derive_slug gave '{derived}', which carries no re-eval on "
+               f"this tag" if derived is not None
+               else "no formulation was supplied")
+        print(f"[config] results slug resolved by discovery: '{slug}' "
+              f"(tag '{reeval_tag}'; {why}). Set {RESULTS_SLUG_ENV} to pin it.",
+              file=sys.stderr)
+        return slug
+
+    if not candidates:
+        raise FileNotFoundError(
+            f"no moea slug under {OUTPUTS_DIR} carries a re-eval on tag "
+            f"'{reeval_tag}' for every campaign design "
+            f"({', '.join(campaign_designs())}). "
+            f"Run the re-evaluation (workflow steps 08/09) first, or set "
+            f"{RESULTS_SLUG_ENV} if the outputs live under a nonstandard slug."
+        )
+    raise ValueError(
+        f"tag '{reeval_tag}' is carried by several moea slugs "
+        f"({', '.join(candidates)}); set {RESULTS_SLUG_ENV} to the one to "
+        f"post-process."
+    )
 
 
 ###############################################################################

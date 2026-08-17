@@ -1484,6 +1484,24 @@ RTOL_MARGIN_RULE: str = (
 #: The floors are unpaired UPPER BOUNDS — pass B replaces them with the
 #: paired estimate once any policy cube exists (note S2/S8), and records
 #: whether the rung moves.
+#:
+#: PASS B RAN 2026-08-14 AND THE TAU VECTOR WAS REPLACED; k = 1 is unchanged.
+#: The paired near-tie floor is 5.7-21.8x SMALLER than the unpaired pass-A
+#: bound on the five axes where the floor set tau (reliabilities 0.017-0.024
+#: vs 0.122-0.137; flood 0.043 vs 0.927), confirming the caution above. At the
+#: pass-A vector every design scored no_harm_freq_tau = 1.000 with a paired
+#: bootstrap SE of exactly 0 and assay sensitivity FAILED, so the RQ2 null was
+#: an artifact of the tolerance. The adopted vector is now ROUND and
+#: stakeholder-stated (reliabilities 0.02, deficit-P99 2 pp, flood 0.25
+#: ft-d/yr, storage 5 pp) — see the comment block in workflow/envs/*.env for
+#: the per-axis anchoring and outputs/supplemental/regret_tolerance_diagnostics/
+#: tables/rtolB_*.csv for the evidence.
+#:
+#: CAVEATS carried from pass B: with K = 1 draw and S = 1 seed the section-5
+#: draw-level null is NOT estimable, so delta is only `2 x paired bootstrap SE`
+#: (a lower bound, 0.102 all-8 / 0.065 compromise-3), and the matched-design
+#: ordering on the all-8 metric flips with the flood tolerance alone (between
+#: tau_flood 0.25 and 0.30) and must be reported with that sensitivity.
 RTOL_ADOPTED_K: float | None = 1.0
 
 RTOL_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "regret_tolerance_diagnostics"

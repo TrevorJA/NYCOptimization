@@ -38,7 +38,7 @@ from src import results_data as rd
 from src.satisficing_criteria import focal_criterion
 from src.plotting.forcing_space import load_etest_sample
 from src.plotting.satisficing_diagnostics import _add_footer, _designs
-from src.plotting.style import design_label, save_figure
+from src.plotting.style import ETEST, design_label, save_figure
 
 #: Pass/fail mark styling (Okabe-Ito green for the rare pass class; light grey
 #: for the failing majority so the success region pops).
@@ -106,7 +106,7 @@ def _pass_vector(results: dict, pick: dict) -> np.ndarray:
     return sat[row].all(axis=1)
 
 
-def fig_factor_maps_theta_focal(results: dict, out_dir: Path,
+def fig_factor_maps_theta_focal(results: dict, out_stub: Path,
                                 table_dir: Path) -> dict:
     """Pass/fail of the focal joint criterion over the theta forcing space.
 
@@ -177,13 +177,13 @@ def fig_factor_maps_theta_focal(results: dict, out_dir: Path,
         for p in picks if p["solution_id"] is not None)
     policies = (f"Policies shown: rule-selected focal-criterion frontier "
                 f"champions ({sel_txt}) and the FFMP incumbent, each judged "
-                f"per SOW on {first.n_sow} held-out E_test SOWs.")
+                f"per SOW on {first.n_sow} held-out {ETEST} SOWs.")
     _add_footer(results, fig, y=-0.10, policies=policies,
                 criteria=rd.criterion_thresholds(results[designs[0]], focal),
                 criteria_header=(f"Focal satisficing criteria — {focal.label} "
                                  f"(all must hold):"))
 
-    save_figure(fig, out_dir / f"factor_maps_theta_{focal.key}")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / f"factor_maps_theta_{focal.key}.csv",
                               index=False)

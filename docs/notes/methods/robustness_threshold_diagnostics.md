@@ -292,8 +292,8 @@ check. The §0b placement rules apply per member axis:
   Trenton reliability 0.87 → 0.75 (incumbent median year 0.73); NYC storage
   P1 26% → 13.0% (incumbent median year 12.9%; the 26% FFMP L5 goalpost
   remains reported in the univariate decomposition, never conjoined);
-  Montague reliability 0.79 → incumbent per-SOW median rounded stricter
-  (PROVISIONAL 0.70 pending the audit table).
+  Montague reliability 0.79 → 0.50 (incumbent per-SOW median 0.482, rounded
+  stricter at ε = 0.05; transcribed 2026-08-13 from the audit table).
 - **Rule 2 external goalposts carried**: flood exceedance 1.17 ft·d/yr
   (observed WY2001–2023); NYC delivery reliability 0.65 (historic anchor,
   discriminating).

@@ -15,7 +15,7 @@ be HONEST about skill, so every test plants a known structure:
      recorded reason (never a silent NaN).
   5. ``probability_surface`` grids the fitted probability over the top-2 axes
      with off-plane axes at their median.
-  6. ``theta`` alignment and reference-SOW markers behave as documented.
+  6. ``theta`` alignment behaves as documented.
 
 Run:
     venv/bin/python -m pytest tests/test_factor_mapping.py -v
@@ -141,13 +141,3 @@ def test_theta_alignment_guard():
     fm.assert_theta_alignment(np.zeros((4, 3)), raw)   # aligned: no raise
     with pytest.raises(ValueError):
         fm.assert_theta_alignment(np.zeros((5, 3)), raw)
-
-
-def test_reference_sows_expected_and_dry(planted):
-    X, _ = planted
-    refs = fm.reference_sows(X, AXES)
-    assert list(refs["role"]) == ["expected", "dry"]
-    expected = refs[refs["role"] == "expected"].iloc[0]
-    assert expected["em"] == pytest.approx(np.median(X[:, 0]))
-    dry = refs[refs["role"] == "dry"].iloc[0]
-    assert dry["em"] == pytest.approx(X[:, 0].min())

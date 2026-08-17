@@ -139,7 +139,7 @@ def run(formulation: str, reeval_tag: str | None) -> Path:
     spec = (get_ensemble_spec(reeval_tag) if reeval_tag
             else config.REEVAL_ENSEMBLE_SPEC)
     tag = tag_of(spec)
-    slug = config.derive_slug(formulation)
+    slug = config.results_slug(tag, formulation)
     results = rd.load_design_results(tag, slug=slug)
 
     first = next(iter(results.values()))

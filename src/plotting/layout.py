@@ -48,19 +48,48 @@ def panel_grid(nrows: int, ncols: int, *, width: float = WIDTH_DOUBLE_COL,
 
 
 def panel_label(ax, letter: str, *, x: float = 0.02, y: float = 0.98,
-                fontsize: Optional[float] = None) -> None:
-    """Uniform "(a)"-style panel lettering, upper-left inside the axes."""
-    ax.text(x, y, f"({letter})", transform=ax.transAxes, ha="left", va="top",
+                fontsize: Optional[float] = None, loc: str = "inside") -> None:
+    """Uniform "(a)"-style panel lettering.
+
+    Args:
+        ax: Target axes.
+        letter: The letter, without parentheses.
+        x, y: Position in axes fraction.
+        fontsize: Override; None keeps the rcParams size.
+        loc: ``"inside"`` (default) places it inside the upper-left corner;
+            ``"above"`` places it just outside the top-left. Use ``"above"``
+            whenever the corner holds data -- a dense scatter or a dark
+            heatmap cell renders an inside label unreadable.
+    """
+    va = "bottom" if loc == "above" else "top"
+    ax.text(x, y, f"({letter})", transform=ax.transAxes, ha="left", va=va,
             fontsize=fontsize, fontweight="bold")
 
 
 def shared_legend(fig, handles: Sequence, *, ncol: Optional[int] = None,
-                  **kwargs) -> None:
-    """The single legend convention: frameless, centered below the figure."""
+                  y: Optional[float] = None, **kwargs) -> None:
+    """The single legend convention: frameless, centered below the figure.
+
+    Args:
+        fig: The figure.
+        handles: Legend handles.
+        ncol: Columns; defaults to one row of up to three entries.
+        y: Figure-fraction y of the legend's TOP. Pass this on any figure that
+            also carries a footer: the default ``"outside lower center"`` is
+            positioned by constrained-layout and can land on top of the
+            footer's text box, which is anchored in figure coordinates.
+            Anchoring both the same way makes the stack deterministic --
+            legend above, footer below.
+        **kwargs: Forwarded to ``fig.legend``.
+    """
     ncol = ncol if ncol is not None else min(len(handles), 3)
     kwargs.setdefault("frameon", False)
-    fig.legend(handles=handles, loc="outside lower center", ncol=ncol,
-               **kwargs)
+    if y is None:
+        fig.legend(handles=handles, loc="outside lower center", ncol=ncol,
+                   **kwargs)
+        return
+    fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, y),
+               ncol=ncol, **kwargs)
 
 
 def add_colorbar(fig, mappable, axes, *, label: str, **kwargs):

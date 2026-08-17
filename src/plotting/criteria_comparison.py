@@ -40,6 +40,7 @@ from src.plotting.satisficing_diagnostics import (
     _policies_line,
 )
 from src.plotting.style import (
+    ETEST,
     INCUMBENT_COLOR,
     add_figure_footer,
     criteria_lines,
@@ -92,7 +93,7 @@ def _criterion_grid(n: int, panel_w: float, panel_h: float, ncols: int = 3):
 # P2.1 -- criterion x design robustness matrix
 ###############################################################################
 
-def fig_criterion_robustness_matrix(results: dict, out_dir: Path,
+def fig_criterion_robustness_matrix(results: dict, out_stub: Path,
                                     table_dir: Path) -> dict:
     """Joint satisficing under each criterion set's conjunction, by design.
 
@@ -138,7 +139,7 @@ def fig_criterion_robustness_matrix(results: dict, out_dir: Path,
     ax.set_xticks(xs)
     ax.set_xticklabels(["\n".join(textwrap.wrap(c.label, 16))
                         for c in ALL_SETS], fontsize=8.5)
-    ax.set_ylabel("Fraction of E_test SOWs meeting\n"
+    ax.set_ylabel(f"Fraction of {ETEST} SOWs meeting\n"
                   "all criteria in the set jointly")
     ax.set_ylim(-0.012, max(0.32, 1.08 * max(r["best_policy"] for r in rows)))
     ax.grid(axis="y", color="0.9", lw=0.8)
@@ -157,7 +158,7 @@ def fig_criterion_robustness_matrix(results: dict, out_dir: Path,
     fig.tight_layout()
     _criteria_footer(results, fig, y_policies=-0.05, y_criteria=-0.16)
 
-    save_figure(fig, out_dir / "criterion_robustness_matrix")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / "criterion_robustness_matrix.csv",
                               index=False)
@@ -168,7 +169,7 @@ def fig_criterion_robustness_matrix(results: dict, out_dir: Path,
 # P2.2 -- conjunction collapse per criterion set
 ###############################################################################
 
-def fig_criterion_collapse(results: dict, out_dir: Path,
+def fig_criterion_collapse(results: dict, out_stub: Path,
                            table_dir: Path) -> dict:
     """Conjunction-collapse curves under each criterion set (one panel each).
 
@@ -232,7 +233,7 @@ def fig_criterion_collapse(results: dict, out_dir: Path,
     fig.tight_layout()
     _criteria_footer(results, fig, y_policies=-0.08, y_criteria=-0.15)
 
-    save_figure(fig, out_dir / "criterion_collapse")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.concat(tables, ignore_index=True).to_csv(
         table_dir / "criterion_collapse.csv", index=False)
@@ -243,7 +244,7 @@ def fig_criterion_collapse(results: dict, out_dir: Path,
 # P2.3 -- the wet-dry pincer: low-flow-side vs flood-side satisficing
 ###############################################################################
 
-def fig_drought_flood_split(results: dict, out_dir: Path,
+def fig_drought_flood_split(results: dict, out_stub: Path,
                             table_dir: Path) -> dict:
     """Each policy's supply/low-flow-side vs flood-side satisficing.
 
@@ -317,7 +318,7 @@ def fig_drought_flood_split(results: dict, out_dir: Path,
     fig.tight_layout()
     _criteria_footer(results, fig, y_policies=-0.075, y_criteria=-0.14)
 
-    save_figure(fig, out_dir / "drought_flood_split")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / "drought_flood_split.csv", index=False)
     return {"n_rows": len(rows)}

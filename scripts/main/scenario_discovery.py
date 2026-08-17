@@ -883,7 +883,7 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
     apply_style()
     spec = get_ensemble_spec(reeval_tag) if reeval_tag else config.REEVAL_ENSEMBLE_SPEC
     tag = tag_of(spec)
-    slug = config.derive_slug(formulation)
+    slug = config.results_slug(tag, formulation)
     label = resolve_sd_label()
     label_slug = label.replace(":", "_")
     # Namespaced by slug/tag/label so successive runs never overwrite each

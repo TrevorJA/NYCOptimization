@@ -262,18 +262,25 @@ def discover_runs(formulation: str, reeval_tag: str, seed: Optional[int] = None,
     return sorted(runs, key=lambda r: (r.design, r.draw, -1 if r.seed is None else r.seed))
 
 
-def common_slug(runs: Iterable[ReevalRun], formulation: str) -> str:
+def common_slug(runs: Iterable[ReevalRun], formulation: str,
+                reeval_tag: str) -> str:
     """The slug shared by the runs, with the ``_d{k}`` draw token stripped.
 
-    Used to name the comparison's own output dirs. Falls back to
-    ``config.derive_slug(formulation)`` when the runs disagree (e.g. a mixed
-    MOEA-config campaign), so output naming never depends silently on the
-    ambient env.
+    Used to name the comparison's own output dirs. When the runs disagree
+    (e.g. a mixed MOEA-config campaign) this defers to
+    ``config.results_slug``, which takes an explicit ``NYCOPT_RESULTS_SLUG``
+    or raises -- never ``derive_slug``, whose value is the ambient run
+    identity and silently becomes the dev-smoke slug with no env file set.
+
+    Args:
+        runs: The discovered re-eval runs.
+        formulation: Formulation identifier (e.g. ``"ffmp"``).
+        reeval_tag: The common held-out ensemble tag.
     """
     bases = {_DRAW_RE.sub("", r.slug) for r in runs}
     if len(bases) == 1:
         return bases.pop()
-    return config.derive_slug(formulation)
+    return config.results_slug(reeval_tag, formulation)
 
 
 ###############################################################################
@@ -1474,7 +1481,7 @@ def run_comparison(formulation: str = "ffmp", reeval_tag: Optional[str] = None,
             f"for at least one campaign design first."
         )
 
-    slug = common_slug(runs, formulation)
+    slug = common_slug(runs, formulation, tag)
     if table_dir is None:
         table_dir = config.OUTPUTS_DIR / "comparison" / slug / tag
     if fig_dir is None:

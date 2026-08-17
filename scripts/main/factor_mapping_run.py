@@ -16,8 +16,17 @@ figures never need the raw cubes:
       factor_map_fits.csv        one row per fit (importances, CV skill)
       factor_map_labels.csv      per-SOW coordinates + pass/fail per policy
       factor_map_surfaces.npz    top-2-axis probability grids per fit
-      factor_map_reference_sows.csv   expected / dry marker coordinates
+      regret_map_fits.csv        as above, for the REGRET label
+      regret_map_labels.csv      per-SOW low/high-regret label per policy
+      regret_map_surfaces.npz    top-2-axis P(low regret) grids per fit
       factor_mapping_meta.json
+
+The regret artifacts label each SOW by whether the policy harms the FFMP
+incumbent beyond tolerance on the criterion set's member axes -- the per-SOW
+decomposition of the ``no_harm_freq_tau__{key}`` scorecard column, fitted for
+the SAME compromise policies as the success/failure maps so the two figures
+are read panel-for-panel. The incumbent has no regret panel: regret is
+measured against it, so its label is zero in every SOW by construction.
 
 Settings via env (repo rule: no CLI value flags):
   NYCOPT_FM_CRITERIA   comma-separated criterion-set keys (default: all named)
@@ -48,6 +57,7 @@ if str(PROJECT_DIR) not in sys.path:
 import config  # noqa: E402
 from src import factor_mapping as fm  # noqa: E402
 from src import results_data as rd  # noqa: E402
+from src import robustness as rob  # noqa: E402
 from src.satisficing_criteria import NAMED_SETS, criterion_by_key  # noqa: E402
 
 
@@ -98,7 +108,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
     spec = (get_ensemble_spec(reeval_tag) if reeval_tag
             else config.REEVAL_ENSEMBLE_SPEC)
     tag = tag_of(spec)
-    slug = config.derive_slug(formulation)
+    slug = config.results_slug(tag, formulation)
     criteria = _requested_criteria()
     spaces = _requested_spaces()
 
@@ -119,6 +129,10 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
     n_fits = 0
     for cset in criteria:
         fit_rows, label_rows, surfaces = [], [], {}
+        # Regret artifacts are fitted for the SAME compromise policies, so the
+        # regret map and the success/failure map are read panel-for-panel.
+        regret_fits, regret_labels, regret_surfaces = [], [], {}
+        exposure_rows = []
         for design, res in results.items():
             thr = cset.thresholds(res.raw.thresholds, res.raw.kinds)
             compromise = fm.select_compromise(res.raw, thresholds=thr)
@@ -128,6 +142,74 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
             if res.incumbent is not None:
                 policies.append(("incumbent", fm.matrix_success_labels(
                     res.incumbent, res.raw.obj_names, thr, res.raw.kinds)))
+
+            # ---- regret views ---------------------------------------------
+            # All three come from ONE (S, G) regret matrix, restricted to the
+            # set's member axes so each is a per-SOW decomposition of the
+            # `no_harm_freq_tau__{key}` scorecard column. The INCUMBENT never
+            # appears: regret is defined against it, so its own label is zero
+            # in every SOW by construction.
+            if res.incumbent is not None and not cset.reference:
+                base = rob.load_raw(res.path / "baseline")
+                R = fm.regret_matrix(res.raw, base, axes=cset.axes)  # (S, G)
+
+                # (1) the fig-8 compromise policy, and (2) the policy this
+                # design's search produced that harms the incumbent in the
+                # MOST SOWs -- the worst case the front actually contains.
+                worst_i = int(np.argmax(R.mean(axis=1)))
+                views = [("compromise", compromise["index"]),
+                         ("worst", worst_i)]
+                for view, idx in views:
+                    policy = str(res.raw.solution_ids[idx])
+                    regret = R[idx]
+                    regret_labels += _label_records(
+                        design, policy, cset.key, features, res, ~regret,
+                        extra={"view": view})
+                    for space, (X, names) in features.items():
+                        # Fit P(LOW regret) so blue = good on every map.
+                        fit = fm.fit_classifier(X, ~regret, names, space=space)
+                        a1, a2 = (fm.top_axes(fit, 2) if len(names) > 1
+                                  else (0, 0))
+                        key = f"{view}__{design}__{policy}__{space}"
+                        if fit.predict_proba is not None and len(names) > 1:
+                            g1, g2, P = fm.probability_surface(fit, X, a1, a2)
+                            regret_surfaces[f"{key}__g1"] = g1
+                            regret_surfaces[f"{key}__g2"] = g2
+                            regret_surfaces[f"{key}__P"] = P
+                            regret_surfaces[f"{key}__axes"] = np.array(
+                                [names[a1], names[a2]])
+                        regret_fits.append({
+                            "view": view,
+                            "design": design, "policy": policy,
+                            "criterion": cset.key, "space": space,
+                            "backend": fit.backend,
+                            "n_low_regret": fit.n_pos, "n_regret": fit.n_neg,
+                            "train_accuracy": fit.train_accuracy,
+                            "cv_auc": fit.cv_auc, "cv_auc_std": fit.cv_auc_std,
+                            "cv_accuracy": fit.cv_accuracy,
+                            "cv_note": fit.cv_note,
+                            "top_axis_1": names[a1], "top_axis_2": names[a2],
+                            **{f"imp__{n}": float(v) for n, v in
+                               zip(names, np.atleast_1d(fit.importances))},
+                        })
+                        n_fits += 1
+
+                # (3) front-wide EXPOSURE: per SOW, the share of this design's
+                # Pareto policies that stay low-regret there. A frequency, so
+                # it needs no cross-objective normalization -- and unlike a
+                # single policy it cannot be degenerate by selection.
+                share = 1.0 - R.mean(axis=0)                        # (G,)
+                theta = features.get("theta")
+                for g, sow in enumerate(res.raw.sow_labels):
+                    rec = {"design": design, "criterion": cset.key,
+                           "sow_id": int(sow),
+                           "share_low_regret": float(share[g]),
+                           "n_policies": int(R.shape[0])}
+                    if theta is not None:
+                        Xt, tnames = theta
+                        rec.update({n: float(Xt[g, k])
+                                    for k, n in enumerate(tnames)})
+                    exposure_rows.append(rec)
             for policy, ok in policies:
                 if policy != "incumbent" or design == next(iter(results)):
                     # The incumbent is design-independent; label it once.
@@ -165,15 +247,26 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
                                         index=False)
         if surfaces:
             np.savez_compressed(out / "factor_map_surfaces.npz", **surfaces)
-        if "theta" in features:
-            fm.reference_sows(*features["theta"]).to_csv(
-                out / "factor_map_reference_sows.csv", index=False)
+        if regret_fits:
+            pd.DataFrame(regret_fits).to_csv(out / "regret_map_fits.csv",
+                                             index=False)
+            pd.DataFrame(regret_labels).to_csv(out / "regret_map_labels.csv",
+                                               index=False)
+            if regret_surfaces:
+                np.savez_compressed(out / "regret_map_surfaces.npz",
+                                    **regret_surfaces)
+        if exposure_rows:
+            pd.DataFrame(exposure_rows).to_csv(out / "regret_exposure.csv",
+                                               index=False)
         (out / "factor_mapping_meta.json").write_text(json.dumps({
             "formulation": formulation, "moea_slug": slug, "reeval_tag": tag,
             "criterion": cset.key, "criterion_axes": list(cset.axes),
             "criterion_thresholds": cset.criteria,
             "criterion_kinds": {a: first.kinds[a] for a in cset.axes},
             "criterion_label": cset.label,
+            "regret_tau": ({n: float(v) for n, v in
+                            rob.tau_ladder(first.obj_names).items()
+                            if n in set(cset.axes)} if regret_fits else None),
             "spaces": sorted(features), "n_sow": first.n_sow,
             "gbm": {"n_estimators": fm.FM_N_TREES,
                     "max_depth": fm.FM_MAX_DEPTH,
@@ -189,13 +282,13 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
 
 
 def _label_records(design: str, policy: str, criterion: str, features: dict,
-                   res, ok: np.ndarray) -> list[dict]:
+                   res, ok: np.ndarray, extra: dict = None) -> list[dict]:
     """Tidy per-SOW label rows carrying the theta coordinates when present."""
     rows = []
     theta = features.get("theta")
     for g, sow in enumerate(res.raw.sow_labels):
         row = {"design": design, "policy": policy, "criterion": criterion,
-               "sow_id": int(sow), "pass": bool(ok[g])}
+               "sow_id": int(sow), "pass": bool(ok[g]), **(extra or {})}
         if theta is not None:
             X, names = theta
             row.update({n: float(X[g, k]) for k, n in enumerate(names)})

@@ -1,5 +1,5 @@
 """
-regret_headline.py - Manuscript Figure 8: reoptimization vs the incumbent.
+regret_headline.py - Manuscript Figure 7: reoptimization vs the incumbent.
 
 The RQ2 headline in two panels: (a) the robustness / no-harm plane -- each
 policy's focal-set satisficing fraction against the frequency with which it
@@ -22,10 +22,13 @@ import numpy as np
 import pandas as pd
 
 import config
-from src.plotting.layout import (WIDTH_DOUBLE_COL, design_legend_handles,
-                                 panel_label, shared_legend)
+from src import results_data as rd
+from src.plotting.layout import (WIDTH_DOUBLE_COL, criteria_footer,
+                                 design_legend_handles, shared_legend)
 from src.plotting.regret_summary import pareto_frontier
-from src.plotting.style import DESIGN_ORDER, design_color, save_manuscript_figure
+from src.plotting.style import (DESIGN_ORDER, ETEST, design_color,
+                                design_label, overlap_style,
+                                save_manuscript_figure)
 from src.satisficing_criteria import focal_criterion
 
 
@@ -42,11 +45,12 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
     xcol, ycol = f"sat_set__{focal.key}", f"no_harm_freq_tau__{focal.key}"
 
     fig, (ax_a, ax_b) = plt.subplots(
-        1, 2, figsize=(WIDTH_DOUBLE_COL, WIDTH_DOUBLE_COL * 0.46),
+        1, 2, figsize=(WIDTH_DOUBLE_COL, WIDTH_DOUBLE_COL * 0.42),
         constrained_layout=True)
 
     rows = []
     designs_drawn = []
+    n_policies: dict = {}
     for d in DESIGN_ORDER:
         path = (config.OUTPUTS_DIR / d / ctx.slug / "reeval" / ctx.tag
                 / "robustness_scorecard_criteria.csv")
@@ -59,13 +63,20 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
         if pts.empty:
             continue
         designs_drawn.append(d)
+        n_policies[d] = len(pts)
         color = design_color(d)
         ax_a.scatter(pts[xcol], pts[ycol], s=9, color=color, alpha=0.30,
                      lw=0, zorder=2)
-        on_front = pareto_frontier(pts[xcol].to_numpy(), pts[ycol].to_numpy())
-        front = pts.iloc[np.flatnonzero(on_front)].sort_values(xcol)
+        # pareto_frontier returns INDICES, not a boolean mask. Treating them as
+        # a mask silently selected the wrong rows for the frontier line AND
+        # truncated the companion CSV to the frontier's length, because
+        # zip() stops at the shorter sequence.
+        front_idx = pareto_frontier(pts[xcol].to_numpy(), pts[ycol].to_numpy())
+        front = pts.iloc[front_idx].sort_values(xcol)
         ax_a.plot(front[xcol], front[ycol], color=color, lw=1.8, marker="o",
                   ms=4, zorder=4)
+        on_front = np.zeros(len(pts), dtype=bool)
+        on_front[front_idx] = True
         rows += [{"design": d, "solution_id": int(sid),
                   "robustness": float(r.iloc[0]), "no_harm": float(r.iloc[1]),
                   "on_frontier": bool(f)}
@@ -78,15 +89,23 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
             f"first (Anvil, `python -m src.robustness`)."
         )
 
-    ax_a.set_xlabel(f"Fraction of E_test SOWs meeting the focal set "
-                    f"({focal.label})")
-    ax_a.set_ylabel("Fraction of E_test SOWs with no harm vs the\n"
-                    "incumbent beyond tolerance (focal axes)")
-    ax_a.set_xlim(-0.02, 1.02)
+    # Axis labels stay SHORT: the full definitions live in the caption and the
+    # criteria footer. Sentence-length labels on a 3.7-inch panel overflow the
+    # axes and collide with the neighbouring panel's label.
+    ax_a.set_xlabel("Focal-set robustness")
+    ax_a.set_ylabel("No-harm frequency\nvs incumbent")
+    # Scale x to the DATA, not to the metric's theoretical 0-1 range: every
+    # policy sits below ~0.4, and padding to 1.0 crushes the whole cloud --
+    # and the frontiers that carry the panel's message -- into a thin strip.
+    xmax = max((row["robustness"] for row in rows), default=1.0)
+    ax_a.set_xlim(-0.01, max(xmax, 0.05) * 1.10)
     ax_a.set_ylim(-0.02, 1.02)
     ax_a.grid(color="0.92", lw=0.6)
     ax_a.set_axisbelow(True)
-    panel_label(ax_a, "a")
+    # Letter in the title, as in figs 5 and 8: both panels' upper-left corners
+    # hold data (the cloud saturates at no-harm = 1.0), so an inside label
+    # lands on the points.
+    ax_a.set_title("(a) Robustness vs no-harm plane")
 
     # ---- panel (b): the tolerance sweep -----------------------------------
     sweep_path = ctx.comparison_dir() / "design_regret_tolerance_sweep.csv"
@@ -97,24 +116,45 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
         vcol = next((c for c in ("no_harm_tau_best", "best")
                      if c in sweep.columns), None)
         if kcol and vcol:
-            for d in designs_drawn:
+            traces = {}
+            for rank, d in enumerate(designs_drawn):
                 sub = (sweep[sweep["design"] == d]
                        .groupby(kcol)[vcol].max().sort_index())
+                traces[d] = sub
+                # The designs routinely coincide exactly here; stagger the
+                # STYLE so every series stays visible at its true value.
                 ax_b.plot(sub.index, sub.to_numpy(), color=design_color(d),
-                          lw=1.6, marker="o", ms=4)
-            ax_b.set_xlabel("Tolerance rung  $k$  "
-                            r"($\tau_i = k\,\max(\varepsilon_i,$ floor$_i)$)")
+                          **overlap_style(rank))
+            ax_b.set_xlabel("Tolerance rung  $k$")
             ax_b.set_ylabel("Best policy's no-harm frequency")
-            ax_b.set_ylim(-0.02, 1.02)
+            ax_b.set_ylim(-0.02, 1.06)
             ax_b.grid(color="0.92", lw=0.6)
             ax_b.set_axisbelow(True)
+            # The flat-at-one case IS the result; state it in the title rather
+            # than leaving the reader to wonder whether series are missing.
+            stacked = np.concatenate([s.to_numpy() for s in traces.values()])
+            flat = stacked.size and np.allclose(stacked, stacked[0])
+            ax_b.set_title(
+                f"(b) All designs: {stacked[0]:.2f} at every rung" if flat
+                else "(b) Tolerance sweep")
         else:
             ax_b.axis("off")
     else:
         ax_b.axis("off")
-    panel_label(ax_b, "b")
 
-    shared_legend(fig, design_legend_handles(designs_drawn, incumbent=False))
+    shared_legend(fig, design_legend_handles(designs_drawn, incumbent=False),
+                  y=-0.02)
+
+    obj_names, thresholds, kinds = rd.load_threshold_snapshot(ctx.tag, ctx.slug)
+    counts = ", ".join(f"{n_policies[d]} {design_label(d).split(' (')[0].lower()}"
+                       for d in designs_drawn)
+    criteria_footer(
+        fig, focal, focal.thresholds(thresholds, kinds), kinds, obj_names,
+        y=-0.14,
+        provenance=(f"Every Pareto-set policy per design ({counts}), "
+                    f"re-evaluated on held-out {ETEST} SOWs. Both axes in (a) "
+                    f"are fractions of those SOWs; bold lines are per-design "
+                    f"non-dominated frontiers."))
     save_manuscript_figure(fig, out_stub)
     plt.close(fig)
 

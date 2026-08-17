@@ -70,6 +70,36 @@ DESIGN_FALLBACK_COLORS: list[str] = ["#56B4E9", "#CC79A7", "#E69F00"]
 INCUMBENT_COLOR: str = "firebrick"
 THRESHOLD_COLOR: str = "crimson"
 
+#: Typeset name of the held-out test ensemble. One spelling everywhere: a raw
+#: "E_test" in a label renders the underscore literally in some panels and as a
+#: subscript in others, which reads as two different quantities.
+ETEST: str = r"$E_\mathrm{test}$"
+
+
+def overlap_style(rank: int) -> dict:
+    """Line kwargs that keep EXACTLY coincident series individually visible.
+
+    When several designs share an identical trace (e.g. every design pinned at
+    a no-harm frequency of 1.0), plain solid lines hide all but the one drawn
+    last, and a reader cannot distinguish "they agree" from "the other series
+    are missing". Staggering dash phase, marker and width shows every series at
+    its true position -- never offset the DATA to fake separation.
+
+    Args:
+        rank: Index of the series within the overlapping group.
+
+    Returns:
+        Kwargs for ``Axes.plot``.
+    """
+    dashes = [(None, None), (5, 2), (1, 2)][rank % 3]
+    return {
+        "dashes": dashes,
+        "marker": ["o", "s", "^"][rank % 3],
+        "markersize": [7.0, 5.0, 3.2][rank % 3],
+        "markerfacecolor": "none",
+        "lw": [2.6, 1.8, 1.1][rank % 3],
+    }
+
 
 def design_style(design: str, fallback_rank: int = 0) -> dict:
     """Entity-stable style dict for ``design`` (deterministic fallback if unknown)."""
@@ -235,10 +265,13 @@ ROBUSTNESS_CMAP = "viridis"
 FACTOR_MAP_CMAP = "RdBu"
 
 #: Factor-map SOW scatter marks over the probability shading: luminance- and
-#: shape-separated (white-filled circle vs black cross), never hue-only.
+#: shape-separated (white-filled circle vs dark filled X), never hue-only.
+#: Both carry a contrasting outline because each mark sits over BOTH ends of
+#: the diverging field -- a plain black cross disappears into the dark-red
+#: failure region, which is exactly where most crosses fall.
 FACTOR_MAP_MARKS = {
     "success": {"marker": "o", "facecolor": "white", "edgecolor": "0.25"},
-    "failure": {"marker": "x", "color": "black"},
+    "failure": {"marker": "X", "facecolor": "0.10", "edgecolor": "white"},
 }
 
 # ---------------------------------------------------------------------------

@@ -561,7 +561,10 @@ def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
     Env override ``NYCOPT_REGRET_TAU`` (JSON ``{obj_name: tau}``) replaces the
     WHOLE vector, for the case where an adopted vector is recorded rather than
     derived. It must cover every objective: a partial override would leave the
-    rest on a different tolerance basis without saying so.
+    rest on a different tolerance basis without saying so. The override states
+    the tolerance at the ADOPTED rung ``NYCOPT_REGRET_TAU_K``, so it is scaled
+    by ``k / REGRET_TAU_K`` -- at the adopted rung that is the identity, and a
+    k-sweep still sweeps.
 
     Args:
         obj_names: Annual objective names, in cube column order.
@@ -595,7 +598,29 @@ def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
                 f"partial vector would leave those objectives on a different "
                 f"tolerance basis than the rest."
             )
-        return {n: float(override[n]) for n in obj_names}
+        # The override is the tolerance AT THE ADOPTED RUNG, so it supplies the
+        # ladder's UNIT, not a constant. Returning it unscaled made every rung
+        # of a k-sweep identical, which silently turned the tolerance profile
+        # (and the figure drawn from it) into a flat line whose shape was an
+        # artifact of the override rather than a property of the metric.
+        scale = REGRET_TAU_K if k is None else float(k)
+        unit = 1.0 if REGRET_TAU_K == 0 else scale / REGRET_TAU_K
+        return {n: float(override[n]) * unit for n in obj_names}
+
+    if not floors:
+        # No adopted vector AND no measured floors: this is the eps-only
+        # ladder, which is NOT the adopted basis (six of eight adopted taus
+        # are floor-bound, not epsilon-bound). Legitimate for the pass-B
+        # k-sweep, which unsets the override on purpose -- but silent drift
+        # onto a different tolerance basis is exactly what the whole-vector
+        # override exists to prevent, so say so.
+        warnings.warn(
+            "regret tau: no NYCOPT_REGRET_TAU override and no measured "
+            "floors, so the tolerance falls back to k*epsilon. This is NOT "
+            "the adopted vector (see workflow/envs/*.env); set "
+            "NYCOPT_REGRET_TAU, or pass floors=, unless you intend the "
+            "eps-only ladder."
+        )
 
     k = REGRET_TAU_K if k is None else float(k)
     missing = [n for n in obj_names if n not in ENSEMBLE_OBJECTIVES]

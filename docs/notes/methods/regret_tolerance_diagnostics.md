@@ -307,5 +307,61 @@ in the same place the result is.
    vector pins one τ for scoring — the §4 sweep must be run with
    `NYCOPT_REGRET_TAU` unset (or via `tau_ladder(k, floors=...)`) so the
    $k$-curve does not degenerate to a single rung.
-2. Replace the unpaired noise floor with the paired estimate once any policy cube
-   exists on the test ensemble (§2), and record whether it moves the rung.
+   **CORRECTION 2026-08-14:** the floor/epsilon ratios quoted above
+   (5.5–8.1× / 3.1× / 1.2×) were computed against the SUPERSEDED 2026-08-05
+   epsilons. Against the adopted 2026-08-12 vector they are 2.44–3.09 on the
+   reliabilities and flood and 1.15 on storage. The conclusion ("6 of 8
+   epsilons sit below their floors", shape = `max`) is unchanged; the
+   magnitudes are not. `rtol_noise_floor.csv` / `rtol_ladder_shapes.csv` still
+   carry the stale epsilon column and pass A should be re-run to refresh them.
+
+2. ~~Replace the unpaired noise floor with the paired estimate once any policy
+   cube exists on the test ensemble (§2), and record whether it moves the
+   rung.~~ **DONE 2026-08-14 — and it moved the τ VECTOR, though not the rung.**
+   Paired construction: for the policies nearest a tie with the incumbent in
+   mean $D_i$, the median across those policies of the SD across SOWs of the
+   per-SOW $D_i$. This nets out the shared inflow sequence the unpaired
+   estimator double-counts. Result ($z = 1.645$, stable across 2/5/10 %
+   near-tie sets; `rtolB_paired_floor_check.csv`):
+
+   | axis | paired floor | unpaired pass-A floor | inflation |
+   |---|---|---|---|
+   | NYC / Montague / Trenton / NJ reliability | 0.0197 / 0.0176 / 0.0171 / 0.0240 | 0.134 / 0.130 / 0.122 / 0.137 | 5.7–7.4× |
+   | downstream flood exceedance | 0.0426 | 0.9265 | **21.8×** |
+   | NYC storage P1 % | 3.02 | 5.76 | 1.9× |
+
+   The §2 caution ("a bound to be tightened, not a safe default") is confirmed
+   quantitatively. Both estimators remain UPPER bounds: only pooled per-SOW
+   values are persisted, so the true Monte-Carlo noise of $J(\theta)$ is not
+   recoverable from the cubes, and the near-tie construction still contains
+   real policy × SOW response. A true paired null needs two independent
+   simulations of the SAME policy on $E_{\text{test}}$.
+
+   **Consequence — τ RE-ADOPTED 2026-08-14 on round values** (k = 1 unchanged):
+   reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft·d/yr, storage 5 pp. At
+   the old vector the RQ2 comparison was inert: every design at
+   $\Pi_\tau = 1.000$, all pairwise differences exactly 0.000 with paired
+   bootstrap SE 0.0000, and **assay sensitivity FAILED** — the metric could not
+   separate the unmatched `historic` control, so the non-inferiority null was
+   produced by the tolerance, not measured. At the round vector assay
+   sensitivity holds on both endpoints and neither is saturated or starved.
+   Per-axis anchoring is in the `workflow/envs/*.env` comment block.
+
+3. **Report with the result, not as an appendix:** on the all-8 metric the
+   ordering of the two MATCHED designs is a function of the flood tolerance
+   alone — `fixed_probabilistic` is flat at 0.620 across $\tau_{\text{flood}}$
+   while `hazard_filling_stationary` sweeps 0.065 → 0.850, crossing it between
+   0.25 and 0.30. Show the 0.10 and 0.50 variants alongside. On the
+   compromise-3 framing the ordering is stable.
+
+4. **Not estimable at K = 1 draw / S = 1 seed:** both §4.2 empirical nulls.
+   δ therefore reduces to `2 × paired bootstrap SE` (0.102 all-8, 0.065
+   compromise-3), which is a LOWER BOUND on δ and must be labelled as one.
+   `run_pass_b()` currently raises `KeyError: 'level'` in this situation
+   instead of degrading to "not estimable" — fix before the production pass.
+
+5. The all-8 conjunction is effectively a one-objective metric:
+   `montague_flow_deficit_p99_pct` is degraded in 90 % of policy × SOW cells
+   (median −20.9 pp) and alone caps $\Pi_\tau$ at ~0.19–0.29. Observed
+   $\Pi_\tau$ ≈ the independence product, so this is accumulation, not
+   co-occurrence (§4.5).

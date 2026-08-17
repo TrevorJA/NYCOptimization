@@ -29,6 +29,7 @@ from src import results_data as rd
 from src.satisficing_criteria import criterion_by_key
 from src.plotting.style import (
     DESIGN_ORDER,
+    ETEST,
     INCUMBENT_COLOR,
     THRESHOLD_COLOR,
     add_figure_footer,
@@ -58,7 +59,7 @@ def _policies_line(results: dict) -> str:
     g = results[designs[0]].raw.n_sow
     return (f"Policies: every ε-refiltered Pareto-set policy per design "
             f"({counts}) and the FFMP incumbent, re-evaluated on {g} "
-            f"held-out E_test SOWs.")
+            f"held-out {ETEST} SOWs.")
 
 
 def _add_footer(results: dict, fig, *, y: float,
@@ -91,7 +92,7 @@ def _design_legend(results: dict, incumbent: bool = True) -> list[Line2D]:
 # P1.1 -- univariate satisficing decomposition
 ###############################################################################
 
-def fig_satisficing_decomposition(results: dict, out_dir: Path,
+def fig_satisficing_decomposition(results: dict, out_stub: Path,
                                   table_dir: Path) -> dict:
     """Per-axis satisficing fractions: policy range, best/median, incumbent.
 
@@ -142,7 +143,7 @@ def fig_satisficing_decomposition(results: dict, out_dir: Path,
     ax.set_yticklabels([short_label_for(n) for n in reversed(obj_names)])
     ax.set_ylim(-0.6, m - 0.4)
     ax.set_xlim(-0.02, 1.02)
-    ax.set_xlabel("Fraction of E_test SOWs meeting the criterion "
+    ax.set_xlabel(f"Fraction of {ETEST} SOWs meeting the criterion "
                   "(single axis alone)")
     ax.grid(axis="x", color="0.9", lw=0.8)
     ax.set_axisbelow(True)
@@ -166,7 +167,7 @@ def fig_satisficing_decomposition(results: dict, out_dir: Path,
                 criteria=rd.criterion_thresholds(results[designs[0]], crit),
                 criteria_header=f"{crit.label} (all must hold):")
 
-    save_figure(fig, out_dir / "satisficing_decomposition")
+    save_figure(fig, out_stub)
     plt.close(fig)
     table = pd.DataFrame(rows)
     table.to_csv(table_dir / "satisficing_decomposition.csv", index=False)
@@ -177,7 +178,7 @@ def fig_satisficing_decomposition(results: dict, out_dir: Path,
 # P1.2 -- conjunction collapse
 ###############################################################################
 
-def fig_conjunction_collapse(results: dict, out_dir: Path,
+def fig_conjunction_collapse(results: dict, out_stub: Path,
                              table_dir: Path) -> dict:
     """Joint satisficing fraction as the eight criteria are conjoined in a
     fixed global order (easiest first), per design.
@@ -220,7 +221,7 @@ def fig_conjunction_collapse(results: dict, out_dir: Path,
     ax.set_xticklabels([short_label_for(n) for n in order],
                        rotation=30, ha="right")
     ax.set_xlabel("Criteria conjoined left to right (cumulative)")
-    ax.set_ylabel("Fraction of E_test SOWs meeting\nall conjoined thresholds")
+    ax.set_ylabel(f"Fraction of {ETEST} SOWs meeting\nall conjoined thresholds")
     ax.set_ylim(-0.03, 1.03)
     ax.grid(axis="y", color="0.9", lw=0.8)
     ax.set_axisbelow(True)
@@ -239,7 +240,7 @@ def fig_conjunction_collapse(results: dict, out_dir: Path,
                 criteria=rd.criterion_thresholds(results[designs[0]], crit),
                 criteria_header=f"{crit.label} (all must hold):")
 
-    save_figure(fig, out_dir / "conjunction_collapse")
+    save_figure(fig, out_stub)
     plt.close(fig)
     table = pd.concat(tables, ignore_index=True)
     table.to_csv(table_dir / "conjunction_collapse.csv", index=False)
@@ -262,7 +263,7 @@ def _per_policy_response(values: np.ndarray, kind: str,
     return out
 
 
-def fig_threshold_response(results: dict, out_dir: Path,
+def fig_threshold_response(results: dict, out_stub: Path,
                            table_dir: Path) -> dict:
     """Satisficing fraction as a function of where each threshold is placed.
 
@@ -336,7 +337,7 @@ def fig_threshold_response(results: dict, out_dir: Path,
     _add_footer(results, fig, y=-0.10, criteria=thresholds, criteria_header=(
         f"{crit.label} (crimson dashed lines; all must hold):"))
 
-    save_figure(fig, out_dir / "threshold_response")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / "threshold_response.csv", index=False)
     return {"n_objectives": len(obj_names)}
@@ -378,7 +379,7 @@ def _pattern_label(pattern: tuple) -> str:
     return " and\n".join(short_label_for(n) for n in pattern)
 
 
-def fig_attainability_blockers(results: dict, out_dir: Path,
+def fig_attainability_blockers(results: dict, out_stub: Path,
                                table_dir: Path) -> dict:
     """Why E_test SOWs are unattainable: per-SOW blocking patterns.
 
@@ -417,7 +418,7 @@ def fig_attainability_blockers(results: dict, out_dir: Path,
     n_sow = results[designs[0]].raw.n_sow
     ax.set_yticks(np.arange(n_pat)[::-1])
     ax.set_yticklabels([_pattern_label(p) for p in patterns], fontsize=8.5)
-    ax.set_xlabel(f"Number of E_test SOWs (of {n_sow})")
+    ax.set_xlabel(f"Number of {ETEST} SOWs (of {n_sow})")
     ax.grid(axis="x", color="0.9", lw=0.8)
     ax.set_axisbelow(True)
     ax.legend(loc="lower right", frameon=False)
@@ -426,7 +427,7 @@ def fig_attainability_blockers(results: dict, out_dir: Path,
     _add_footer(results, fig, y=-0.05, criteria=crit_thr, criteria_header=(
         f"Blocking is judged against: {crit.label} (all must hold):"))
 
-    save_figure(fig, out_dir / "attainability_blockers")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / "attainability_blockers.csv",
                               index=False)
@@ -437,7 +438,7 @@ def fig_attainability_blockers(results: dict, out_dir: Path,
 # P1.5 (optional) -- pairwise co-satisfiability
 ###############################################################################
 
-def fig_pairwise_cosatisficing(results: dict, out_dir: Path,
+def fig_pairwise_cosatisficing(results: dict, out_stub: Path,
                                table_dir: Path) -> dict:
     """Best-policy joint satisficing for every PAIR of axes, per design.
 
@@ -487,7 +488,7 @@ def fig_pairwise_cosatisficing(results: dict, out_dir: Path,
                 criteria_header=(
                     f"Pairs are judged against: {crit.label} (all must hold):"))
 
-    save_figure(fig, out_dir / "pairwise_cosatisficing")
+    save_figure(fig, out_stub)
     plt.close(fig)
     pd.DataFrame(rows).to_csv(table_dir / "pairwise_cosatisficing.csv",
                               index=False)
