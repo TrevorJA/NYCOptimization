@@ -180,7 +180,7 @@ Because $N$ and $L$ are common, per-evaluation simulation cost, scenario-years, 
 
 `historic` ($N=1$, $L \approx 77$) cannot be matched and is reported as a reference.
 
-**NFE.** The function-evaluation budget is **500,000 NFE per search**, within the range used for comparable reservoir control-policy problems (Quinn et al. 2017; Bartholomew & Kwakkel 2020). The runtime archive records intermediate NFE levels, so the attained budget is justified against observed convergence after the fact, and the design comparison can be recomputed at two or three earlier budgets at re-evaluation cost only.
+**NFE.** The function-evaluation budget is **500,000 NFE per search**, within the range used for comparable reservoir control-policy problems (Quinn et al. 2017; Bartholomew & Kwakkel 2020). The runtime archive records intermediate NFE levels, so the attained budget is justified against observed convergence after the fact.
 
 **Campaign geometry.** Each search runs Multi-Master Borg on 8 Anvil wholenode nodes (1,024 cores): 4 islands × 254 workers + 4 island masters + 1 controller = **1,021 MPI ranks**, 125,000 NFE per island, runtime snapshots every 2,500 island-NFE (50 per island). Island partitioning is throughput-free at fixed slot count (measured), so 4 islands is a search-reliability choice that keeps per-island trajectories long. Searches are NFE-bounded — no Borg maxTime cap, which could truncate NFE unequally across designs — with the SLURM wall (~40 h) as the safety net; a killed run resumes from the last snapshot. SU cost is nearly flat in node count, so 8 nodes (vs 4) halves wall time at no cost penalty. The `production` entry of `src/moea_config.py` is the single source of these numbers.
 
