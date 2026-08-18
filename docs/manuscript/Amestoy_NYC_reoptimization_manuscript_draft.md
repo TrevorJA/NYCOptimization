@@ -132,44 +132,44 @@ The requirement that the candidate pool be sampled independently, rather than by
 
 #### 3.1.3 Hazard Space Definition and Space-Filling Scenario Selection
 
-Every ensemble scenario is a non-overlapping $L$-year realization. Each simulation begins from an initial storage of 80 percent of capacity, the Pywr-DRB default initial condition lying within the reservoirs' normal operating range, and the first six months of each realization are excluded from all metrics as an initialization period that attenuates the influence of this assumption. Six months is also the accumulation period that the six-month drought index introduced below requires before its first defined value, so hazard metrics and objectives (Section 3.2.2) are defined on the identical window. A drought event that would straddle a realization boundary is truncated by it. The choice of $L$ bounds this truncation (Section 3.1.1), and event-scale severity is additionally captured at re-evaluation, where records are longer.
+Every ensemble scenario is a non-overlapping $L$-year realization. Each simulation begins from an initial storage of 80 percent of capacity, the Pywr-DRB default initial condition lying within the reservoirs' normal operating range, and the first six months of each realization are excluded from all metrics as an initialization period that attenuates the influence of this assumption. Six months is also the accumulation period that the six-month drought index introduced below requires before its first defined value, so hazard metrics and objectives (Section 3.2.2) are defined on the identical window. A drought event that would straddle a realization boundary is truncated by it. The choice of $L$ bounds this truncation (Section 3.1.1), and events are additionally captured at their full scale at re-evaluation, where records are longer.
 
 Hazard coordinates are computed on the aggregate inflow to the three NYC reservoirs before any system simulation. Let $q_x(t)$ denote the daily aggregate NYC inflow of candidate realization $x$, and let $z_x(\tau)$ denote the corresponding monthly series of the six-month Standardized Streamflow Index (SSI-6), computed with a gamma distribution fitted once per calendar month to the historical record (McKee et al., 1993; Vicente-Serrano et al., 2012). Six hazard metrics, which serve as the axes of the hazard space, are computed for every realization: four drought metrics derived from run theory applied to the SSI-6 series, and two flood metrics derived from a peaks-over-threshold analysis of the daily flows.
 
-Drought events are identified from the SSI-6 series with a threshold-based definition with event pooling. An event begins in the first month that $z_x$ falls below zero, is retained as a drought event only if $z_x$ reaches $-1$ during the event, and terminates only after $z_x$ remains non-negative for three consecutive months. Let $E = \{\tau_{\mathrm{on}}, \ldots, \tau_{\mathrm{end}}\}$ denote the months of an event and $\tau_{\mathrm{pk}}$ the month of its minimum index value. The event's deficit volume, in units of SSI-months, is
+Drought events are identified from the SSI-6 series with a threshold-based definition with event pooling. An event begins in the first month that $z_x$ falls below zero, is retained as a drought event only if $z_x$ reaches $-1$ during the event, and terminates only after $z_x$ remains non-negative for three consecutive months. Let $E = \{\tau_{\mathrm{on}}, \ldots, \tau_{\mathrm{end}}\}$ denote the months of an event and $\tau_{\mathrm{pk}}$ the month of its minimum index value. The event's drought magnitude, in units of SSI-months, is
 
 $$
-D(E) \;=\; -\sum_{\tau \in E} \min\big(z_x(\tau),\, 0\big),
+M(E) \;=\; -\sum_{\tau \in E} \min\big(z_x(\tau),\, 0\big),
 \tag{1}
 $$
 
-its peak depth, in standard deviations, is
+its drought severity, in standard deviations, is
 
 $$
 S(E) \;=\; -\min_{\tau \in E}\, z_x(\tau).
 \tag{2}
 $$
 
-The onset rate normalizes the peak depth by the time taken to reach it,
+The onset rate normalizes the severity by the time taken to reach it,
 
 $$
 R_{\mathrm{on}}(E) \;=\; \frac{S(E)}{\tau_{\mathrm{pk}} - \tau_{\mathrm{on}} + 1},
 \tag{3}
 $$
 
-and the recovery rate normalizes the peak depth by the time taken to recover from it,
+and the recovery rate normalizes the severity by the time taken to recover from it,
 
 $$
 R_{\mathrm{rec}}(E) \;=\; \frac{S(E)}{\tau_{\mathrm{end}} - \tau_{\mathrm{pk}} + 1}.
 \tag{4}
 $$
 
-When a realization contains more than one qualifying event, the controlling event $E^{*} = \arg\max_{E} D(E)$, the event with the largest deficit volume and the operationally binding event under fixed initial storage, is scored. All four drought metrics are zero for a realization with no qualifying event.
+When a realization contains more than one qualifying event, the controlling event $E^{*} = \arg\max_{E} M(E)$, the event with the largest drought magnitude and the operationally binding event under fixed initial storage, is scored. All four drought metrics are zero for a realization with no qualifying event.
 
-The flood metrics are computed from the daily flows relative to the high-flow threshold $u$, fixed at the 95th percentile of the historical record's daily flow. The critical pulse $P$ of a realization is the exceedance run, the maximal set of consecutive days with $q_x(t) > u$, that contains the realization's maximum daily flow at day $t_{\mathrm{max}}$, so exactly one pulse is scored per realization and no declustering parameter is required. With $\bar{q}$ the mean daily flow of the historical record, the peak magnitude is
+The flood metrics are computed from the daily flows relative to the high-flow threshold $u$, fixed at the 95th percentile of the historical record's daily flow. The critical pulse $P$ of a realization is the exceedance run, the maximal set of consecutive days with $q_x(t) > u$, that contains the realization's maximum daily flow at day $t_{\mathrm{max}}$, so exactly one pulse is scored per realization and no declustering parameter is required. With $\bar{q}$ the mean daily flow of the historical record, the peak discharge is
 
 $$
-M \;=\; \frac{q_x(t_{\mathrm{max}})}{\bar{q}},
+D \;=\; \frac{q_x(t_{\mathrm{max}})}{\bar{q}},
 \tag{5}
 $$
 

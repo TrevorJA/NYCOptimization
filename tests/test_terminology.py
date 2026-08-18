@@ -125,6 +125,17 @@ RETIRED_TERMS: dict[str, str] = {
     "all eight criteria jointly":
         "all criteria in the set jointly (see reference_all8 for the "
         "all-axes reference conjunction)",
+    # 2026-08-18 hazard-metric terminology alignment with the drought literature
+    # (and SynHydro's get_drought_metrics columns): severity = peak SSI deficit,
+    # magnitude = cumulative deficit; the flood axis was renamed so the
+    # manuscript symbols work out (M = drought magnitude, D = peak discharge).
+    "drought_peak_depth": "drought_severity (peak SSI-based deficit)",
+    "peak depth": "drought severity (peak SSI-based deficit)",
+    "drought_deficit_volume": "drought_magnitude (cumulative SSI deficit)",
+    "deficit volume": "drought magnitude (cumulative SSI deficit)",
+    "flood_peak_magnitude": "flood_peak_discharge (window max daily flow / "
+                            "reference mean)",
+    "peak magnitude": "peak discharge (window max daily flow / reference mean)",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

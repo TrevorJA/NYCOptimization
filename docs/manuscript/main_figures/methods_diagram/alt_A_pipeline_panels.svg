@@ -376,7 +376,7 @@
       </g>
     </g>
     <g id="b-captions" font-size="13" fill="#333333" text-anchor="middle">
-      <text x="1475" y="556">6 axes &#8212; drought: deficit volume &#183; peak depth &#183; onset rate &#183; recovery rate; flood: peak &#183; pulse duration</text>
+      <text x="1475" y="556">6 axes &#8212; drought: magnitude &#183; severity &#183; onset rate &#183; recovery rate; flood: peak discharge &#183; pulse duration</text>
       <text x="1475" y="578">tail: &#8805; 31% of selected above pool p90 (i.i.d.: 10%)</text>
     </g>
   </g>

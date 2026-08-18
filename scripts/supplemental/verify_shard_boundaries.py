@@ -16,7 +16,7 @@ All configuration is via environment variables (no CLI value flags):
 Rows are compared with a per-axis tolerance of 1% of the image's robust
 (p1-p99) axis range rather than bit equality. Bit identity holds only within a
 generation era: a 2026-07-29 Anvil system update changed post-update
-regeneration deterministically by up to ~0.5% of the deficit-volume robust
+regeneration deterministically by up to ~0.5% of the drought-magnitude robust
 range (dry axes only; flood axes bit-identical) relative to pools generated
 before it, on every node and BLAS thread count tested. Genuine partition bugs
 (row misalignment, duplication, wrong-realization content) produce multi-axis

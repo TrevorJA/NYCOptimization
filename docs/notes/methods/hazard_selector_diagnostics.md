@@ -62,7 +62,7 @@ Production axis-set decision: nested-P saturation rungs {2k, 5k, 20k, 10⁵,
 honest i.i.d. pools by the global-index seeding).
 
 - **Axis screen: all 8 candidates retained (m = 8).** No degenerate axes; no
-  near-duplicate pair — the largest |ρ_S| is 0.88 (deficit volume ↔
+  near-duplicate pair — the largest |ρ_S| is 0.88 (drought magnitude ↔
   duration), below the 0.95 dedupe cut and still below a 0.90 tightening.
   The cluster tree shows the expected concept groups with all between-group
   |ρ_S| ≤ 0.61.
@@ -88,14 +88,14 @@ honest i.i.d. pools by the global-index seeding).
   realized coverage ~2.5–3× (outlier fixation); tail enrichment moves
   smoothly across (2, 98)–(0.5, 99.5) with no cliff at the campaign default.
 - **Selection axis set: the campaign selects on m = 6**
-  ({deficit volume, peak depth, onset rate, recovery rate, peak magnitude,
+  ({drought magnitude, severity, onset rate, recovery rate, peak discharge,
   pulse duration} = `config.HAZARD_SELECTION_AXES`, consumed by the step-03
   selection). The full 8-axis set cannot pass the pre-stated adequacy gate
   (min per-axis tail share ≥ ~0.30) at any affordable pool size — the
   nested-P rungs show an improvement exponent ~0.04, far below the P^(−1/8)
   bound, i.e. geometry-limited, not supply-limited. The m = 6 set passes at
   P = 10⁶ (min 0.311; thin margin — re-confirm per production draw); the
-  measured alternatives (duration for peak depth; duration + rise rate both
+  measured alternatives (duration for severity; duration + rise rate both
   in) fail the gate. The dropped descriptors stay computed in every hazard
   image and reportable post-hoc. The battery scores exactly two axis sets —
   campaign and full — the full set serving as the measured evidence for

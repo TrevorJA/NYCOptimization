@@ -779,7 +779,7 @@ s = add_slide(notes=(
     "non-campaign sensitivity only."))
 add_title(s, "Hazard axes & the hazard-filling selector")
 add_body(s, [
-    ("b", "candidate axes: SSI-6 drought-event metrics (deficit volume, duration, peak depth, onset and recovery rate) and peaks-over-threshold flood metrics (peak magnitude, pulse duration, rise rate), computed per sequence"),
+    ("b", "candidate axes: SSI-6 drought-event metrics (magnitude, duration, severity, onset and recovery rate) and peaks-over-threshold flood metrics (peak discharge, pulse duration, rise rate), computed per sequence"),
     ("b", "axis screen keeps **all non-degenerate descriptors**, pruning only near-duplicates (|ρ_S| ≥ 0.95) to one member; the Spearman correlation structure (Olden & Poff 2003) is reported as a diagnostic, never used to reduce further"),
     ("b", "selector: **range-scale each axis to [0,1] by its pool min-max (ABSOLUTE space)**, draw **N Latin-hypercube anchors**, snap each to the **nearest unused pool member**. Deterministic given the anchor seed; **no annealing, no tuning**"),
     ("b", "absolute-space filling **deliberately over-represents the severe corners** relative to their pool frequency — the distribution shift RQ1 tests (a rank-space ECDF variant is a non-campaign sensitivity only)"),

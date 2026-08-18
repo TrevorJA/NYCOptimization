@@ -28,12 +28,12 @@ from matplotlib.patches import Rectangle
 
 #: Display labels for the candidate hazard axes (dry SSI-6 run-theory; wet POT).
 HAZARD_AXIS_LABELS: dict[str, str] = {
-    "drought_deficit_volume": "Deficit volume\n(|ΣSSI|)",
+    "drought_magnitude":      "Drought magnitude\n(|ΣSSI|)",
     "drought_duration":       "Drought duration\n(months)",
-    "drought_peak_depth":     "Peak depth\n(|min SSI|)",
+    "drought_severity":       "Drought severity\n(|min SSI|)",
     "drought_onset_rate":     "Onset rate\n(SSI/month)",
     "drought_recovery_rate":  "Recovery rate\n(SSI/month)",
-    "flood_peak_magnitude":   "Flood peak\n(x ref. mean)",
+    "flood_peak_discharge":   "Peak discharge\n(x ref. mean)",
     "flood_pulse_duration":   "Pulse duration\n(days)",
     "flood_rise_rate":        "Rise rate\n(x ref. mean/day)",
 }

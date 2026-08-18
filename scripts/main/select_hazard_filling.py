@@ -6,8 +6,8 @@ deterministic LHS anchor plan snapped to the nearest unused pool member in hazar
 space; there is no discrepancy objective and no annealing, so L2-star discrepancy
 stays an independent build-QC gate rather than the quantity the selector optimized.
 
-The snap is intrinsic, not an approximation: hazard coordinates (drought deficit
-volume, flood peak magnitude, ...) are EMERGENT properties of a realized flow
+The snap is intrinsic, not an approximation: hazard coordinates (drought
+magnitude, flood peak discharge, ...) are EMERGENT properties of a realized flow
 sequence, so a hazard-space design has nothing to generate *to* and must select from
 a finite pool. Input-space designs, by contrast, generate at their design points
 (step 02, ``lhs_theta``) and never reach this step.

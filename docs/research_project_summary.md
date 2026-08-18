@@ -86,7 +86,7 @@ probability-preserving flow stratification).
    sequence; the screen (degenerate drop + near-duplicate prune at |ρ_S| ≥ 0.95)
    retains all eight candidates, with rank-correlation structure reported as a
    diagnostic. The campaign **selection axes** are a fixed six-descriptor subset
-   (deficit volume, peak depth, onset rate, recovery rate; peak magnitude, pulse
+   (drought magnitude, severity, onset rate, recovery rate; peak discharge, pulse
    duration — `config.HAZARD_SELECTION_AXES`); duration and rise rate stay
    computed and reported but do not enter the snap distance.
 3. **Selection (hazard filling only)** — Latin hypercube anchors in absolute, robust

@@ -44,11 +44,11 @@ from src.plotting import style
 
 #: Manuscript display labels for the six selection axes (Section 3.1.3 symbols).
 HAZARD_METRIC_LABELS: dict[str, str] = {
-    "drought_deficit_volume": "Deficit volume, $D$ (SSI-months)",
-    "drought_peak_depth":     "Peak depth, $S$ (s.d.)",
+    "drought_magnitude":      "Drought magnitude, $M$ (SSI-months)",
+    "drought_severity":       "Drought severity, $S$ (s.d.)",
     "drought_onset_rate":     "Onset rate, $R_\\mathrm{on}$ (s.d. month$^{-1}$)",
     "drought_recovery_rate":  "Recovery rate, $R_\\mathrm{rec}$ (s.d. month$^{-1}$)",
-    "flood_peak_magnitude":   "Peak magnitude, $M$ (-)",
+    "flood_peak_discharge":   "Peak discharge, $D$ (-)",
     "flood_pulse_duration":   "Pulse duration, $T_P$ (days)",
 }
 
@@ -60,8 +60,8 @@ POOL_FILL = "0.88"
 POOL_EDGE = "0.72"
 HISTORIC_MARK = "0.15"
 
-#: Default 2-D scatter pair ``(x, y)``: the drought intensity-magnitude plane.
-DEFAULT_SCATTER_PAIR: tuple[str, str] = ("drought_peak_depth", "drought_deficit_volume")
+#: Default 2-D scatter pair ``(x, y)``: the drought severity-magnitude plane.
+DEFAULT_SCATTER_PAIR: tuple[str, str] = ("drought_severity", "drought_magnitude")
 
 DEFAULT_POOL_SLUG = "statpool_10yr_n1000000_d0"
 

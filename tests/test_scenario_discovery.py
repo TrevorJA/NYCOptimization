@@ -63,11 +63,11 @@ sd = _load_script()
 # Synthetic hazard image with a PLANTED failure corner
 # ---------------------------------------------------------------------------
 # 4 candidate axes, one of which (drought_duration) is a near-duplicate of the
-# planted axis (drought_deficit_volume) — so the redundancy screen has something
+# planted axis (drought_magnitude) — so the redundancy screen has something
 # to remove and the importance ranking has something to be destabilized by.
-PLANTED_AXIS = "drought_deficit_volume"
+PLANTED_AXIS = "drought_magnitude"
 REDUNDANT_AXIS = "drought_duration"
-AXES = [PLANTED_AXIS, REDUNDANT_AXIS, "drought_onset_rate", "flood_peak_magnitude"]
+AXES = [PLANTED_AXIS, REDUNDANT_AXIS, "drought_onset_rate", "flood_peak_discharge"]
 N_TEST = 400
 FAIL_CUT = 0.70          # failures planted where the planted axis exceeds this
 N_SEARCH = 60
@@ -113,7 +113,7 @@ def test_screen_drops_the_redundant_axis(screen):
     retained = screen["retained"]
     assert PLANTED_AXIS in retained, "screen dropped the operationally-preferred axis"
     assert REDUNDANT_AXIS not in retained, "screen kept a |rho_S| ~ 1 duplicate axis"
-    assert set(retained) == {PLANTED_AXIS, "drought_onset_rate", "flood_peak_magnitude"}
+    assert set(retained) == {PLANTED_AXIS, "drought_onset_rate", "flood_peak_discharge"}
     # The planted duplicate must be clustered WITH the axis it duplicates.
     cluster = next(c for c in screen["clusters"] if PLANTED_AXIS in c)
     assert REDUNDANT_AXIS in cluster

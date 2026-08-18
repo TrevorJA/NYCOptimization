@@ -425,11 +425,11 @@ ENSEMBLE_MASTER_CHUNK_SIZE = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_CHUNK_SIZE",
 # draw). drought_duration and flood_rise_rate remain computed in every hazard
 # image and reportable post-hoc; they simply never enter the snap distance.
 HAZARD_SELECTION_AXES = _parse_list_env("NYCOPT_HAZARD_SELECTION_AXES", [
-    "drought_deficit_volume",
-    "drought_peak_depth",
+    "drought_magnitude",
+    "drought_severity",
     "drought_onset_rate",
     "drought_recovery_rate",
-    "flood_peak_magnitude",
+    "flood_peak_discharge",
     "flood_pulse_duration",
 ])
 

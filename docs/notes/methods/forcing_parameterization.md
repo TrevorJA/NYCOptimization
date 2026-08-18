@@ -127,8 +127,8 @@ axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitiv
 
 ## Validation and limitations
 
-- **Hazard-coverage check.** Because hazards (drought_deficit_volume, drought_onset_rate,
-  flood_peak_magnitude, flood_pulse_duration) are nonlinear tail functionals, the seasonal-mean harmonic
+- **Hazard-coverage check.** Because hazards (drought_magnitude, drought_onset_rate,
+  flood_peak_discharge, flood_pulse_duration) are nonlinear tail functionals, the seasonal-mean harmonic
   slightly smooths the late-summer high-flow tail; coverage of the flood/drought corners is checked in
   **hazard space** (hull volume, tail percentiles) rather than on forcing-space fit alone. If a corner
   is under-covered, add the 3rd harmonic (shape-R² → 0.93) or a bounded per-month residual.
