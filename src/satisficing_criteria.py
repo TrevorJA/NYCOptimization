@@ -10,13 +10,15 @@ robustness under multiple criterion sets -- and whether the design ranking is
 invariant across them -- is itself a result, not a sensitivity afterthought.
 
 The previous all-8-axis conjunction is retained ONLY as ``reference_all8``:
-on E_test it is degenerate (joint Starr = 0.0 for every design and for the
-FFMP incumbent; see ``outputs/comparison/{slug}/{tag}/default_thresholds.csv``
-and the incumbent pass fractions recorded in ``src.objectives_ensemble``),
-which is reported as a finding, never used for selection.
+on the interim 200-SOW E_test subset it measured degenerate (joint Starr = 0.0
+for every design and for the FFMP incumbent; see
+``outputs/comparison/{slug}/{tag}/default_thresholds.csv`` and the incumbent
+pass fractions recorded in ``src.objectives_ensemble``), which is reported as
+a finding, never used for selection.
 
 Axes deliberately excluded from every named set (visible in the univariate
-decomposition and the reference set, but never conjoined):
+decomposition and the reference set, but never conjoined) — pass fractions
+below are interim-tag measurements:
 
 - ``nyc_delivery_deficit_p99_pct`` (incumbent pass 0.980) and
   ``nj_delivery_reliability_annual`` (> 0.98): saturated non-discriminators
@@ -26,10 +28,17 @@ decomposition and the reference set, but never conjoined):
 Threshold placements follow the pre-declared rules of
 ``docs/notes/methods/robustness_threshold_diagnostics.md`` (rule 1: re-anchor
 any criterion the status quo itself fails, rounding to the stricter side;
-rule 2: external goalposts beat round numbers). Placements marked PROVISIONAL
-below are finalized from the Anvil-side audit table
+rule 2: external goalposts beat round numbers). Placements are finalized from
+the Anvil-side audit table
 ``outputs/comparison/{slug}/{tag}/criteria_reanchoring.csv``
 (``scripts/supplemental/criteria_reanchoring.py``).
+
+PENDING PRODUCTION RESULTS: every numeric placement, pass fraction, and the
+``reference_all8`` degeneracy verdict above and in the set rationales below
+was measured on the interim 200-SOW, pre-regeneration substrate. The
+re-anchoring audit and the degeneracy verdict must be re-confirmed on the
+regenerated production full cube before any placement is treated as final
+(TODO section 1).
 
 These are POST-PROCESSING criteria only: they re-count the persisted per-SOW
 cube and never touch the search-time registry (``src.objectives_ensemble``) or
@@ -169,9 +178,10 @@ CRITERION_SETS: tuple[CriterionSet, ...] = (
         key="reference_all8",
         label="Reference: all axes (adopted)",
         rationale=("The adopted search-time snapshot conjoined over every "
-                   "axis. Degenerate on E_test (joint Starr = 0.0 for every "
-                   "design and the incumbent) -- reported as a finding, "
-                   "never used for selection."),
+                   "axis. Measured degenerate on the interim 200-SOW E_test "
+                   "subset (joint Starr = 0.0 for every design and the "
+                   "incumbent; re-confirm on the production cube) -- "
+                   "reported as a finding, never used for selection."),
         reference=True,
     ),
 )

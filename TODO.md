@@ -74,7 +74,7 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;
   k = 1 unchanged) after pass B ran (job 19910387) and the paired near-tie
   floor came back 5.7-21.8x SMALLER than the unpaired pass-A bound on the five
-  axes where the floor set tau. At the old vector the RQ2 comparison was inert:
+  axes where the floor set tau. At the old vector the RQ1 comparison was inert:
   every design at no_harm_freq_tau = 1.000, all pairwise diffs exactly 0.000
   with paired bootstrap SE 0.0000, and ASSAY SENSITIVITY FAILED. Written to all
   10 `workflow/envs/*.env`, recorded in `supplemental_config.RTOL_ADOPTED_K`

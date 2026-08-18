@@ -1,4 +1,4 @@
-"""regret_summary.py - Figures for incumbent-relative regret (RQ2 + the hypothesis).
+"""regret_summary.py - Figures for incumbent-relative regret (RQ1 + the hypothesis).
 
 Three figures, each answering a question the satisficing figures cannot.
 
@@ -19,7 +19,7 @@ Three figures, each answering a question the satisficing figures cannot.
 
   **The tolerance sweep** (:func:`plot_regret_tolerance_sweep`) -- the no-harm
     frequency against the tolerance ladder ``tau_i = k * eps_i``. A single
-    tolerance could manufacture or hide the whole RQ2 answer, so the claim is
+    tolerance could manufacture or hide the whole RQ1 answer, so the claim is
     reported as the tolerance at which it holds, mirroring the discipline applied
     to the satisficing criteria (Quinn et al. 2020).
 

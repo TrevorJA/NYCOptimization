@@ -45,6 +45,12 @@ design); diagnostic 3 is a re-scoring of the re-evaluation cube via
 
 ## 0b. Measured verdicts (adopted)
 
+*(Provenance: measured on the pre-regeneration substrate — the epsilon cubes
+predate the 2026-08-18 seasonal-rotation fix, whose changes are to window
+alignment and the annual-unit boundary. The verdicts stand as adopted
+conventions; re-confirm alongside the TODO §1 regeneration only if the
+regenerated build QC contradicts them.)*
+
 Run on the three epsilon cubes (tables + SI figures under
 `outputs/supplemental/framing_convention/`):
 

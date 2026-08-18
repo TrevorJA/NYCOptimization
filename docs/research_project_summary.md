@@ -26,19 +26,21 @@ re-evaluated robustness is the sole basis of comparison.
 
 ## Research questions
 
-1. **RQ1 (core).** Does constructing the search ensemble by hazard-space coverage,
+1. **RQ1.** Can re-optimizing the FFMP parameters improve NYC/basin outcomes (supply
+   reliability, Montague/Trenton flow targets, downstream flooding, storage resilience)
+   relative to current operations?
+2. **RQ2 (core).** Does constructing the search ensemble by hazard-space coverage,
    rather than by i.i.d. sampling from the same stochastic generator, change the
    robustness of the resulting Pareto-approximate policies under held-out, deeply
    uncertain re-evaluation?
-2. **RQ2.** Can re-optimizing the FFMP parameters improve NYC/basin outcomes (supply
-   reliability, Montague/Trenton flow targets, downstream flooding, storage resilience)
-   relative to current operations?
 3. **RQ3.** Does a variable-resolution FFMP structure with more storage zones (`ffmp_N`)
    improve performance or robustness?
 
+Numbering follows the manuscript (RQ1 = re-optimization, RQ2 = scenario design).
+
 See `notes/research_questions.md`, `notes/research_contributions.md`.
 
-## Scenario designs compared (RQ1)
+## Scenario designs compared (RQ2)
 
 Three designs, all drawn from one **stationary population** (Kirsch–Nowak fitted to the
 historic record, no climate perturbation). Registry: `src/scenario_designs.py`.
@@ -66,7 +68,7 @@ marginals of a stochastic generator are strongly right-skewed, filling the range
 uniformly draws selected members from the sparse severe corners far more often than
 their pool frequency, so severe drought and flood conditions are over-represented in the
 search ensemble relative to their probability under the generator. This is the deliberate
-distribution shift RQ1 tests. A rank-space variant is registered only as a non-campaign
+distribution shift RQ2 tests. A rank-space variant is registered only as a non-campaign
 sensitivity.
 
 Full construction recipe: `notes/methods/scenario_design_methods.md`. Gap statement:
@@ -115,9 +117,11 @@ realizations' unit-years; robustness and regret recompute the same statistics pe
 E_test state of the world. The annual-unit epsilons are calibrated per
 `notes/methods/epsilon_calibration_experiment.md` (max over the two ensemble designs,
 the historic arm excluded and disclosed). The satisficing thresholds in the registry
-are PROVISIONAL: the substrate change superseded the previously measured vector, and
-the threshold diagnostic must be re-run on the per-SOW annual-unit values before
-adoption (`notes/methods/robustness_threshold_diagnostics.md`; tracked in `TODO.md`).
+and every named criterion-set placement are PROVISIONAL: the placements were measured
+on pre-regeneration substrates (the 2026-08-08 incumbent cube and the interim 200-SOW
+subset), and the threshold diagnostic plus the re-anchoring audit must be re-run on
+the regenerated production substrate before any placement is treated as final
+(`notes/methods/robustness_threshold_diagnostics.md`; tracked in `TODO.md`).
 
 ## Comparison controls
 
@@ -155,8 +159,10 @@ presimulated once per realization and reused for every Pareto set. Because the s
 from the unperturbed stationary generator while E_test spans a forced climate envelope,
 the re-evaluation is a **generalization test**: does hazard coverage of the
 natural-variability manifold produce policies that generalize to conditions never
-presented during search? E_test is structurally distinct from both search designs, so it
-does not favor either.
+presented during search? E_test is structurally distinct from both search designs by
+construction; whether the design ranking depends on the region of the test space it
+emphasizes is measured by the composition-sensitivity re-scoring (hazard-restricted and
+envelope-restricted subsets of the persisted matrix), not assumed.
 
 E_test is sampled by **LHS, not i.i.d.**: the i.i.d. rule applies only to the candidate
 pool, where it underwrites the exact control. E_test is never subsampled and is never a
@@ -178,17 +184,17 @@ regret metric is scored offline without re-simulating.
 
 Two families, both transformations of the same per-SOW annual-unit objective values
 (the search objectives recomputed per state of the world — Herman et al. 2014, 2015;
-Trindade et al. 2017; McPhail et al. 2018). The RQ1 endpoint is the re-evaluated
+Trindade et al. 2017; McPhail et al. 2018). The RQ2 endpoint is the re-evaluated
 **multivariate Starr satisficing fraction**: the all-criteria conjunction counted
 over the 1,000 states. This keeps the designed DU box and the fitted stochastic
 generator from being integrated into one number, matches the precision the SOW count
-supports, and puts RQ1 on the same unit as the regret family below. The run-level
+supports, and puts RQ2 on the same unit as the regret family below. The run-level
 scalar is the maximum satisficing fraction attained in the run's re-evaluated set,
 reported with its per-objective satisficing decomposition (the maximum-over-a-set
 bias is disclosed). Secondary metrics are univariate satisficing, the
 coverage-weighted mean (Laplace), and maximin.
 
-The RQ2 endpoint is **incumbent-relative regret**: how much worse a candidate policy is
+The RQ1 endpoint is **incumbent-relative regret**: how much worse a candidate policy is
 than the status-quo 2017 FFMP policy *in the same state of the world*. Magnitudes are
 reported per objective in natural units and never combined; the unit-free harm
 frequencies — per objective, per Decree party, and the joint no-harm frequency at a swept
@@ -210,11 +216,14 @@ at strength, never as a comparison result.
 
 ## Status
 
-**In place:** the end-to-end pipeline (smoke-verified); measured campaign costs
-(173.8 s/eval trimmed, full model 1.16×, ~33,400 SU per 500k-NFE search); all
-production inputs staged, verified, and adequacy-gated — candidate pools for all
-three draws, both matched designs' search ensembles, E_test with its one-time
-presim pass, and the baseline-on-E_test matrix.
+**In place:** the end-to-end pipeline (smoke-verified) and measured campaign costs
+(173.8 s/eval trimmed, full model 1.16×, ~33,400 SU per 500k-NFE search). The
+previously staged production inputs (candidate pools, both matched designs' search
+ensembles, E_test with its presim pass, the baseline-on-E_test matrix) and the
+first-round go/no-go searches were INVALIDATED by the 2026-08-18 seasonal-rotation
+fix and hazard-axis rename; all must be regenerated, and the per-draw adequacy gates
+(min per-axis tail share ≥ ~0.30) re-confirmed on the regenerated pools, before the
+fan-out (`TODO.md` §1).
 
 **Decided:** the three designs above; a single stationary search population with deep
 uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE per search
@@ -227,7 +236,8 @@ re-evaluation); the calibrated annual-unit epsilon vector; comparison
 metrics = multivariate Starr satisficing (primary) with Laplace, maximin, and signed
 improvement-over-status-quo as anchors; search aggregation = two-layer annual-unit
 scheme; the framing conventions (failure-week counts, flood unit operator = mean,
-0.99 weekly satisfaction factor) measured and confirmed; forcing space retains
+0.99 weekly satisfaction factor) measured and adopted on the pre-regeneration
+substrate; forcing space retains
 historical persistence (claims scoped accordingly).
 
 **Total Anvil allocation = 750,000 SU.** The full campaign (two matched designs × K = 3 ×
@@ -237,12 +247,12 @@ reserve. First call on the reserve is an additional draw for both matched design
 (~134k); the RQ3 variable-resolution sweep (~200k) is deprioritized and runs only on
 whatever SU remains at the end of the campaign.
 
-**Remaining before campaign launch:** regenerate the re-evaluation artifacts on the
-unified per-SOW annual-unit substrate (steps 05, 08/09), re-run the
-satisficing-threshold diagnostic on it and adopt the final threshold vector; the
-regret-tolerance noise floors (pass A); the confirmatory search under the adopted
-epsilon vector; the Anvil shakeout (hazard-filling step-06 smoke + pilot go/no-go).
-Tracked in `TODO.md`.
+**Remaining before campaign launch:** the full regeneration in step order (steps 01,
+02–03, 12, 04, 05, then fresh searches; `TODO.md` §1) with `validate_staged_seasonality`
+build QC per ensemble; re-run the satisficing-threshold diagnostic and the criteria
+re-anchoring audit on the regenerated incumbent/production cubes and adopt final
+placements; re-run the regret-tolerance pass A on the regenerated incumbent cube
+(and pass B after step 08). Tracked in `TODO.md`.
 
 **Open decisions:** the satisficing criterion values and sweep-grid centre; the
 scenario design under which the RQ3 variable-resolution sweep is run, if the leftover

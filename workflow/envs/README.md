@@ -41,18 +41,29 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_
 
 ## Currently shipped env files
 
-MM-Borg run identities (consumed by steps 05, 06, 08, 09):
+MM-Borg run identities (consumed by steps 05, 06, 08, 09), by family:
 
-- `ffmp_obj8_historic.env` — base FFMP, historic single trace, `mm_full`
-  (50k NFE, 10 seeds), default 8 objectives (no LSTM; NJ delivery activated 2026-07-30).
-- `ffmp_obj8_historic_pilot.env` — same, but the 5k-NFE `mm_pilot`
-  launch-verification config.
-- `ffmp_vr_obj8.env` — variable-resolution FFMP sweep (N ∈ {8, 10, 12}), same
-  8-objective set as the base run; submit once per `FORMULATION=ffmp_N`.
-- `ffmp_obj8_hazfill_pilot.env` — `hazard_filling_du` scenario design, `pilot`
-  config; requires steps 02–04 staged first (pre-flight fails fast otherwise).
-- `smoke.env` — dev-only tiny-NFE smoke identity, used by
-  `workflow/submit_smoke.sh`. Not for replication.
+- **Production campaign** — `ffmp_obj8_historic_production.env`,
+  `ffmp_obj8_fixedprob_production.env`, `ffmp_obj8_hazfill_stat_production.env`:
+  the three campaign designs under the `production` MOEA config (500k NFE,
+  1,021 ranks on 8 nodes). Byte-identical except for `NYCOPT_SCENARIO_DESIGN`
+  and header comments.
+- **Moderate-NFE dev** — `ffmp_obj8_historic_moderate.env`,
+  `ffmp_obj8_fixedprob_moderate.env`, `ffmp_obj8_hazfill_stat_moderate.env`:
+  the same designs under `mm_moderate` (50k NFE, 511 ranks).
+- **Base / pilot** — `ffmp_obj8_historic.env` (`mm_full`, 50k NFE, 10 seeds),
+  `ffmp_obj8_historic_pilot.env` (5k-NFE `mm_pilot` launch verification),
+  `ffmp_obj8_hazfill_pilot.env` (`hazard_filling_du` design, `pilot` config;
+  requires steps 02–04 staged first).
+- **Variable resolution** — `ffmp_vr_obj8.env` (N ∈ {8, 10, 12}); submit once
+  per `FORMULATION=ffmp_N`.
+- **Smoke** — `smoke.env`, `smoke_hazfill.env`: dev-only tiny-NFE identities
+  (`workflow/submit_smoke.sh`). Not for replication.
+- **Supplemental diagnostics** — `eps_calib_historic.env`,
+  `eps_calib_fixed_probabilistic.env`, `eps_calib_hazard_filling_stationary.env`
+  (epsilon calibration), `anvil_scaling_borg.env`, `anvil_scaling_packing.env`,
+  `ensemble_cost.env` (scaling / cost experiments under
+  `workflow/supplemental/`).
 
 The salinity LSTM is not used (it does not perform well under extreme
 droughts); the machinery is dormant. To re-enable it for an experiment, set

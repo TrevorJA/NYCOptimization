@@ -352,9 +352,9 @@ Ranking agreement is summarized with **Kendall's τ_b computed across the *desig
 rankings** these metrics induce — i.e. do the metrics rank the scenario
 designs the same way? (Herman et al. 2015; McPhail et al. 2018, 2020.)
 
-### 3.2b Incumbent-relative regret (co-primary; answers RQ2)
+### 3.2b Incumbent-relative regret (co-primary; answers RQ1)
 
-RQ2 asks whether policies improve some outcomes *without degrading others below
+RQ1 asks whether policies improve some outcomes *without degrading others below
 current performance*: a mean improvement can be comfortably positive while the
 policy is badly worse than the status quo in a third of futures. The regret
 family reports the signed incumbent advantage through its one-sided halves
@@ -424,7 +424,7 @@ makes every rung fire on Monte Carlo noise for that axis while being far
 outside the noise on the others, so a single rung silently means two different
 things. `k` is swept (`REGRET_TAU_GRID` in `compare_designs.py`) rather than
 fixed, for the reason the satisficing criteria are swept: a single tolerance
-could manufacture or hide the whole RQ2 answer (Quinn et al. 2020).
+could manufacture or hide the whole RQ1 answer (Quinn et al. 2020).
 
 **Both `k` and the ladder shape are pre-registration quantities**, and the rules
 that fix them — plus the noise floor, the discrimination band, the empirical
@@ -478,7 +478,7 @@ agree with each other", so it is also likely to be largely redundant with the
 incumbent-referenced metric we do compute. **Herman R1 / Kasprzyk et al. (2013)
 percent deviation** is a *within-policy, across-SOW* sensitivity measure — their
 Eq. (9) reference is the same solution's value in a baseline *state of the world*,
-not a status-quo policy — and it answers a different question from RQ2; note that
+not a status-quo policy — and it answers a different question from RQ1; note that
 this note and the manuscript previously miscited it as the precedent for the
 status-quo comparison, which it is not (the correct chain is McPhail et al. 2018
 §3.1 for the reference, Herman et al. 2015 for the functional shape, Kwakkel et

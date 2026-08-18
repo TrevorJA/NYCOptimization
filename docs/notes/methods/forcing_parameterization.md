@@ -101,7 +101,10 @@ plausible range. This matches the exploratory intent (and the sampling design of
 so a single outlier GCM run does not drive the box; with the phases fixed the reconstructed monthly
 envelope does not over-disperse, so this already keeps the LHS monthly envelope tightly bounded to the
 CMIP6 monthly range (`SI_harmonic_monthly_flow_comparison.png`). An optional `margin` widens (`>0`,
-extrapolation) or tightens (`<0`) the box.
+extrapolation) or tightens (`<0`) the box. Two boxes use this machinery at different widths: the
+search-side DU designs sample the default `(5, 95)` box with `margin = 0`, while **E_test samples the
+FULL empirical range `(0, 100)` widened by `margin = +0.25`** (`src/etest.py::E_TEST_BOUND_PCT` /
+`E_TEST_MARGIN`), so the test envelope strictly contains the search box.
 
 **Phase / spring-runoff timing.** Phases are fixed at the canonical CMIP6 shape (above). `τ₁` varies
 only ~0.6 month across CMIP6, and the DRB (~39–42°N) lies south of the ~44°N snowmelt-timing band

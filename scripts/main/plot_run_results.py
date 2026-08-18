@@ -237,7 +237,7 @@ def fig_robustness(reeval_dir, filt, most_robust_id, out_dir):
 def fig_regret(reeval_dir, filt, out_dir):
     """Per-objective tail regret and mean gain against the status-quo FFMP policy.
 
-    The RQ2 companion to fig 4: the satisficing figure says how often a policy is
+    The RQ1 companion to fig 4: the satisficing figure says how often a policy is
     acceptable by a fixed standard, this one says how much it takes away from
     current operations, and from which party.
     """

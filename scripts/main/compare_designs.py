@@ -878,7 +878,7 @@ def rank_agreement(sweep: pd.DataFrame) -> pd.DataFrame:
 ###############################################################################
 # 2b. Incumbent-relative regret: tolerance sweep + severity decomposition
 ###############################################################################
-# These answer RQ2 and, jointly with the satisficing sweep above, the working
+# These answer RQ1 and, jointly with the satisficing sweep above, the working
 # hypothesis: that hazard filling buys robustness WITHOUT paying the price of
 # robustness (Bertsimas & Sim 2004) in regret against current operations.
 # Bartholomew & Kwakkel (2020) supply both halves of the expectation -- "the more
@@ -936,7 +936,7 @@ def regret_tolerance_sweep(runs: list[ReevalRun],
 
     ``Pi_tau`` is the fraction of E_test states of the world in which a policy
     degrades NO objective by more than ``tau_i = k * eps_i`` relative to the
-    incumbent -- the literal reading of RQ2's "without degrading others below
+    incumbent -- the literal reading of RQ1's "without degrading others below
     current performance". Sweeping ``k`` reports the tolerance at which the claim
     holds rather than asserting it at one arbitrary point, the same discipline the
     satisficing criterion sweep applies (Quinn et al. 2020).
@@ -1577,7 +1577,7 @@ def run_comparison(formulation: str = "ffmp", reeval_tag: Optional[str] = None,
     written["design_rank_agreement"] = table_dir / "design_rank_agreement.csv"
     agreement.to_csv(written["design_rank_agreement"], index=False)
 
-    # --- 2b. incumbent-relative regret (RQ2) --------------------------------
+    # --- 2b. incumbent-relative regret (RQ1) --------------------------------
     # Absent when step 05 did not stage a baseline on the SAME re-eval ensemble;
     # the satisficing half of the comparison still completes, and the report says
     # the regret half is missing rather than quietly omitting it.
@@ -1640,7 +1640,7 @@ def _report(runs, sweep, agreement, flags, attain, regret_sweep,
     # its regret companion is half an answer. Say so loudly when the half is absent.
     if regret_sweep is None or regret_sweep.empty:
         print("[compare] NO REGRET RESULTS: no run carries a status-quo baseline on "
-              "this re-eval ensemble, so RQ2 (improvement over current operations "
+              "this re-eval ensemble, so RQ1 (improvement over current operations "
               "without degrading other outcomes) is UNANSWERED here. Re-run step 05 "
               "with the same NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08.")
     else:

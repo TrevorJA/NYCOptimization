@@ -1,6 +1,6 @@
 """tests/test_regret_tolerance_diagnostics.py - The pre-registration machinery for tau and delta.
 
-These tests exist because the two parameters they guard can move the whole RQ2
+These tests exist because the two parameters they guard can move the whole RQ1
 answer, and because the two ways of getting them wrong pull in OPPOSITE
 directions:
 

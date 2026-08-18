@@ -1,6 +1,6 @@
 # A Taxonomy of Scenario Design Approaches for Optimization Under Uncertainty
 
-*Citations already in the RQ1 review are author-year only (see the hub note `scenario_design.md` and its topic notes). Citations new to this document are listed in full at the end. Per-study quantities live in `scenario_design_tables.md`. Terminology follows `docs/notes/terminology.md`.*
+*Citations already in the RQ2 review are author-year only (see the hub note `scenario_design.md` and its topic notes). Citations new to this document are listed in full at the end. Per-study quantities live in `scenario_design_tables.md`. Terminology follows `docs/notes/terminology.md`.*
 
 ---
 
@@ -61,7 +61,7 @@ If a condensed manuscript version is needed, drop the references column and keep
 
 ---
 
-## References introduced in this document (not in the RQ1 review)
+## References introduced in this document (not in the RQ2 review)
 
 - Bertsimas, D. & Mundru, N. (2023). Optimization-based scenario reduction for data-driven two-stage stochastic optimization. *Operations Research*, 71(4), 1343-1361. doi:10.1287/opre.2022.2265
 - Bryant, B. P. & Lempert, R. J. (2010). Thinking inside the box: A participatory, computer-assisted approach to scenario discovery. *Technological Forecasting and Social Change*, 77(1), 34-49. doi:10.1016/j.techfore.2009.08.002

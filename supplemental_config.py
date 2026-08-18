@@ -1490,7 +1490,7 @@ RTOL_MARGIN_RULE: str = (
 #: bound on the five axes where the floor set tau (reliabilities 0.017-0.024
 #: vs 0.122-0.137; flood 0.043 vs 0.927), confirming the caution above. At the
 #: pass-A vector every design scored no_harm_freq_tau = 1.000 with a paired
-#: bootstrap SE of exactly 0 and assay sensitivity FAILED, so the RQ2 null was
+#: bootstrap SE of exactly 0 and assay sensitivity FAILED, so the RQ1 null was
 #: an artifact of the tolerance. The adopted vector is now ROUND and
 #: stakeholder-stated (reliabilities 0.02, deficit-P99 2 pp, flood 0.25
 #: ft-d/yr, storage 5 pp) — see the comment block in workflow/envs/*.env for

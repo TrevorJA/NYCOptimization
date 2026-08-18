@@ -8,8 +8,8 @@ accidents). The tiers:
 
 - ``manuscript``: the numbered main-text sequence (``figures/manuscript/``,
   manuscript style, git-tracked). The sequence builds §4's narrative:
-  ensemble composition -> robustness under criteria sets (RQ1) -> where
-  robustness lives in objective space -> regret vs the incumbent (RQ2) ->
+  ensemble composition -> robustness under criteria sets (RQ2) -> where
+  robustness lives in objective space -> regret vs the incumbent (RQ1) ->
   success/failure surfaces (the mechanism). Every cross-design panel shows
   E_test re-evaluated quantities ONLY -- search-time values are computed
   under each design's own ensemble and are never compared across designs.
@@ -217,7 +217,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                       "fig_criteria_rank_curves"),
         tier="manuscript", number=5, section="4.3",
         kind="criteria", needs=frozenset({"criteria_scorecard"}),
-        caption="Sorted robustness-rank curves per criterion set (RQ1 "
+        caption="Sorted robustness-rank curves per criterion set (RQ2 "
                 "headline) with cross-set ranking stability.",
     ),
     FigureSpec(
@@ -237,7 +237,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         tier="manuscript", number=7, section="4.4",
         kind="robustness", needs=frozenset({"criteria_scorecard",
                                             "figure_tables"}),
-        caption="Robustness vs no-harm against the FFMP incumbent (RQ2 "
+        caption="Robustness vs no-harm against the FFMP incumbent (RQ1 "
                 "headline) with the tolerance sweep.",
     ),
     FigureSpec(
@@ -251,7 +251,7 @@ FIGURES: tuple[FigureSpec, ...] = (
     ),
     # Three CANDIDATES for manuscript slot 9, all carrying number 9 so the
     # numbering does not churn while one is chosen (their names differ, so
-    # their stems do). They answer the same RQ2 question -- where in the DU
+    # their stems do). They answer the same RQ1 question -- where in the DU
     # space does reoptimization cost the Decree parties something? -- under
     # three different policy selections. See TODO.md; two of these get cut.
     FigureSpec(

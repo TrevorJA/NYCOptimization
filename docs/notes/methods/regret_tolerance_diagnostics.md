@@ -17,7 +17,7 @@ deeply-uncertain state. Implementation:
 
 $\tau$ and $\delta$ are the only quantities in the regret comparison that the
 data do not determine. They are therefore pre-registration quantities, and the
-whole of the RQ2 answer can be moved by choosing them badly or late.
+whole of the RQ1 answer can be moved by choosing them badly or late.
 
 Two failure modes, and they pull in opposite directions.
 
@@ -30,7 +30,7 @@ distribution it is meant to measure fixes the fraction it will return. The same
 rule binds here, and binds harder, because $\tau$ enters a conjunction over eight
 objectives.
 
-**Insensitivity.** The RQ2 hypothesis is a *non-inferiority* claim — hazard
+**Insensitivity.** The RQ1 hypothesis is a *non-inferiority* claim — hazard
 filling is *not worse* in regret — and non-inferiority claims are flattered by
 anything that blunts the measurement. A loose tolerance drives $\Pi_\tau
 \rightarrow 1$ for every design, at which point "not worse" is true by
@@ -268,7 +268,7 @@ advance is legible after the fact.
 | C | The two empirical null distributions and the paired bootstrap CI at $k_{\text{headline}}$, with $\delta$ marked | how large a difference means nothing |
 
 The assay-sensitivity verdict is a sentence in the main text, not an SI panel: if
-it fails, the RQ2 result is not reportable as a null and the reader must be told
+it fails, the RQ1 result is not reportable as a null and the reader must be told
 in the same place the result is.
 
 ---
@@ -288,6 +288,16 @@ in the same place the result is.
 ---
 
 ## 8. Open items
+
+**PENDING PRODUCTION RESULTS.** Every measurement in this section (the pass-A
+floors, the paired-floor check, the re-adopted round τ vector, and the
+tolerance-sensitivity observations in items 3–5) was made on pre-regeneration
+substrates — the 2026-08-08 incumbent cube and the interim 200-SOW policy
+cubes — all invalidated by the 2026-08-18 seasonal-rotation regeneration
+(TODO §1). Pass A re-runs on the regenerated incumbent cube (which also
+refreshes the stale epsilon columns of item 1), the τ vector is re-derived by
+the §3 rule before the production results are inspected, and pass B runs on
+the production step-08 artifacts.
 
 1. ~~Adopt the ladder **shape** (§2b) and then $k_{\text{headline}}$ (§3) from
    pass A.~~ **ADOPTED 2026-08-08**, from pass A on the regenerated step-05
@@ -339,7 +349,7 @@ in the same place the result is.
 
    **Consequence — τ RE-ADOPTED 2026-08-14 on round values** (k = 1 unchanged):
    reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft·d/yr, storage 5 pp. At
-   the old vector the RQ2 comparison was inert: every design at
+   the old vector the RQ1 comparison was inert: every design at
    $\Pi_\tau = 1.000$, all pairwise differences exactly 0.000 with paired
    bootstrap SE 0.0000, and **assay sensitivity FAILED** — the metric could not
    separate the unmatched `historic` control, so the non-inferiority null was

@@ -409,7 +409,7 @@ def test_figures_written(tree):
 def test_regret_artifacts_absent_without_a_baseline(tree):
     """No status-quo cube -> no regret tables, and no crash in the satisficing half.
 
-    RQ2 is simply unanswered in that case; the run must say so rather than emit an
+    RQ1 is simply unanswered in that case; the run must say so rather than emit an
     empty table that reads like a measured null.
     """
     assert "design_regret_tolerance_sweep" not in tree["written"]
@@ -417,7 +417,7 @@ def test_regret_artifacts_absent_without_a_baseline(tree):
 
 
 ###############################################################################
-# Incumbent-relative regret (RQ2)
+# Incumbent-relative regret (RQ1)
 ###############################################################################
 # A second synthetic tree, with a status-quo baseline, using REAL annual-unit
 # objective names so the tolerance ladder resolves against the registered

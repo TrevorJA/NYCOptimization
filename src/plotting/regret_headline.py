@@ -1,11 +1,11 @@
 """
 regret_headline.py - Manuscript Figure 7: reoptimization vs the incumbent.
 
-The RQ2 headline in two panels: (a) the robustness / no-harm plane -- each
+The RQ1 headline in two panels: (a) the robustness / no-harm plane -- each
 policy's focal-set satisficing fraction against the frequency with which it
 avoids harming the FFMP incumbent beyond tolerance on the focal axes, with
 per-design non-dominated frontiers highlighted -- and (b) the same no-harm
-frequency traced across the tolerance ladder ``k`` (how the RQ2 verdict
+frequency traced across the tolerance ladder ``k`` (how the RQ1 verdict
 depends on what counts as harm).
 
 Data: the per-design ``robustness_scorecard_criteria.csv`` companions (panel
@@ -33,11 +33,11 @@ from src.satisficing_criteria import focal_criterion
 
 
 def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
-    """Robustness vs no-harm plane + the tolerance sweep (RQ2 headline).
+    """Robustness vs no-harm plane + the tolerance sweep (RQ1 headline).
 
     Panel (a): x = ``sat_set__{focal}``, y = ``no_harm_freq_tau__{focal}``
     per policy; faint cloud per design, non-dominated frontier bold. The
-    upper-right corner is the RQ2 target: robust AND never leaves the Decree
+    upper-right corner is the RQ1 target: robust AND never leaves the Decree
     parties worse off than the status quo. Panel (b): best-policy
     ``no_harm_freq_tau`` per design across the tolerance rungs ``k``.
     """

@@ -825,7 +825,7 @@ CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
 # draws and no bulk I/O.
 
 from src.ensembles import (             # noqa: E402
-    ENSEMBLE_START_DATE,  # epoch of every synthetic realization (a January 1)
+    ENSEMBLE_START_DATE,  # epoch of every synthetic realization (a December 1)
     get_ensemble_spec,
     staged_ensemble_dir,
     with_indices_override,

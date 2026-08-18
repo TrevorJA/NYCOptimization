@@ -273,7 +273,16 @@ TODO §1 and snapshotted per run in `reeval_raw_meta.json`). The adopted
 all-axes conjunction is retained as the `reference_all8` criterion set only;
 see §7 for its role after the subset-criteria redesign.
 
+**PENDING PRODUCTION RESULTS.** The 2026-08-08 incumbent cube and every
+interim artifact behind §7 predate the 2026-08-18 seasonal-rotation
+regeneration (TODO §1). Pass 1 re-runs on the regenerated incumbent cube, and
+the §7 re-anchoring audit re-runs on the regenerated production full cube,
+before any placement in this note is treated as final.
+
 ## 7. Re-anchoring under subset criteria
+
+*(Every number in this section is an interim 200-SOW, pre-regeneration
+measurement; see the §6 pending flag.)*
 
 The interim 200-SOW re-evaluation showed the adopted all-8 conjunction is
 degenerate as an analysis criterion: joint Starr = 0.0 for every design and

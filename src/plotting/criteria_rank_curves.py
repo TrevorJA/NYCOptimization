@@ -1,7 +1,7 @@
 """
 criteria_rank_curves.py - Manuscript Figure 5: robustness under criteria sets.
 
-The RQ1 headline, in the Quinn et al. (2017, Fig. 8) idiom: one panel per
+The RQ2 headline, in the Quinn et al. (2017, Fig. 8) idiom: one panel per
 criterion set, each showing every design's policies SORTED by their
 satisficing robustness under that set (rank on x, robustness on y). The read
 is comparative and structural -- does the hazard-filling curve sit above the

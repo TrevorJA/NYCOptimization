@@ -335,3 +335,11 @@ archives under the new vector will run ~10–35% larger than these static
 re-filter counts (measured 2026-08-05 confirmatory search). The draw-0 /
 seed-1 production archives were SEARCHED at the old resolution; only
 their re-filtered reference sets are at the new one.
+
+PENDING PRODUCTION RESULTS: the archives behind this calibration (the
+2026-08-05 confirmatory historic search and the draw-0 / seed-1 500k-NFE
+production runs) predate the 2026-08-18 seasonal-rotation regeneration
+(TODO §1). The adopted vector stands as the campaign setting; archive
+cardinality under it is re-checked on the first regenerated production
+archives, and the re-filter sweep re-runs only if the merged fronts leave
+the 1,000–1,200 re-evaluation band.
