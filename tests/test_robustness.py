@@ -389,42 +389,59 @@ def test_incumbent_advantage_is_oriented_positive_means_better(tmp_path):
 
 
 def test_incumbent_advantage_joins_on_sow_label_not_position(tmp_path):
-    """A baseline missing a SOW must NaN that SOW, never shift the pairing.
+    """The incumbent join is by SOW LABEL, and partial coverage is a hard error.
 
-    The baseline here covers SOW labels {0, 2} while the policy cube covers
-    {0, 1, 2}. A positional join would pair the baseline's second row (label 2)
-    with the cube's SOW 1 and produce a finite, WRONG advantage there; the
-    label join leaves SOW 1 NaN and scores SOW 2 exactly.
+    First: a baseline covering a SUPERSET of the policy cube's SOWs ({0, 1, 2}
+    vs {0, 2}) pairs each policy SOW with the baseline row of the SAME label —
+    a positional join would pair the cube's second row (label 2) with the
+    baseline's label-1 row and produce a finite, WRONG advantage. Second: a
+    baseline missing a scored SOW raises — a NaN incumbent row would count as
+    harm for EVERY policy in regret_frequencies, silently degrading the whole
+    comparison.
     """
-    meta3 = dict(_META, sow_labels=[0, 1, 2])
-    records = [(0, g, "A", 0.90) for g in (0, 1, 2)] + \
-              [(0, g, "B", 5.0) for g in (0, 1, 2)]
-    _write_raw(tmp_path, records, meta3)
+    meta2 = dict(_META, sow_labels=[0, 2])
+    records = [(0, g, "A", 0.90) for g in (0, 2)] + \
+              [(0, g, "B", 5.0) for g in (0, 2)]
+    _write_raw(tmp_path, records, meta2)
     raw = rob.load_raw(tmp_path)
+    assert raw.sow_labels == [0, 2]
 
     bdir = tmp_path / "baseline"
     bdir.mkdir()
     base_records = [
         (0, 0, "A", 0.80), (0, 0, "B", 10.0),
-        # SOW 1 never simulated for the baseline.
+        (0, 1, "A", 0.99), (0, 1, "B", 1.0),   # a SOW the policy cube skips
         (0, 2, "A", 0.60), (0, 2, "B", 8.0),
     ]
-    _write_raw(bdir, base_records, meta3)
+    _write_raw(bdir, base_records, dict(_META, sow_labels=[0, 1, 2]))
     base = rob.load_raw(bdir)
-    assert base.sow_labels == [0, 2]
+    assert base.sow_labels == [0, 1, 2]
 
-    D = rob.incumbent_advantage(raw, base)          # (1, 3, 2)
+    D = rob.incumbent_advantage(raw, base)          # (1, 2, 2)
     assert D[0, 0, 0] == pytest.approx(0.10)        # vs the label-0 baseline
-    assert np.isnan(D[0, 1, 0]) and np.isnan(D[0, 1, 1])  # NOT 0.90 - 0.60
-    assert D[0, 2, 0] == pytest.approx(0.30)        # vs the label-2 baseline
-    assert D[0, 2, 1] == pytest.approx(3.0)         # -1 * (5.0 - 8.0)
+    assert D[0, 1, 0] == pytest.approx(0.30)        # label-2, NOT the label-1 row
+    assert D[0, 1, 1] == pytest.approx(3.0)         # -1 * (5.0 - 8.0)
 
-    # The magnitude means skip the NaN SOW; the frequencies count it as HARM
-    # (a degenerate SOW must not read as "no harm").
     mags = rob.regret_magnitudes(raw, base)
     assert mags.loc[0, "gain_mean__A"] == pytest.approx(np.mean([0.10, 0.30]))
     freqs = rob.regret_frequencies(raw, base, tau={"A": 0.0, "B": 0.0})
-    assert freqs.loc[0, "harm_freq__A"] == pytest.approx(1.0 / 3.0)
+    assert freqs.loc[0, "harm_freq__A"] == pytest.approx(0.0)
+
+    # Reverse the roles: the baseline now misses SOW 1 that the cube scores.
+    bdir2 = tmp_path / "baseline_partial"
+    bdir2.mkdir()
+    _write_raw(bdir2, [(0, 0, "A", 0.80), (0, 0, "B", 10.0),
+                       (0, 2, "A", 0.60), (0, 2, "B", 8.0)],
+               dict(_META, sow_labels=[0, 1, 2]))
+    base_partial = rob.load_raw(bdir2)
+    meta3 = dict(_META, sow_labels=[0, 1, 2])
+    full_dir = tmp_path / "full"
+    full_dir.mkdir()
+    _write_raw(full_dir, [(0, g, "A", 0.90) for g in (0, 1, 2)]
+               + [(0, g, "B", 5.0) for g in (0, 1, 2)], meta3)
+    raw_full = rob.load_raw(full_dir)
+    with pytest.raises(ValueError, match="uncovered"):
+        rob.incumbent_advantage(raw_full, base_partial)
 
 
 def test_regret_magnitudes_are_hand_computable_natural_units(tmp_path):

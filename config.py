@@ -282,13 +282,16 @@ def figure_dir_for(scenario: str, moea_slug: str, kind: str) -> Path:
 ###############################################################################
 
 # HISTORIC-design simulation window ONLY (step-01 presim slice, step-05 baseline):
-# water-year bounds of the reconstructed record, true dates. Synthetic-ensemble
-# simulation windows are derived from each staged ensemble's own _meta.json
-# start_date (see src/simulation.py::_ensemble_window), never from these.
-START_DATE = "1945-10-01"
-END_DATE = "2022-09-30"
+# December-anchored bounds of the reconstructed record (true dates; the record
+# spans 1945-01-01..2023-12-31), sharing the synthetic epoch's December anchor
+# so the 6-month metric exclusion ends on June 1 — the FFMP operating-year
+# boundary — for the historic arm too. Synthetic-ensemble simulation windows
+# are derived from each staged ensemble's own _meta.json start_date (see
+# src/simulation.py::_ensemble_window), never from these.
+START_DATE = "1945-12-01"
+END_DATE = "2023-11-30"
 
-# Epoch of every synthetic realization (ENSEMBLE_START_DATE, a January 1) is
+# Epoch of every synthetic realization (ENSEMBLE_START_DATE, a December 1) is
 # defined in src/ensembles.py and re-exported below with the ensemble registry.
 
 # Default inflow source = Amestoy et al. (2026) Bayesian-bias-corrected
@@ -344,10 +347,14 @@ RESULTS_SETS = [
 
 # Metrics (objectives AND hazard-selection metrics) exclude the first 6 months
 # of each scenario window — the SSI-6 accumulation spin-up, before which the
-# drought index has no defined value — so selection and evaluation see the same
-# effective window. Simulations still start from fixed initial storage
-# (INITIAL_VOLUME_FRAC); the exclusion is applied BY DATE from each window's
-# DatetimeIndex, never as a fixed day count.
+# drought index has no defined value. On the December-start windows the
+# exclusion ends exactly on June 1, the FFMP operating-year boundary, and both
+# layers then score the IDENTICAL window [Jun 1 year 1, May 31 year L]: the
+# objectives keep complete Jun-May FFMP years (src.objectives_ensemble.
+# ffmp_year_unit_slices) and the hazard image trims the same trailing partial
+# (src.ensemble_generation._hazard_block). Simulations still start from fixed
+# initial storage (INITIAL_VOLUME_FRAC); the exclusion is applied BY DATE from
+# each window's DatetimeIndex, never as a fixed day count.
 METRIC_EXCLUSION_MONTHS = 6
 
 

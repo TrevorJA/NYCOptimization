@@ -3,7 +3,7 @@ tests/test_objectives_ensemble.py - Unit tests for the annual-unit ensemble
 objective framework in src.objectives_ensemble (objective_definitions.md §2).
 
 Covers:
-  1. Water-year unit splitting: the date-based 6-month metric-exclusion cut,
+  1. FFMP-year unit splitting: the date-based 6-month metric-exclusion cut,
      leap-year windows, trailing partial years, and the L-1
      metric-bearing-unit rule.
   2. Stage-(ii) unit operators on synthetic pools: failure frequency (with k),
@@ -48,19 +48,21 @@ from src.objectives_ensemble import (
     PooledMeanOp,
     PooledPercentileOp,
     build_ensemble_objective_set,
-    water_year_unit_slices,
+    ffmp_year_unit_slices,
 )
 
 
-def _wy_index(start_year: int, n_years: int) -> pd.DatetimeIndex:
-    """Daily index spanning n whole water years from Oct 1 of start_year."""
+def _dec_index(start_year: int, n_years: int) -> pd.DatetimeIndex:
+    """Daily index spanning n whole years from Dec 1 of start_year (the epoch shape)."""
     return pd.date_range(
-        f"{start_year}-10-01", f"{start_year + n_years}-09-30", freq="D",
+        f"{start_year}-12-01",
+        pd.Timestamp(f"{start_year}-12-01") + pd.DateOffset(years=n_years) - pd.Timedelta(days=1),
+        freq="D",
     )
 
 
 # ---------------------------------------------------------------------------
-# 1. Water-year unit splitting
+# 1. FFMP-year unit splitting
 # ---------------------------------------------------------------------------
 
 def _exclusion_cutoff(idx: pd.DatetimeIndex) -> pd.Timestamp:
@@ -68,68 +70,88 @@ def _exclusion_cutoff(idx: pd.DatetimeIndex) -> pd.Timestamp:
     return idx[0] + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
 
 
-def test_unit_slices_yield_L_minus_1_whole_water_years():
-    """A 5-water-year realization yields 4 unit-years, each Oct 1 - Sep 30."""
-    idx = _wy_index(1945, 5)
-    slices = water_year_unit_slices(idx)
+def test_unit_slices_yield_L_minus_1_whole_ffmp_years():
+    """A 5-year December-start realization yields 4 unit-years, each Jun 1 - May 31."""
+    idx = _dec_index(1945, 5)
+    slices = ffmp_year_unit_slices(idx)
     assert len(slices) == 4
     for sl in slices:
         unit = idx[sl]
-        assert (unit[0].month, unit[0].day) == (10, 1)
-        assert (unit[-1].month, unit[-1].day) == (9, 30)
+        assert (unit[0].month, unit[0].day) == (6, 1)
+        assert (unit[-1].month, unit[-1].day) == (5, 31)
         assert len(unit) in (365, 366)
-    # The metric window opens Apr 1 of WY1, mid-year, so the first WHOLE
-    # water-year unit is still WY2 (1946-10-01).
-    assert _exclusion_cutoff(idx) == pd.Timestamp("1946-04-01")
-    assert idx[slices[0].start] == pd.Timestamp("1946-10-01")
+    # On the December epoch the 6-month exclusion ends exactly on the FFMP
+    # operating-year boundary: the first unit opens at the cutoff itself.
+    assert _exclusion_cutoff(idx) == pd.Timestamp("1946-06-01")
+    assert idx[slices[0].start] == pd.Timestamp("1946-06-01")
+    # The trailing Jun-Nov partial of the final year is discarded.
+    assert idx[slices[-1].stop - 1] == pd.Timestamp("1950-05-31")
     # Units are contiguous.
     for a, b in zip(slices, slices[1:]):
         assert a.stop == b.start
 
 
-def test_unit_slices_are_date_based_across_a_leap_water_year():
-    """A leap WY1 needs no special case: the cut is by date, so the first unit
-    is still WY2 and L=3 yields 2 units."""
-    idx = _wy_index(1947, 3)  # WY1948 contains 1948-02-29 -> 366 days
-    slices = water_year_unit_slices(idx)
+def test_unit_slices_are_date_based_across_a_leap_unit():
+    """A leap February inside a unit needs no special case: the cut is by
+    date, and the Jun 1947 - May 1948 unit simply carries 366 days."""
+    idx = _dec_index(1946, 3)  # unit 1 spans 1948-02-29
+    slices = ffmp_year_unit_slices(idx)
     assert len(slices) == 2
-    assert _exclusion_cutoff(idx) == pd.Timestamp("1948-04-01")
-    # 366-day WY1 => the first unit starts one position later than a 365-day
-    # WY1 would put it, and still lands exactly on Oct 1 of WY2.
-    assert slices[0].start == 366
-    assert idx[slices[0].start] == pd.Timestamp("1948-10-01")
+    assert _exclusion_cutoff(idx) == pd.Timestamp("1947-06-01")
+    assert idx[slices[0].start] == pd.Timestamp("1947-06-01")
+    assert len(idx[slices[0]]) == 366
+    assert len(idx[slices[1]]) == 365
 
 
 def test_unit_slices_drop_trailing_partial_year():
-    idx = pd.date_range("1945-10-01", "1950-12-31", freq="D")
-    slices = water_year_unit_slices(idx)
-    assert len(slices) == 4  # WY1951 fragment (Oct-Dec 1950) discarded
-    assert idx[slices[-1].stop - 1] == pd.Timestamp("1950-09-30")
+    idx = pd.date_range("1945-12-01", "1951-02-28", freq="D")
+    slices = ffmp_year_unit_slices(idx)
+    assert len(slices) == 4  # the Jun 1950 - Feb 1951 fragment is discarded
+    assert idx[slices[-1].stop - 1] == pd.Timestamp("1950-05-31")
 
 
 def test_unit_slices_empty_for_exclusion_window_only_trace():
     """A trace no longer than the 6-month exclusion window has no units."""
-    idx = pd.date_range("1945-10-01", "1946-03-31", freq="D")
+    idx = pd.date_range("1945-12-01", "1946-05-31", freq="D")
     assert idx[-1] < _exclusion_cutoff(idx)
-    assert water_year_unit_slices(idx) == []
+    assert ffmp_year_unit_slices(idx) == []
 
 
-def test_unit_slices_january_start_yields_L_minus_1_units():
-    """The staged stamping convention: an L-year January-start realization
-    (config.ENSEMBLE_START_DATE epoch) yields exactly L - 1 whole water-year
-    units, the first starting Oct 1 of year 1. The 6-month cut lands Jul 1,
-    discarding the Jul-Sep lead; the trailing Oct-Dec fragment is dropped."""
+def test_unit_slices_december_epoch_yields_L_minus_1_units():
+    """The staged stamping convention: an L-year December-start realization
+    (config.ENSEMBLE_START_DATE epoch) yields exactly L - 1 whole FFMP-year
+    units spanning Jun 1 year 1 - May 31 year L, opening exactly at the
+    6-month cutoff (Jun 1, the FFMP operating-year boundary)."""
     L = 10
-    idx = pd.date_range("1945-01-01", "1954-12-31", freq="D")
-    slices = water_year_unit_slices(idx)
+    idx = pd.date_range("1945-12-01", "1955-11-30", freq="D")
+    slices = ffmp_year_unit_slices(idx)
     assert len(slices) == L - 1
-    assert _exclusion_cutoff(idx) == pd.Timestamp("1945-07-01")
-    assert idx[slices[0].start] == pd.Timestamp("1945-10-01")
-    assert idx[slices[-1].stop - 1] == pd.Timestamp("1954-09-30")
+    assert _exclusion_cutoff(idx) == pd.Timestamp("1946-06-01")
+    assert idx[slices[0].start] == pd.Timestamp("1946-06-01")
+    assert idx[slices[-1].stop - 1] == pd.Timestamp("1955-05-31")
     for sl in slices:
         unit = idx[sl]
-        assert (unit[0].month, unit[0].day) == (10, 1)
-        assert (unit[-1].month, unit[-1].day) == (9, 30)
+        assert (unit[0].month, unit[0].day) == (6, 1)
+        assert (unit[-1].month, unit[-1].day) == (5, 31)
+
+
+def test_unit_slices_are_a_pure_date_rule_for_any_start():
+    """A non-epoch (October) start still yields complete Jun-May units by the
+    same pure-date rule -- no start-day assumption anywhere."""
+    idx = pd.date_range("1945-10-01", "1955-09-30", freq="D")
+    slices = ffmp_year_unit_slices(idx)
+    assert len(slices) == 9
+    assert idx[slices[0].start] == pd.Timestamp("1946-06-01")
+    assert idx[slices[-1].stop - 1] == pd.Timestamp("1955-05-31")
+
+
+def test_unit_slices_raise_on_gappy_unit():
+    """A daily index with a missing day inside a unit raises instead of
+    silently mis-scoring the unit."""
+    idx = _dec_index(1945, 3)
+    gappy = idx.delete(400)  # a day inside the first unit
+    with pytest.raises(ValueError, match="gaps or duplicates"):
+        ffmp_year_unit_slices(gappy)
 
 
 # ---------------------------------------------------------------------------
@@ -207,10 +229,10 @@ def _delivery_data(idx: pd.DatetimeIndex, demand: pd.Series,
 
 
 def test_delivery_failure_weeks_annual_counts_shortfall_block():
-    idx = _wy_index(1945, 3)  # partial WY1946 + units WY1947, WY1948
+    idx = _dec_index(1945, 3)  # units Jun 1946 - May 1947, Jun 1947 - May 1948
     demand = pd.Series(500.0, index=idx)
     delivery = pd.Series(500.0, index=idx)
-    # 14-day full shortfall inside the SECOND unit-year (WY1948).
+    # 14-day full shortfall inside the SECOND unit-year (Jun 1947 - May 1948).
     delivery.loc["1948-01-05":"1948-01-18"] = 0.0
     units = obj_ens._nyc_delivery_failure_weeks_annual(
         _delivery_data(idx, demand, delivery))
@@ -222,7 +244,7 @@ def test_delivery_failure_weeks_annual_counts_shortfall_block():
 
 def test_delivery_failure_weeks_annual_tolerates_1pct_shortfall():
     """delivery = 99.5% of demand is within the 0.99 factor -> no failures."""
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     demand = pd.Series(500.0, index=idx)
     units = obj_ens._nyc_delivery_failure_weeks_annual(
         _delivery_data(idx, demand, 0.995 * demand))
@@ -235,7 +257,7 @@ def test_delivery_failure_weeks_annual_uses_running_avg_entitlement():
     tracks the higher demand, so delivering only 795 against a demand of 900
     fails nearly every week — the opposite of the old static-daily-cap behavior,
     which scored this as zero failures (795 >= 0.99 * 800)."""
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     demand = pd.Series(900.0, index=idx)       # above the flat daily baseline
     delivery = pd.Series(795.0, index=idx)     # under 800 -> allowance bank grows
     units = obj_ens._nyc_delivery_failure_weeks_annual(
@@ -250,7 +272,7 @@ def test_delivery_failure_weeks_annual_caps_at_running_avg_allowance():
     high, because the entitlement is capped at the banked allowance, not at
     demand. With delivery == 800 the bank holds steady at 800, so entitlement =
     min(5000, 800) = 800 == delivery every week."""
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     demand = pd.Series(5000.0, index=idx)      # absurd sustained demand
     delivery = pd.Series(800.0, index=idx)     # exactly the running-avg right
     units = obj_ens._nyc_delivery_failure_weeks_annual(
@@ -261,10 +283,10 @@ def test_delivery_failure_weeks_annual_caps_at_running_avg_allowance():
 def test_delivery_deficit_cvar90_annual_full_year_shortfall():
     """A whole-unit-year total shortfall gives CVaR90 = 100 * 500/800 = 62.5%
     in that unit-year (every weekly-mean deficit identical) and 0 elsewhere."""
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     demand = pd.Series(500.0, index=idx)
     delivery = pd.Series(500.0, index=idx)
-    delivery.loc["1947-10-01":"1948-09-30"] = 0.0  # entire second unit-year
+    delivery.loc["1947-06-01":"1948-05-31"] = 0.0  # entire second unit-year
     units = obj_ens._nyc_delivery_deficit_cvar90_annual(
         _delivery_data(idx, demand, delivery))
     assert units == pytest.approx([0.0, 62.5])
@@ -273,9 +295,9 @@ def test_delivery_deficit_cvar90_annual_full_year_shortfall():
 def test_flow_failure_weeks_annual_counts_low_flow_weeks():
     from config import MONTAGUE_DECREE_TARGET_MGD
 
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     flow = pd.Series(MONTAGUE_DECREE_TARGET_MGD + 500.0, index=idx)
-    # 14-day zero-flow block inside the FIRST unit-year (WY1947).
+    # 14-day zero-flow block inside the FIRST unit-year (Jun 1946 - May 1947).
     flow.loc["1947-01-05":"1947-01-18"] = 0.0
     units = obj_ens._montague_failure_weeks_annual(
         {"major_flow": pd.DataFrame({"delMontague": flow}, index=idx)})
@@ -290,12 +312,12 @@ def test_flood_days_annual_counts_days_per_unit_year():
     from pywrdrb.flood_thresholds import flood_stage_thresholds
     from src.objectives import _DOWNSTREAM_GAUGES
 
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     below = {g: flood_stage_thresholds[g]["minor"] - 1.0
              for g in _DOWNSTREAM_GAUGES}
     stage = pd.DataFrame({g: np.full(len(idx), v) for g, v in below.items()},
                          index=idx)
-    # One gauge floods on 3 days of the FIRST unit-year (WY1947).
+    # One gauge floods on 3 days of the FIRST unit-year (Jun 1946 - May 1947).
     g0 = _DOWNSTREAM_GAUGES[0]
     stage.loc["1947-04-01":"1947-04-03", g0] = (
         flood_stage_thresholds[g0]["minor"] + 0.5
@@ -308,7 +330,7 @@ def test_flood_exceedance_annual_integrates_worst_gauge_exceedance():
     from pywrdrb.flood_thresholds import flood_stage_thresholds
     from src.objectives import _DOWNSTREAM_GAUGES
 
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     below = {g: flood_stage_thresholds[g]["minor"] - 1.0
              for g in _DOWNSTREAM_GAUGES}
     stage = pd.DataFrame({g: np.full(len(idx), v) for g, v in below.items()},
@@ -326,13 +348,13 @@ def test_flood_exceedance_annual_integrates_worst_gauge_exceedance():
 
 
 def test_storage_min_annual_per_unit_year():
-    idx = _wy_index(1945, 3)
+    idx = _dec_index(1945, 3)
     per_res = 0.8 * NYC_TOTAL_CAPACITY / len(NYC_RESERVOIRS)
     storage = pd.DataFrame(
         {r: np.full(len(idx), per_res) for r in NYC_RESERVOIRS}, index=idx,
     )
     # One-day dip to 40% total in the first unit-year.
-    storage.loc["1947-08-15", :] = 0.4 * NYC_TOTAL_CAPACITY / len(NYC_RESERVOIRS)
+    storage.loc["1946-08-15", :] = 0.4 * NYC_TOTAL_CAPACITY / len(NYC_RESERVOIRS)
     units = obj_ens._nyc_storage_min_annual({"res_storage": storage})
     assert units == pytest.approx([40.0, 80.0])
 

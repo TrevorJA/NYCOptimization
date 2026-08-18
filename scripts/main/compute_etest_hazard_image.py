@@ -84,7 +84,7 @@ def _window_bounds(index: pd.DatetimeIndex, n_windows: int) -> list[tuple[pd.Tim
     """Disjoint ``SCENARIO_YEARS``-year sub-window date bounds over a realization's index.
 
     Args:
-        index: A realization's daily DatetimeIndex (January-anchored start).
+        index: A realization's daily DatetimeIndex (December-anchored start).
         n_windows: Number of disjoint sub-windows (``L_test // SCENARIO_YEARS``).
 
     Returns:
@@ -145,8 +145,12 @@ def _score_chunk(
         }
         idx = pd.DatetimeIndex(agg[batch_global[0]].index)
         for k, (w0, w1) in enumerate(_window_bounds(idx, n_windows)):
-            in_win = (idx >= w0) & (idx < w1)
             cutoff = w0 + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
+            # Pool convention: the scored window ends with the last complete
+            # FFMP year, [cutoff, cutoff + (SCENARIO_YEARS - 1) yr) — the
+            # trailing Jun-Nov partial is cut, exactly as _hazard_block cuts it.
+            metric_end = cutoff + pd.DateOffset(years=SCENARIO_YEARS - 1)
+            in_win = (idx >= w0) & (idx < metric_end)
             wet_cut = int(((idx >= w0) & (idx < cutoff)).sum())
             daily_rows, monthly_rows = [], []
             for g in batch_global:
@@ -191,7 +195,7 @@ def _merge_shards(shard_paths: list[Path], out_path: Path, R: int) -> None:
     axes = [str(a) for a in parts[0]["hazard_axes"]]
     order = np.lexsort((win, rid))
     H, rid, win = H[order], rid[order], win[order]
-    from scengen.hazard_metrics import _REFERENCE_START
+    from scengen.hazard_metrics import _REFERENCE_START, _SCENARIO_STAMP_START
 
     np.savez(
         out_path,
@@ -199,6 +203,7 @@ def _merge_shards(shard_paths: list[Path], out_path: Path, R: int) -> None:
         realization_ids=rid, window_index=win, theta_index=rid // R,
         window_years=np.asarray(SCENARIO_YEARS), exclusion_months=np.asarray(METRIC_EXCLUSION_MONTHS),
         reference_start=np.asarray(_REFERENCE_START, dtype=object),
+        scenario_stamp_start=np.asarray(_SCENARIO_STAMP_START, dtype=object),
     )
     for p in shard_paths:
         p.unlink()

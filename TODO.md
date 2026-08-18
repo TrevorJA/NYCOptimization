@@ -10,41 +10,65 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 1. Remaining method closures
 
-- [ ] **[HPC]** REGENERATE everything invalidated by the 3-MONTH SEASONAL
-  ROTATION FIX (local half LANDED 2026-08-18 across all three repos: truthful
-  January stamping — `KirschGenerator.generate(start_year=...)` anchors the
-  synthetic index at `config.ENSEMBLE_START_DATE` (1945-01-01), the writer's
-  re-stamp is DELETED (the Nowak daily index is kept and asserted), the SSI
-  reference fit uses the record's true dates, `_ensemble_window` derives the
-  sim window from each staged `_meta.json` (`start_date` now required; stale
-  October-stamped artifacts FAIL FAST at spec resolution, override
-  `NYCOPT_ALLOW_STALE_STAMP=1`), hazard images carry `reference_start`
-  provenance (pre-fix `.npz` refuse to load), the forcing-pool fit record
-  moved to the full calendar record `("1945-01-01","2023-12-31")` (was a
-  water-year clip that silently dropped calendar 1945/2022/2023;
-  baseline_period now `("1980-01-01","2019-12-31")`), historic hazard-window
-  layers anchor at January in BOTH `compute_historic_hazard_windows.py` and
-  `scenario_discovery._historic_hazard_points` (previously mutually 3 months
-  out of phase), and the Text S2 gap is closed
-  (`scripts/supplemental/validate_staged_seasonality.py` checks STAGED
-  artifacts by true month + circular shift; regression tests in
-  `tests/test_master_ensemble_determinism.py` and SynHydro pin the anchor).
-  INVALIDATED — regenerate on HPC, in step order:
-  1. step 02: all candidate pools (`statpool_*` d0–d2) + hazard images
-     (old npz also lack provenance and refuse to load);
-  2. step 03: `hazfill_*` / `fixprob_*` selections;
-  3. step 12: E_test `etest_kn_50yr_n25000` + chunks + hazard images, then
+- [ ] **[HPC]** REGENERATE everything invalidated by the SEASONAL-ROTATION FIX
+  plus the 2026-08-18 pre-campaign audit closures (all local halves LANDED
+  across all four repos):
+  * **December epoch + June-1 FFMP-year alignment** — realizations now span
+    Dec 1 – Nov 30 (`ENSEMBLE_START_DATE = 1945-12-01`; generation produces
+    L+1 Jan-anchored calendar years and trims the monthly frames to the epoch,
+    so stamps stay true), the annual unit moved from the water year to the
+    FFMP operating year (`ffmp_year_unit_slices`, Jun 1 – May 31), and the
+    hazard image trims the trailing partial year, so hazard metrics and
+    objectives score the IDENTICAL [Jun 1 y1, May 31 yL] window (the 6-month
+    SSI-6 exclusion ends exactly on the FFMP June-1 reset). The historic
+    window moved to `START_DATE/END_DATE = 1945-12-01/2023-11-30` — so
+    **step-01 presim and the step-05 historic baseline are now invalidated
+    too** (both cheap). Scenario SSI stamp is December
+    (`scengen.hazard_metrics._SCENARIO_STAMP_START = 1999-12-01`); hazard
+    images carry `scenario_stamp_start` provenance and January-convention
+    `.npz` refuse to load.
+  * **SynHydro Nowak fixes** — the leap-February length fix wrote through a
+    view into the fitted proportion pool (broke partition invariance +
+    February mass balance; `.copy()` fix + pool-immutability and
+    batch-vs-isolated regression tests), and `renormalize_truncated` is now
+    True for monthly→daily (volume conserved in every February). The
+    determinism gate runs at L=5 spanning leap 1948 (was L=2, vacuous).
+  * Earlier landed half (kept for the record): truthful stamping, no writer
+    re-stamp, `_ensemble_window` from the staged `_meta.json` (stale stamps
+    FAIL FAST; `NYCOPT_ALLOW_STALE_STAMP=1` to inspect), full-calendar fit
+    record `("1945-01-01","2023-12-31")`, historic hazard-window layers
+    anchored at the scenario epoch month in both
+    `compute_historic_hazard_windows.py` and
+    `scenario_discovery._historic_hazard_points`,
+    `validate_staged_seasonality.py` build QC.
+  * Also landed from the audit: re-eval cubes now persist per-(solution, SOW)
+    `n_survivors` (a crashed batch no longer silently shrinks a SOW's pool
+    unrecorded), `_aligned_baseline` hard-errors on incumbent SOW
+    under-coverage, and all-NaN flood-stage days propagate to the worst-value
+    sentinel instead of scoring as "no flooding".
+  INVALIDATED — regenerate on HPC, in step order (pull ALL FOUR repos first:
+  NYCOptimization, SynHydro, NYCOptimization_scenario_generation, Pywr-DRB):
+  1. step 01: HISTORIC presim (December window) and step 00 unchanged;
+  2. step 02: all candidate pools (`statpool_*` d0–d2) + hazard images;
+  3. step 03: `hazfill_*` / `fixprob_*` selections;
+  4. step 12: E_test `etest_kn_50yr_n25000` + chunks + hazard images, then
      re-stage the `first10ch` subset + symlinked incumbent baselines
      (`make_etest_subset.py`, `stage_etest_subset_baseline.py`);
-  4. step 04: pywrdrb inputs + ensemble presim for every staged ensemble
-     (step-01 HISTORIC presim is unaffected — true dates);
-  5. step 05: baseline-on-E_test matrix (incumbent cube);
-  6. go/no-go searches (all three designs; the 500k-NFE sets, their
+  5. step 04: pywrdrb inputs + ensemble presim for every staged ensemble;
+  6. step 05: historic baseline + baseline-on-E_test matrix (incumbent cube);
+  7. go/no-go searches (all three designs; the 500k-NFE sets, their
      diagnostics, and the `_eps20260812` re-filtered refs are all
-     rotated-season) and every step-07–13 artifact derived from them,
+     pre-convention) and every step-07–13 artifact derived from them,
      including the interim first10ch chain and figs 03–08 data.
   Run `validate_staged_seasonality.py` on each regenerated ensemble as build
   QC before anything simulates on it.
+  ALSO INVALIDATED BY THE 2026-08-18 HAZARD-AXIS RENAME (drought_magnitude /
+  drought_severity / flood_peak_discharge, landed across both repos with
+  `test_terminology.py` enforcement): every staged `hazard_image.npz` and
+  hazard-derived artifact carries the OLD axis names and will mismatch
+  `config.HAZARD_SELECTION_AXES` (empty intersection, missing-axis KeyErrors).
+  The regeneration above already covers this — just ensure it runs on
+  post-rename code on the cluster (pull both repos before step 02).
 
 - [x] **[local]** REGRET TOLERANCE tau RE-ADOPTED 2026-08-14 on ROUND values
   (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;

@@ -123,11 +123,11 @@ def run_baseline_reeval(formulation: str = "ffmp", seed=None):
     print(f"\n--- Baseline re-eval ({formulation}) on common ensemble "
           f"'{reeval_tag(REEVAL_ENSEMBLE_SPEC)}' ---")
     dv_values = get_baseline_values(formulation)
-    _sid, mat, names, err = evaluate_solution_raw(0, dv_values, formulation)
+    _sid, mat, names, surv, err = evaluate_solution_raw(0, dv_values, formulation)
     if err:
         raise RuntimeError(f"baseline re-eval failed: {err}")
     _summary, raw_path, meta_path = persist_reeval_raw(
-        base_dir, [(0, mat, names, None)], formulation, 1, seed,
+        base_dir, [(0, mat, names, surv, None)], formulation, 1, seed,
     )
     print(f"  baseline raw  -> {raw_path}")
     print(f"  baseline meta -> {meta_path}")

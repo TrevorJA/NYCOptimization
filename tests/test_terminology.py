@@ -136,6 +136,15 @@ RETIRED_TERMS: dict[str, str] = {
     "flood_peak_magnitude": "flood_peak_discharge (window max daily flow / "
                             "reference mean)",
     "peak magnitude": "peak discharge (window max daily flow / reference mean)",
+    # 2026-08-18 June alignment: the annual unit moved from the USGS water year
+    # (Oct-Sep) to the FFMP operating year (Jun-May), on December-start
+    # realizations, so hazard metrics and objectives score the identical
+    # [Jun 1 year 1, May 31 year L] window.
+    "water_year_unit_slices":
+        "ffmp_year_unit_slices (complete Jun 1 - May 31 FFMP operating years)",
+    "water-year unit":
+        "FFMP-year unit (Jun 1 - May 31, the FFMP operating year; "
+        "objectives_ensemble.ffmp_year_unit_slices)",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

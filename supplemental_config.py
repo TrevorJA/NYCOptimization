@@ -85,8 +85,8 @@ def configure_historic_env() -> None:
     ANNUAL-UNIT (§2) objectives, and that registry has no salt-front or thermal
     objective (the salinity LSTM checkout is also not present on every host).
     Under SMOKE a short window keeps each simulation to ~10-15 s; the end stays
-    within the trimmed model's pre-simulated release data (2022-09-30
-    water-year end).
+    within the trimmed model's pre-simulated release data (config.END_DATE,
+    2023-11-30).
     """
     _apply_env(
         salinity="0",
@@ -1074,7 +1074,7 @@ def sf_figure_path(name: str) -> Path:
 # candidates (stage-ft and flow bases). One local simulation pass evaluates a
 # feasible-policy sample plus a flood-release-scale sweep ladder on the
 # historic trace AND the local KN stationary fixture, persisting per-policy x
-# realization x water-year-unit candidate values and per-gauge flood-day
+# realization x FFMP-year-unit candidate values and per-gauge flood-day
 # records; the figures script reduces that cube (discriminating power,
 # monotone-response gate, sampling noise, epsilon proposal) and scores every
 # candidate sim-vs-obs on the flood-gauge diagnostic experiment's 2000-2023

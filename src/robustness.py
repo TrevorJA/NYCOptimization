@@ -454,13 +454,25 @@ def _aligned_baseline(raw: RawCube, baseline: RawCube) -> np.ndarray:
     The baseline cube holds ONE policy; its solution axis is collapsed
     (``nanmean`` is an identity for S == 1 and averages any accidental
     duplicates), and the join is on the SOW LABEL, never on position. A
-    baseline that does not cover a SOW contributes NaN for it rather than a
-    silent mis-pairing.
+    baseline missing SOWs the policy cube covers is a HARD ERROR: a NaN
+    incumbent row would count as harm for EVERY policy in
+    ``regret_frequencies`` (non-finite differences are harm by convention),
+    so a partially-failed incumbent would silently degrade the whole
+    comparison rather than one cell.
     """
     if list(baseline.obj_names) != list(raw.obj_names):
         raise ValueError(
             f"baseline objectives {baseline.obj_names} do not match the "
             f"policy cube's {raw.obj_names}"
+        )
+    uncovered = sorted(set(raw.sow_labels) - set(baseline.sow_labels))
+    if uncovered:
+        raise ValueError(
+            f"the incumbent baseline cube covers {len(baseline.sow_labels)} "
+            f"SOWs but the policy cube scores {len(raw.sow_labels)}; "
+            f"{len(uncovered)} SOWs are uncovered (first few: "
+            f"{uncovered[:8]}). A NaN incumbent row reads as harm for every "
+            f"policy — re-run step 05 on the same test ensemble."
         )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)

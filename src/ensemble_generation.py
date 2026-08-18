@@ -40,19 +40,56 @@ from config import ENSEMBLE_START_DATE, METRIC_EXCLUSION_MONTHS
 from src.load.historical_flows import load_historical_flows
 
 
-def _start_year_of(start_date: str) -> int:
-    """Return the epoch year of a realization ``start_date``, requiring a January 1.
+def _epoch_start_year(start_date: str) -> int:
+    """Return the generator ``start_year`` for a realization epoch, requiring a December 1.
 
-    The Kirsch generator synthesizes calendar-year (January-start) sequences, so
-    any other day would mislabel the content's statistical season.
+    The Kirsch generator synthesizes calendar-year (January-anchored) sequences —
+    that structure cannot be rotated — so a December epoch is obtained by
+    generating one EXTRA calendar year anchored at January 1 of the epoch year
+    and trimming the monthly frames to the [epoch, epoch + L years) window
+    (:func:`_trim_frames_to_epoch`) before disaggregation. Every stamp stays
+    true by construction. The December epoch makes the 6-month metric exclusion
+    end exactly on June 1, the FFMP operating-year boundary, so hazard metrics
+    and objectives score the identical Jun 1 – May 31 window.
     """
     ts = pd.Timestamp(start_date)
-    if (ts.month, ts.day) != (1, 1):
+    if (ts.month, ts.day) != (12, 1):
         raise ValueError(
-            f"start_date={start_date!r} must be a January 1: synthetic realizations "
-            f"are calendar-year sequences and their index anchors at this epoch."
+            f"start_date={start_date!r} must be a December 1: the epoch is chosen so "
+            f"the 6-month metric exclusion ends on June 1 (the FFMP operating-year "
+            f"boundary), and generation trims Jan-anchored synthetic years to it."
         )
     return int(ts.year)
+
+
+def _trim_frames_to_epoch(
+    frames: dict[int, pd.DataFrame], epoch: pd.Timestamp, n_years: int
+) -> dict[int, pd.DataFrame]:
+    """Trim Jan-anchored monthly frames to the ``[epoch, epoch + n_years)`` window.
+
+    The generator produced ``n_years + 1`` calendar years anchored at January 1
+    of ``epoch.year``; the staged realization is the ``n_years``-year window
+    starting at the December epoch. Trimming happens at the MONTHLY stage, so
+    the Nowak daily index (derived from the trimmed monthly calendar) anchors
+    truthfully at the epoch and no wasted months are disaggregated.
+
+    Raises:
+        ValueError: If a trimmed frame does not span exactly ``12 * n_years``
+            months — the generation call did not cover the epoch window.
+    """
+    end = epoch + pd.DateOffset(years=n_years)
+    out: dict[int, pd.DataFrame] = {}
+    for k, df in frames.items():
+        sub = df.loc[(df.index >= epoch) & (df.index < end)]
+        if len(sub) != 12 * n_years:
+            raise ValueError(
+                f"realization {k}: trimmed monthly frame has {len(sub)} rows, "
+                f"expected {12 * n_years} for [{epoch.date()}, {end.date()}); the "
+                f"generation call must cover the epoch window (n_years + 1 "
+                f"calendar years from Jan 1 of the epoch year)."
+            )
+        out[k] = sub
+    return out
 
 
 # Node lists derived once from pywrdrb's node-data dict, matching the
@@ -64,9 +101,9 @@ NODES_TO_REGRESS = [n for n in _PYWRDRB_NODES if n[0] == "0"]
 
 # SynHydro's timescale-generalized NowakDisaggregator defaults
 # boundary_blend_timesteps to 0 (published Nowak et al. 2010, no boundary
-# correction). This project's ensembles were generated with the pre-upgrade
-# default of 2-day smoothing at month boundaries; pin it so regenerated
-# ensembles stay bit-identical to prior runs.
+# correction). This project uses 2-day smoothing at month boundaries — a
+# deliberate methods choice pinned here so every ensemble in the study is
+# generated identically.
 NOWAK_BOUNDARY_BLEND_TIMESTEPS = 2
 
 
@@ -90,9 +127,10 @@ def generate_kirsch_nowak_ensemble(
         flowtype: pywrdrb inflow-dataset key for the historical record fed to
             Kirsch. Defaults to the BC-reconstructed 1945-2023 record.
         start_date: Date of day 0 of each synthetic realization; must be a
-            January 1 (the generator synthesizes calendar-year sequences and
-            its index is anchored here, so the stamp is true by construction).
-            The simulation layer is responsible for any further window clipping.
+            December 1 (one extra calendar year is generated and the monthly
+            frames trimmed to the epoch window, so the stamp is true by
+            construction — see :func:`_epoch_start_year`). The simulation
+            layer is responsible for any further window clipping.
 
     Returns:
         Dict of provenance written to ``_meta.json``: ``slug``, ``flowtype``,
@@ -105,11 +143,19 @@ def generate_kirsch_nowak_ensemble(
     kirsch = _fit_kirsch(Q_full)
     nowak = _fit_nowak(Q_full)
 
+    # One extra calendar year, trimmed to the December epoch window (see
+    # _epoch_start_year / _trim_frames_to_epoch).
     monthly_ensemble = kirsch.generate(
         n_realizations=n_realizations,
-        n_years=n_years,
+        n_years=n_years + 1,
         seed=seed,
-        start_year=_start_year_of(start_date),
+        start_year=_epoch_start_year(start_date),
+    )
+    monthly_ensemble = Ensemble(
+        _trim_frames_to_epoch(
+            monthly_ensemble.data_by_realization, pd.Timestamp(start_date), n_years
+        ),
+        metadata=monthly_ensemble.metadata,
     )
 
     syn_by_real, inflow_by_real, sites = _disaggregate_fill_inflow(
@@ -227,11 +273,12 @@ def _disaggregate_fill_inflow(
 
     Args:
         monthly_ensemble: Monthly ``Ensemble`` keyed by global realization index, carrying the
-            generator metadata (``'MS'`` time resolution) and a ``start_date``-anchored index.
+            generator metadata (``'MS'`` time resolution) and a ``start_date``-anchored index
+            (already trimmed to the epoch window by :func:`_trim_frames_to_epoch`).
         nowak: Fitted disaggregator.
         kdes: Per-pair downstream KDEs from :func:`_fit_downstream_kdes`.
         root_seed: Root seed forwarded to the Nowak and KDE streams.
-        start_date: Expected date of day 0 of each realization (a January 1).
+        start_date: Expected date of day 0 of each realization (a December 1).
 
     Returns:
         ``(gage_by_real, inflow_by_real, sites)`` — float32 frames keyed by the same global indices,
@@ -250,8 +297,8 @@ def _disaggregate_fill_inflow(
     if first_idx[0] != pd.Timestamp(start_date):
         raise ValueError(
             f"disaggregated daily index anchors at {first_idx[0].date()}, expected "
-            f"{start_date}: the generation call must anchor the synthetic index at the "
-            f"configured epoch (kirsch.generate(start_year=...))."
+            f"{start_date}: the monthly frames must be trimmed to the configured epoch "
+            f"before disaggregation (_trim_frames_to_epoch)."
         )
     inflow_by_real: dict[int, pd.DataFrame] = {}
     for real_id, gage_df in syn_by_real.items():
@@ -547,11 +594,17 @@ def _generate_profile_monthly(
         )
 
     idxs = list(indices) if indices is not None else [profile_idx * R + j for j in range(R)]
+    # One extra calendar year, trimmed to the December epoch window (see
+    # _epoch_start_year / _trim_frames_to_epoch).
     ens = setup.kirsch.generate(
-        n_years=config.realization_years, realization_indices=idxs, seed=config.root_seed,
-        start_year=_start_year_of(config.start_date),
+        n_years=config.realization_years + 1, realization_indices=idxs,
+        seed=config.root_seed, start_year=_epoch_start_year(config.start_date),
     )
-    return {k: ens.data_by_realization[k] for k in idxs}, ens.metadata
+    frames = _trim_frames_to_epoch(
+        {k: ens.data_by_realization[k] for k in idxs},
+        pd.Timestamp(config.start_date), config.realization_years,
+    )
+    return frames, ens.metadata
 
 
 def _generate_profile_monthly_hmm(
@@ -597,9 +650,11 @@ def _generate_profile_monthly_hmm(
         )
 
     R = config.realizations_per_profile
+    # One extra annual year, so the January-anchored calendar covers the
+    # December epoch window trimmed below.
     annual_raw = setup.hmm.generate(
         n_realizations=R,
-        n_years=config.realization_years,
+        n_years=config.realization_years + 1,
         seed=_profile_stream_seed(config.root_seed, profile_idx, "hmm_generation"),
     )
     annual = Ensemble(
@@ -610,16 +665,18 @@ def _generate_profile_monthly_hmm(
     )
     frames = monthly.data_by_realization  # keyed 0..R-1 by the HMM's local realization ids
 
-    # The HMM's annual index anchors at the fit record's own start, and the
-    # annual->monthly Nowak follows it. The delta-change below is applied by
-    # index month, so a drifted anchor would silently rotate the forcing —
-    # verify the epoch before touching the values.
+    # The HMM's annual index anchors at the fit record's own start (January 1
+    # of the epoch year), and the annual->monthly Nowak follows it. The
+    # delta-change below is applied by index month, so a drifted anchor would
+    # silently rotate the forcing — verify before touching the values.
+    epoch = pd.Timestamp(config.start_date)
+    expected_anchor = pd.Timestamp(year=_epoch_start_year(config.start_date), month=1, day=1)
     first_idx = next(iter(frames.values())).index
-    if first_idx[0] != pd.Timestamp(config.start_date):
+    if first_idx[0] != expected_anchor:
         raise ValueError(
             f"HMM monthly index anchors at {first_idx[0].date()}, expected "
-            f"{config.start_date}: the annual generator's epoch drifted from the "
-            f"configured realization start_date."
+            f"{expected_anchor.date()}: the annual generator's epoch drifted from "
+            f"the configured realization start_date's calendar year."
         )
 
     if setup.a_wy is not None:
@@ -628,6 +685,7 @@ def _generate_profile_monthly_hmm(
             factors = pd.Series(a_cal[df.index.month - 1], index=df.index)
             frames[j] = df.mul(factors, axis=0)
 
+    frames = _trim_frames_to_epoch(frames, epoch, config.realization_years)
     block = {profile_idx * R + j: frames[j] for j in range(R)}
     if indices is not None:
         block = {k: block[k] for k in indices}
@@ -636,34 +694,38 @@ def _generate_profile_monthly_hmm(
 
 def _hazard_block(
     inflow_by_real: dict[int, pd.DataFrame], ordered_ids: list[int], nyc_nodes,
-    reference_monthly: np.ndarray, reference_daily: np.ndarray,
+    reference_monthly: np.ndarray, reference_daily: np.ndarray, *, n_years: int,
 ) -> tuple[np.ndarray, list[str]]:
     """Compute the candidate hazard image rows for one block of realizations, in ``ordered_ids`` order.
 
     Aggregates the NYC-inflow catchments to a single series per scenario and calls
     :func:`scengen.hazard_metrics.compute_candidate_hazard_image` once for the block.
 
-    The wet (POT) axes are computed on the same metric window the objectives use:
-    the leading ``config.METRIC_EXCLUSION_MONTHS`` (6) calendar months of each
-    scenario are cut from the daily series, by date, from the block's own
-    DatetimeIndex. The monthly series keeps its FULL length — those first months
-    are the SSI-6 accumulation input, and SSI-6 is undefined over them, so a
-    drought event cannot start there and the dry axes exclude the same window
+    Hazard metrics score EXACTLY the objectives' metric window,
+    [Jun 1 year 1, May 31 year ``n_years``] of the December-start scenario:
+    the trailing partial FFMP year (Jun 1 – Nov 30 of the final year) is cut
+    from both the daily and monthly series, and the wet (POT) axes additionally
+    exclude the leading ``config.METRIC_EXCLUSION_MONTHS`` (6) calendar months
+    by date. The leading months stay in the monthly series — they are the SSI-6
+    accumulation input, over which SSI-6 is undefined, so a drought event
+    cannot start there and the dry axes exclude the same leading window
     implicitly.
     """
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import compute_candidate_hazard_image
 
+    idx = pd.DatetimeIndex(inflow_by_real[ordered_ids[0]].index)
+    metric_start = idx[0] + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
+    metric_end = metric_start + pd.DateOffset(years=n_years - 1)  # exclusive
+    keep = idx < metric_end
     daily_rows, monthly_rows = [], []
     for k in ordered_ids:
-        agg = inflow_by_real[k].loc[:, list(nyc_nodes)].sum(axis=1)  # daily pd.Series
+        agg = inflow_by_real[k].loc[:, list(nyc_nodes)].sum(axis=1)[keep]  # daily pd.Series
         daily_rows.append(agg.to_numpy(dtype=float))
         monthly_rows.append(daily_to_monthly(agg, agg="mean"))
-    idx = pd.DatetimeIndex(inflow_by_real[ordered_ids[0]].index)
-    cutoff = idx[0] + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
     H_block, axes = compute_candidate_hazard_image(
         np.vstack(monthly_rows), np.vstack(daily_rows), reference_monthly, reference_daily,
-        wet_exclusion_days=int((idx < cutoff).sum()),
+        wet_exclusion_days=int((idx[keep] < metric_start).sum()),
     )
     return H_block, list(axes)
 
@@ -1058,6 +1120,7 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
                 H_block, hazard_axes = _hazard_block(
                     inflow_by_real, sorted(inflow_by_real), DEFAULT_NYC_INFLOW_NODES,
                     reference_monthly, reference_daily,
+                    n_years=config.realization_years,
                 )
                 H_blocks.append(H_block)
                 _pt["hazard"] += time.perf_counter() - _t

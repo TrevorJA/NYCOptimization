@@ -5,24 +5,25 @@ Implements the **two-layer annual-unit scheme** of
 `docs/notes/methods/objective_definitions.md` §2 for all ensemble
 (multi-realization) evaluations. Every scenario design is scored through this
 annual-unit registry — including `historic`, which is simply the N=1 case over
-its 76 water-year units (see `src/formulations/__init__.py`); the §1 temporal
+its 77 FFMP-year units (see `src/formulations/__init__.py`); the §1 temporal
 metrics in `src.objectives` supply the shared windowed-series cores and the
 per-realization base metrics of the re-evaluation layer.
 
 Two-layer scheme (Hamilton et al. 2022 vocabulary)
 --------------------------------------------------
-Stage (i) — **annual metric** per (realization × water-year) unit. Every
-synthetic realization starts January 1 (config ``ENSEMBLE_START_DATE``; the
-historic trace starts on its water-year boundary, config ``START_DATE``) and
-spans L whole calendar years. The first ``METRIC_EXCLUSION_MONTHS`` (6)
-calendar months are outside the metric window — the SSI-6 accumulation spin-up
-the hazard-selection metrics also exclude — and are dropped by date; the
-remainder, which begins Jul 1 of year 1, is split into whole water-year units
-(Oct 1 – Sep 30). The leading partial (Jul 1 – Sep 30 of year 1) and the
-trailing partial (Oct 1 – Dec 31 of year L) are discarded, so an L-year
-realization yields exactly **L − 1 metric-bearing unit-years**, the first
-starting Oct 1 of year 1 (see :func:`water_year_unit_slices`, which derives
-the units from the dates and gives L − 1 units for October starts too).
+Stage (i) — **annual metric** per (realization × FFMP-year) unit. Every
+synthetic realization starts December 1 (config ``ENSEMBLE_START_DATE``; the
+historic trace shares the December anchor, config ``START_DATE``) and spans L
+whole years (Dec 1 – Nov 30). The first ``METRIC_EXCLUSION_MONTHS`` (6)
+calendar months (Dec – May) are outside the metric window — the SSI-6
+accumulation spin-up the hazard-selection metrics also exclude — and are
+dropped by date; the remainder begins exactly **Jun 1 of year 1**, the FFMP
+operating-year boundary (the FFMP's seasonal rules reset June 1), and is
+split into whole FFMP years (Jun 1 – May 31). The trailing partial (Jun 1 –
+Nov 30 of year L) is discarded, so an L-year realization yields exactly
+**L − 1 metric-bearing unit-years** spanning Jun 1 year 1 – May 31 year L —
+the IDENTICAL window the hazard-selection metrics score (see
+:func:`ffmp_year_unit_slices`, which derives the units from the dates).
 
 Stage (ii) — **unit operator** over the POOLED unit-years of the whole
 ensemble (all realizations' units concatenated):
@@ -121,31 +122,36 @@ from src.objectives import (
 
 
 ###############################################################################
-# Stage (i) — water-year unit splitting
+# Stage (i) — FFMP-year unit splitting
 ###############################################################################
 
-def water_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
-    """Positional slices of the metric-bearing water-year units of a trace.
+def ffmp_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
+    """Positional slices of the metric-bearing FFMP-year units of a trace.
 
     Unit rule (objective_definitions.md §2): the rule is a pure function of
     the trace's dates, whatever day it starts. Days earlier than
     ``METRIC_EXCLUSION_MONTHS`` (6) calendar months after the first timestamp
     lie outside the metric window (the SSI-6 accumulation spin-up) and are
-    dropped by date; the remaining days are grouped by water year (a date with
-    month >= 10 belongs to water year ``year + 1``), and only COMPLETE water
-    years — first day Oct 1, last day Sep 30 — are kept. On the January-start
-    synthetic windows the remainder begins Jul 1 of year 1, so the leading
-    partial (Jul 1 – Sep 30) and the trailing partial (Oct 1 – Dec 31 of year
-    L) are discarded and an L-year realization yields exactly L − 1
-    unit-years, the first starting Oct 1 of year 1. (An October-start trace,
-    e.g. the historic record, likewise yields L − 1 units.)
+    dropped by date; the remaining days are grouped by FFMP year — the Jun 1
+    – May 31 operating year on which the FFMP's seasonal rules reset (a date
+    with month < 6 belongs to the FFMP year that began the previous June) —
+    and only COMPLETE FFMP years (first day Jun 1, last day May 31) are kept.
+    On the December-start windows the exclusion (Dec – May) ends exactly
+    Jun 1 of year 1, so an L-year realization yields exactly L − 1
+    unit-years spanning Jun 1 year 1 – May 31 year L — the identical window
+    the hazard-selection metrics score.
 
     Args:
         index: Daily DatetimeIndex of the realization's full window.
 
     Returns:
         List of positional ``slice`` objects into ``index`` (usable with
-        ``.iloc``), one per metric-bearing water-year unit, in time order.
+        ``.iloc``), one per metric-bearing FFMP-year unit, in time order.
+
+    Raises:
+        ValueError: If an accepted unit's row count does not equal its
+            calendar-day span — a daily index with gaps or duplicates inside
+            a unit would otherwise be silently mis-scored.
     """
     idx = pd.DatetimeIndex(index)
     if len(idx) == 0:
@@ -155,15 +161,23 @@ def water_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
     if offset >= len(idx):
         return []
     sub = idx[offset:]
-    wy = np.asarray(sub.year) + (np.asarray(sub.month) >= 10).astype(int)
-    change = np.flatnonzero(np.diff(wy)) + 1
+    fy = np.asarray(sub.year) - (np.asarray(sub.month) < 6).astype(int)
+    change = np.flatnonzero(np.diff(fy)) + 1
     starts = np.concatenate(([0], change))
     stops = np.concatenate((change, [len(sub)]))
     slices = []
     for s, e in zip(starts, stops):
         first, last = sub[s], sub[e - 1]
-        if (first.month, first.day) == (10, 1) and (last.month, last.day) == (9, 30):
-            slices.append(slice(offset + int(s), offset + int(e)))
+        if (first.month, first.day) != (6, 1) or (last.month, last.day) != (5, 31):
+            continue
+        span_days = (last - first).days + 1
+        if span_days != int(e - s):
+            raise ValueError(
+                f"FFMP-year unit {first.date()}..{last.date()} has {int(e - s)} "
+                f"rows but spans {span_days} calendar days: the daily index has "
+                f"gaps or duplicates inside a unit."
+            )
+        slices.append(slice(offset + int(s), offset + int(e)))
     return slices
 
 
@@ -256,7 +270,7 @@ class AnnualUnitObjective:
             active set; see the `_ANNUAL_REGISTRY_SPEC` comment).
         description: Human-readable description.
         annual_metric: Callable ``data -> np.ndarray`` returning one annual
-            value per metric-bearing water-year unit of the realization
+            value per metric-bearing FFMP-year unit of the realization
             (stage i).
         unit_operator: Callable ``pooled_units -> float`` collapsing the
             pooled unit-years of the whole ensemble (stage ii).
@@ -327,7 +341,7 @@ class AnnualUnitObjective:
 # Stage (i) annual-metric functions
 ###############################################################################
 # Each returns a float ndarray with one value per metric-bearing water-year
-# unit (see water_year_unit_slices). Weekly accounting reuses the §1
+# unit (see ffmp_year_unit_slices). Weekly accounting reuses the §1
 # windowed-series cores from src.objectives, restricted to each unit-year's
 # weeks (weekly bins are formed within the unit-year slice).
 
@@ -348,7 +362,7 @@ def _delivery_failure_weeks_annual(data: dict, demand_key: str,
     target = _delivery_entitlement(demand, delivery, cap, reset)
     return np.asarray([
         float((~_weekly_delivery_ok(target.iloc[sl], delivery.iloc[sl])).sum())
-        for sl in water_year_unit_slices(demand.index)
+        for sl in ffmp_year_unit_slices(demand.index)
     ], dtype=float)
 
 
@@ -380,7 +394,7 @@ def _nyc_delivery_deficit_cvar90_annual(data: dict) -> np.ndarray:
                 target.iloc[sl], delivery.iloc[sl], NYC_DECREE_DIVERSION_CAP_MGD,
             ).values
         )
-        for sl in water_year_unit_slices(demand.index)
+        for sl in ffmp_year_unit_slices(demand.index)
     ], dtype=float)
 
 
@@ -388,7 +402,7 @@ def _flow_failure_weeks_annual(flow: pd.Series, target: float) -> np.ndarray:
     """Failing-week count per unit-year: weekly-mean flow < the Decree target."""
     return np.asarray([
         float((~_weekly_flow_ok(flow.iloc[sl], target)).sum())
-        for sl in water_year_unit_slices(flow.index)
+        for sl in ffmp_year_unit_slices(flow.index)
     ], dtype=float)
 
 
@@ -413,7 +427,7 @@ def _montague_deficit_cvar90_annual(data: dict) -> np.ndarray:
         _cvar_worst_mean(
             _weekly_flow_deficit_pct(flow.iloc[sl], MONTAGUE_DECREE_TARGET_MGD).values
         )
-        for sl in water_year_unit_slices(flow.index)
+        for sl in ffmp_year_unit_slices(flow.index)
     ], dtype=float)
 
 
@@ -424,12 +438,15 @@ def _flood_days_minor_annual(data: dict) -> np.ndarray:
     window) — deliberately not the §1 base metric, which reports mean annual
     days/yr over its whole metric window.
     """
-    over = _flood_over_stage_daily(
-        data["flood_stage"][_DOWNSTREAM_GAUGES], "minor",
-    )
+    stage = data["flood_stage"][_DOWNSTREAM_GAUGES]
+    over = _flood_over_stage_daily(stage, "minor").astype(float)
+    # An all-NaN stage day compares False at every gauge and would silently
+    # count as flood-free; propagate NaN so the unit-year goes to the unit
+    # operator's worst-value sentinel instead (the non-finite policy).
+    over[stage.isna().all(axis=1)] = np.nan
     return np.asarray([
-        float(over.iloc[sl].sum())
-        for sl in water_year_unit_slices(over.index)
+        float(over.iloc[sl].sum(skipna=False))
+        for sl in ffmp_year_unit_slices(over.index)
     ], dtype=float)
 
 
@@ -444,9 +461,13 @@ def _flood_exceedance_minor_annual(data: dict) -> np.ndarray:
     sev = _flood_exceedance_daily(
         data["flood_stage"][_DOWNSTREAM_GAUGES], "minor",
     )
+    # An all-NaN stage day yields a NaN daily exceedance; skipna summing would
+    # silently score it as "no flooding". Propagate it instead — a unit-year
+    # containing an unmeasured day goes NaN and the unit operator's
+    # worst-value sentinel applies (the framework's non-finite policy).
     return np.asarray([
-        float(sev.iloc[sl].sum())
-        for sl in water_year_unit_slices(sev.index)
+        float(sev.iloc[sl].sum(skipna=False))
+        for sl in ffmp_year_unit_slices(sev.index)
     ], dtype=float)
 
 
@@ -455,7 +476,7 @@ def _nyc_storage_min_annual(data: dict) -> np.ndarray:
     storage_pct = _nyc_storage_pct_daily(data)
     return np.asarray([
         float(storage_pct.iloc[sl].min())
-        for sl in water_year_unit_slices(storage_pct.index)
+        for sl in ffmp_year_unit_slices(storage_pct.index)
     ], dtype=float)
 
 

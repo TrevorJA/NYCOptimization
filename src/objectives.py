@@ -226,7 +226,7 @@ class ObjectiveSet:
 # The `_weekly_*` / `_flood_over_*` / `_nyc_storage_pct_daily` cores operate on
 # ALREADY-WINDOWED daily series (no exclusion handling inside): the §1 metrics
 # below apply `_metric_window` before calling them, and the annual-unit ensemble
-# metrics in `src.objectives_ensemble` apply water-year unit slicing instead —
+# metrics in `src.objectives_ensemble` apply FFMP-year unit slicing instead —
 # guaranteeing the two paths share one weekly-accounting formula.
 
 
@@ -235,9 +235,10 @@ def _metric_window(obj):
 
     The metric window starts ``METRIC_EXCLUSION_MONTHS`` (6) calendar months
     after the first timestamp: the SSI-6 accumulation spin-up, which the
-    hazard-selection metrics exclude implicitly, so selection and evaluation
-    score the same effective window. The cut is BY DATE, so leap years need no
-    special case (6 months from Jan 1 is 181 or 182 days).
+    hazard-selection metrics also exclude. On the December-start windows the
+    cut lands exactly on June 1, the FFMP operating-year boundary. The cut is
+    BY DATE, so leap years need no special case (6 months from Dec 1 is 182
+    or 183 days).
 
     Args:
         obj: Daily-indexed pandas Series or DataFrame.

@@ -45,7 +45,7 @@ historic record, no climate perturbation). Registry: `src/scenario_designs.py`.
 
 | Design | Construction | Role |
 |---|---|---|
-| `historic` | The observed record, one continuous ~77-yr trace | Prevailing-practice reference (Giuliani 2016; Herman 2020); unmatched, K = 1 |
+| `historic` | The observed record, one continuous ~78-yr trace | Prevailing-practice reference (Giuliani 2016; Herman 2020); unmatched, K = 1 |
 | `fixed_probabilistic` | N × L realizations drawn i.i.d. from the stationary generator; frozen across the search | The random-sampling control (Quinn 2017; Zatarain Salazar 2017) |
 | `hazard_filling` | LHS anchors in absolute, robust range-scaled hazard space (p1/p99 bounds), snapped to the nearest member of its own i.i.d. candidate pool | **Proposed method** |
 
@@ -108,8 +108,8 @@ Eight active objectives (NYC delivery reliability + P99 deficit tail, Montague
 reliability + P99 deficit tail, Trenton reliability, expected annual downstream flood
 exceedance (ft·days above NWS minor flood stage), NYC storage annual-minimum P01, NJ
 delivery reliability), computed by the two-layer annual-unit scheme (annual metric per
-realization × water-year unit; a per-objective unit operator over the pooled
-unit-years) and documented in `notes/methods/objective_definitions.md`. **These
+realization × FFMP-year unit (Jun 1 – May 31, the FFMP operating year); a
+per-objective unit operator over the pooled unit-years) and documented in `notes/methods/objective_definitions.md`. **These
 annual-unit statistics are the study's single metric currency**: search pools all
 realizations' unit-years; robustness and regret recompute the same statistics per
 E_test state of the world. The annual-unit epsilons are calibrated per

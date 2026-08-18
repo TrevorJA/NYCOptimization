@@ -72,7 +72,8 @@ def _evaluate_one(solution_id: int, dv_vector: np.ndarray, formulation: str):
     """Re-evaluate one solution and return its per-SOW objective matrix.
 
     Returns:
-        (solution_id, sow_matrix | None, obj_names | None, error | None).
+        (solution_id, sow_matrix | None, obj_names | None,
+        survivors | None, error | None).
     """
     return evaluate_solution_raw(solution_id, dv_vector, formulation)
 
@@ -180,7 +181,7 @@ def reevaluate_mpi(
     for sid in rank_ids:
         result = _evaluate_one(int(sid), dv_data[sid], formulation)
         rank_results.append(result)
-        err = result[3]
+        err = result[4]
         tag = "FAIL" if err else "ok"
         print(f"  [rank {rank:>3} {tag}] solution {sid:04d}"
               + (f"  ({err})" if err else ""), flush=True)
@@ -197,7 +198,8 @@ def reevaluate_mpi(
         return None
 
     # Flatten and sort. Each result is (sid, sow_matrix|None, obj_names|None,
-    # err); rows carry their own solution_id so no positional stitching needed.
+    # survivors|None, err); rows carry their own solution_id so no positional
+    # stitching needed.
     flat: list = []
     for chunk in gathered:
         flat.extend(chunk)

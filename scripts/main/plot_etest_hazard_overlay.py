@@ -101,12 +101,17 @@ def main() -> None:
         print(f"[overlay] Pool hazard image not found: {pool_path}.")
         sys.exit(1)
 
+    from scengen.hazard_metrics import _SCENARIO_STAMP_START
+
     pool = load_hazard_image(pool_path)
     et = np.load(etest_path, allow_pickle=True)
-    if "reference_start" not in et:
+    et_stamp = str(et["scenario_stamp_start"]) if "scenario_stamp_start" in et else None
+    if "reference_start" not in et or et_stamp != _SCENARIO_STAMP_START:
         sys.exit(
-            f"[overlay] {etest_path} lacks 'reference_start' provenance: it predates "
-            f"the truthful January date convention and is stale. Regenerate it with "
+            f"[overlay] {etest_path} lacks current date-convention provenance "
+            f"(reference_start present: {'reference_start' in et}, "
+            f"scenario_stamp_start={et_stamp!r} vs {_SCENARIO_STAMP_START!r}): it was "
+            f"computed under a retired convention and is stale. Regenerate it with "
             f"scripts/main/compute_etest_hazard_image.py."
         )
     etest_H, etest_axes = et["H"], [str(a) for a in et["hazard_axes"]]

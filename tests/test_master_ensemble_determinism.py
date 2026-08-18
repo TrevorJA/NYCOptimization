@@ -30,8 +30,11 @@ from scengen.forcing_ensemble import ForcingEnsembleConfig
 
 slow = pytest.mark.slow
 
-# Tiny pool: 4 forcing profiles x 2 realizations = 8 realizations of 2-yr records.
-_N_FORCING, _R, _L, _SEED = 4, 2, 2, 0
+# Tiny pool: 4 forcing profiles x 2 realizations = 8 realizations of 5-yr records.
+# L = 5 from the 1945-12-01 epoch spans leap-year 1948, so the determinism gate
+# exercises the Nowak leap-February length fix (which once aliased the fitted
+# proportion pool and broke partition invariance) rather than passing vacuously.
+_N_FORCING, _R, _L, _SEED = 4, 2, 5, 0
 _REGEN_INDEX = 3  # a realization in the 2nd forcing profile (p = 3 // 2 = 1)
 
 
@@ -91,7 +94,7 @@ def test_chunked_generation(tmp_path):
     from src.ensemble_generation import generate_forcing_ensemble, regenerate_realization
     from src.ensembles import pool_chunk_specs
 
-    out = tmp_path / "synthetic_ensembles" / "pool_2yr_n16"
+    out = tmp_path / "synthetic_ensembles" / "pool_5yr_n16"
     cfg = ForcingEnsembleConfig(
         root_seed=_SEED, n_forcing_profiles=8, realizations_per_profile=2,
         realization_years=_L, output_dir=out,
@@ -113,14 +116,14 @@ def test_chunked_generation(tmp_path):
     _orig = _cfg.STAGED_ENSEMBLE_DIR
     _cfg.STAGED_ENSEMBLE_DIR = tmp_path / "synthetic_ensembles"
     try:
-        chunks = pool_chunk_specs("pool_2yr_n16")
+        chunks = pool_chunk_specs("pool_5yr_n16")
         assert len(chunks) == 2
         assert chunks[0][1] == list(range(0, 8)) and chunks[1][1] == list(range(8, 16))
         assert all(spec.n_realizations == 8 for spec, _ in chunks)
 
         # A realization in chunk 1 (global 11 -> local 3) regenerates to its stored chunk slice.
         from synhydro import Ensemble
-        sh1 = out.parent / "pool_2yr_n16__chunk001"
+        sh1 = out.parent / "pool_5yr_n16__chunk001"
         staged = Ensemble.from_hdf5(str(sh1 / "gage_flow_mgd.hdf5")).data_by_realization
         regen = regenerate_realization(_SEED, 11, config=cfg)
         cols = [c for c in staged[3].columns if c in regen.columns]
@@ -153,8 +156,8 @@ def test_sharded_chunked_generation_matches_serial(tmp_path):
     if not Path(config.ENSEMBLE_FORCING_MEAN_FRAC_CSV).exists():
         pytest.skip("CMIP6 forcing table not available")
 
-    serial = tmp_path / "serial" / "pool_2yr_n16"
-    sharded = tmp_path / "sharded" / "pool_2yr_n16"
+    serial = tmp_path / "serial" / "pool_5yr_n16"
+    sharded = tmp_path / "sharded" / "pool_5yr_n16"
     generate_forcing_ensemble(_cfg(serial))
     for i in (0, 1):
         assert generate_forcing_ensemble(_cfg(sharded, {"profile_shard": (i, 2)})) is None
@@ -164,8 +167,8 @@ def test_sharded_chunked_generation_matches_serial(tmp_path):
     # Shard npz markers are consumed by the merge; chunk dirs carry GLOBAL numbering.
     assert not list(sharded.glob("hazard_image_shard_*.npz"))
     for k in (0, 1):
-        a = serial.parent / f"pool_2yr_n16__chunk{k:03d}"
-        b = sharded.parent / f"pool_2yr_n16__chunk{k:03d}"
+        a = serial.parent / f"pool_5yr_n16__chunk{k:03d}"
+        b = sharded.parent / f"pool_5yr_n16__chunk{k:03d}"
         for name in ("gage_flow_mgd.hdf5", "catchment_inflow_mgd.hdf5"):
             ea = Ensemble.from_hdf5(str(a / name)).data_by_realization
             eb = Ensemble.from_hdf5(str(b / name)).data_by_realization

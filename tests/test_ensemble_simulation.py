@@ -33,7 +33,7 @@ Run slow ensemble test (clipped to 2-year window via env):
 # spec's ``start_date`` + ``realization_years`` (see
 # src/simulation.py::_ensemble_window); the env overrides apply to
 # single-trace runs only (e.g., ``wcu_kirsch_n5`` stages
-# 1945-01-01 → 1964-12-31 under the 20-yr dev preset).
+# 1945-12-01 → 1965-11-30 under the 20-yr dev preset).
 # ---------------------------------------------------------------------------
 import os  # noqa: F401
 

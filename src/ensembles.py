@@ -24,13 +24,18 @@ import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
-#: Epoch of every synthetic realization: the date of day 0, and the anchor the
-#: generator's synthetic index is built from (SynHydro's Kirsch generator
-#: synthesizes calendar-year, January-start sequences, so this must be a
-#: January 1; generation asserts it). Also the anchor month for the historic
-#: hazard-window layers, which cut the record the way scenario windows are cut.
-#: Re-exported by ``config`` (the public access point).
-ENSEMBLE_START_DATE = "1945-01-01"
+#: Epoch of every synthetic realization: the date of day 0. A December 1, so
+#: that the 6-month metric exclusion (``config.METRIC_EXCLUSION_MONTHS``, the
+#: SSI-6 spin-up) ends exactly on June 1 — the FFMP operating-year boundary —
+#: and the hazard-selection metrics and the objectives score the identical
+#: Jun 1 – May 31 window. SynHydro's Kirsch generator synthesizes
+#: calendar-year (January-anchored) sequences, so generation produces L+1
+#: calendar years and trims the monthly frames to the [epoch, epoch + L yr)
+#: window before disaggregation — the stamp stays true by construction
+#: (generation asserts it). Also the anchor month for the historic
+#: hazard-window layers, which cut the record the way scenario windows are
+#: cut. Re-exported by ``config`` (the public access point).
+ENSEMBLE_START_DATE = "1945-12-01"
 
 
 ###############################################################################
@@ -91,9 +96,8 @@ class EnsembleSpec:
     # which simulate the historic window (config.START_DATE/END_DATE).
     realization_years: int | None = None
     # Date of day 0 of every staged realization, read from the staged
-    # ``_meta.json``. A January 1 under the truthful stamping convention
-    # (the generator synthesizes calendar-year sequences). ``None`` only for
-    # single-trace specs.
+    # ``_meta.json``. A December 1 under the truthful stamping convention
+    # (see ``ENSEMBLE_START_DATE``). ``None`` only for single-trace specs.
     start_date: str | None = None
     # When True, this spec describes a resample pool: ``realization_indices``
     # is the full pool, and the simulation layer redraws ``resample_size``
@@ -179,10 +183,10 @@ def _verified_staged_start_date(meta: Mapping[str, Any], slug: str) -> str:
     """Return a staged ensemble's ``start_date``, enforcing the stamping convention.
 
     Every staged artifact must record the date of day 0 and it must match
-    ``config.ENSEMBLE_START_DATE``. Metas stamped under the retired October
-    convention (or lacking the key) identify stale artifacts that would
-    silently rotate the statistical season against the simulation calendar;
-    they fail here, at resolution time, rather than downstream. Set
+    ``config.ENSEMBLE_START_DATE``. Metas stamped under a retired convention
+    (or lacking the key) identify stale artifacts that would silently rotate
+    the statistical season against the simulation calendar; they fail here,
+    at resolution time, rather than downstream. Set
     ``NYCOPT_ALLOW_STALE_STAMP=1`` to bypass for deliberate archaeology only.
     """
     import os
@@ -191,13 +195,13 @@ def _verified_staged_start_date(meta: Mapping[str, Any], slug: str) -> str:
     if start is None:
         raise ValueError(
             f"staged ensemble '{slug}' records no start_date in _meta.json: it predates "
-            f"the truthful January stamping convention and must be regenerated."
+            f"the truthful stamping convention and must be regenerated."
         )
     if str(start) != ENSEMBLE_START_DATE and not os.environ.get("NYCOPT_ALLOW_STALE_STAMP"):
         raise ValueError(
             f"staged ensemble '{slug}' is stamped start_date={start!r}, but the stamping "
-            f"convention is {ENSEMBLE_START_DATE!r}. The artifact predates the truthful "
-            f"January convention and must be regenerated (set NYCOPT_ALLOW_STALE_STAMP=1 "
+            f"convention is {ENSEMBLE_START_DATE!r}. The artifact predates the December "
+            f"epoch convention and must be regenerated (set NYCOPT_ALLOW_STALE_STAMP=1 "
             f"to inspect it anyway)."
         )
     return str(start)
@@ -592,7 +596,7 @@ def _materialize_subset_regenerated(
         generator="kn",
         seed_domain=pool_meta.get("seed_domain"),
         flowtype=pool_meta["flowtype"],
-        # Convention-verified: a stale (pre-January-convention) pool must not be
+        # Convention-verified: a pool stamped under a retired epoch must not be
         # silently rematerialized under its old stamp.
         start_date=_verified_staged_start_date(pool_meta, pool_slug),
         store_daily=False,

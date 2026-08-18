@@ -36,11 +36,15 @@ scoring is in `src/robustness.py`.
 - Metrics are computed on the **metric window** of each scenario: the daily
   series from six calendar months after its start (`METRIC_EXCLUSION_MONTHS = 6`),
   cut by date, never by a fixed day count. Six months is the SSI-6 accumulation
-  requirement, so the hazard-selection metrics exclude the same interval and
-  selection and evaluation score the identical window.
-- `resample("W")` = weekly resampling: the delivery metrics resample by **sum**
-  (weekly volumes of delivery and entitlement); the flow metrics resample by
-  **mean** (the weekly-accounting basis of the Decree).
+  requirement; on the December-start scenario windows the cut lands exactly on
+  June 1, the FFMP operating-year boundary, and the hazard-selection metrics
+  score the identical [Jun 1 year 1, May 31 year L] span (§2), so selection
+  and evaluation see one window.
+- `resample("W")` = weekly resampling: the delivery reliability metric
+  resamples by **sum** (weekly volumes of delivery and entitlement); the
+  delivery deficit metric and the flow metrics resample by **mean** (the
+  deficit is normalized by a daily-rate cap; weekly-mean flow is the
+  weekly-accounting basis of the Decree).
 - **CVaR₉₀(x)** = Conditional Value-at-Risk at the 90% level = the mean of the
   worst (largest-deficit) 10% of weekly values. Coherent and far less variable
   across realizations than the single maximum (Rockafellar & Uryasev 2000;
@@ -76,8 +80,8 @@ scoring is in `src/robustness.py`.
 
 These metrics are the per-realization quantities scored at re-evaluation (§3).
 During search, every design — including historic — is scored through the §2
-annual-unit scheme; the historic trace enters it as N = 1 over its 76
-water-year units. The active set is **8 objectives**; NJ delivery carries
+annual-unit scheme; the historic trace enters it as N = 1 over its 77
+FFMP-year units. The active set is **8 objectives**; NJ delivery carries
 independent information (redundancy screen: max |ρ_S| = 0.38 against any
 objective, ≤ 0.08 against Trenton). All objectives use stable
 tail/percentile/count forms rather than worst-case extremes (Quinn et al.
@@ -155,12 +159,15 @@ aggregation is not a novelty focus of this study).
 **Structure (Hamilton et al. 2022's two-layer vocabulary: within-record time
 aggregation + across-record noise filtering).** Each realization is simulated
 continuously; the first six months are outside the metric window and excluded; the
-remainder is split into **water-year units**. Scenario windows are January-aligned
-(whole calendar years), so the remainder begins July 1 of year 1 and the first WHOLE
-water-year unit opens October 1 of year 1 (the trailing October–December fragment is
-discarded, leaving $L-1$ units). Stage (i): compute each objective's **annual metric**
-on every (realization × year) unit. Stage (ii): aggregate across the pooled **NL
-unit-years** with the objective's **unit operator**:
+remainder is split into **FFMP-year units** (June 1 – May 31, the operating year on
+which the FFMP's seasonal rules reset). Scenario windows are December-aligned
+(December 1 of year 0 through November 30 of year $L$), so the exclusion ends exactly
+on June 1 of year 1 and the first unit opens there (the trailing June–November
+fragment of year $L$ is discarded, leaving $L-1$ units spanning June 1 year 1 –
+May 31 year $L$ — the identical window the hazard-selection metrics score). Stage
+(i): compute each objective's **annual metric** on every (realization × year) unit.
+Stage (ii): aggregate across the pooled **NL unit-years** with the objective's
+**unit operator**:
 
 | # | Objective (registry) | Annual metric (per unit-year) | Unit operator (across pooled unit-years) | Dir | Anchor |
 |---|---|---|---|---|---|
@@ -196,6 +203,13 @@ unit-years** with the objective's **unit operator**:
   (Quinn's WP1 used 1000); NL must comfortably exceed this — estimator noise at
   the campaign NL is measured by the epsilon-calibration bootstrap and the
   framing-convention operator screen.
+- *Weekly bins re-anchor inside every unit-year:* each Jun–May unit is resampled
+  to weeks independently, so a unit holds 53 bins with one short (1–2-day)
+  trailing bin that carries full weight in the failing-week counts and the
+  within-year CVaR₉₀ pools (measured effect on failing-week counts ≈ +2%
+  against a continuous weekly grid). The convention is identical across every
+  design and both evaluation layers, so it cancels in every comparison; it is
+  recorded here as a property of the per-unit accounting, not corrected.
 
 **Caveats carried explicitly.** Unit-years within a realization are dependent
 (multi-year droughts appear as consecutive failure-years — this is how the
@@ -206,8 +220,8 @@ drought as a single unit; event-scale severity enters through the hazard axes
 — which are the same annual-unit quantities in search and re-evaluation.
 
 **Design mapping.** All three designs use this same two-layer scheme. The
-**historic design** enters it as N = 1 over the consecutive water-year units of
-its single continuous trace (76 metric-bearing units; prevailing-practice
+**historic design** enters it as N = 1 over the consecutive FFMP-year units of
+its single continuous trace (77 metric-bearing units; prevailing-practice
 reference, Giuliani & Castelletti 2016). In McPhail
 terms: stage (i) is T1-threshold (reliability) or T1-absolute (magnitude/tail);
 stage (ii) is T3 = frequency/expectation for #1/3/5/6 and T2 = tail percentile for

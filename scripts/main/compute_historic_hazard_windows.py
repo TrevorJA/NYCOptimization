@@ -12,9 +12,10 @@ drought event straddling a window boundary is truncated by it (the same conventi
 every ensemble scenario lives under).
 
 Windows anchor at the month scenarios start in (``config.ENSEMBLE_START_DATE``,
-January): the record is cut into windows exactly the way every synthetic scenario
-window is cut, so the historic marker layer and the ensemble layers occupy one
-commensurable hazard space.
+December): the record is cut into windows exactly the way every synthetic scenario
+window is cut — including the trailing-partial trim, so each window's scored span is
+[Jun 1 year 1, May 31 year L] — and the historic marker layer and the ensemble
+layers occupy one commensurable hazard space.
 
 Feeds the historical-record marker layer of the ensemble-composition figure
 (manuscript figure 4; ``src/plotting/ensemble_composition.py``).
@@ -83,18 +84,21 @@ def historic_hazard_windows(
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import (
         _REFERENCE_START,
+        _SCENARIO_STAMP_START,
         DEFAULT_NYC_INFLOW_NODES,
         compute_candidate_hazard_image,
     )
 
     if CACHE_PATH.exists() and not force:
         with np.load(CACHE_PATH, allow_pickle=True) as z:
-            # Convention provenance: a cache from another anchor/reference
-            # convention (or predating provenance) silently recomputes.
+            # Convention provenance: a cache from another anchor/reference/
+            # stamp convention (or predating provenance) silently recomputes.
             stale = (
                 "anchor_month" not in z
                 or int(z["anchor_month"]) != WINDOW_ANCHOR_MONTH
                 or str(z["reference_start"]) != _REFERENCE_START
+                or "scenario_stamp_start" not in z
+                or str(z["scenario_stamp_start"]) != _SCENARIO_STAMP_START
             )
             if not stale:
                 return (
@@ -125,9 +129,12 @@ def historic_hazard_windows(
 
     rows, axes = [], []
     for w0 in starts:
-        w1 = w0 + pd.DateOffset(years=SCENARIO_YEARS)
-        in_win = (idx >= w0) & (idx < w1)
         cutoff = w0 + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
+        # Pool convention: the scored window ends with the last complete FFMP
+        # year, [cutoff, cutoff + (SCENARIO_YEARS - 1) yr) — the trailing
+        # Jun-Nov partial is cut, exactly as _hazard_block cuts it.
+        metric_end = cutoff + pd.DateOffset(years=SCENARIO_YEARS - 1)
+        in_win = (idx >= w0) & (idx < metric_end)
         wet_cut = int(((idx >= w0) & (idx < cutoff)).sum())
         w_daily = agg.loc[in_win]
         H_win, axes = compute_candidate_hazard_image(
@@ -149,6 +156,7 @@ def historic_hazard_windows(
         flowtype=np.asarray(flowtype, dtype=object),
         anchor_month=np.asarray(WINDOW_ANCHOR_MONTH),
         reference_start=np.asarray(_REFERENCE_START, dtype=object),
+        scenario_stamp_start=np.asarray(_SCENARIO_STAMP_START, dtype=object),
     )
     print(f"[hist-hazard] wrote {CACHE_PATH} ({H.shape[0]} windows x {H.shape[1]} axes; "
           f"{starts[0].date()} .. {starts[-1].date()} starts).")

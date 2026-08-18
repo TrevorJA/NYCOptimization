@@ -177,7 +177,7 @@ def get_objective_set(items=None):
     # under the SAME annual-unit (§2) objective function
     # (objective_definitions.md §2/§3: the objective is held fixed across
     # designs so the only factor that varies is the scenario set). The
-    # single-trace case is evaluated as N=1 over its L-1 water-year units; the
+    # single-trace case is evaluated as N=1 over its FFMP-year units; the
     # dispatch in src.simulation.evaluate wraps the one data dict as [data].
     # The §1 single-trace registry is returned ONLY when no design is wired
     # (a pure diagnostic / non-optimization context). No pipeline script may

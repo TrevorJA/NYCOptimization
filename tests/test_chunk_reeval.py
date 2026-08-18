@@ -207,9 +207,12 @@ def test_chunk_reeval_reproduces_the_per_sow_ground_truth(tmp_path, monkeypatch)
     assert out == reeval_dir
 
     long_df = _read_long(reeval_dir)
-    assert list(long_df.columns) == ["solution_id", "sow_id", "objective", "value"]
+    assert list(long_df.columns) == [
+        "solution_id", "sow_id", "objective", "value", "n_survivors"]
     assert set(long_df["sow_id"]) == set(range(N_SOW))
     assert len(long_df) == 2 * N_SOW * M
+    # Every SOW simulated cleanly, so every row records the full R survivors.
+    assert (long_df["n_survivors"] == R_PER_SOW).all()
 
     for sol, dv in zip((0, 1), dvs):
         expected = _expected_sow_matrix(dv)                     # (n_sow, M)

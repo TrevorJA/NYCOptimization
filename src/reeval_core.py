@@ -119,7 +119,10 @@ def sow_objective_matrix(units: np.ndarray, obj_set, sow_ids) -> tuple:
     EXCLUDED from their SOW's pool so a failed run cannot masquerade as bad
     performance; a SOW with no surviving realization is NaN. Non-finite
     unit-years inside a surviving realization keep the search-side convention
-    (the unit operator counts them as failure-years / worst-sentinels).
+    (the unit operator counts them as failure-years / worst-sentinels). The
+    returned survivor counts make partial failures VISIBLE: a SOW scored on
+    fewer than its R realizations pools fewer unit-years, so its percentile
+    operators are a different order statistic, and nothing else records that.
 
     Args:
         units: ``(R, M, U)`` stage-(i) tensor in realization order.
@@ -127,9 +130,15 @@ def sow_objective_matrix(units: np.ndarray, obj_set, sow_ids) -> tuple:
         sow_ids: Length-R SOW id of each realization row.
 
     Returns:
-        ``(J, sow_labels)`` — ``J`` float array ``(n_sow, M)`` of per-SOW
-        objective values in natural units; ``sow_labels`` the ascending SOW ids
-        its rows are keyed by.
+        ``(J, sow_labels, survivors)`` — ``J`` float array ``(n_sow, M)`` of
+        per-SOW objective values in natural units; ``sow_labels`` the ascending
+        SOW ids its rows are keyed by; ``survivors`` int array ``(n_sow,)`` of
+        surviving (non-all-NaN) realizations pooled into each row.
+
+    Raises:
+        ValueError: If the tensor carries zero unit-years — ``np.all`` over an
+            empty axis would mark every realization dead and silently NaN
+            every SOW.
     """
     ens_objs = list(obj_set)
     units = np.asarray(units, dtype=float)
@@ -137,6 +146,11 @@ def sow_objective_matrix(units: np.ndarray, obj_set, sow_ids) -> tuple:
         raise ValueError(
             f"units tensor has shape {units.shape}; expected "
             f"(R, {len(ens_objs)}, U)"
+        )
+    if units.shape[2] == 0:
+        raise ValueError(
+            "units tensor carries zero unit-years per realization; the "
+            "simulation window yielded no complete FFMP-year units."
         )
     sow_ids = [int(s) for s in sow_ids]
     if len(sow_ids) != units.shape[0]:
@@ -151,13 +165,15 @@ def sow_objective_matrix(units: np.ndarray, obj_set, sow_ids) -> tuple:
 
     alive = ~np.all(~np.isfinite(units), axis=(1, 2))  # (R,) simulation survived
     J = np.full((len(labels), len(ens_objs)), np.nan, dtype=float)
+    survivors = np.zeros(len(labels), dtype=int)
     for g, label in enumerate(labels):
         rows = [r for r in groups[label] if alive[r]]
+        survivors[g] = len(rows)
         if not rows:
             continue
         for k, obj in enumerate(ens_objs):
             J[g, k] = obj.unit_operator(units[rows, k, :].ravel())
-    return J, labels
+    return J, labels, survivors
 
 
 def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str):
@@ -172,10 +188,13 @@ def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str):
     byte-for-byte; only the ensemble and the pooling unit differ.
 
     Returns:
-        ``(solution_id, sow_matrix | None, obj_names | None, error | None)``.
-        ``sow_matrix`` is ``(n_sow, n_objs)`` in natural units, rows keyed by
-        ascending SOW id; for a single-trace re-eval spec it is ``(1, n_objs)``
-        (the trace's own annual-unit objective vector).
+        ``(solution_id, sow_matrix | None, obj_names | None,
+        survivors | None, error | None)``. ``sow_matrix`` is
+        ``(n_sow, n_objs)`` in natural units, rows keyed by ascending SOW id;
+        ``survivors`` is the aligned per-SOW surviving-realization count from
+        :func:`sow_objective_matrix`. For a single-trace re-eval spec the
+        matrix is ``(1, n_objs)`` (the trace's own annual-unit objective
+        vector).
     """
     try:
         obj_set, spec, is_ensemble = resolve_reeval()
@@ -192,12 +211,12 @@ def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str):
                     "profiles), so the per-SOW objective unit is undefined for "
                     "it. Robustness re-evaluation requires a DU-forced ensemble."
                 )
-            sow_matrix, _labels = sow_objective_matrix(units, obj_set, sow_ids)
+            sow_matrix, _labels, survivors = sow_objective_matrix(units, obj_set, sow_ids)
         else:
-            sow_matrix, _labels = sow_objective_matrix(units, obj_set, [0])
-        return solution_id, sow_matrix, obj_names, None
+            sow_matrix, _labels, survivors = sow_objective_matrix(units, obj_set, [0])
+        return solution_id, sow_matrix, obj_names, survivors, None
     except Exception as e:
-        return solution_id, None, None, f"{type(e).__name__}: {e}"
+        return solution_id, None, None, None, f"{type(e).__name__}: {e}"
 
 
 def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, int | None]:
@@ -345,7 +364,8 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
     Args:
         reeval_dir: Output directory (already created).
         raw_results: Iterable of ``(solution_id, sow_matrix | None,
-            obj_names | None, error | None)`` from :func:`evaluate_solution_raw`.
+            obj_names | None, survivors | None, error | None)`` from
+            :func:`evaluate_solution_raw`.
         formulation: Formulation name (for meta provenance).
         n_solutions: Total solutions attempted (for meta).
         seed: Optional seed (for meta provenance).
@@ -376,7 +396,7 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
     # row order: row-major over (sow, objective).
     sl = np.asarray(sow_labels, dtype=int)
     frames = []
-    for sid, mat, names, _err in raw_results:
+    for sid, mat, names, survivors, _err in raw_results:
         if mat is None:
             continue
         arr = np.asarray(mat, dtype=float)
@@ -387,11 +407,23 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
                 f"solution {sid}: sow matrix has {g_i} rows but the ensemble "
                 f"has {sl.shape[0]} SOWs"
             )
+        # Per-(solution, SOW) surviving-realization count: a SOW scored on
+        # fewer than R realizations pooled fewer unit-years (its percentile
+        # is a different order statistic), and this column is the only record
+        # of that. NaN when the caller supplied none.
+        surv = (np.asarray(survivors, dtype=float) if survivors is not None
+                else np.full(g_i, np.nan))
+        if surv.shape[0] != g_i:
+            raise ValueError(
+                f"solution {sid}: {surv.shape[0]} survivor counts for "
+                f"{g_i} SOWs"
+            )
         frames.append(pd.DataFrame({
             "solution_id": np.full(g_i * m_i, int(sid), dtype=int),
             "sow_id": np.repeat(sl, m_i),
             "objective": np.tile(np.asarray(cols, dtype=object), g_i),
             "value": arr.reshape(-1),
+            "n_survivors": np.repeat(surv, m_i),
         }))
     long_df = (
         pd.concat(frames, ignore_index=True) if frames
@@ -400,6 +432,7 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
             "sow_id": np.array([], dtype=int),
             "objective": np.array([], dtype=object),
             "value": np.array([], dtype=float),
+            "n_survivors": np.array([], dtype=float),
         })
     )
 
@@ -418,7 +451,7 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
     # the mean over SOWs of the per-SOW objective values (single-trace rows
     # pass through unchanged, mean over one row being an identity).
     summary_cols = reeval_obj_names()
-    by_sid = {sid: mat for sid, mat, _names, _e in raw_results}
+    by_sid = {sid: mat for sid, mat, _names, _surv, _e in raw_results}
     index = sorted(by_sid)
     rows = []
     for sid in index:

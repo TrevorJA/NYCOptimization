@@ -21,7 +21,7 @@ settings in `supplemental_config.py` (`EPS_*`). Outputs under
 ## Setup
 
 - **Designs**: each campaign design is calibrated on its own search ensemble —
-  `historic` (N = 1 over the trace's consecutive water-year units),
+  `historic` (N = 1 over the trace's consecutive FFMP-year units),
   `fixed_probabilistic` and `hazard_filling_stationary` (N = 100 × L = 10,
   draw 0) — because the search objectives are computed under different
   measures across designs and the archive lives inside each search.

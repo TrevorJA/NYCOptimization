@@ -549,9 +549,11 @@ def _compute_hazard_image(slug: str) -> dict | None:
     ordered = sorted(inflow_by_real)
     ref = load_historical_flows(gage=False, period="full")
     ref_daily = ref.loc[:, list(DEFAULT_NYC_INFLOW_NODES)].sum(axis=1)
+    from src.ensembles import get_ensemble_spec
     H, axes = _hazard_block(
         inflow_by_real, ordered, DEFAULT_NYC_INFLOW_NODES,
         daily_to_monthly(ref_daily, agg="mean"), ref_daily.to_numpy(dtype=float),
+        n_years=int(get_ensemble_spec(slug).realization_years),
     )
     rows = np.arange(len(ordered))
     save_hazard_image(cached, H=H, hazard_axes=axes,
@@ -573,10 +575,12 @@ def _historic_hazard_points(n_years: int) -> dict:
     1-year step; windows truncated to a common length so the POT/SSI operators
     see rectangular input). This is a modeling choice and is reported as one.
 
-    Each window's daily series is cut by date at
-    ``config.METRIC_EXCLUSION_MONTHS``, so the wet axes score the same metric
-    window the objectives do; the monthly series keeps its full length as the
-    SSI accumulation input.
+    Each window is scored on the pool's exact metric span: the trailing
+    partial FFMP year is cut (the scored content ends May 31 of the window's
+    final year) and the leading ``config.METRIC_EXCLUSION_MONTHS`` are cut by
+    date from the daily series for the wet axes, so every window scores the
+    same [Jun 1 year 1, May 31 year L] span the objectives use; the monthly
+    series keeps its leading months as the SSI accumulation input.
     """
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import (
@@ -594,16 +598,21 @@ def _historic_hazard_points(n_years: int) -> dict:
         end = pd.Timestamp(year=y0 + n_years, month=anchor_month, day=1)
         if start < agg.index[0] or end > agg.index[-1]:
             continue
-        windows.append(agg.loc[start:end - pd.Timedelta(days=1)])
+        # Pool convention: score only the metric span — cut the trailing
+        # partial FFMP year, so the content ends May 31 of the final year.
+        cutoff = start + pd.DateOffset(months=config.METRIC_EXCLUSION_MONTHS)
+        metric_end = cutoff + pd.DateOffset(years=n_years - 1)
+        windows.append(agg.loc[start:metric_end - pd.Timedelta(days=1)])
     if not windows:
         return {}
-    n_days = min(len(w) for w in windows)
-    monthly = np.vstack([daily_to_monthly(w.iloc[:n_days], agg="mean") for w in windows])
+    # Month counts are equal across windows by construction; day counts differ
+    # only by leap days, so the daily block truncates to the common length.
+    monthly = np.vstack([daily_to_monthly(w, agg="mean") for w in windows])
     cuts = [
         int((w.index < w.index[0] + pd.DateOffset(months=config.METRIC_EXCLUSION_MONTHS)).sum())
         for w in windows
     ]
-    n_wet = min(n_days - c for c in cuts)
+    n_wet = min(len(w) - c for w, c in zip(windows, cuts))
     daily = np.vstack([w.to_numpy(dtype=float)[c:c + n_wet] for w, c in zip(windows, cuts)])
     ref_daily = agg.to_numpy(dtype=float)
     H, axes = compute_candidate_hazard_image(

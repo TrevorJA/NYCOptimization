@@ -1778,7 +1778,7 @@ def _evaluate_ensemble_batched(nyc_config, ensemble_spec, objective_set,
 
     def per_real(data):
         # Stage (i): one annual-metric vector per objective for this
-        # realization (length = its metric-bearing water-year unit count).
+        # realization (length = its metric-bearing FFMP-year unit count).
         return [o.annual_units(data) for o in ens_objs]
 
     unit_rows = run_simulation_ensemble_batched(
@@ -2046,7 +2046,7 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
     if not ensemble_spec.is_ensemble:
         # Single-trace (historic) design: evaluate the SAME annual-unit (§2)
         # objective as the ensembles, treating the one trace as a single
-        # realization (N=1 -> its L-1 water-year units). The objective function
+        # realization (N=1 -> its consecutive FFMP-year units). The objective function
         # is held fixed across designs; only the scenario set differs
         # (objective_definitions.md §2/§3). Requires the annual-unit objective
         # set (AnnualUnitObjective instances), i.e. the set returned by

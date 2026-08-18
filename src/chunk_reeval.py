@@ -108,14 +108,17 @@ def _evaluate_unit(
         )
         sow_ids = [int(g) // int(r_per_sow)
                    for g in global_ids[:units.shape[0]]]
-        sow_matrix, sow_labels = sow_objective_matrix(units, obj_set, sow_ids)
+        sow_matrix, sow_labels, survivors = sow_objective_matrix(
+            units, obj_set, sow_ids)
     except Exception as exc:  # noqa: BLE001 - a failed unit contributes no rows
         err = f"{type(exc).__name__}: {exc}"
         print(f"[chunk-reeval] solution {sid} x chunk {chunk_idx} failed: {err}")
         return None, err
     _print_unit_line(sid, chunk_idx, t0)
     # Vectorized long rows (row-major over SOW, objective), keyed by the
-    # ensemble's global SOW ids.
+    # ensemble's global SOW ids. n_survivors records how many realizations
+    # each SOW's pool actually held (a crashed batch shrinks the pool, and
+    # this column is the only record of it).
     arr = np.asarray(sow_matrix, dtype=float)
     g_i, m_i = arr.shape
     sow_row = np.asarray(sow_labels, dtype=int)
@@ -124,6 +127,7 @@ def _evaluate_unit(
         "sow_id": np.repeat(sow_row, m_i),
         "objective": np.tile(np.asarray(obj_names, dtype=object), g_i),
         "value": arr.reshape(-1),
+        "n_survivors": np.repeat(np.asarray(survivors, dtype=float), m_i),
     }), None
 
 
@@ -133,6 +137,7 @@ def _empty_long_frame() -> pd.DataFrame:
         "sow_id": np.array([], dtype=int),
         "objective": np.array([], dtype=object),
         "value": np.array([], dtype=float),
+        "n_survivors": np.array([], dtype=float),
     })
 
 
@@ -357,22 +362,25 @@ def _merge_and_persist(
     """One-shot merge: concatenate rank partials, reassemble per-solution matrices."""
     parts = _read_partials(partial_dir)
     long_df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(
-        columns=["solution_id", "sow_id", "objective", "value"]
+        columns=["solution_id", "sow_id", "objective", "value", "n_survivors"]
     )
     obj_names = [o.name for o in obj_set]
 
     # Reassemble each solution's (n_sow, M) matrix in global-SOW order (NaN for
     # failed/absent cells); persist_reeval_raw maps row g -> sow_labels[g] ==
-    # global SOW id g.
+    # global SOW id g. The per-SOW survivor counts travel the same way (rows
+    # repeat the count per objective; "first" recovers the scalar).
     raw_results = []
     for sid in solution_ids:
         sub = long_df[long_df["solution_id"] == sid]
         if sub.empty:
-            raw_results.append((sid, None, None, "no rows"))
+            raw_results.append((sid, None, None, None, "no rows"))
             continue
         piv = (sub.pivot_table(index="sow_id", columns="objective", values="value")
                .reindex(index=range(n_sow), columns=obj_names))
-        raw_results.append((sid, piv.to_numpy(dtype=float), obj_names, None))
+        surv = (sub.groupby("sow_id")["n_survivors"].first()
+                .reindex(range(n_sow)).to_numpy(dtype=float))
+        raw_results.append((sid, piv.to_numpy(dtype=float), obj_names, surv, None))
 
     return _persist_and_score(reeval_dir, raw_results, formulation,
                               len(solution_ids), seed)
@@ -419,6 +427,7 @@ def merge_units(
     raw_results = []
     for sid in solution_ids:
         mat = np.full((n_sow, len(obj_names)), np.nan)
+        surv = np.full(n_sow, np.nan)
         any_rows = False
         for j in range(len(chunks)):
             stem = _unit_stem(units_dir, j, sid)
@@ -436,13 +445,17 @@ def merge_units(
                     f"unit sol{sid}/chunk{j} carries objectives not in the "
                     f"active set: {bad}"
                 )
-            mat[df["sow_id"].to_numpy(dtype=int),
+            sow_rows = df["sow_id"].to_numpy(dtype=int)
+            mat[sow_rows,
                 obj_idx.to_numpy(dtype=int)] = df["value"].to_numpy(dtype=float)
+            # Rows repeat the per-SOW count once per objective; repeated
+            # assignment writes the same scalar (chunks hold disjoint SOWs).
+            surv[sow_rows] = df["n_survivors"].to_numpy(dtype=float)
             any_rows = True
         if any_rows:
-            raw_results.append((sid, mat, obj_names, None))
+            raw_results.append((sid, mat, obj_names, surv, None))
         else:
-            raw_results.append((sid, None, None, "no rows"))
+            raw_results.append((sid, None, None, None, "no rows"))
 
     if missing and not allow_partial:
         preview = ", ".join(f"sol{s}/chunk{j}" for s, j in missing[:20])

@@ -44,7 +44,8 @@ def _evaluate_one(task: tuple):
         task: (solution_id, dv_vector, formulation).
 
     Returns:
-        (solution_id, sow_matrix | None, obj_names | None, error | None).
+        (solution_id, sow_matrix | None, obj_names | None,
+        survivors | None, error | None).
     """
     solution_id, dv_vector, formulation = task
     return evaluate_solution_raw(solution_id, dv_vector, formulation)
@@ -106,7 +107,7 @@ def reevaluate(formulation: str,
         ctx = mp.get_context("spawn")
         with ctx.Pool(njobs) as pool:
             for r in pool.imap_unordered(_evaluate_one, tasks):
-                sid, mat, _names, err = r
+                sid, mat, _names, _surv, err = r
                 if err:
                     print(f"  [FAIL] solution {sid}: {err}")
                 else:

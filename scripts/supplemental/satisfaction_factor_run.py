@@ -54,7 +54,7 @@ if scfg.SF_SMOKE:
 import config  # noqa: E402
 from src.formulations import get_baseline_values  # noqa: E402
 from src.objectives import _delivery_entitlement, _metric_window  # noqa: E402
-from src.objectives_ensemble import water_year_unit_slices  # noqa: E402
+from src.objectives_ensemble import ffmp_year_unit_slices  # noqa: E402
 from src.sensitivity_common import (  # noqa: E402
     assign_rank_slots,
     await_all_done,
@@ -82,7 +82,7 @@ def _expected_n_units(spec) -> int:
     if spec.is_ensemble:
         return int(spec.realization_years) - 1
     idx = pd.date_range(config.START_DATE, config.END_DATE, freq="D")
-    return len(water_year_unit_slices(idx))
+    return len(ffmp_year_unit_slices(idx))
 
 
 def _factor_block(data: dict, n_units: int) -> "tuple[np.ndarray, np.ndarray]":
@@ -113,7 +113,7 @@ def _factor_block(data: dict, n_units: int) -> "tuple[np.ndarray, np.ndarray]":
             ok = (wd >= f * wt)          # NaN comparison -> False (failure)
             weekly_rel[fi, j] = (float(ok.sum()) / len(ok) if len(ok) else 0.0)
 
-        slices = water_year_unit_slices(demand.index)
+        slices = ffmp_year_unit_slices(demand.index)
         if len(slices) != n_units:
             raise ValueError(
                 f"unit count {len(slices)} != expected {n_units} for '{dkey}'")

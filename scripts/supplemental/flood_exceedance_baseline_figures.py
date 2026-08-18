@@ -141,12 +141,12 @@ def daily_exceedance(stage: np.ndarray, minor: np.ndarray) -> np.ndarray:
 
 def wy_totals(dates: np.ndarray, sev: np.ndarray) -> pd.Series:
     """Complete-water-year exceedance totals (ft·days) of a daily series."""
-    from src.objectives_ensemble import water_year_unit_slices
+    from src.objectives_ensemble import ffmp_year_unit_slices
 
     idx = pd.DatetimeIndex(dates)
     ser = pd.Series(sev, index=idx)
     out = {}
-    for sl in water_year_unit_slices(idx):
+    for sl in ffmp_year_unit_slices(idx):
         sub = ser.iloc[sl]
         wy = sub.index[-1].year
         out[wy] = float(sub.sum())
