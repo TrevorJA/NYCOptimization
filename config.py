@@ -281,8 +281,15 @@ def figure_dir_for(scenario: str, moea_slug: str, kind: str) -> Path:
 # Simulation Settings
 ###############################################################################
 
-START_DATE = "1945-10-01"   # Water-year start matching presimulated release data
-END_DATE = "2022-09-30"     # Water-year end matching presimulated release data
+# HISTORIC-design simulation window ONLY (step-01 presim slice, step-05 baseline):
+# water-year bounds of the reconstructed record, true dates. Synthetic-ensemble
+# simulation windows are derived from each staged ensemble's own _meta.json
+# start_date (see src/simulation.py::_ensemble_window), never from these.
+START_DATE = "1945-10-01"
+END_DATE = "2022-09-30"
+
+# Epoch of every synthetic realization (ENSEMBLE_START_DATE, a January 1) is
+# defined in src/ensembles.py and re-exported below with the ensemble registry.
 
 # Default inflow source = Amestoy et al. (2026) Bayesian-bias-corrected
 # reconstructed DRB streamflow ensemble (1945-2023; Environmental Modelling
@@ -811,6 +818,7 @@ CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
 # draws and no bulk I/O.
 
 from src.ensembles import (             # noqa: E402
+    ENSEMBLE_START_DATE,  # epoch of every synthetic realization (a January 1)
     get_ensemble_spec,
     staged_ensemble_dir,
     with_indices_override,

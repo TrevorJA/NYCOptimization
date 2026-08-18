@@ -517,7 +517,7 @@ def _compute_hazard_image(slug: str) -> dict | None:
         The hazard-image dict, or ``None`` if the staged daily inflows are absent.
     """
     from scengen.diagnostics import load_hazard_image, save_hazard_image
-    from scengen.hazard_metrics import DEFAULT_NYC_INFLOW_NODES
+    from scengen.hazard_metrics import _REFERENCE_START, DEFAULT_NYC_INFLOW_NODES
     from scengen.hazard_filling import daily_to_monthly
     from src.ensemble_generation import _hazard_block
     from src.ensembles import load_chunk_index, pool_chunk_specs
@@ -555,7 +555,8 @@ def _compute_hazard_image(slug: str) -> dict | None:
     )
     rows = np.arange(len(ordered))
     save_hazard_image(cached, H=H, hazard_axes=axes,
-                      realization_ids=ordered, selected_rows=rows)
+                      realization_ids=ordered, selected_rows=rows,
+                      reference_start=_REFERENCE_START)
     return {"H": H, "hazard_axes": list(axes), "chosen_axes": list(axes),
             "realization_ids": np.asarray(ordered, dtype=int), "selected_rows": rows}
 
@@ -567,8 +568,9 @@ def _historic_hazard_points(n_years: int) -> dict:
     ensemble and has no hazard image — yet the mechanism test needs its search
     coverage, and it is the design the prediction is sharpest for. The hazard
     content the search actually saw is the set of L-year windows the record
-    contains, so the record is imaged as its water-year-aligned rolling windows
-    (1-year step; windows truncated to a common length so the POT/SSI operators
+    contains, so the record is imaged as its rolling windows anchored at the
+    month every scenario window starts in (``config.ENSEMBLE_START_DATE``;
+    1-year step; windows truncated to a common length so the POT/SSI operators
     see rectangular input). This is a modeling choice and is reported as one.
 
     Each window's daily series is cut by date at
@@ -585,10 +587,11 @@ def _historic_hazard_points(n_years: int) -> dict:
     ref = load_historical_flows(gage=False, period="full")
     agg = ref.loc[:, list(DEFAULT_NYC_INFLOW_NODES)].sum(axis=1)
     years = sorted({t.year for t in agg.index})
+    anchor_month = pd.Timestamp(config.ENSEMBLE_START_DATE).month
     windows = []
     for y0 in years:
-        start = pd.Timestamp(year=y0, month=10, day=1)
-        end = pd.Timestamp(year=y0 + n_years, month=10, day=1)
+        start = pd.Timestamp(year=y0, month=anchor_month, day=1)
+        end = pd.Timestamp(year=y0 + n_years, month=anchor_month, day=1)
         if start < agg.index[0] or end > agg.index[-1]:
             continue
         windows.append(agg.loc[start:end - pd.Timedelta(days=1)])

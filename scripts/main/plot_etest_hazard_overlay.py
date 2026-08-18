@@ -103,6 +103,12 @@ def main() -> None:
 
     pool = load_hazard_image(pool_path)
     et = np.load(etest_path, allow_pickle=True)
+    if "reference_start" not in et:
+        sys.exit(
+            f"[overlay] {etest_path} lacks 'reference_start' provenance: it predates "
+            f"the truthful January date convention and is stale. Regenerate it with "
+            f"scripts/main/compute_etest_hazard_image.py."
+        )
     etest_H, etest_axes = et["H"], [str(a) for a in et["hazard_axes"]]
 
     slugs = SEARCH_SLUGS or _discover_search_slugs()

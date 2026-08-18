@@ -58,6 +58,20 @@ def _load_compare_designs():
 cd = _load_compare_designs()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _eps_only_ladder():
+    """Pin the tolerance sweep to the eps-only ladder for every test here.
+
+    ``regret_tolerance_sweep`` defaults to the pass-A adopted floors, which on a
+    dev machine may exist under ``outputs/supplemental``; the fixtures are
+    calibrated in epsilon units and real floors leaking in would saturate them.
+    """
+    mp = pytest.MonkeyPatch()
+    mp.setattr(rob, "adopted_floors", lambda: None)
+    yield
+    mp.undo()
+
+
 ###############################################################################
 # Synthetic multi-design re-eval tree
 ###############################################################################

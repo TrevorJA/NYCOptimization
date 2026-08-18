@@ -314,6 +314,33 @@ def test_assay_sensitivity_flags_an_insensitive_tolerance(tmp_path):
     assert not bool(at9["separates"])
 
 
+def test_null_differences_single_run_keeps_schema():
+    """One draw x one seed per design yields no pairs; the empty frame must keep
+    its columns so pass B degrades to "null not estimable" instead of raising
+    ``KeyError('level')``."""
+    rows = [("A", 0, 0, 1.0, 0.5, 0.4, 4), ("B", 0, 0, 1.0, 0.6, 0.5, 4)]
+    nulls = rtol.null_differences(_profile(rows))
+    assert nulls.empty
+    assert list(nulls.columns) == ["level", "design", "draw", "tau_k", "abs_diff"]
+    # The downstream consumer must run, and report the null as not estimable
+    # (NaN floor, nothing separable) rather than crash.
+    assay = rtol.assay_sensitivity(_profile(rows), control="A")
+    assert not assay.empty
+    assert assay["draw_null_max"].isna().all()
+    assert not assay["separates"].any()
+
+
+def test_adopted_floors_roundtrips_pass_a_output(tmp_path, monkeypatch):
+    """k-sweep call sites read pass A's persisted floors, so with the override
+    unset they sweep the adopted max(eps, floor) basis, not the eps-only ladder."""
+    import supplemental_config as sc_mod
+
+    monkeypatch.setattr(sc_mod, "RTOL_TABLES_DIR", tmp_path)
+    assert rob.adopted_floors() is None
+    (tmp_path / "rtol_floors.json").write_text(json.dumps({OBJS[0]: 0.5}))
+    assert rob.adopted_floors() == {OBJS[0]: 0.5}
+
+
 def test_margin_is_not_computed_before_a_rung_is_adopted(monkeypatch, capsys):
     """Deriving delta at a rung chosen after seeing the profile is the circularity."""
     import supplemental_config as sc

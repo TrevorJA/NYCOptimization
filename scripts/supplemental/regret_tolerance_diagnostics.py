@@ -350,7 +350,9 @@ def null_differences(profile: pd.DataFrame) -> pd.DataFrame:
     decisive than the replication scheme supports.
 
     Returns:
-        Tidy frame: level, design, tau_k, abs_diff.
+        Tidy frame: level, design, tau_k, abs_diff. Empty — but with the schema
+        intact — when no within-design pair exists (a single draw x seed per
+        design), so callers degrade to "null not estimable" instead of raising.
     """
     rows = []
     for (design, k), g in profile.groupby(["design", "tau_k"]):
@@ -362,7 +364,8 @@ def null_differences(profile: pd.DataFrame) -> pd.DataFrame:
         for a, b in itertools.combinations(by_draw, 2):
             rows.append({"level": "draw", "design": design, "draw": -1,
                          "tau_k": float(k), "abs_diff": abs(a - b)})
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["level", "design", "draw", "tau_k",
+                                       "abs_diff"])
 
 
 def paired_bootstrap_se(runs, design_a: str, design_b: str, k: float,
@@ -383,6 +386,7 @@ def paired_bootstrap_se(runs, design_a: str, design_b: str, k: float,
     """
     n_boot = sc.RTOL_BOOTSTRAP_N if n_boot is None else int(n_boot)
     rng = np.random.default_rng(sc.RTOL_BOOTSTRAP_SEED if seed is None else seed)
+    floors = rob.adopted_floors()
 
     def _harm_free(design: str):
         """(n_run, n_sow) boolean stacks of 'this policy harms nothing here'."""
@@ -399,7 +403,7 @@ def paired_bootstrap_se(runs, design_a: str, design_b: str, k: float,
             if raw.n_sow <= 1 or base.n_sow <= 1:
                 continue
             D = rob.incumbent_advantage(raw, base)
-            tau = rob.tau_ladder(raw.obj_names, k=k)
+            tau = rob.tau_ladder(raw.obj_names, k=k, floors=floors)
             tv = np.array([tau[n] for n in raw.obj_names], dtype=float)
             finite = np.isfinite(D)
             stacks.append((~((~finite) | (D < -tv[None, None, :]))).all(axis=2))
@@ -480,6 +484,7 @@ def joint_vs_independent(runs, k: float) -> pd.DataFrame:
     many (observed ~ independent), which changes how it should be read entirely.
     """
     rows = []
+    floors = rob.adopted_floors()
     for r in runs:
         raw = rob.load_raw(r.path)
         bdir = r.path / "baseline"
@@ -489,7 +494,7 @@ def joint_vs_independent(runs, k: float) -> pd.DataFrame:
         base = rob.load_raw(bdir)
         if raw.n_sow <= 1 or base.n_sow <= 1:
             continue
-        tau = rob.tau_ladder(raw.obj_names, k=k)
+        tau = rob.tau_ladder(raw.obj_names, k=k, floors=floors)
         f = rob.regret_frequencies(raw, base, tau=tau)
         phi = f[[f"harm_freq__{n}" for n in raw.obj_names]].to_numpy()
         indep = np.prod(1.0 - phi, axis=1)
@@ -614,17 +619,22 @@ def run_pass_b(formulation: str = "ffmp", reeval_tag: str | None = None) -> dict
         coocc.to_csv(sc.rtol_table_path("rtol_joint_vs_independent"), index=False)
 
         draw_null = nulls[(nulls["level"] == "draw") & (nulls["tau_k"] == k)]
+        draw_null_max = (float(draw_null["abs_diff"].max())
+                         if not draw_null.empty else None)
         se = max((b["se"] for b in boots if np.isfinite(b["se"])), default=np.nan)
-        delta = np.nanmax([2.0 * se, draw_null["abs_diff"].max()
-                           if not draw_null.empty else np.nan])
+        cands = [v for v in (2.0 * se, draw_null_max)
+                 if v is not None and np.isfinite(v)]
+        delta = max(cands) if cands else np.nan
+        null_txt = (f"draw-level null max = {draw_null_max:.4f}"
+                    if draw_null_max is not None
+                    else "draw-level null NOT ESTIMABLE at one draw per design, "
+                         "so delta is a lower bound")
         print(f"[rtol] margin at k={k:g}: delta = {delta:.4f} "
-              f"(2 x paired bootstrap SE = {2 * se:.4f}, "
-              f"draw-level null max = {draw_null['abs_diff'].max():.4f})")
+              f"(2 x paired bootstrap SE = {2 * se:.4f}, {null_txt})")
         (sc.RTOL_TABLES_DIR / "rtol_margin.json").write_text(json.dumps(
             {"tau_k": float(k), "delta": float(delta),
              "paired_bootstrap_se": float(se),
-             "draw_null_max": float(draw_null["abs_diff"].max())
-             if not draw_null.empty else None,
+             "draw_null_max": draw_null_max,
              "rule": sc.RTOL_MARGIN_RULE}, indent=2))
     else:
         print("[rtol] RTOL_ADOPTED_K is unset, so the margin, the paired bootstrap "
@@ -637,10 +647,16 @@ def run_pass_b(formulation: str = "ffmp", reeval_tag: str | None = None) -> dict
         print(f"[rtol]   k={r['tau_k']:<5g} designs [{r['min_design']:.3f}, "
               f"{r['max_design']:.3f}]  {r['verdict']}")
     if not assay.empty and not assay["separates"].any():
-        print("[rtol] ASSAY SENSITIVITY FAILS at every tolerance: the metric cannot "
-              "separate the unmatched reference design from the matched ones, so a "
-              "null between the matched designs is uninformative rather than a "
-              "finding. Report it as such.")
+        if nulls[nulls["level"] == "draw"].empty:
+            print("[rtol] assay sensitivity NOT ESTIMABLE: with one draw per "
+                  "design there is no draw-level null to test the control gap "
+                  "against. The comparison's power is unknown until more draws "
+                  "exist; do not read this as a sensitivity failure.")
+        else:
+            print("[rtol] ASSAY SENSITIVITY FAILS at every tolerance: the metric "
+                  "cannot separate the unmatched reference design from the "
+                  "matched ones, so a null between the matched designs is "
+                  "uninformative rather than a finding. Report it as such.")
     return {"profile": profile, "band": band, "nulls": nulls, "assay": assay,
             "bootstrap": boots, "co_occurrence": coocc}
 

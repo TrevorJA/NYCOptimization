@@ -84,7 +84,7 @@ def _window_bounds(index: pd.DatetimeIndex, n_windows: int) -> list[tuple[pd.Tim
     """Disjoint ``SCENARIO_YEARS``-year sub-window date bounds over a realization's index.
 
     Args:
-        index: A realization's daily DatetimeIndex (October-aligned start).
+        index: A realization's daily DatetimeIndex (January-anchored start).
         n_windows: Number of disjoint sub-windows (``L_test // SCENARIO_YEARS``).
 
     Returns:
@@ -191,11 +191,14 @@ def _merge_shards(shard_paths: list[Path], out_path: Path, R: int) -> None:
     axes = [str(a) for a in parts[0]["hazard_axes"]]
     order = np.lexsort((win, rid))
     H, rid, win = H[order], rid[order], win[order]
+    from scengen.hazard_metrics import _REFERENCE_START
+
     np.savez(
         out_path,
         H=H, hazard_axes=np.asarray(axes, dtype=object),
         realization_ids=rid, window_index=win, theta_index=rid // R,
         window_years=np.asarray(SCENARIO_YEARS), exclusion_months=np.asarray(METRIC_EXCLUSION_MONTHS),
+        reference_start=np.asarray(_REFERENCE_START, dtype=object),
     )
     for p in shard_paths:
         p.unlink()

@@ -80,9 +80,12 @@ STAGING_REQUIRED_DESIGNS = (
 
 def _stage(root: Path, slug: str, n: int, years: int, **extra) -> None:
     """Stage a fake ensemble directory (``_meta.json`` only) resolvable by slug."""
+    import config
+
     d = root / slug
     d.mkdir(parents=True, exist_ok=True)
-    meta = {"slug": slug, "n_realizations": n, "realization_years": years}
+    meta = {"slug": slug, "n_realizations": n, "realization_years": years,
+            "start_date": config.ENSEMBLE_START_DATE}
     meta.update(extra)
     (d / "_meta.json").write_text(json.dumps(meta))
 

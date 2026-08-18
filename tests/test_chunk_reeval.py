@@ -65,6 +65,7 @@ def _stage_fake_master(root: Path) -> str:
         (root / slug / "_meta.json").write_text(json.dumps({
             "slug": slug, "n_realizations": CHUNK, "realization_years": L,
             "global_realization_ids": gids, "source_kind": "synhydro_kn",
+            "start_date": config.ENSEMBLE_START_DATE,
         }))
         chunks.append({"chunk_index": j, "slug": slug,
                        "global_start": start, "global_end": start + CHUNK,
@@ -78,7 +79,8 @@ def _stage_fake_master(root: Path) -> str:
         {"slug": master, "n_realizations": N_M, "realization_years": L,
          "source_kind": "synhydro_kn", "population": "du_forced",
          "theta_sampler": "lhs", "n_forcing_profiles": N_SOW,
-         "realizations_per_profile": R_PER_SOW}))
+         "realizations_per_profile": R_PER_SOW,
+         "start_date": config.ENSEMBLE_START_DATE}))
     return master
 
 

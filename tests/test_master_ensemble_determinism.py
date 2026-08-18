@@ -215,6 +215,51 @@ def test_shard_chunk_misalignment_raises(tmp_path):
 
 
 @slow
+def test_staged_stamp_and_seasonal_alignment(tmp_path):
+    """The staged index anchors at the configured epoch AND the stamped months
+    carry the right statistical season.
+
+    The second assertion is the regression net for the +3-month seasonal
+    rotation: the writer once re-stamped the generator's calendar-year
+    (January-start) content from an October epoch, so every stamped month
+    carried the season of the month three positions earlier. Comparing the
+    staged monthly climatology against the historic record's, grouped by TRUE
+    index month, at every circular shift, catches any such rotation — the
+    best-aligned shift must be zero. (The pre-fix validations only checked the
+    generator's own frames, which were never rotated; the rotation lived in
+    the staged artifact alone.)
+    """
+    import pandas as pd
+    from src.ensemble_generation import generate_forcing_ensemble
+    from src.load.historical_flows import load_historical_flows
+
+    cfg = _tiny_config(tmp_path / "pool")
+    generate_forcing_ensemble(cfg)
+    out = tmp_path / "pool"
+
+    staged = Ensemble.from_hdf5(str(out / "gage_flow_mgd.hdf5")).data_by_realization
+    idx = pd.DatetimeIndex(next(iter(staged.values())).index)
+    assert idx[0] == pd.Timestamp(cfg.start_date)
+    assert idx[0] == pd.Timestamp(config.ENSEMBLE_START_DATE)
+
+    node = "cannonsville"
+    pooled = pd.concat([df[node] for df in staged.values()])
+    syn_cycle = pooled.groupby(pooled.index.month).mean().reindex(range(1, 13)).to_numpy()
+
+    hist = load_historical_flows(gage=True, period="full")[node]
+    hist_cycle = hist.groupby(hist.index.month).mean().reindex(range(1, 13)).to_numpy()
+
+    corr = [
+        np.corrcoef(np.roll(syn_cycle, -s), hist_cycle)[0, 1] for s in range(12)
+    ]
+    assert int(np.argmax(corr)) == 0, (
+        f"staged seasonal cycle best aligns with the historic cycle at a "
+        f"{int(np.argmax(corr))}-month rotation (corr by shift: "
+        f"{np.round(corr, 3).tolist()}); the stamped months carry the wrong season."
+    )
+
+
+@slow
 def test_hazard_image_and_forcing_profiles_shapes(tmp_path):
     from src.ensemble_generation import generate_forcing_ensemble
     from scengen.diagnostics import load_hazard_image

@@ -202,12 +202,15 @@ FIGURES: tuple[FigureSpec, ...] = (
         caption="Construction of the deeply uncertain forcing space "
                 "(harmonic model, CMIP6 fits, sampled box, FDCs).",
     ),
-    # NOTE: manuscript number 4 (search-ensemble hazard-space composition) is
-    # deliberately VACANT -- the figure was cut 2026-08-13 and a replacement
-    # for the same slot is an open design question (see TODO.md). The number
-    # is reserved rather than reused so the surrounding figures keep their
-    # numbering; the SI corner overlay (figS-tier, src/plotting/
-    # etest_hazard_overlay.py) still covers ensemble composition meanwhile.
+    FigureSpec(
+        name="ensemble_composition",
+        builder=_lazy("src.plotting.ensemble_composition",
+                      "fig_ensemble_composition"),
+        tier="manuscript", number=4, section="4.1",
+        kind="ensemble_composition", needs=frozenset({"hazard_images"}),
+        caption="Realized hazard-space composition of the PS and HF search "
+                "ensembles vs the candidate pool and the historical record.",
+    ),
     FigureSpec(
         name="criteria_robustness",
         builder=_lazy("src.plotting.criteria_rank_curves",

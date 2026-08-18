@@ -11,11 +11,6 @@ persistence. Generator-side persistence mechanics (weighted/tilted bootstraps,
 wavelet-AR, attribute-targeted generation) are in
 [stochastic streamflow generation](stochastic_streamflow_generation.md).
 
-**Not yet in Zotero** (MCP is read-only in local mode; add by DOI): Cook et al. 2020
-`10.1029/2019EF001461`; Moon et al. 2018 `10.1002/2017JD027577`; Vieira & Stadnyk 2023
-`10.1038/s41612-023-00496-y`; Xue & Ullrich 2021 `10.1029/2020EF001930`; Xue & Ullrich 2022
-`10.1175/JCLI-D-21-0810.1`.
-
 ---
 
 ## Observed & paleo record: persistence is epochal, and the fitted record is pluvial-dominated

@@ -30,10 +30,10 @@ Run slow ensemble test (clipped to 2-year window via env):
 # ---------------------------------------------------------------------------
 # Date envelope: do NOT set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE
 # here — the simulation window for an ensemble run is derived from the
-# spec's ``realization_years`` (see src/simulation.py::_ensemble_window).
-# Setting env-level overrides would collide with the staged HDF5's date
-# axis (e.g., ``wcu_kirsch_n5`` stages 1945-10-01 → 1965-09-30 under the
-# 20-yr dev preset; an env clip outside that window would mismatch).
+# spec's ``start_date`` + ``realization_years`` (see
+# src/simulation.py::_ensemble_window); the env overrides apply to
+# single-trace runs only (e.g., ``wcu_kirsch_n5`` stages
+# 1945-01-01 → 1964-12-31 under the 20-yr dev preset).
 # ---------------------------------------------------------------------------
 import os  # noqa: F401
 

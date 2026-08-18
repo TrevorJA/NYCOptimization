@@ -149,6 +149,8 @@ nycopt_pin_threads() {
 nycopt_read_run_identity() {
     if [[ "${DEBUG_SIM:-false}" == "true" ]]; then
         # Short window, ~13s/eval — must be exported before config is imported.
+        # HISTORIC (single-trace) runs only: ensemble windows come from the
+        # staged _meta.json and ignore these overrides.
         # End pinned to config.END_DATE (2022-09-30): the trimmed model's
         # presimulated releases are generated to that water-year end, so a
         # later debug end date would run past the presim data coverage.

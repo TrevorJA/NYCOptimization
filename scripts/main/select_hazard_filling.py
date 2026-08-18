@@ -118,6 +118,7 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
         out_dir / "hazard_image.npz",
         H=H, hazard_axes=candidate_axes, chosen_axes=result["chosen_axes"],
         realization_ids=realization_ids, selected_rows=result["selected_rows"],
+        reference_start=haz["reference_start"],
     )
     cov = result["coverage"]["geometries"]
     print(f"[hazfill] draw {draw}: pool='{pool_slug}' P={H.shape[0]} seed={seed} "

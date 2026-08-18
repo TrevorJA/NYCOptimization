@@ -55,9 +55,11 @@ from src.formulations import get_formulation, get_var_names
 from src.formulations.salt_front_dvs import apply_salt_front_dvs
 from src.ts_options import build_lstm_options_block
 
-# Allow debug override of simulation date range via environment variables.
-# Set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE (YYYY-MM-DD) before
-# launching mpirun to run a shorter period for fast debugging.
+# Allow debug override of the SINGLE-TRACE (historic) simulation date range via
+# environment variables. Set PYWRDRB_SIM_START_DATE / PYWRDRB_SIM_END_DATE
+# (YYYY-MM-DD) before launching mpirun to run a shorter period for fast
+# debugging. Ensemble windows are derived from each staged ensemble's own
+# _meta.json stamp (see _ensemble_window) and ignore these overrides.
 # Example (5-year debug period, ~13s/eval vs ~150s for full 78-year run):
 #   export PYWRDRB_SIM_START_DATE=2018-01-01
 #   export PYWRDRB_SIM_END_DATE=2022-12-31
@@ -956,16 +958,12 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
             ensemble_spec.realization_indices
         )
 
-    # Ensemble window override: when the spec carries a realization_years
-    # value, the staged HDF5s span a clipped window starting at START_DATE.
-    # Use that window so the pywr timestepper aligns with the staged dates.
+    # Ensemble window: derived from the spec's own staged stamp (meta
+    # start_date + realization_years), never from the historic START_DATE,
+    # so the pywr timestepper aligns with the staged HDF5 date axis.
     sim_start = START_DATE
     sim_end = END_DATE
-    if (
-        ensemble_spec is not None
-        and ensemble_spec.is_ensemble
-        and ensemble_spec.realization_years is not None
-    ):
+    if ensemble_spec is not None and ensemble_spec.is_ensemble:
         sim_start, sim_end = _ensemble_window(ensemble_spec)
 
     mb = pywrdrb.ModelBuilder(
@@ -980,18 +978,28 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
 
 
 def _ensemble_window(ensemble_spec) -> tuple[str, str]:
-    """Return (start_date, end_date) for an ensemble with realization_years set.
+    """Return (start_date, end_date) of an ensemble simulation window.
 
-    Starts at the configured START_DATE and ends ``realization_years`` years
-    later (minus one day) so the window matches the staged HDF5's date axis
-    produced by ``KirschNowakGenerator._generate``. Honors the
-    ``PYWRDRB_SIM_START_DATE`` / ``PYWRDRB_SIM_END_DATE`` env overrides
-    indirectly via the module-level ``START_DATE`` (already populated at
-    import time).
+    Derived entirely from the spec's own staged provenance: the window starts
+    at the spec's ``start_date`` (the stamp of day 0, read from the staged
+    ``_meta.json``) and ends ``realization_years`` years later minus one day,
+    matching the staged HDF5 date axis exactly. The historic
+    ``START_DATE``/``END_DATE`` and the ``PYWRDRB_SIM_*`` env overrides apply
+    to single-trace (historic) simulations only, never to ensembles.
+
+    Raises:
+        ValueError: If the spec lacks ``start_date`` or ``realization_years`` —
+            an ensemble window cannot be derived without them.
     """
-    if ensemble_spec.realization_years is None:
-        return START_DATE, END_DATE
-    start_ts = pd.Timestamp(START_DATE)
+    if ensemble_spec.start_date is None or ensemble_spec.realization_years is None:
+        raise ValueError(
+            f"ensemble spec '{ensemble_spec.preset_name}' lacks "
+            f"start_date/realization_years "
+            f"(start_date={ensemble_spec.start_date!r}, "
+            f"realization_years={ensemble_spec.realization_years!r}); the "
+            f"simulation window is derived from the staged stamp and length."
+        )
+    start_ts = pd.Timestamp(ensemble_spec.start_date)
     end_ts = start_ts + pd.DateOffset(years=int(ensemble_spec.realization_years)) - pd.Timedelta(days=1)
     return str(start_ts.date()), str(end_ts.date())
 

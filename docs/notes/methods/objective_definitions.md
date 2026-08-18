@@ -155,9 +155,10 @@ aggregation is not a novelty focus of this study).
 **Structure (Hamilton et al. 2022's two-layer vocabulary: within-record time
 aggregation + across-record noise filtering).** Each realization is simulated
 continuously; the first six months are outside the metric window and excluded; the
-remainder is split into **water-year units**. Scenario windows are October-aligned, so
-the remainder begins April 1 of the first water year and the first WHOLE water-year
-unit is WY2. Stage (i): compute each objective's **annual metric**
+remainder is split into **water-year units**. Scenario windows are January-aligned
+(whole calendar years), so the remainder begins July 1 of year 1 and the first WHOLE
+water-year unit opens October 1 of year 1 (the trailing October–December fragment is
+discarded, leaving $L-1$ units). Stage (i): compute each objective's **annual metric**
 on every (realization × year) unit. Stage (ii): aggregate across the pooled **NL
 unit-years** with the objective's **unit operator**:
 

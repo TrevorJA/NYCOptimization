@@ -12,15 +12,17 @@ per-realization base metrics of the re-evaluation layer.
 Two-layer scheme (Hamilton et al. 2022 vocabulary)
 --------------------------------------------------
 Stage (i) — **annual metric** per (realization × water-year) unit. Every
-realization starts on a water-year boundary (config ``START_DATE``, Oct 1) and
-spans L whole water years. The first ``METRIC_EXCLUSION_MONTHS`` (6) calendar
-months are outside the metric window — the SSI-6 accumulation spin-up the
-hazard-selection metrics also exclude — and are dropped by date; the remainder,
-which begins Apr 1 of WY1, is split into whole water-year units (Oct 1 –
-Sep 30). The leading partial year (Apr 1 – Sep 30 of WY1) and any trailing
-partial year are discarded, so an L-year realization yields exactly **L − 1
-metric-bearing unit-years**, the first of which is WY2 (see
-:func:`water_year_unit_slices`).
+synthetic realization starts January 1 (config ``ENSEMBLE_START_DATE``; the
+historic trace starts on its water-year boundary, config ``START_DATE``) and
+spans L whole calendar years. The first ``METRIC_EXCLUSION_MONTHS`` (6)
+calendar months are outside the metric window — the SSI-6 accumulation spin-up
+the hazard-selection metrics also exclude — and are dropped by date; the
+remainder, which begins Jul 1 of year 1, is split into whole water-year units
+(Oct 1 – Sep 30). The leading partial (Jul 1 – Sep 30 of year 1) and the
+trailing partial (Oct 1 – Dec 31 of year L) are discarded, so an L-year
+realization yields exactly **L − 1 metric-bearing unit-years**, the first
+starting Oct 1 of year 1 (see :func:`water_year_unit_slices`, which derives
+the units from the dates and gives L − 1 units for October starts too).
 
 Stage (ii) — **unit operator** over the POOLED unit-years of the whole
 ensemble (all realizations' units concatenated):
@@ -125,16 +127,18 @@ from src.objectives import (
 def water_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
     """Positional slices of the metric-bearing water-year units of a trace.
 
-    Unit rule (objective_definitions.md §2): realizations start on a
-    water-year boundary (Oct 1) and are daily-contiguous. Days earlier than
+    Unit rule (objective_definitions.md §2): the rule is a pure function of
+    the trace's dates, whatever day it starts. Days earlier than
     ``METRIC_EXCLUSION_MONTHS`` (6) calendar months after the first timestamp
     lie outside the metric window (the SSI-6 accumulation spin-up) and are
     dropped by date; the remaining days are grouped by water year (a date with
     month >= 10 belongs to water year ``year + 1``), and only COMPLETE water
-    years — first day Oct 1, last day Sep 30 — are kept. On an October-aligned
-    window the remainder starts Apr 1, so the leading partial year (Apr 1 –
-    Sep 30 of WY1) is discarded along with any trailing partial year, and an
-    L-water-year realization yields exactly L − 1 unit-years starting at WY2.
+    years — first day Oct 1, last day Sep 30 — are kept. On the January-start
+    synthetic windows the remainder begins Jul 1 of year 1, so the leading
+    partial (Jul 1 – Sep 30) and the trailing partial (Oct 1 – Dec 31 of year
+    L) are discarded and an L-year realization yields exactly L − 1
+    unit-years, the first starting Oct 1 of year 1. (An October-start trace,
+    e.g. the historic record, likewise yields L − 1 units.)
 
     Args:
         index: Daily DatetimeIndex of the realization's full window.

@@ -36,8 +36,23 @@ from pywrdrb.pywr_drb_node_data import (
     downstream_node_lags,
 )
 
-from config import METRIC_EXCLUSION_MONTHS
+from config import ENSEMBLE_START_DATE, METRIC_EXCLUSION_MONTHS
 from src.load.historical_flows import load_historical_flows
+
+
+def _start_year_of(start_date: str) -> int:
+    """Return the epoch year of a realization ``start_date``, requiring a January 1.
+
+    The Kirsch generator synthesizes calendar-year (January-start) sequences, so
+    any other day would mislabel the content's statistical season.
+    """
+    ts = pd.Timestamp(start_date)
+    if (ts.month, ts.day) != (1, 1):
+        raise ValueError(
+            f"start_date={start_date!r} must be a January 1: synthetic realizations "
+            f"are calendar-year sequences and their index anchors at this epoch."
+        )
+    return int(ts.year)
 
 
 # Node lists derived once from pywrdrb's node-data dict, matching the
@@ -62,7 +77,7 @@ def generate_kirsch_nowak_ensemble(
     seed: int,
     output_dir: Path,
     flowtype: str = "pub_nhmv10_BC_withObsScaled",
-    start_date: str = "1945-10-01",
+    start_date: str = ENSEMBLE_START_DATE,
 ) -> dict:
     """Generate a synthetic streamflow ensemble and write pywrdrb HDF5s.
 
@@ -74,8 +89,10 @@ def generate_kirsch_nowak_ensemble(
             Must already exist.
         flowtype: pywrdrb inflow-dataset key for the historical record fed to
             Kirsch. Defaults to the BC-reconstructed 1945-2023 record.
-        start_date: Date assigned to day 0 of each synthetic realization. The
-            simulation layer is responsible for any further window clipping.
+        start_date: Date of day 0 of each synthetic realization; must be a
+            January 1 (the generator synthesizes calendar-year sequences and
+            its index is anchored here, so the stamp is true by construction).
+            The simulation layer is responsible for any further window clipping.
 
     Returns:
         Dict of provenance written to ``_meta.json``: ``slug``, ``flowtype``,
@@ -92,6 +109,7 @@ def generate_kirsch_nowak_ensemble(
         n_realizations=n_realizations,
         n_years=n_years,
         seed=seed,
+        start_year=_start_year_of(start_date),
     )
 
     syn_by_real, inflow_by_real, sites = _disaggregate_fill_inflow(
@@ -202,30 +220,43 @@ def _disaggregate_fill_inflow(
     (re-keying would change the daily output — the SynHydro determinism caveat), and both frames are
     cast to float32.
 
+    The daily index is Nowak's own — derived from the monthly ensemble's calendar, whose epoch the
+    generation call anchored at ``start_date`` — and is never re-stamped here; this function only
+    verifies the anchor. (A free-standing re-stamp both rotated the statistical season against the
+    labels and drifted month boundaries across mismatched leap years.)
+
     Args:
         monthly_ensemble: Monthly ``Ensemble`` keyed by global realization index, carrying the
-            generator metadata (``'MS'`` time resolution).
+            generator metadata (``'MS'`` time resolution) and a ``start_date``-anchored index.
         nowak: Fitted disaggregator.
         kdes: Per-pair downstream KDEs from :func:`_fit_downstream_kdes`.
         root_seed: Root seed forwarded to the Nowak and KDE streams.
-        start_date: Date assigned to day 0 of each realization.
+        start_date: Expected date of day 0 of each realization (a January 1).
 
     Returns:
         ``(gage_by_real, inflow_by_real, sites)`` — float32 frames keyed by the same global indices,
         with a shared column order ``sites``.
+
+    Raises:
+        ValueError: If the disaggregated daily index does not anchor at ``start_date`` — the
+            generation call failed to anchor the synthetic index at the configured epoch.
     """
     daily = nowak.disaggregate(monthly_ensemble, seed=root_seed)
     syn_by_real = daily.data_by_realization
 
     _apply_kde_downstream(syn_by_real, kdes, root_seed=root_seed)
 
-    n_days = next(iter(syn_by_real.values())).shape[0]
-    syn_dates = pd.date_range(start=start_date, periods=n_days, freq="D")
+    first_idx = next(iter(syn_by_real.values())).index
+    if first_idx[0] != pd.Timestamp(start_date):
+        raise ValueError(
+            f"disaggregated daily index anchors at {first_idx[0].date()}, expected "
+            f"{start_date}: the generation call must anchor the synthetic index at the "
+            f"configured epoch (kirsch.generate(start_year=...))."
+        )
     inflow_by_real: dict[int, pd.DataFrame] = {}
     for real_id, gage_df in syn_by_real.items():
         # delTrenton is treated as coincident with delDRCanal (see pywrdrb node docs).
         gage_df["delTrenton"] = 0.0
-        gage_df.index = syn_dates
         inflow_by_real[real_id] = _subtract_upstream_catchment_inflows(gage_df.copy())
 
     # Site order is whatever _subtract_upstream_catchment_inflows produced; float32 halves disk.
@@ -517,7 +548,8 @@ def _generate_profile_monthly(
 
     idxs = list(indices) if indices is not None else [profile_idx * R + j for j in range(R)]
     ens = setup.kirsch.generate(
-        n_years=config.realization_years, realization_indices=idxs, seed=config.root_seed
+        n_years=config.realization_years, realization_indices=idxs, seed=config.root_seed,
+        start_year=_start_year_of(config.start_date),
     )
     return {k: ens.data_by_realization[k] for k in idxs}, ens.metadata
 
@@ -577,6 +609,18 @@ def _generate_profile_monthly_hmm(
         annual, seed=_profile_stream_seed(config.root_seed, profile_idx, "hmm_annual_to_monthly"),
     )
     frames = monthly.data_by_realization  # keyed 0..R-1 by the HMM's local realization ids
+
+    # The HMM's annual index anchors at the fit record's own start, and the
+    # annual->monthly Nowak follows it. The delta-change below is applied by
+    # index month, so a drifted anchor would silently rotate the forcing —
+    # verify the epoch before touching the values.
+    first_idx = next(iter(frames.values())).index
+    if first_idx[0] != pd.Timestamp(config.start_date):
+        raise ValueError(
+            f"HMM monthly index anchors at {first_idx[0].date()}, expected "
+            f"{config.start_date}: the annual generator's epoch drifted from the "
+            f"configured realization start_date."
+        )
 
     if setup.a_wy is not None:
         a_cal = fs.water_year_to_calendar(setup.a_wy[profile_idx])
@@ -911,7 +955,8 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
             setup = _prepare_generators(config)
             forcing_hash = fs.forcing_hash(
                 setup.a_wy, envelope_csv=config.mean_frac_csv, margin=config.margin,
-                seed=config.root_seed,
+                seed=config.root_seed, start_date=config.start_date,
+                baseline_period=config.baseline_period, full_period=config.full_period,
             )
         manifest = _finalize_pool_artifacts(
             config, out_dir, H_blocks=[H_merged], hazard_axes=hazard_axes,
@@ -960,7 +1005,9 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
         reference_daily = ref_daily.to_numpy(dtype=float)
 
     forcing_hash = fs.forcing_hash(
-        setup.a_wy, envelope_csv=config.mean_frac_csv, margin=config.margin, seed=config.root_seed
+        setup.a_wy, envelope_csv=config.mean_frac_csv, margin=config.margin,
+        seed=config.root_seed, start_date=config.start_date,
+        baseline_period=config.baseline_period, full_period=config.full_period,
     ) if forced else ""
 
     # Only one chunk's daily traces are ever resident, so peak memory is bounded by chunk_size
@@ -1108,11 +1155,13 @@ def _finalize_pool_artifacts(
     # Redundancy screen on H (informational; per-design selection screen runs in workflow/03).
     screen_result = None
     if config.compute_hazard_image:
+        from scengen.hazard_metrics import _REFERENCE_START
+
         H = np.vstack(H_blocks)  # (N, m), rows in global-index order 0..N-1
         dg.save_hazard_image(
             out_dir / "hazard_image.npz",
             H=H, hazard_axes=hazard_axes, realization_ids=realization_ids,
-            selected_rows=realization_ids,
+            selected_rows=realization_ids, reference_start=_REFERENCE_START,
         )
         spread = dg.per_metric_spread(H, hazard_axes)
         clusters = dg.spearman_clusters(H, hazard_axes)
@@ -1185,6 +1234,7 @@ def _finalize_pool_artifacts(
         slug=out_dir.name,
         created=datetime.now(timezone.utc).isoformat(),
         source_kind=f"synhydro_{generator}",
+        start_date=config.start_date,
         notes=(f"{config.population} pool: {N_forcing} profiles x {R} realizations = {N}, L={L}yr, "
                f"generator={generator}, "
                f"theta_sampler={config.theta_sampler if forced else 'n/a'}, "

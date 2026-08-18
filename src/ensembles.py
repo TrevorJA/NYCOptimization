@@ -24,6 +24,14 @@ import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
+#: Epoch of every synthetic realization: the date of day 0, and the anchor the
+#: generator's synthetic index is built from (SynHydro's Kirsch generator
+#: synthesizes calendar-year, January-start sequences, so this must be a
+#: January 1; generation asserts it). Also the anchor month for the historic
+#: hazard-window layers, which cut the record the way scenario windows are cut.
+#: Re-exported by ``config`` (the public access point).
+ENSEMBLE_START_DATE = "1945-01-01"
+
 
 ###############################################################################
 # EnsembleSpec
@@ -76,12 +84,17 @@ class EnsembleSpec:
     is_ensemble: bool = True
     source_kind: str = "synhydro_kn"
     slug_fragment: str = ""
-    # Length (in years) of each generated synthetic realization. ``None``
-    # means span the full training window (1945-10-01 → 2022-09-30 ≈ 78
-    # years). The simulation window for an ensemble run is automatically
-    # clipped to the realization length (see
-    # ``src/simulation.py::run_simulation_ensemble_inmemory``).
+    # Length (in years) of each generated synthetic realization. Required
+    # (an int) for every ensemble spec: the simulation window is derived as
+    # ``start_date + realization_years`` (see ``src/simulation.py::
+    # _ensemble_window``). ``None`` is valid only for single-trace specs,
+    # which simulate the historic window (config.START_DATE/END_DATE).
     realization_years: int | None = None
+    # Date of day 0 of every staged realization, read from the staged
+    # ``_meta.json``. A January 1 under the truthful stamping convention
+    # (the generator synthesizes calendar-year sequences). ``None`` only for
+    # single-trace specs.
+    start_date: str | None = None
     # When True, this spec describes a resample pool: ``realization_indices``
     # is the full pool, and the simulation layer redraws ``resample_size``
     # indices from it at every function evaluation (the resampled-
@@ -142,8 +155,9 @@ PRESETS: dict[str, EnsembleSpec] = {
         source_kind="synhydro_kn",
         slug_fragment="wcu5",
         # 20-year realizations during pipeline development for fast
-        # iteration; promote to None (full 78-yr window) for production.
+        # iteration (test fixture only).
         realization_years=20,
+        start_date=ENSEMBLE_START_DATE,
     ),
 }
 
@@ -161,17 +175,57 @@ PRESETS: dict[str, EnsembleSpec] = {
 _KN_SLUG_RE = re.compile(r"^kn_(\d+)yr_n(\d+)$")
 
 
+def _verified_staged_start_date(meta: Mapping[str, Any], slug: str) -> str:
+    """Return a staged ensemble's ``start_date``, enforcing the stamping convention.
+
+    Every staged artifact must record the date of day 0 and it must match
+    ``config.ENSEMBLE_START_DATE``. Metas stamped under the retired October
+    convention (or lacking the key) identify stale artifacts that would
+    silently rotate the statistical season against the simulation calendar;
+    they fail here, at resolution time, rather than downstream. Set
+    ``NYCOPT_ALLOW_STALE_STAMP=1`` to bypass for deliberate archaeology only.
+    """
+    import os
+
+    start = meta.get("start_date")
+    if start is None:
+        raise ValueError(
+            f"staged ensemble '{slug}' records no start_date in _meta.json: it predates "
+            f"the truthful January stamping convention and must be regenerated."
+        )
+    if str(start) != ENSEMBLE_START_DATE and not os.environ.get("NYCOPT_ALLOW_STALE_STAMP"):
+        raise ValueError(
+            f"staged ensemble '{slug}' is stamped start_date={start!r}, but the stamping "
+            f"convention is {ENSEMBLE_START_DATE!r}. The artifact predates the truthful "
+            f"January convention and must be regenerated (set NYCOPT_ALLOW_STALE_STAMP=1 "
+            f"to inspect it anyway)."
+        )
+    return str(start)
+
+
 def kirsch_nowak_slug(n_years: int, n_realizations: int) -> str:
     """Build the canonical ``kn_{Y}yr_n{N}`` slug for a Kirsch-Nowak ensemble."""
     return f"kn_{n_years}yr_n{n_realizations}"
 
 
 def _spec_from_kn_slug(slug: str) -> EnsembleSpec | None:
-    """Build an ``EnsembleSpec`` from a ``kn_{Y}yr_n{N}`` slug, or None if it doesn't match."""
+    """Build an ``EnsembleSpec`` from a ``kn_{Y}yr_n{N}`` slug, or None if it doesn't match.
+
+    The slug grammar carries no dates; when the ensemble is already staged, the
+    stamp is read (and convention-verified) from its ``_meta.json``, otherwise
+    the configured convention is assumed for the yet-to-be-staged artifact.
+    """
+    import json
+
     m = _KN_SLUG_RE.match(slug)
     if m is None:
         return None
     n_years, n_realizations = int(m.group(1)), int(m.group(2))
+    meta_path = staged_ensemble_dir(slug) / "_meta.json"
+    if meta_path.exists():
+        start_date = _verified_staged_start_date(json.loads(meta_path.read_text()), slug)
+    else:
+        start_date = ENSEMBLE_START_DATE
     return EnsembleSpec(
         preset_name=slug,
         inflow_type=slug,
@@ -180,6 +234,7 @@ def _spec_from_kn_slug(slug: str) -> EnsembleSpec | None:
         source_kind="synhydro_kn",
         slug_fragment=slug,
         realization_years=n_years,
+        start_date=start_date,
     )
 
 
@@ -201,6 +256,12 @@ def _spec_from_staged_dir(slug: str) -> EnsembleSpec | None:
     meta = json.loads(meta_path.read_text())
     n = int(meta["n_realizations"])
     years = meta.get("realization_years", meta.get("n_years"))
+    if years is None:
+        raise ValueError(
+            f"staged ensemble '{slug}' records no realization length "
+            f"(realization_years/n_years) in _meta.json; the simulation window "
+            f"cannot be derived."
+        )
     return EnsembleSpec(
         preset_name=slug,
         inflow_type=slug,
@@ -212,7 +273,8 @@ def _spec_from_staged_dir(slug: str) -> EnsembleSpec | None:
         is_ensemble=True,
         source_kind=meta.get("source_kind", "synhydro_kn"),
         slug_fragment=slug,
-        realization_years=int(years) if years is not None else None,
+        realization_years=int(years),
+        start_date=_verified_staged_start_date(meta, slug),
     )
 
 
@@ -453,6 +515,7 @@ def materialize_subset(
         "global_realization_ids": requested,
         "source_pool": pool_slug,
         "source_kind": "synhydro_kn",
+        "start_date": _verified_staged_start_date(pool_meta, pool_slug),
     }
     if extra_meta:
         meta.update(extra_meta)
@@ -529,7 +592,9 @@ def _materialize_subset_regenerated(
         generator="kn",
         seed_domain=pool_meta.get("seed_domain"),
         flowtype=pool_meta["flowtype"],
-        start_date=pool_meta.get("start_date", "1945-10-01"),
+        # Convention-verified: a stale (pre-January-convention) pool must not be
+        # silently rematerialized under its old stamp.
+        start_date=_verified_staged_start_date(pool_meta, pool_slug),
         store_daily=False,
     )
     print(f"[materialize] pool '{pool_slug}' is stream-only: regenerating "
@@ -571,6 +636,7 @@ def _materialize_subset_regenerated(
         "source_kind": "synhydro_kn",
         "regenerated_from_stream_only_pool": True,
         "root_seed": int(pool_meta["root_seed"]),
+        "start_date": cfg.start_date,
     }
     if extra_meta:
         meta.update(extra_meta)

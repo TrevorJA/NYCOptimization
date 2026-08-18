@@ -90,7 +90,9 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     Q_gage, _, _ = _load_masked_flows("pub_nhmv10_BC_withObsScaled")
-    Q_gen = Q_gage.loc["1945-10-01":"2022-09-30"]
+    # Full calendar record, matching the production fit convention (Kirsch fits
+    # calendar (year, month) bins and drops incomplete calendar years).
+    Q_gen = Q_gage
     kirsch = _fit_kirsch(Q_gen)
 
     agg_h = Q_gen[NYC].sum(axis=1).resample("MS").sum()

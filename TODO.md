@@ -10,6 +10,42 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 1. Remaining method closures
 
+- [ ] **[HPC]** REGENERATE everything invalidated by the 3-MONTH SEASONAL
+  ROTATION FIX (local half LANDED 2026-08-18 across all three repos: truthful
+  January stamping — `KirschGenerator.generate(start_year=...)` anchors the
+  synthetic index at `config.ENSEMBLE_START_DATE` (1945-01-01), the writer's
+  re-stamp is DELETED (the Nowak daily index is kept and asserted), the SSI
+  reference fit uses the record's true dates, `_ensemble_window` derives the
+  sim window from each staged `_meta.json` (`start_date` now required; stale
+  October-stamped artifacts FAIL FAST at spec resolution, override
+  `NYCOPT_ALLOW_STALE_STAMP=1`), hazard images carry `reference_start`
+  provenance (pre-fix `.npz` refuse to load), the forcing-pool fit record
+  moved to the full calendar record `("1945-01-01","2023-12-31")` (was a
+  water-year clip that silently dropped calendar 1945/2022/2023;
+  baseline_period now `("1980-01-01","2019-12-31")`), historic hazard-window
+  layers anchor at January in BOTH `compute_historic_hazard_windows.py` and
+  `scenario_discovery._historic_hazard_points` (previously mutually 3 months
+  out of phase), and the Text S2 gap is closed
+  (`scripts/supplemental/validate_staged_seasonality.py` checks STAGED
+  artifacts by true month + circular shift; regression tests in
+  `tests/test_master_ensemble_determinism.py` and SynHydro pin the anchor).
+  INVALIDATED — regenerate on HPC, in step order:
+  1. step 02: all candidate pools (`statpool_*` d0–d2) + hazard images
+     (old npz also lack provenance and refuse to load);
+  2. step 03: `hazfill_*` / `fixprob_*` selections;
+  3. step 12: E_test `etest_kn_50yr_n25000` + chunks + hazard images, then
+     re-stage the `first10ch` subset + symlinked incumbent baselines
+     (`make_etest_subset.py`, `stage_etest_subset_baseline.py`);
+  4. step 04: pywrdrb inputs + ensemble presim for every staged ensemble
+     (step-01 HISTORIC presim is unaffected — true dates);
+  5. step 05: baseline-on-E_test matrix (incumbent cube);
+  6. go/no-go searches (all three designs; the 500k-NFE sets, their
+     diagnostics, and the `_eps20260812` re-filtered refs are all
+     rotated-season) and every step-07–13 artifact derived from them,
+     including the interim first10ch chain and figs 03–08 data.
+  Run `validate_staged_seasonality.py` on each regenerated ensemble as build
+  QC before anything simulates on it.
+
 - [x] **[local]** REGRET TOLERANCE tau RE-ADOPTED 2026-08-14 on ROUND values
   (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;
   k = 1 unchanged) after pass B ran (job 19910387) and the paired near-tie
@@ -24,11 +60,14 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   construction. The override is the tolerance at the ADOPTED rung, so it is now
   scaled by k/REGRET_TAU_K (identity at k = 1). Fig 07 panel (b) now sweeps and
   shows historic separating from the matched pair over k = 0-2.
-  STILL OPEN from pass B: (i) `run_pass_b()` raises `KeyError: 'level'` at
-  K = 1 draw instead of degrading to "null not estimable"; (ii) the k-sweep
-  call sites (`compare_designs.py:955`, diagnostics 402/492) call
-  `tau_ladder(k=k)` with no `floors=`, so with the override unset they use the
-  eps-only ladder, not the adopted basis; (iii) `rtol_noise_floor.csv` carries
+  STILL OPEN from pass B ((i)/(ii) FIXED 2026-08-18: `null_differences` keeps
+  its schema when no within-design pair exists and `run_pass_b` reports "null
+  not estimable" at one draw per design; `regret_tolerance_sweep`,
+  `paired_bootstrap_se`, and `joint_vs_independent` now pass
+  `rob.adopted_floors()` — the persisted pass-A `rtol_floors.json` — so
+  unset-override k-sweeps stay on the adopted max(eps, floor) basis; tests in
+  `test_regret_tolerance_diagnostics.py` + an eps-only-ladder pin in
+  `test_compare_designs.py`): (iii) `rtol_noise_floor.csv` carries
   STALE epsilons - pass A should be re-run to refresh it; (iv) delta is only
   `2 x paired SE` (0.102 all-8 / 0.065 compromise-3), a LOWER BOUND, until
   K > 1 draws exist; (v) the matched-design ordering on the all-8 metric flips
@@ -74,8 +113,13 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   The underlying finding is unchanged and now visible: regret concentrates in
   WET states of the world, and hazard-filling carries the least of it.
 
-- [ ] **[local]** RE-DESIGN manuscript Figure 4 (§4.1, realized hazard-space
-  composition of the search ensembles). The first attempt was CUT 2026-08-13
+- [x] **[local]** RE-DESIGN manuscript Figure 4 — DONE 2026-08-17: rebuilt as
+  `src/plotting/ensemble_composition.py` (`ensemble_composition`, registry
+  `number=4`, §4.1), rendered to `figures/manuscript/fig04_ensemble_composition.png`
+  with all three arms including the post-hoc-scored `fixed_probabilistic` (PS)
+  ensemble; the seasonal-rotation finding above was measured during this build.
+  Original item kept below for the record.
+  The first attempt was CUT 2026-08-13
   (`src/plotting/ensemble_composition.py` deleted, spec removed from
   `src/figures/registry.py`): it was unreadable and carried no argument — a
   13-entry legend with the design label repeated once per staged draw, every
@@ -391,18 +435,6 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   the manuscript-final styling pass + full-E_test rerun reuse.
 - [ ] **[local]** Manuscript Results / Discussion / Conclusions; SI sections
   beyond S8 are outline-only.
-- [ ] **[local]** Import the manuscript's † references into Zotero before
-  submission, plus the five persistence-literature DOIs listed in
-  `docs/notes/literature/persistence_and_low_frequency_variability.md`, plus the
-  regret-methodology references absent from the library: Savage 1951
-  (10.1080/01621459.1951.10500768), Bertsimas & Sim 2004
-  (10.1287/opre.1030.0065), Kwakkel/Eker/Pruyt 2016 (the undesirable-deviations
-  chapter — verify the DOI), McPhail et al. 2021
-  (10.1016/j.envsoft.2021.105059), Starr (resolve the 1962-vs-1963 year
-  discrepancy between Herman 2015 and McPhail 2018), Schneller & Sphicas 1983,
-  Popper et al. 2009. Also fetch McPhail et al. (2018) Supporting Information
-  S1, which holds the metric equations the article body omits.
-
 ## Parked (scope decisions, not blockers)
 
 - [ ] Remaining manuscript scoping sentence: demand is Decree-capped and held

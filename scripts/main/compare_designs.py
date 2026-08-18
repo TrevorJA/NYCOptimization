@@ -930,6 +930,7 @@ def _baseline_cube(run: ReevalRun):
 
 def regret_tolerance_sweep(runs: list[ReevalRun],
                            grid: Iterable[float] = REGRET_TAU_GRID,
+                           floors: Optional[dict] = None,
                            ) -> pd.DataFrame:
     """No-harm frequency vs the tolerance ladder, per run.
 
@@ -940,11 +941,20 @@ def regret_tolerance_sweep(runs: list[ReevalRun],
     holds rather than asserting it at one arbitrary point, the same discipline the
     satisficing criterion sweep applies (Quinn et al. 2020).
 
+    Args:
+        runs: Re-evaluated runs to sweep.
+        grid: Tolerance rungs ``k``.
+        floors: Per-objective noise floors setting the tolerance unit
+            ``max(eps, floor)``. ``None`` loads the pass-A adopted floors
+            (:func:`src.robustness.adopted_floors`); pass ``{}`` to force the
+            eps-only ladder.
+
     Returns:
         Tidy frame: design, draw, seed, tau_k, best, median, n_solutions.
         Empty when no run carries a baseline.
     """
     grid = list(grid)
+    floors = rob.adopted_floors() if floors is None else floors
     rows = []
     for r in runs:
         raw = rob.load_raw(r.path)
@@ -952,7 +962,7 @@ def regret_tolerance_sweep(runs: list[ReevalRun],
         if base is None:
             continue
         for k in grid:
-            tau = rob.tau_ladder(raw.obj_names, k=k)
+            tau = rob.tau_ladder(raw.obj_names, k=k, floors=floors)
             v = rob.regret_frequencies(raw, base, tau=tau)["no_harm_freq_tau"]
             v = v.to_numpy(dtype=float)
             rows.append({"design": r.design, "draw": r.draw, "seed": r.seed,

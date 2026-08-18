@@ -636,6 +636,29 @@ def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
             for n in obj_names}
 
 
+def adopted_floors() -> dict | None:
+    """Measured per-objective noise floors from pass A, or ``None`` if absent.
+
+    Reads the ``rtol_floors.json`` written by
+    ``scripts/supplemental/regret_tolerance_diagnostics.run_pass_a`` so that
+    k-sweeps which deliberately unset ``NYCOPT_REGRET_TAU`` still sweep the
+    adopted ``max(eps, floor)`` basis via ``tau_ladder(floors=...)`` instead of
+    silently dropping to the eps-only ladder (most adopted taus are
+    floor-bound, not epsilon-bound).
+
+    Returns:
+        ``{obj_name: tau_floor}`` in natural units, or ``None`` when pass A has
+        not written its floors table.
+    """
+    import supplemental_config as sc
+
+    path = sc.RTOL_TABLES_DIR / "rtol_floors.json"
+    if not path.exists():
+        return None
+    return {str(name): float(v)
+            for name, v in json.loads(path.read_text()).items()}
+
+
 def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
                        parties: dict = None, axes=None) -> pd.DataFrame:
     """Unit-free harm frequencies. These carry the scalar role.

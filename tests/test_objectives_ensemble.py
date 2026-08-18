@@ -114,6 +114,24 @@ def test_unit_slices_empty_for_exclusion_window_only_trace():
     assert water_year_unit_slices(idx) == []
 
 
+def test_unit_slices_january_start_yields_L_minus_1_units():
+    """The staged stamping convention: an L-year January-start realization
+    (config.ENSEMBLE_START_DATE epoch) yields exactly L - 1 whole water-year
+    units, the first starting Oct 1 of year 1. The 6-month cut lands Jul 1,
+    discarding the Jul-Sep lead; the trailing Oct-Dec fragment is dropped."""
+    L = 10
+    idx = pd.date_range("1945-01-01", "1954-12-31", freq="D")
+    slices = water_year_unit_slices(idx)
+    assert len(slices) == L - 1
+    assert _exclusion_cutoff(idx) == pd.Timestamp("1945-07-01")
+    assert idx[slices[0].start] == pd.Timestamp("1945-10-01")
+    assert idx[slices[-1].stop - 1] == pd.Timestamp("1954-09-30")
+    for sl in slices:
+        unit = idx[sl]
+        assert (unit[0].month, unit[0].day) == (10, 1)
+        assert (unit[-1].month, unit[-1].day) == (9, 30)
+
+
 # ---------------------------------------------------------------------------
 # 2. Unit operators
 # ---------------------------------------------------------------------------

@@ -57,6 +57,9 @@ def _need_available(need: str, ctx: FigureContext) -> bool:
         return ctx.comparison_dir().is_dir()
     if need == "ensemble":
         return (config.STAGED_ENSEMBLE_DIR / ctx.tag).is_dir()
+    if need == "hazard_images":
+        from src.plotting.ensemble_composition import required_hazard_images
+        return all(p.exists() for p in required_hazard_images())
     if need == "refset":
         return all(any((config.OUTPUTS_DIR / d / ctx.slug / "sets").glob("*.set"))
                    for d in designs

@@ -73,6 +73,7 @@ def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10
         "realizations_per_profile": r,
         "realization_years": years,
         "n_years": years,
+        "start_date": config.ENSEMBLE_START_DATE,
     }))
     if with_npz and population == "du_forced":
         np.savez(

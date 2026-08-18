@@ -237,7 +237,7 @@ def _metric_window(obj):
     after the first timestamp: the SSI-6 accumulation spin-up, which the
     hazard-selection metrics exclude implicitly, so selection and evaluation
     score the same effective window. The cut is BY DATE, so leap years need no
-    special case (6 months from Oct 1 is 182 or 183 days).
+    special case (6 months from Jan 1 is 181 or 182 days).
 
     Args:
         obj: Daily-indexed pandas Series or DataFrame.
