@@ -113,6 +113,7 @@ def main() -> None:
         )
         row, row_axes = _hazard_block(
             inflow, [k], DEFAULT_NYC_INFLOW_NODES, reference_monthly, reference_daily,
+            n_years=cfg.realization_years,
         )
         diff = np.abs(row[0] - H[k])
         if row_axes != axes or np.any(diff > tol):

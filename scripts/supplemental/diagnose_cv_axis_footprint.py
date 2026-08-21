@@ -119,6 +119,7 @@ def _hazard_image(cfg: ForcingEnsembleConfig) -> tuple[np.ndarray, list[str], np
         H_block, axes = _hazard_block(
             inflow, sorted(inflow), DEFAULT_NYC_INFLOW_NODES,
             reference_monthly, reference_daily,
+            n_years=cfg.realization_years,
         )
         H_blocks.append(H_block)
         print(f"[cvdiag]   profiles [{b0}, {min(b0 + BLOCK, cfg.n_forcing_profiles)}) done")

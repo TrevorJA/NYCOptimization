@@ -91,6 +91,7 @@ def main() -> None:
         rows, row_axes = _hazard_block(
             inflow, sorted(inflow), DEFAULT_NYC_INFLOW_NODES,
             reference_monthly, reference_daily,
+            n_years=cfg.realization_years,
         )
         assert row_axes == axes
         return rows

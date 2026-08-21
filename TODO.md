@@ -46,6 +46,73 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
     unrecorded), `_aligned_baseline` hard-errors on incumbent SOW
     under-coverage, and all-NaN flood-stage days propagate to the worst-value
     sentinel instead of scoring as "no flooding".
+  REGENERATION COMPLETE 2026-08-20 (pre-optimization scope). All four repos on
+  the fixed commits (Pywr-DRB unchanged at 4a65787, nyc_opt). Test gate job
+  20033470: 415 passed / 2 skipped. Stale data cleared first: 320 GB of E_test
+  deleted from /anvil (CONTENTS only — the 51 symlinks and target dirs kept, so
+  regeneration wrote back to projects space, not the 25 GB home quota) + ~1.7 GB
+  in $HOME. Optimization sets/runtime/metrics and the three first10ch reeval
+  leaves PRESERVED; the old incumbent cube archived to
+  .../reeval/etest_kn_50yr_n25000/baseline_pre20260818 with all three first10ch
+  `baseline` symlinks repointed at it.
+  REGENERATED + VERIFIED:
+  * step 01 presim — 1945-12-01..2023-11-30, 28,489 rows (job 20033517).
+  * P=1e6 pools d0-d2 (shards 20033519/20/21, 150 tasks, ~13 h) — merges wrote
+    canonical artifacts; post-merge verify re-run standalone (20045602/03/04):
+    shard boundaries EXACT at all 8 probe indices under a THIRD partition, and
+    the P=2,000 smoke pools BIT-IDENTICAL to the leading 2,000 rows. Zero FP
+    drift; tolerance never engaged.
+  * fixprob d0-d2 gen (20033559) + step-04 prep (20034846) — Dec epoch, n=3652.
+  * hazfill d0-d2 selection (20045700) + prep (20045701) — P=1e6, 6-axis m6,
+    L2* abs 0.0123/0.0147/0.0169 vs random null ~0.166 (pctl 0).
+  * E_test etest_kn_50yr_n25000 — 50 shards -> merge (tiling [0,25000) verified)
+    -> sub-window hazard image (125,000 x 8) -> 50/50 chunks prepped, 290 GB.
+    first10ch subset re-staged (200 SOWs x R=25).
+  * Historic hazard windows — 7 Dec-anchored windows, provenance matches the
+    pool and E_test images (reference_start 1945-01-01, stamp 1999-12-01).
+  * Seasonality QC (validate_staged_seasonality): fixprob shift 0 @ 0.999
+    (Feb ratio 1.009, i.e. the Nowak renormalize fix is live); E_test shift 0 @
+    0.905 with the wider ratio spread expected of the du_forced population.
+  * Baselines — historic (job 20037453): **77 FFMP-year units** (was 76 water
+    years); reliabilities are exact n/77 and the storage P01 = 0.0 reproduces
+    from the raw trace (2 of 77 years draw aggregate NYC storage to empty).
+    fixprob (20037454) and hazfill (20045702) scenario-matched via
+    --search-ensemble: reliabilities exact n/900 (100 real x 9 units).
+  TWO DEFECTS FOUND AND FIXED EN ROUTE:
+  (a) `_hazard_block()` gained a required `n_years` kwarg in a1e88bd but THREE
+      supplemental callers were left stale — verify_shard_boundaries.py,
+      diagnose_partition_mismatch.py, diagnose_cv_axis_footprint.py. This
+      killed all three pool merges AFTER they wrote their artifacts. Fixed
+      (one line each, `n_years=cfg.realization_years`); the tests do not cover
+      these scripts. New `workflow/supplemental/pool_verify.sh` runs the two
+      checks standalone, which is now REQUIRED because gen_pool_merge deletes
+      its shards before verifying.
+  (b) step 03 selected from the P=2,000 SMOKE pools, silently: env files do not
+      set NYCOPT_CANDIDATE_POOL_N (default 2000) and 03_subsample_ensemble.sh
+      does not export it the way gen_pool_shards/merge do. Caught only by the
+      log line `pool='statpool_10yr_n2000_d0' P=2000`. ALWAYS pass
+      NYCOPT_CANDIDATE_POOL_N=1000000 to step 03 and check that line.
+  * Incumbent cube on full E_test — DONE (job 20037455, 4 h 13 m 52 s, 1 node
+    x 16 ranks x 8 cpus, batch=50; ffmp_obj8_mm_full slug =
+    stage_etest_subset_baseline's DEFAULT_BASELINE_SRC). 8,000 rows
+    (1 solution x 1,000 SOWs x 8 objectives), ZERO NaN, and n_survivors = 25/25
+    on every SOW — the a1e88bd provenance column confirms no batch silently
+    lost realizations. Wall matched the 2026-08-08 run (4 h 14 m) almost
+    exactly.
+  * hazfill seasonality QC (job 20046983) — shift 0 @ 0.997/0.998/0.998 on
+    d0/d1/d2.
+  ALL GENERATION + PREPROCESSING IS COMPLETE. Nothing blocks the campaign
+  searches except the epsilon question below.
+  DELIBERATELY NOT RUN: stage_etest_subset_baseline.py — it recreates the three
+  first10ch `baseline` symlinks pointing at `baseline`, which would aim the
+  PRESERVED old scorecards at the new cube. Run it only when a new subset
+  re-eval is actually wanted.
+  STILL OPEN: the adopted epsilon vector was calibrated 2026-08-12 on the
+  RETIRED water-year substrate; it is no longer measured on the substrate the
+  campaign will search. Re-running epsilon_calibration.sh per design is now
+  cheap (staged ensembles exist) and would re-anchor it before ~48k SU of
+  search. Also unconfirmed: pool adequacy (nestedp) under the renamed axes.
+
   INVALIDATED — regenerate on HPC, in step order (pull ALL FOUR repos first:
   NYCOptimization, SynHydro, NYCOptimization_scenario_generation, Pywr-DRB):
   1. step 01: HISTORIC presim (December window) and step 00 unchanged;
