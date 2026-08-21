@@ -204,6 +204,16 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   The underlying finding is unchanged and now visible: regret concentrates in
   WET states of the world, and hazard-filling carries the least of it.
 
+- [ ] **[local]** DECIDE Figure 4 scatter geometry: 2-D plane vs 3-D cube.
+  A 3-D variant of panels (a)/(b) is now the default
+  (`NYCOPT_COMPOSITION_SCATTER=3d`, set `=2d` to revert to the original
+  severity-magnitude plane; nothing else in the figure changes). The 3-D panel
+  plots each ensemble in severity x peak-discharge x magnitude and shows the
+  candidate pool as 50/90/99% density bands projected on the three cube walls
+  instead of an in-cube point cloud, so the 100 sampled members stay the
+  subject. Open: whether the flood axis is peak discharge or pulse duration,
+  and whether the floor shadow of the members stays.
+
 - [x] **[local]** RE-DESIGN manuscript Figure 4 — DONE 2026-08-17: rebuilt as
   `src/plotting/ensemble_composition.py` (`ensemble_composition`, registry
   `number=4`, §4.1), rendered to `figures/manuscript/fig04_ensemble_composition.png`
