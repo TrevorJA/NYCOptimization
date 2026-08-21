@@ -25,7 +25,7 @@ Panels
 (a) :func:`panel_harmonic_decomposition` - the model, built up one term at a time
 (b) :func:`panel_parameter_space`        - fitted CMIP6 params, LHS draws, sampling box
 (c) :func:`panel_monthly_change`         - monthly change factors: LHS envelope vs CMIP6
-(d) :func:`panel_flow_duration`          - flow duration curves: E_test envelope vs CMIP6
+(d) :func:`panel_flow_duration`          - change in flow duration curve: E_test vs CMIP6
 
 Provenance rule
 ---------------
@@ -406,44 +406,99 @@ def panel_monthly_change(ax, fits: dict, sample: dict,
     ax.set_title("(c) Monthly streamflow change", loc="left")
 
 
-def panel_flow_duration(ax, cache, pctl: tuple[float, float]) -> None:
-    """(d) Flow duration curves of aggregate NYC reservoir inflow.
+def _pct_change(future: np.ndarray, baseline: np.ndarray) -> np.ndarray:
+    """Percent change of ``future`` against ``baseline``, elementwise.
 
-    The CMIP6 curves are the raw downscaled, hydrologically simulated daily
-    flows, so this panel is an external check on the sampled envelope rather
-    than a restatement of the parameterization. Each hydrologic model carries
-    its own bias relative to the historical reconstruction and none is removed
-    here, so a whole-curve offset is model bias, not a climate signal.
+    Broadcasting-friendly, so one baseline row serves a whole ensemble. Any
+    non-positive baseline flow is returned as NaN rather than a spike: on the
+    trimmed exceedance domain the aggregate NYC inflow is strictly positive, so
+    this is a guard, not a routine path.
+    """
+    baseline = np.asarray(baseline, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = 100.0 * (np.asarray(future, dtype=float) / baseline - 1.0)
+    return np.where(baseline > 0, out, np.nan)
+
+
+def panel_flow_duration(ax, cache, pctl: tuple[float, float]) -> None:
+    """(d) Change in the flow duration curve of aggregate NYC reservoir inflow.
+
+    Plotted as the percent change in flow at each exceedance probability rather
+    than the absolute curves: on a log flow axis the three sources overlie each
+    other almost exactly, and it is the *shift* that the forcing space is
+    supposed to span.
+
+    Each source is differenced against its OWN baseline, which is what makes the
+    two comparable:
+
+        E_test   against the reconstructed historical record it was generated
+                 from, so the change is the sampled forcing signal (plus the
+                 Kirsch-Nowak generator's internal variability, which is part of
+                 the ensemble's spread and is not removed)
+        CMIP6    against that run's own 1980-2019 historical sibling, so each
+                 hydrologic model's bias relative to the reconstruction cancels
+                 and the line is the model's projected change
+
+    This is the same baseline convention the monthly change factors of panels
+    (b)/(c) were fitted on, so panel (d) is an independent daily-flow check on
+    the parameterization rather than a restatement of it. The historical record
+    is the reference and therefore plots as the 0% line.
     """
     exceedance = np.asarray(cache["exceedance"], dtype=float)
     keep = (exceedance >= FDC_PLOT_DOMAIN[0]) & (exceedance <= FDC_PLOT_DOMAIN[1])
     exceedance = exceedance[keep]
 
-    _draw_envelope(ax, exceedance, np.asarray(cache["etest_fdc"])[:, keep], pctl,
-                   color=ETEST_COLOR)
-    for curve in np.asarray(cache["cmip6_fdc"], dtype=float)[:, keep]:
-        ax.plot(exceedance, curve, color=CMIP6_COLOR, lw=0.7, alpha=0.55, zorder=3)
-    ax.plot(exceedance, np.asarray(cache["historic_fdc"], dtype=float)[keep],
-            color=HISTORIC_COLOR, lw=2.0, zorder=5)
+    if "cmip6_baseline_fdc" not in cache.files:
+        raise KeyError(
+            "FDC cache predates the change-based panel (d): it has no "
+            "'cmip6_baseline_fdc'. Rebuild it with "
+            "`sbatch --export=ALL,NYCOPT_FIG_REFRESH=1 workflow/13_main_figures.sh`."
+        )
 
-    ax.set_yscale("log")
+    historic = np.asarray(cache["historic_fdc"], dtype=float)[keep]
+    etest_pct = _pct_change(np.asarray(cache["etest_fdc"])[:, keep], historic)
+    cmip6_pct = _pct_change(np.asarray(cache["cmip6_fdc"])[:, keep],
+                            np.asarray(cache["cmip6_baseline_fdc"])[:, keep])
+
+    _draw_envelope(ax, exceedance, etest_pct, pctl, color=ETEST_COLOR)
+    for curve in cmip6_pct:
+        ax.plot(exceedance, curve, color=CMIP6_COLOR, lw=0.7, alpha=0.55, zorder=3)
+    ax.axhline(0.0, color=HISTORIC_COLOR, lw=2.0, zorder=5)
+
     ax.set_xlim(*FDC_PLOT_DOMAIN)
     ax.set_xlabel("Exceedance probability (%)")
-    ax.set_ylabel("Aggregate NYC reservoir inflow (MGD)")
-    ax.set_title("(d) Flow duration curves", loc="left")
+    ax.set_ylabel("Change in streamflow (%)")
+    ax.set_title("(d) Change in the flow duration curve", loc="left")
 
 
 # ---------------------------------------------------------------------------
 # Shared legend
 # ---------------------------------------------------------------------------
 
+#: Column count of the shared figure legend: one column per information
+#: SOURCE, matching the colour vocabulary (E_test blue, CMIP6 vermillion,
+#: observed black).
+LEGEND_NCOL: int = 3
+
+
+def _legend_spacer() -> Line2D:
+    """Invisible, unlabelled entry used to pad a short legend column."""
+    return Line2D([], [], ls="none", marker="none", color="none", label=" ")
+
+
 def shared_legend_handles(pctl: tuple[float, float]) -> list:
     """Handles for the figure-level legend covering panels (b)-(d).
 
     Panel (a) carries its own legend because the decomposition stages appear
     nowhere else; everything shared by the other three panels is named once here.
+
+    Ordered for a COLUMN-MAJOR ``ncol=LEGEND_NCOL`` legend so each column is one
+    colour, i.e. one source of information: the E_test blues, then the CMIP6
+    vermillions, then the observed record. Matplotlib fills columns top-to-bottom
+    and balances the row count itself, so the short black column is padded with
+    invisible spacers to hold the grouping.
     """
-    handles = [
+    etest = [
         Line2D([0], [0], ls="none", marker="s", ms=10, markerfacecolor=ETEST_COLOR,
                markeredgecolor="none", alpha=0.55, label=envelope_label(pctl)),
         Line2D([0], [0], ls="none", marker="o", ms=7, markerfacecolor=ETEST_COLOR,
@@ -452,13 +507,25 @@ def shared_legend_handles(pctl: tuple[float, float]) -> list:
         Line2D([0], [0], ls="--", lw=1.6, color=ETEST_COLOR,
                label="E$_{test}$ sampling box"),
     ]
-    handles += [
+    cmip6 = [
         Line2D([0], [0], ls="none", marker=PERIOD_MARKERS[p], ms=8,
                markerfacecolor=CMIP6_COLOR, markeredgecolor="white",
                markeredgewidth=0.5, color="none", label=PERIOD_LABELS[p])
         for p in ("2020_2059", "2060_2099")
     ]
-    handles.append(
-        Line2D([0], [0], lw=2.0, color=HISTORIC_COLOR, label="Historical record")
+    # The vermillion LINES of panels (c) and (d): one per CMIP6 run, each its
+    # own fitted change factor / own change against its own historical sibling.
+    cmip6.append(
+        Line2D([0], [0], lw=1.2, color=CMIP6_COLOR, alpha=0.75,
+               label="CMIP6 model-specific change")
     )
-    return handles
+    historic = [
+        Line2D([0], [0], lw=2.0, color=HISTORIC_COLOR,
+               label="Historical record (panel d reference)")
+    ]
+
+    rows = max(len(etest), len(cmip6), len(historic))
+    columns = [etest, cmip6, historic]
+    return [h
+            for col in columns
+            for h in col + [_legend_spacer()] * (rows - len(col))]

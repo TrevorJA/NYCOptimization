@@ -200,7 +200,8 @@ FIGURES: tuple[FigureSpec, ...] = (
         tier="manuscript", number=3, section="2",
         kind="forcing_space", needs=frozenset({"ensemble", "fdc_cache"}),
         caption="Construction of the deeply uncertain forcing space "
-                "(harmonic model, CMIP6 fits, sampled box, FDCs).",
+                "(harmonic model, CMIP6 fits, sampled box, change in the "
+                "flow duration curve).",
     ),
     FigureSpec(
         name="ensemble_composition",

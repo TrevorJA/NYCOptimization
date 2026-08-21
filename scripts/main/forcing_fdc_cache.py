@@ -6,7 +6,9 @@ flow duration curve (FDC) axis:
     E_test    the re-evaluation ensemble's realizations (Kirsch-Nowak generator
               driven by the sampled harmonic forcing) - 25,000 x 50 years
     CMIP6     the raw DBCCA-downscaled, PRMS/VIC5-simulated daily flows of the
-              54 CMIP6 future runs - 40 years each
+              54 CMIP6 future runs - 40 years each, each paired with its OWN
+              1980-2019 historical sibling run so the figure can show a
+              model-specific change rather than a change plus model bias
     historic  the reconstructed historical record
 
 Reading the E_test daily flows costs ~11 GB of HDF5 I/O across 50 chunk
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -119,17 +122,77 @@ def cmip6_future_runs() -> list[Path]:
     return runs
 
 
+def cmip6_sibling_key(name: str) -> str:
+    """``{hydro}_RAPID_{GCM}`` key shared by a future run and its 1980-2019 sibling.
+
+    Mirrors ``scengen.forcing_space._gcm_key``, the same pairing the monthly
+    change-factor table was built on (``diff_relative_to_dataset_baseline``), so
+    the FDC change and the fitted change factors use one baseline convention.
+    """
+    return re.sub(r"_ssp\d+_.*", "", name, flags=re.IGNORECASE)
+
+
+def cmip6_baseline_runs() -> dict[str, Path]:
+    """Historical (1980-2019) sibling directory of each CMIP6 hydro-model/GCM pair.
+
+    Keyed by :func:`cmip6_sibling_key`. Purely observation-forced runs
+    (Daymet2019, Livneh2018) carry no ``ssp`` token and are excluded: they are
+    not a GCM's own baseline.
+    """
+    return {
+        cmip6_sibling_key(d.name): d
+        for d in sorted(CMIP6_INPUTS_DIR.iterdir())
+        if d.is_dir()
+        and "ssp" in d.name
+        and CMIP6_BASELINE_TOKEN in d.name
+        and (d / "catchment_inflow_mgd.csv").is_file()
+    }
+
+
+def _aggregate_inflow(run: Path, nodes: tuple[str, ...]) -> np.ndarray:
+    """Daily aggregate NYC reservoir inflow (MGD) of one pywrdrb input directory."""
+    flows = pd.read_csv(run / "catchment_inflow_mgd.csv",
+                        index_col=0, parse_dates=True)
+    return flows.loc[:, list(nodes)].sum(axis=1).to_numpy()
+
+
 def cmip6_fdcs(grid_pct: np.ndarray, nodes: tuple[str, ...]
-               ) -> tuple[np.ndarray, list[str]]:
-    """FDCs of the raw CMIP6-driven daily flows, one row per future run."""
+               ) -> tuple[np.ndarray, np.ndarray, list[str], list[str]]:
+    """FDCs of the raw CMIP6-driven daily flows, one row per future run.
+
+    Each future run is returned alongside the FDC of its OWN 1980-2019
+    historical sibling. Panel (d) divides the two, which cancels the hydrologic
+    model's bias against the reconstructed record and leaves the model's
+    projected change.
+
+    Returns:
+        ``(future (K, n_grid), baseline (K, n_grid), future_labels,
+        baseline_labels)`` with the two label lists aligned row-for-row.
+    """
     runs = cmip6_future_runs()
+    baselines = cmip6_baseline_runs()
     curves = np.empty((len(runs), grid_pct.size), dtype=np.float32)
+    base_curves = np.empty_like(curves)
+    base_labels: list[str] = []
+    seen: dict[str, np.ndarray] = {}
+
     for i, run in enumerate(runs):
-        flows = pd.read_csv(run / "catchment_inflow_mgd.csv",
-                            index_col=0, parse_dates=True)
-        curves[i] = fdc_on_grid(flows.loc[:, list(nodes)].sum(axis=1).to_numpy(),
-                                grid_pct)
-    return curves, [r.name for r in runs]
+        curves[i] = fdc_on_grid(_aggregate_inflow(run, nodes), grid_pct)
+        key = cmip6_sibling_key(run.name)
+        sibling = baselines.get(key)
+        if sibling is None:
+            raise FileNotFoundError(
+                f"no {CMIP6_BASELINE_TOKEN} historical sibling for {run.name} "
+                f"(key {key!r}) under {CMIP6_INPUTS_DIR}. Panel (d) needs each "
+                "future run's own baseline to show a model-specific change."
+            )
+        if key not in seen:
+            seen[key] = fdc_on_grid(_aggregate_inflow(sibling, nodes),
+                                    grid_pct).astype(np.float32)
+        base_curves[i] = seen[key]
+        base_labels.append(sibling.name)
+
+    return curves, base_curves, [r.name for r in runs], base_labels
 
 
 def etest_chunk_dirs(ensemble_dir: Path) -> list[tuple[Path, int]]:
@@ -204,9 +267,10 @@ def build_cache(ensemble_dir: Path, out_file: Path, *, stride: int = 1) -> dict:
     print(f"[fdc] historic ({len(nodes)} nodes: {', '.join(nodes)})", flush=True)
     hist = historic_fdc(grid, nodes)
 
-    print("[fdc] CMIP6 raw daily runs", flush=True)
-    cmip6, cmip6_labels = cmip6_fdcs(grid, nodes)
-    print(f"[fdc] {len(cmip6_labels)} CMIP6 future runs", flush=True)
+    print("[fdc] CMIP6 raw daily runs (+ 1980-2019 siblings)", flush=True)
+    cmip6, cmip6_base, cmip6_labels, cmip6_base_labels = cmip6_fdcs(grid, nodes)
+    print(f"[fdc] {len(cmip6_labels)} CMIP6 future runs, "
+          f"{len(set(cmip6_base_labels))} historical siblings", flush=True)
 
     print(f"[fdc] E_test from {ensemble_dir.name} (stride={stride})", flush=True)
     etest, etest_ids = etest_fdcs(ensemble_dir, grid, nodes, stride=stride)
@@ -219,6 +283,8 @@ def build_cache(ensemble_dir: Path, out_file: Path, *, stride: int = 1) -> dict:
         etest_realization_ids=etest_ids,
         cmip6_fdc=cmip6,
         cmip6_labels=np.array(cmip6_labels),
+        cmip6_baseline_fdc=cmip6_base,
+        cmip6_baseline_labels=np.array(cmip6_base_labels),
         historic_fdc=hist,
         nyc_nodes=np.array(nodes),
         ensemble_slug=meta.get("slug", ensemble_dir.name),

@@ -2,8 +2,8 @@
 forcing_figure.py - Manuscript Figure 3: the deeply uncertain forcing space.
 
 Composes the four panels of ``src.plotting.forcing_space`` (harmonic model,
-fitted CMIP6 parameters + sampled box, implied monthly change factors, flow
-duration curves). Moved from the retired ``scripts/main/manuscript_figures.py``
+fitted CMIP6 parameters + sampled box, implied monthly change factors, change in
+the flow duration curve). Moved from the retired ``scripts/main/manuscript_figures.py``
 driver into the builder layer; rendering is orchestrated by
 ``scripts/main/figures.py`` via the registry.
 """
@@ -29,7 +29,8 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
         (a) the harmonic model, one term at a time, on a representative CMIP6 run
         (b) the fitted CMIP6 parameters, the E_test draws, and the sampling box
         (c) the monthly change factors the sample implies, against the CMIP6 fits
-        (d) the resulting flow duration curves, against raw CMIP6 flows and history
+        (d) the resulting change in the flow duration curve, against the
+            model-specific change of the raw CMIP6 flows
 
     Panels (a)-(c) come from the CMIP6 change-factor table and the as-built
     ``forcing_profiles.npz``; panel (d) reads the FDC cache produced by
@@ -64,9 +65,12 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
     for ax in axes.flat:
         ax.set_box_aspect(1)
 
+    # Column-major fill: shared_legend_handles() is ordered so each column is
+    # one colour/source (E_test, CMIP6, observed), padded to equal length.
     handles = fspace.shared_legend_handles(pctl)
-    fig.legend(handles=handles, loc="outside lower center", ncol=3,
-               frameon=False, handlelength=1.8, columnspacing=1.8)
+    fig.legend(handles=handles, loc="outside lower center",
+               ncol=fspace.LEGEND_NCOL, frameon=False, handlelength=1.8,
+               columnspacing=1.8)
 
     print(f"[fig03] {len(fits['df'])} CMIP6 runs, {sample['n_sow']} SOWs, "
           f"envelope={pctl}, median shape R2={fits['df'].shape_R2.median():.2f}")
