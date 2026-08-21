@@ -1,7 +1,7 @@
 """factor_mapping_run.py - Success/failure surfaces across designs x criterion sets.
 
 The study's PRIMARY scenario-discovery factor maps: for each campaign design's
-per-criterion-set compromise policy (plus the FFMP incumbent), label every
+per-criterion-set analysis policy (max robustness, min regret; plus the FFMP incumbent), label every
 E_test SOW success/failure under the criterion set and fit the boosted-tree
 success classifier of ``src.factor_mapping`` on the SOW's coordinates --
 THETA space ``(e^m, r1, r2)`` primary (the sampled DU input space, the
@@ -59,6 +59,52 @@ from src import factor_mapping as fm  # noqa: E402
 from src import results_data as rd  # noqa: E402
 from src import robustness as rob  # noqa: E402
 from src.satisficing_criteria import NAMED_SETS, criterion_by_key  # noqa: E402
+
+
+def _select_analysis_policy(res, cset) -> dict:
+    """The design's analysis policy: max robustness AND min regret.
+
+    Selection happens on the figure-7 substrate -- the design's
+    ``robustness_scorecard_criteria.csv`` -- so the analyzed policy is a
+    point on that figure's frontier: maximize ``sat_set__{key}`` (All-Parties
+    satisficing robustness for the compromise set) and minimize the regret
+    frequency against the FFMP incumbent (``1 - no_harm_freq_tau__{key}``).
+    Among the non-dominated (robustness, regret) pairs the tie-break is
+    Euclidean distance to the ideal point (robustness 1, regret 0); both
+    metrics are SOW fractions, so the two axes are commensurate.
+
+    Falls back to :func:`src.factor_mapping.select_compromise` (satisficing
+    only) when the scorecard or its regret column is absent -- e.g. the
+    reference set, which carries no ``no_harm_freq_tau`` column.
+    """
+    xcol, ycol = f"sat_set__{cset.key}", f"no_harm_freq_tau__{cset.key}"
+    card_path = res.path / "robustness_scorecard_criteria.csv"
+    thr = cset.thresholds(res.raw.thresholds, res.raw.kinds)
+    if card_path.exists():
+        card = pd.read_csv(card_path, index_col="solution_id")
+        if xcol in card.columns and ycol in card.columns:
+            ids = np.asarray(res.raw.solution_ids).astype(int)
+            pts = card[[xcol, ycol]].dropna()
+            pts = pts[pts.index.astype(int).isin(ids)]
+            if not pts.empty:
+                sat = pts[xcol].to_numpy(dtype=float)
+                reg = 1.0 - pts[ycol].to_numpy(dtype=float)
+                nd = np.array([
+                    not np.any((sat >= sat[i]) & (reg <= reg[i])
+                               & ((sat > sat[i]) | (reg < reg[i])))
+                    for i in range(len(pts))])
+                cand = np.flatnonzero(nd)
+                pick = cand[int(np.argmin((1.0 - sat[cand]) ** 2
+                                          + reg[cand] ** 2))]
+                sid = int(pts.index[pick])
+                return {
+                    "rule": "max_robustness_min_regret",
+                    "index": int(np.flatnonzero(ids == sid)[0]),
+                    "solution_id": sid,
+                    "robustness": float(sat[pick]),
+                    "regret_freq": float(reg[pick]),
+                }
+    return fm.select_compromise(res.raw, thresholds=thr)
 
 
 def _requested_criteria():
@@ -133,9 +179,14 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
         # regret map and the success/failure map are read panel-for-panel.
         regret_fits, regret_labels, regret_surfaces = [], [], {}
         exposure_rows = []
+        selected_policies: dict[str, dict] = {}
         for design, res in results.items():
             thr = cset.thresholds(res.raw.thresholds, res.raw.kinds)
-            compromise = fm.select_compromise(res.raw, thresholds=thr)
+            compromise = _select_analysis_policy(res, cset)
+            selected_policies[design] = {
+                k: compromise[k] for k in
+                ("solution_id", "rule", "robustness", "regret_freq")
+                if k in compromise}
             policies = [(str(compromise["solution_id"]),
                          fm.success_labels(res.raw, thr,
                                            solution_index=compromise["index"]))]
@@ -153,7 +204,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
                 base = rob.load_raw(res.path / "baseline")
                 R = fm.regret_matrix(res.raw, base, axes=cset.axes)  # (S, G)
 
-                # (1) the fig-8 compromise policy, and (2) the policy this
+                # (1) the fig-8 selected policy, and (2) the policy this
                 # design's search produced that harms the incumbent in the
                 # MOST SOWs -- the worst case the front actually contains.
                 worst_i = int(np.argmax(R.mean(axis=1)))
@@ -267,6 +318,8 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
             "regret_tau": ({n: float(v) for n, v in
                             rob.tau_ladder(first.obj_names).items()
                             if n in set(cset.axes)} if regret_fits else None),
+            "policy_selection": {"rule": "max_robustness_min_regret",
+                                 "per_design": selected_policies},
             "spaces": sorted(features), "n_sow": first.n_sow,
             "gbm": {"n_estimators": fm.FM_N_TREES,
                     "max_depth": fm.FM_MAX_DEPTH,

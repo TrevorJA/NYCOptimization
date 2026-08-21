@@ -7,12 +7,14 @@ data needs, and builder; tuple order IS render order (no more alphabetical
 accidents). The tiers:
 
 - ``manuscript``: the numbered main-text sequence (``figures/manuscript/``,
-  manuscript style, git-tracked). The sequence builds §4's narrative:
-  ensemble composition -> robustness under criteria sets (RQ2) -> where
-  robustness lives in objective space -> regret vs the incumbent (RQ1) ->
-  success/failure surfaces (the mechanism). Every cross-design panel shows
-  E_test re-evaluated quantities ONLY -- search-time values are computed
-  under each design's own ensemble and are never compared across designs.
+  manuscript style, git-tracked). The sequence builds §4's narrative
+  (figures/manuscript/figure_sequence.md): ensemble composition -> each
+  design's Pareto set on parallel axes -> robustness rankings (RQ2) ->
+  regret vs the incumbent (RQ1) -> success/failure surfaces (the
+  mechanism). Every cross-design ROBUSTNESS panel shows E_test re-evaluated
+  quantities ONLY -- search-time objectives are computed under each
+  design's own ensemble and are shown per design (fig 5), never compared
+  across designs.
 - ``si``: supporting-information candidates (``figures/si/``,
   manuscript style, git-tracked).
 - ``exploratory``: internal diagnostics
@@ -212,23 +214,26 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "ensembles vs the candidate pool and the historical record.",
     ),
     FigureSpec(
-        name="criteria_robustness",
-        builder=_lazy("src.plotting.criteria_rank_curves",
-                      "fig_criteria_rank_curves"),
-        tier="manuscript", number=5, section="4.3",
-        kind="criteria", needs=frozenset({"criteria_scorecard"}),
-        caption="Sorted robustness-rank curves per criterion set (RQ2 "
-                "headline) with cross-set ranking stability.",
+        name="pareto_set_parallel_axes",
+        builder=_lazy("src.plotting.pareto_parallel",
+                      "fig_pareto_parallel_axes", adapt=True),
+        tier="manuscript", number=5, section="4.2",
+        kind="parallel_coords", needs=frozenset({"cube"}),
+        caption="Each design's Pareto-approximate set on parallel axes, "
+                "colored by one search objective (objective results only; "
+                "no robustness).",
     ),
+    # Slot 6 replaces the retired criteria_robustness (src.plotting.
+    # criteria_rank_curves) and robust_tradeoffs renders, parked in
+    # figures/manuscript/outdated_unused/ on 2026-08-21.
     FigureSpec(
-        name="robust_tradeoffs",
-        builder=_lazy("src.plotting.robustness_comparison",
-                      "fig_parallel_coords_focal", adapt=True),
+        name="criteria_robustness",
+        builder=_lazy("src.plotting.criteria_robustness",
+                      "fig_criteria_robustness"),
         tier="manuscript", number=6, section="4.3",
-        kind="parallel_coords", needs=frozenset({"cube", "scorecard"}),
-        caption="Re-evaluated objective trade-offs recolored by focal-set "
-                "robustness, per design.",
-        per_focal=True,
+        kind="criteria", needs=frozenset({"criteria_scorecard"}),
+        caption="Robustness rankings: each design's policies sorted by "
+                "E_test satisficing robustness under each criterion set.",
     ),
     FigureSpec(
         name="regret_vs_incumbent",
@@ -237,17 +242,24 @@ FIGURES: tuple[FigureSpec, ...] = (
         tier="manuscript", number=7, section="4.4",
         kind="robustness", needs=frozenset({"criteria_scorecard",
                                             "figure_tables"}),
-        caption="Robustness vs no-harm against the FFMP incumbent (RQ1 "
-                "headline) with the tolerance sweep.",
+        caption="All-Parties robustness vs no-harm frequency against the "
+                "FFMP incumbent (RQ1 headline); per-design non-dominated "
+                "frontier and the incumbent's own robustness as reference.",
     ),
+    # Slot 8 replaces the retired success_failure_surfaces render (single-row
+    # success maps), parked in figures/manuscript/outdated_unused/ on
+    # 2026-08-21: the combined figure adds the per-SOW regret classification
+    # for the same policies as a second row.
     FigureSpec(
-        name="success_failure_surfaces",
+        name="robustness_regret_surfaces",
         builder=_lazy("src.plotting.factor_map_surfaces",
-                      "fig_success_failure_surfaces"),
+                      "fig_robustness_regret_surfaces"),
         tier="manuscript", number=8, section="4.3",
         kind="factor_maps", needs=frozenset({"factor_mapping"}),
-        caption="Boosted-tree success/failure probability surfaces over the "
-                "DU forcing space, per design policy and the incumbent.",
+        caption="Boosted-tree surfaces over the DU forcing space for each "
+                "design's max-robustness/min-regret policy: All-Parties "
+                "success/failure probability (top, + incumbent) and "
+                "high/low regret vs the incumbent (bottom).",
     ),
     # Three CANDIDATES for manuscript slot 9, all carrying number 9 so the
     # numbering does not churn while one is chosen (their names differ, so

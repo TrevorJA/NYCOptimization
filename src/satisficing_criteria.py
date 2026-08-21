@@ -117,11 +117,11 @@ class CriterionSet:
         return out
 
 
-#: The named criterion sets, in display order, followed by the all-axes
-#: reference. Placements per the pre-declared rules (module docstring);
+#: VARIANT ``adopted``: the re-anchored placements, in display order,
+#: followed by the all-axes reference. Placements per the pre-declared rules (module docstring);
 #: incumbent statistics cited from the interim-tag re-evaluation
 #: (criteria_reanchoring.csv is the audit trail).
-CRITERION_SETS: tuple[CriterionSet, ...] = (
+_ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="nyc_supply",
         label="NYC supply security",
@@ -185,6 +185,99 @@ CRITERION_SETS: tuple[CriterionSet, ...] = (
         reference=True,
     ),
 )
+
+
+#: The all-axes reference set, shared by every variant.
+_REFERENCE_SET = next(c for c in _ADOPTED_SETS if c.reference)
+
+#: VARIANT ``v2_20260821``: experimental placements (Trevor, 2026-08-21) for
+#: a broader reading of each stakeholder framing -- the deficit axes enter
+#: the NYC and downstream sets, storage tightens, and the compromise set
+#: carries one axis per party plus storage. Placements are NOT yet justified
+#: by the re-anchoring audit; they exist to explore how the robustness
+#: rankings respond and are expected to change.
+_V2_20260821_SETS: tuple[CriterionSet, ...] = (
+    CriterionSet(
+        key="nyc_supply",
+        label="NYC supply security",
+        rationale=("Experimental (2026-08-21): delivery reliability at the "
+                   "adopted anchor, P99 deficit capped at half the Decree "
+                   "allocation, storage between the incumbent median (13%) "
+                   "and the FFMP L5 goalpost (26%)."),
+        criteria={
+            "nyc_delivery_reliability_annual": 0.65,
+            "nyc_delivery_deficit_p99_pct": 50.0,
+            "nyc_storage_min_p01_pct": 20.0,
+        },
+    ),
+    CriterionSet(
+        key="downstream_flows",
+        label="Downstream flow targets",
+        rationale=("Experimental (2026-08-21): Montague reliability raised "
+                   "from the incumbent-median 0.50 to 0.65 with a P99 deficit "
+                   "cap at 50%; Trenton unchanged at 0.75."),
+        criteria={
+            "montague_flow_reliability_annual": 0.65,
+            "montague_flow_deficit_p99_pct": 50.0,
+            "trenton_flow_reliability_annual": 0.75,
+        },
+    ),
+    CriterionSet(
+        key="flood",
+        label="Flood exposure",
+        rationale=("Experimental (2026-08-21): minor-flood exceedance relaxed "
+                   "slightly from the observed WY2001-2023 value (1.17) to "
+                   "1.25 ft-d/yr."),
+        criteria={
+            "downstream_flood_exceedance_annual": 1.25,
+        },
+    ),
+    CriterionSet(
+        key="compromise",
+        label="All-parties compromise",
+        rationale=("Experimental (2026-08-21): one reliability axis for NYC "
+                   "and Montague at 0.65 each, flood relaxed to 1.5 ft-d/yr, "
+                   "and a 15% storage floor."),
+        criteria={
+            "nyc_delivery_reliability_annual": 0.65,
+            "montague_flow_reliability_annual": 0.65,
+            "downstream_flood_exceedance_annual": 1.5,
+            "nyc_storage_min_p01_pct": 15.0,
+        },
+    ),
+    _REFERENCE_SET,
+)
+
+#: Every saved criteria variant, keyed by name. Add a new tuple above and
+#: register it here to keep it selectable; never edit a saved variant in
+#: place once figures have been rendered from it.
+CRITERION_VARIANTS: dict[str, tuple[CriterionSet, ...]] = {
+    "adopted": _ADOPTED_SETS,
+    "v2_20260821": _V2_20260821_SETS,
+}
+
+#: Env var selecting the active criteria variant (a key of
+#: :data:`CRITERION_VARIANTS`). Scoring (``src.robustness``) and every
+#: criteria figure read the same selection, so the scorecards on disk and the
+#: figures rendered from them always describe the same thresholds -- rescore
+#: each design after changing it.
+CRITERIA_VARIANT_ENV = "NYCOPT_CRITERIA_VARIANT"
+
+#: The default variant when the env var is unset.
+DEFAULT_CRITERIA_VARIANT = "v2_20260821"
+
+
+def active_variant() -> str:
+    """The selected criteria-variant name (validated)."""
+    name = os.environ.get(CRITERIA_VARIANT_ENV, DEFAULT_CRITERIA_VARIANT)
+    if name not in CRITERION_VARIANTS:
+        raise KeyError(f"{CRITERIA_VARIANT_ENV}={name!r} is not a saved "
+                       f"variant; choose from {sorted(CRITERION_VARIANTS)}")
+    return name
+
+
+#: The active criterion sets, in display order, reference last.
+CRITERION_SETS: tuple[CriterionSet, ...] = CRITERION_VARIANTS[active_variant()]
 
 #: The named (non-reference) sets, in display order.
 NAMED_SETS: tuple[CriterionSet, ...] = tuple(

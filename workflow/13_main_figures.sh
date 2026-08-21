@@ -12,6 +12,11 @@
 #      (src/figures/registry.py) through scripts/main/figures.py; figures
 #      whose data needs are absent are skipped with a message.
 #
+# The registry's manuscript tier IS the sequence: a figure renders here only
+# if it is registered there (`python -m scripts.main.figures --list` shows
+# it). Retired figures are parked in figures/manuscript/outdated_unused/ and
+# are not in the registry, so they never regenerate.
+#
 # SI-tier figures render in step 14 (same driver, --tier si); off-pipeline
 # diagnostic figures keep their own drivers:
 #   workflow/supplemental/si_figures_design.sh   (pre-campaign, design support)

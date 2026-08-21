@@ -44,6 +44,7 @@ from matplotlib.lines import Line2D
 
 from src.plotting.layout import (WIDTH_DOUBLE_COL, add_colorbar,
                                  criteria_footer, shared_legend)
+from src.plotting.pareto_parallel import DESIGN_TITLES
 from src.plotting.style import (DESIGN_ORDER, ETEST, FACTOR_MAP_CMAP,
                                 FACTOR_MAP_MARKS, add_figure_footer,
                                 design_label, save_manuscript_figure,
@@ -450,3 +451,254 @@ def fig_regret_exposure(ctx, out_stub: Path, table_dir: Path) -> dict:
     pd.DataFrame(rows).to_csv(
         table_dir / f"regret_exposure_{focal.key}.csv", index=False)
     return {"criterion": focal.key, "designs": designs}
+
+
+###############################################################################
+# Manuscript Figure 8 -- combined robustness + regret surfaces (fig05 style)
+###############################################################################
+
+#: Every character on the figure is drawn at >= this size (style guide).
+FONTSIZE = 14
+
+#: Canvas width in inches, matching figure 5's review-round sizing.
+FIG_WIDTH = 13.5
+
+#: Diverging colormap for the REGRET row. Deliberately different from the
+#: success row's :data:`FACTOR_MAP_CMAP` (RdBu) so the two labels cannot be
+#: conflated; orientation matches (high P = the good outcome = purple).
+REGRET_CMAP = "PuOr"
+
+#: SOW marker sizing at the 13.5-inch canvas (the module's older 7.48-inch
+#: figures use smaller marks).
+_MARK_SIZES = {"good": 34, "bad": 42}
+
+
+def _panel_field(ax, art: dict, key: str, fit_row, cmap: str,
+                 shared_axes: list | None):
+    """Draw one panel's probability field; return (mappable, axes, names).
+
+    A single-class fit has no fitted surface -- the classifier's probability
+    is the constant 0 or 1 -- so the panel is filled with that constant
+    rather than left blank: "low regret everywhere" is a RESULT the reader
+    should see as a solid good-class field, not as a missing panel.
+    """
+    surf = art["surfaces"]
+    if f"{key}__P" in surf:
+        g1, g2 = surf[f"{key}__g1"], surf[f"{key}__g2"]
+        P = surf[f"{key}__P"]
+        names = [str(a) for a in surf[f"{key}__axes"]]
+        if shared_axes is not None and names == list(reversed(shared_axes)):
+            g1, g2, P = g2.T, g1.T, P.T
+            names = list(reversed(names))
+        m = ax.pcolormesh(g1, g2, P, cmap=cmap, vmin=0.0, vmax=1.0,
+                          alpha=0.85, shading="auto", rasterized=True)
+        ax.contour(g1, g2, P, levels=[0.5], colors="0.15", linewidths=1.2)
+        return m, names
+    # Degenerate (single-class) fit: constant field at the class value.
+    names = shared_axes
+    axis_pair = [fit_row.get("top_axis_1"), fit_row.get("top_axis_2")]
+    if all(isinstance(a, str) for a in axis_pair):
+        names = axis_pair if shared_axes is None else shared_axes
+    return None, names
+
+
+def _constant_field(ax, value: float, xy: tuple, cmap: str):
+    """Fill the panel with the constant probability ``value`` (0 or 1)."""
+    x, y = xy
+    g1, g2 = np.meshgrid(np.linspace(np.min(x), np.max(x), 8),
+                         np.linspace(np.min(y), np.max(y), 8))
+    return ax.pcolormesh(g1, g2, np.full_like(g1, value), cmap=cmap,
+                         vmin=0.0, vmax=1.0, alpha=0.85, shading="auto",
+                         rasterized=True)
+
+
+def _sow_marks(ax, sub: pd.DataFrame, ax_names: list) -> tuple:
+    """Scatter the raw SOW labels; returns ``(n_good, n_sow, x, y)``."""
+    ok = sub["pass"].astype(bool).to_numpy()
+    x = sub[ax_names[0]].to_numpy(dtype=float)
+    y = sub[ax_names[1]].to_numpy(dtype=float)
+    m_ok, m_no = FACTOR_MAP_MARKS["success"], FACTOR_MAP_MARKS["failure"]
+    ax.scatter(x[ok], y[ok], s=_MARK_SIZES["good"], marker=m_ok["marker"],
+               facecolors=m_ok["facecolor"], edgecolors=m_ok["edgecolor"],
+               linewidths=0.7, zorder=4)
+    ax.scatter(x[~ok], y[~ok], s=_MARK_SIZES["bad"], marker=m_no["marker"],
+               facecolors=m_no["facecolor"], edgecolors=m_no["edgecolor"],
+               linewidths=0.6, zorder=4)
+    return int(ok.sum()), len(sub), x, y
+
+
+def _policy_labels(art: dict, design: str, policy: str, criterion: str,
+                   view: str | None = None) -> pd.DataFrame:
+    """The per-SOW label rows for one (design, policy) panel."""
+    lab = art["labels"]
+    sub = lab[(lab["design"] == design)
+              & (lab["policy"].astype(str) == str(policy))
+              & (lab["criterion"] == criterion)]
+    if view is not None and "view" in sub.columns:
+        sub = sub[sub["view"] == view]
+    return sub
+
+
+def fig_robustness_regret_surfaces(ctx, out_stub: Path,
+                                   table_dir: Path) -> dict:
+    """Manuscript figure 8: All-Parties robustness AND regret surfaces.
+
+    Two rows over the DU forcing space (theta), one policy per scenario
+    design -- the design's max-robustness / min-regret selection on the
+    figure-7 (robustness, regret) frontier:
+
+    * **Top row (a-d)**: for that policy in each scenario design, plus the
+      FFMP incumbent, the boosted-tree probability that a SOW meets the
+      All-Parties compromise criterion set (the robustness metric of
+      figures 6 and 7). Blue = meets the set.
+    * **Bottom row (e-g)**: the SAME policies, each SOW relabelled
+      high/low regret -- whether the policy leaves the FFMP incumbent
+      worse off beyond tolerance on any member axis in that SOW -- with
+      the same classifier on a different colormap. No incumbent panel:
+      its regret is zero by construction.
+
+    Style follows figure 5 (14 pt minimum, no bold, no footers; exact
+    numbers in the companion CSVs).
+    """
+    focal = focal_criterion()
+    art_s = _load_artifacts(ctx, focal.key, "factor_map")
+    art_r = _load_artifacts(ctx, focal.key, "regret_map")
+    meta = art_s["meta"]
+    selection = (meta.get("policy_selection") or {}).get("per_design", {})
+
+    top = _ordered_panels(art_s["fits"], include_incumbent=True)
+    if not top:
+        raise FileNotFoundError("no theta-space factor_map fits in the "
+                                "artifacts")
+    regret_fits = art_r["fits"]
+    regret_fits = regret_fits[(regret_fits["space"] == "theta")
+                              & (regret_fits["view"] == "compromise")]
+
+    fig, axes = plt.subplots(2, 4, figsize=(FIG_WIDTH, 7.4),
+                             sharex=True, sharey=True)
+    axes[1, 3].axis("off")
+
+    map_s = map_r = None
+    shared_axes: list | None = None
+    csv_rows = []
+
+    def _draw(ax, art, fit_row, key, cmap, view, letter, count_word):
+        nonlocal shared_axes
+        design, policy = fit_row["design"], str(fit_row["policy"])
+        mappable, ax_names = _panel_field(ax, art, key, fit_row, cmap,
+                                          shared_axes)
+        if ax_names is None:
+            ax_names = shared_axes
+        sub = _policy_labels(art, design, policy, focal.key, view)
+        n_good = n_sow = 0
+        if ax_names is not None and not sub.empty \
+                and all(a in sub.columns for a in ax_names):
+            n_good, n_sow, x, y = _sow_marks(ax, sub, ax_names)
+            if mappable is None:
+                mappable = _constant_field(
+                    ax, 1.0 if n_good == n_sow else 0.0, (x, y), cmap)
+            shared_axes = list(ax_names)
+        who = ("Current FFMP policy" if policy == "incumbent"
+               else DESIGN_TITLES.get(design, design))
+        ax.set_title(f"({letter}) {who}\n{count_word} in "
+                     f"{n_good}/{n_sow} SOWs",
+                     loc="left", fontsize=FONTSIZE)
+        ax.tick_params(labelsize=FONTSIZE)
+        ax.grid(False)
+        for side in ax.spines.values():
+            side.set_visible(True)
+            side.set_linewidth(1.2)
+        sel = selection.get(design, {}) if policy != "incumbent" else {}
+        csv_rows.append({
+            "row": "robustness" if view is None else "regret",
+            "panel": letter, "design": design, "policy": policy,
+            "criterion": focal.key,
+            "axis_1": ax_names[0] if ax_names else None,
+            "axis_2": ax_names[1] if ax_names else None,
+            "n_good": n_good, "n_sow": n_sow,
+            "selection_rule": sel.get("rule"),
+            "selection_robustness": sel.get("robustness"),
+            "selection_regret_freq": sel.get("regret_freq"),
+            "cv_auc": fit_row.get("cv_auc"),
+            "cv_auc_std": fit_row.get("cv_auc_std"),
+            "train_accuracy": fit_row.get("train_accuracy"),
+            "backend": fit_row.get("backend"),
+        })
+        return mappable
+
+    # Top row: scenario designs then the incumbent, letters a-d.
+    designs_top = []
+    for i, fit_row in enumerate(top[:4]):
+        design, policy = fit_row["design"], str(fit_row["policy"])
+        if policy != "incumbent":
+            designs_top.append((design, policy))
+        m = _draw(axes[0, i], art_s, fit_row,
+                  f"{design}__{policy}__theta", FACTOR_MAP_CMAP, None,
+                  chr(ord("a") + i), "meets criteria")
+        map_s = m if m is not None else map_s
+
+    # Bottom row: the SAME policies, regret label, letters e-g.
+    for j, (design, policy) in enumerate(designs_top[:3]):
+        match = regret_fits[
+            (regret_fits["design"] == design)
+            & (regret_fits["policy"].astype(str) == policy)]
+        if match.empty:
+            axes[1, j].axis("off")
+            continue
+        m = _draw(axes[1, j], art_r, match.iloc[0],
+                  f"compromise__{design}__{policy}__theta", REGRET_CMAP,
+                  "compromise", chr(ord("e") + j), "low regret")
+        map_r = m if m is not None else map_r
+
+    if shared_axes is not None:
+        fig.supxlabel(_THETA_LABELS.get(shared_axes[0], shared_axes[0]),
+                      fontsize=FONTSIZE + 1)
+        fig.supylabel(_THETA_LABELS.get(shared_axes[1], shared_axes[1]),
+                      fontsize=FONTSIZE + 1)
+    fig.tight_layout(rect=(0.025, 0.03, 1.0, 1.0))
+
+    # Two figure-level horizontal colorbars below the panels (one per
+    # encoded quantity), then the shared frameless legend -- the fig05
+    # stacking; savefig bbox='tight' keeps them in frame.
+    for mappable, x0, label in (
+            (map_s, 0.10, "Probability the SOW meets all criteria"),
+            (map_r, 0.58, "Probability the SOW is low-regret")):
+        if mappable is None:
+            continue
+        cax = fig.add_axes([x0, -0.050, 0.30, 0.014])
+        cb = fig.colorbar(mappable, cax=cax, orientation="horizontal")
+        cb.set_label(label, fontsize=FONTSIZE)
+        cb.ax.tick_params(labelsize=FONTSIZE)
+        cb.outline.set_visible(False)
+
+    m_ok, m_no = FACTOR_MAP_MARKS["success"], FACTOR_MAP_MARKS["failure"]
+    shared_legend(fig, [
+        Line2D([], [], ls="none", marker=m_ok["marker"],
+               markerfacecolor=m_ok["facecolor"],
+               markeredgecolor=m_ok["edgecolor"], markersize=9,
+               label="SOW meets all criteria (top row) / "
+                     "low-regret (bottom row)"),
+        Line2D([], [], ls="none", marker=m_no["marker"],
+               markerfacecolor=m_no["facecolor"],
+               markeredgecolor=m_no["edgecolor"], markersize=9,
+               label="SOW fails at least one criterion (top row) / "
+                     "high-regret (bottom row)"),
+    ], ncol=2, y=-0.115, fontsize=FONTSIZE)
+
+    save_manuscript_figure(fig, out_stub)
+    plt.close(fig)
+
+    pd.DataFrame(csv_rows).to_csv(
+        table_dir / f"robustness_regret_surfaces_{focal.key}.csv",
+        index=False)
+    tau = meta.get("regret_tau") or {}
+    pd.DataFrame(
+        [{"kind": "criterion", "objective": n, "value": v,
+          "direction": meta.get("criterion_kinds", {}).get(n)}
+         for n, v in (meta.get("criterion_thresholds") or {}).items()]
+        + [{"kind": "regret_tau", "objective": n, "value": v,
+            "direction": None} for n, v in tau.items()]).to_csv(
+        table_dir / f"robustness_regret_surfaces_{focal.key}_criteria.csv",
+        index=False)
+    return {"criterion": focal.key,
+            "policies": {d: p for d, p in designs_top}}
