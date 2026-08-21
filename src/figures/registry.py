@@ -112,7 +112,7 @@ class FigureSpec:
         needs: Data requirements, subset of
             {"cube", "scorecard", "figure_tables", "ensemble", "refset",
             "fdc_cache", "factor_mapping"} -- drives skip-with-message.
-        caption: One-line description for ``--list`` and the contact sheet.
+        caption: One-line description for ``--list``.
         per_focal: The figure is parameterized by the FOCAL criterion, so its
             stem carries the criterion key and renders under different
             ``NYCOPT_FOCAL_CRITERION`` values coexist rather than overwrite
@@ -135,8 +135,7 @@ class FigureSpec:
 
         This is the ONE place an output filename is decided -- builders are
         handed the resulting stub and must save to it verbatim, so what
-        ``figures.py`` reports, what the contact sheet globs, and what lands
-        on disk cannot drift apart.
+        ``figures.py`` reports and what lands on disk cannot drift apart.
         """
         if self.tier == "manuscript" and self.number is not None:
             stem = f"fig{self.number:02d}_{self.name}"
@@ -168,8 +167,8 @@ def legacy(builder: Callable) -> Callable:
     Only the first argument is adapted: ``out_stub`` passes through untouched
     so the builder saves under the spec's stem. (It used to pass
     ``out_stub.parent``, which handed the builder a directory and let it pick
-    its own filename -- the stem the driver printed and the contact sheet
-    globbed was then not the file written.)
+    its own filename -- the stem the driver printed was then not the file
+    written.)
     """
     def _run(ctx: FigureContext, out_stub: Path, table_dir: Path):
         return builder(ctx.results(), out_stub, table_dir)

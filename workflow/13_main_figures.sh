@@ -80,7 +80,7 @@ if [[ -n "${FIGURES}" ]]; then
     # shellcheck disable=SC2086
     python3 -u -m scripts.main.figures ${ARGS}
 else
-    python3 -u -m scripts.main.figures --tier manuscript --contact-sheet
+    python3 -u -m scripts.main.figures --tier manuscript
 fi
 
 echo "[main_figures] done: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

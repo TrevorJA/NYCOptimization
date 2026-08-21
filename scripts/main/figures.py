@@ -5,7 +5,6 @@ The one entrypoint for every figure tier (``src/figures/registry.py``):
     python -m scripts.main.figures --list
     python -m scripts.main.figures --tier manuscript
     python -m scripts.main.figures --figure regret_vs_incumbent
-    python -m scripts.main.figures --tier manuscript --contact-sheet
 
 Tiers route themselves: manuscript -> ``figures/manuscript/`` (PNG + PDF,
 manuscript style, tracked), si -> ``figures/si/`` (same), exploratory ->
@@ -105,8 +104,7 @@ def _render(spec: FigureSpec, ctx: FigureContext) -> bool:
 
     # Report the file that EXISTS, never the one we asked for: a builder that
     # saves somewhere other than its stub would otherwise be reported as a
-    # success at a path holding no figure, and the contact sheet (which globs
-    # the stem) would drop it silently.
+    # success at a path holding no figure.
     written = Path(f"{out_stub}.png")
     if not written.is_file():
         print(f"[figures] FAILED {spec.stem}: builder wrote no "
@@ -114,43 +112,6 @@ def _render(spec: FigureSpec, ctx: FigureContext) -> bool:
         return False
     print(f"[figures]   -> {written}")
     return True
-
-
-def _contact_sheet(specs: list[FigureSpec], ctx: FigureContext) -> None:
-    """A thumbnail grid of the rendered sequence, tag-stamped."""
-    try:
-        from PIL import Image, ImageDraw
-    except ImportError:
-        print("[figures] contact sheet skipped: Pillow not installed")
-        return
-
-    thumbs = []
-    for spec in specs:
-        png = spec.out_dir() / f"{spec.stem}.png"
-        if png.exists():
-            img = Image.open(png)
-            img.thumbnail((640, 640))
-            thumbs.append((spec.stem, img))
-    if not thumbs:
-        print("[figures] contact sheet skipped: nothing rendered")
-        return
-
-    cols = min(3, len(thumbs))
-    rows = -(-len(thumbs) // cols)
-    cell_w = max(t.width for _, t in thumbs) + 16
-    cell_h = max(t.height for _, t in thumbs) + 40
-    sheet = Image.new("RGB", (cols * cell_w, rows * cell_h + 30), "white")
-    draw = ImageDraw.Draw(sheet)
-    draw.text((8, 6), f"reeval tag: {ctx.tag}   slug: {ctx.slug}", fill="black")
-    for i, (name, img) in enumerate(thumbs):
-        r, c = divmod(i, cols)
-        x, y = c * cell_w + 8, r * cell_h + 30
-        sheet.paste(img, (x, y))
-        draw.text((x, y + img.height + 4), name, fill="black")
-    out = config.MANUSCRIPT_FIG_DIR / "contact_sheet.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    sheet.save(out)
-    print(f"[figures] contact sheet -> {out}")
 
 
 def main(argv=None) -> int:
@@ -161,8 +122,6 @@ def main(argv=None) -> int:
                    help="render every figure of one tier")
     p.add_argument("--list", action="store_true",
                    help="list the sequence and exit")
-    p.add_argument("--contact-sheet", action="store_true",
-                   help="assemble a thumbnail sheet of the rendered figures")
     args = p.parse_args(argv)
 
     ctx = FigureContext()
@@ -188,8 +147,6 @@ def main(argv=None) -> int:
 
     ok = sum(_render(s, ctx) for s in specs)
     print(f"[figures] rendered {ok}/{len(specs)}")
-    if args.contact_sheet:
-        _contact_sheet(specs, ctx)
     return 0 if ok else 1
 
 
