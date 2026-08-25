@@ -600,8 +600,8 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
             shared_axes = list(ax_names)
         who = ("Current FFMP policy" if policy == "incumbent"
                else DESIGN_TITLES.get(design, design))
-        ax.set_title(f"({letter}) {who}\n{count_word} in "
-                     f"{n_good}/{n_sow} SOWs",
+        ax.set_title(f"({letter}) {who}\n{n_good}/{n_sow} SOWs "
+                     f"{count_word}",
                      loc="left", fontsize=FONTSIZE)
         ax.tick_params(labelsize=FONTSIZE)
         ax.grid(False)
@@ -634,7 +634,7 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
             designs_top.append((design, policy))
         m = _draw(axes[0, i], art_s, fit_row,
                   f"{design}__{policy}__theta", FACTOR_MAP_CMAP, None,
-                  chr(ord("a") + i), "meets criteria")
+                  chr(ord("a") + i), "meet criteria")
         map_s = m if m is not None else map_s
 
     # Bottom row: the SAME policies, regret label, letters e-g.
@@ -647,7 +647,7 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
             continue
         m = _draw(axes[1, j], art_r, match.iloc[0],
                   f"compromise__{design}__{policy}__theta", REGRET_CMAP,
-                  "compromise", chr(ord("e") + j), "low regret")
+                  "compromise", chr(ord("e") + j), "low-regret")
         map_r = m if m is not None else map_r
 
     if shared_axes is not None:
@@ -655,7 +655,10 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
                       fontsize=FONTSIZE + 1)
         fig.supylabel(_THETA_LABELS.get(shared_axes[1], shared_axes[1]),
                       fontsize=FONTSIZE + 1)
-    fig.tight_layout(rect=(0.025, 0.03, 1.0, 1.0))
+    # Column 4 has no bottom-row panel, so the incumbent panel carries its
+    # own x tick labels.
+    axes[0, 3].tick_params(labelbottom=True)
+    fig.tight_layout(rect=(0.025, 0.02, 1.0, 1.0), w_pad=2.0)
 
     # Two figure-level horizontal colorbars below the panels (one per
     # encoded quantity), then the shared frameless legend -- the fig05

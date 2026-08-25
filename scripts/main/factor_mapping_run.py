@@ -107,6 +107,24 @@ def _select_analysis_policy(res, cset) -> dict:
     return fm.select_compromise(res.raw, thresholds=thr)
 
 
+def _surface_axes(fit, names: list, space: str) -> tuple[int, int]:
+    """The 2-D plane a fit's probability surface is evaluated on.
+
+    THETA surfaces are pinned to the common ``(em, r1)`` DU plane -- the
+    figure grids share axes panel-for-panel, so every panel must show the
+    SAME plane (per-fit top-2 axes put hazard_filling on ``(em, r2)`` while
+    its neighbours showed ``(em, r1)``, silently mislabelling its y-axis).
+    Off-plane features are held at their median by
+    ``fm.probability_surface``, and the per-feature importances in the fits
+    CSV still record what actually drives each classifier. The supplemental
+    HAZARD space keeps the top-2-importance convention: its axes are many
+    and its figures are read per panel, not as a shared grid.
+    """
+    if space == "theta" and "em" in names and "r1" in names:
+        return names.index("em"), names.index("r1")
+    return tuple(fm.top_axes(fit, 2)) if len(names) > 1 else (0, 0)
+
+
 def _requested_criteria():
     raw = os.environ.get("NYCOPT_FM_CRITERIA", "").strip()
     if not raw:
@@ -219,8 +237,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
                     for space, (X, names) in features.items():
                         # Fit P(LOW regret) so blue = good on every map.
                         fit = fm.fit_classifier(X, ~regret, names, space=space)
-                        a1, a2 = (fm.top_axes(fit, 2) if len(names) > 1
-                                  else (0, 0))
+                        a1, a2 = _surface_axes(fit, names, space)
                         key = f"{view}__{design}__{policy}__{space}"
                         if fit.predict_proba is not None and len(names) > 1:
                             g1, g2, P = fm.probability_surface(fit, X, a1, a2)
@@ -268,7 +285,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
                                                  features, res, ok)
                 for space, (X, names) in features.items():
                     fit = fm.fit_classifier(X, ok, names, space=space)
-                    a1, a2 = fm.top_axes(fit, 2) if len(names) > 1 else (0, 0)
+                    a1, a2 = _surface_axes(fit, names, space)
                     key = f"{design}__{policy}__{space}"
                     if fit.predict_proba is not None and len(names) > 1:
                         g1, g2, P = fm.probability_surface(fit, X, a1, a2)
