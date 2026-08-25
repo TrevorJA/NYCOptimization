@@ -49,6 +49,7 @@ Closed list of tags used to classify per-paper notes. Revisable: add/rename tags
 
 ## Methods (cross-cutting)
 
+- `[sampling-design]` — experimental/sampling design: Latin hypercube, conditioned LHS, space-filling (minimax/maximin) designs.
 - `[ml-in-water-systems]` — machine learning applied to water resources broadly.
 - `[lstm-hydro]` — LSTM applications to streamflow, salinity, temperature.
 - `[surrogate-modeling]` — Gaussian processes, random forests as policy/sim surrogates.
