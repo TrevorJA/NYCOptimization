@@ -165,6 +165,24 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   with the flood tolerance alone (between 0.25 and 0.30) and must be reported
   with that sensitivity shown.
 
+- [x] **[local]** FIG 8 OVERHAULED 2026-08-21 to the fig05 style and COMBINED
+  with the regret classification: `fig08_robustness_regret_surfaces.png`
+  (registry slot 8; old single-row `fig08_success_failure_surfaces.png` parked
+  in `outdated_unused/`). Top row (a-d): boosted-tree P(SOW meets the
+  All-Parties compromise set) for ONE policy per scenario design + the FFMP
+  incumbent; bottom row (e-g): the SAME policies' per-SOW high/low-regret
+  label vs the incumbent (PuOr, no incumbent panel — its regret is 0 by
+  construction). Policy selection CHANGED in `factor_mapping_run.py`: from
+  best-satisficing to MAX-ROBUSTNESS/MIN-REGRET on the fig07 scorecard
+  frontier (selected: fixedprob #602 34%/0%, hazfill #204 49%/0%, historic
+  #284 6%/0%; frontier is a single point per design). Theta surfaces are now
+  PINNED to the common (e^m, r1) plane (hazfill's top-2 axes were (e^m, r2),
+  silently mislabelling its y-axis on the shared grid). Artifacts regenerated
+  under v2_20260821 criteria + adopted tau (jobs 20056402/20056483). FINDING:
+  all three selected policies are low-regret in 200/200 E_test SOWs, so the
+  bottom row is uniformly good — the same degeneracy as fig09 candidate A;
+  the fig09 choice below should weigh that redundancy.
+
 - [ ] **[local]** CHOOSE ONE of the three manuscript Figure 9 candidates
   (DU-space regret) and cut the other two. All three were built 2026-08-14
   (`src/plotting/factor_map_surfaces.py`, sharing one grid routine with fig 8;

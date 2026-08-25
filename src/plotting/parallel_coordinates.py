@@ -45,14 +45,14 @@ def minmaxs_from_directions(directions) -> list:
     return ["max" if int(d) == 1 else "min" for d in np.asarray(directions)]
 
 
-def _format_value(v: float) -> str:
-    """Format a raw objective value for an axis-end annotation."""
-    if abs(v) >= 100:
-        return f"{v:.0f}"
-    elif abs(v) >= 1:
-        return f"{v:.2f}"
-    else:
-        return f"{v:.4f}"
+def _format_value(v: float, scale_max: float = 1.0) -> str:
+    """Format a raw objective value for an axis-end annotation.
+
+    Percent-scale axes (the axis range reaches beyond 10) round to the
+    nearest integer; unit-interval-scale axes (reliabilities, small rates)
+    round to the nearest hundredth (project rule, 2026-08-21).
+    """
+    return f"{v:.0f}" if abs(scale_max) > 10 else f"{v:.2f}"
 
 
 def _axis_index(col, columns_axes) -> int:
@@ -288,10 +288,12 @@ def custom_parallel_coordinates(
     # --- axis furniture: vertical axes, raw end values, labels
     for j in range(n_axes):
         ax.plot([j, j], [0, 1], c="0.25", lw=1.0, zorder=3)
-        ax.annotate(_format_value(tops[j]), (j, 1.02), ha="center", va="bottom",
-                    fontsize=fontsize - 2, color="0.3", zorder=5)
-        ax.annotate(_format_value(bottoms[j]), (j, -0.02), ha="center", va="top",
-                    fontsize=fontsize - 2, color="0.3", zorder=5)
+        ax.annotate(_format_value(tops[j], col_max[j]), (j, 1.02),
+                    ha="center", va="bottom", fontsize=fontsize - 2,
+                    color="black", zorder=5)
+        ax.annotate(_format_value(bottoms[j], col_max[j]), (j, -0.02),
+                    ha="center", va="top", fontsize=fontsize - 2,
+                    color="black", zorder=5)
         ax.annotate(axis_labels[j], (j, -0.09), ha="center", va="top",
                     fontsize=fontsize - 1, zorder=5)
 
@@ -303,9 +305,9 @@ def custom_parallel_coordinates(
     # --- direction-of-preference arrow, left of the first axis
     y_from, y_to = (0.15, 0.85) if ideal_direction == "top" else (0.85, 0.15)
     ax.annotate("", xy=(-0.55, y_to), xytext=(-0.55, y_from),
-                arrowprops=dict(arrowstyle="-|>", color="0.2", lw=1.5))
-    ax.text(-0.72, 0.5, "Direction of preference", rotation=90,
-            ha="center", va="center", fontsize=fontsize - 1, color="0.2")
+                arrowprops=dict(arrowstyle="-|>", color="black", lw=2.5))
+    ax.text(-0.72, 0.5, "Preference", rotation=90,
+            ha="center", va="center", fontsize=fontsize - 1, color="black")
     ax.set_xlim(-0.95, n_axes - 1 + 0.4)
     ax.set_ylim(-0.42, 1.12)
 

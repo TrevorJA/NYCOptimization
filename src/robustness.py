@@ -1251,7 +1251,7 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
     ``robustness_quantiles.csv``, ``robustness_attainability.csv``, and
     ``robustness_meta.json``. Returns the scorecard path.
     """
-    from src.satisficing_criteria import ALL_SETS
+    from src.satisficing_criteria import ALL_SETS, active_variant
 
     reeval_dir = Path(reeval_dir)
     raw = load_raw(reeval_dir)
@@ -1291,6 +1291,7 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
     # full resolved vectors are snapshotted (moving-measuring-stick guard,
     # extended to sets). Sets naming axes absent from this cube are omitted,
     # matching score_criteria's skip.
+    meta["criteria_variant"] = active_variant()
     meta["criterion_sets"] = {
         c.key: {
             "axes": list(c.axes),
