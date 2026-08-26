@@ -1517,3 +1517,427 @@ def rtol_table_path(name: str) -> Path:
 def rtol_figure_path(name: str) -> Path:
     """Path stub for a named regret-tolerance figure."""
     return RTOL_FIGURES_DIR / name
+
+
+###############################################################################
+# Hazard-support decomposition of the E_test design contrast (HSD)
+# (docs/notes/methods/hazard_support_decomposition.md)
+#
+# Decomposes the hazard_filling - fixed_probabilistic difference on E_test by
+# where each SOW sits relative to the stationary candidate pool's hazard
+# support. Zero simulation, two stages:
+#   stage A (policy-free, runs post-regeneration): support membership of every
+#     E_test SOW against the P=1e6 pool images in the selector's own scaled
+#     coordinates, strata labels, per-axis excursion attribution, and the
+#     SOW-level pool coverage deficit (the step-11 complement);
+#   stage B (pre-campaign): the design contrast (Starr satisficing + no-harm
+#     frequency) re-scored per support stratum and per forcing tercile from
+#     the persisted per-SOW cubes that exist BEFORE the campaign (the go/no-go
+#     sets re-evaluated on the interim first10ch E_test subset), consuming the
+#     stage-A labels unchanged. The point is to settle the stationary-vs-
+#     climate-augmented pool question before search SUs are spent.
+# All definitional constants here are PRE-REGISTERED (see the methods note).
+# DECISION RECORDED 2026-08-25 (methods note section 7): the HF candidate pool
+# stays stationary for the campaign.
+###############################################################################
+
+
+def configure_hsd_env() -> None:
+    """Apply env knobs for the hazard-support decomposition.
+
+    Salinity and temperature LSTMs off (pure post-processing; config imports
+    as a lookup). Scenario design defaults to ``historic`` so importing
+    ``config`` never requires a staged search ensemble. Stage B's regret
+    tolerance and criteria variant are NOT set here: they must come from the
+    sourced production env file (``NYCOPT_REGRET_TAU``,
+    ``NYCOPT_CRITERIA_VARIANT``), and the run script hard-errors if the
+    tolerance is missing rather than falling back to the eps-only ladder.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+# ---------------------------------------------------------------------------
+# Mode switch
+# ---------------------------------------------------------------------------
+#: HSD_SMOKE=1 proves the code path on the P=2,000 smoke pools and the first
+#: HSD_SMOKE_N_SOW SOWs of the E_test sub-window image (login-scale, seconds).
+#: The full run uses the P=1e6 pools and all 1,000 SOWs.
+HSD_SMOKE: bool = os.environ.get("NYCOPT_HSD_SMOKE", "0") == "1"
+
+#: SOW count for the smoke pass (prefix of the theta index; the LHS rows are
+#: randomly ordered, so a prefix is a well-spread subsample). 200 matches the
+#: first10ch interim re-eval subset, so a smoke stage B can label its cubes.
+HSD_SMOKE_N_SOW: int = 200
+
+# ---------------------------------------------------------------------------
+# Inputs (persisted artifacts; nothing here triggers a simulation)
+# ---------------------------------------------------------------------------
+#: The staged E_test slug (sub-window hazard image + forcing profiles).
+HSD_ETEST_SLUG: str = os.environ.get("NYCOPT_HSD_ETEST_SLUG",
+                                     "etest_kn_50yr_n25000")
+
+#: Candidate-pool slugs, one per ensemble draw, in draw order. The FIRST entry
+#: supplies the primary stratum labels; the rest are the cross-draw agreement
+#: sensitivity. The smoke pass swaps in the P=2,000 pools.
+HSD_POOL_SLUGS: tuple = tuple(
+    f"statpool_10yr_n{'2000' if HSD_SMOKE else '1000000'}_d{k}"
+    for k in range(3)
+)
+
+#: Realized hazard-filling ensemble slugs whose _meta.json ``normalization``
+#: blocks cross-check the recomputed pool p1/p99 bounds (skipped when absent).
+HSD_HAZFILL_SLUGS: tuple = tuple(f"hazfill_stat_abs_10yr_n100_d{k}"
+                                 for k in range(3))
+
+#: The re-eval tag stage B discovers runs under (default: the interim 200-SOW
+#: subset the pre-campaign go/no-go sets were re-evaluated on), and the moea
+#: formulation identity. Stage-B artifacts carry this tag in their filenames.
+HSD_REEVAL_TAG: str = os.environ.get("NYCOPT_HSD_REEVAL_TAG",
+                                     "etest_kn_50yr_n25000_first10ch")
+HSD_FORMULATION: str = "ffmp"
+
+# ---------------------------------------------------------------------------
+# Support definition (PRE-REGISTERED; methods note section 2)
+# ---------------------------------------------------------------------------
+#: Robust range-scaling percentiles of the selector geometry (must equal the
+#: selection-side ROBUST_LO_PCT/ROBUST_HI_PCT; asserted against the hazfill
+#: meta at run time).
+HSD_BOUND_PCT: tuple = (1.0, 99.0)
+
+#: Primary exceedance quantile: a sub-window is beyond support when its
+#: nearest-pool-member distance exceeds this quantile of the pool's own
+#: self-NN distance distribution.
+HSD_SELF_NN_QUANTILE: float = 0.99
+
+#: Sensitivity quantiles, reported alongside the primary.
+HSD_SELF_NN_QUANTILES_SENS: tuple = (0.95, 0.999)
+
+#: Strata cut points on the per-SOW out_frac score (see the methods note for
+#: the Binomial(125, 0.01) derivation of the in-support ceiling).
+HSD_STRATA_CUTS: tuple = (0.05, 0.50)
+HSD_STRATA_NAMES: tuple = ("in_support", "boundary", "out_of_support")
+
+#: Fallback floor: a stratum smaller than this many SOWs triggers the
+#: pre-declared two-way merge (boundary + out_of_support) for the headline.
+HSD_MIN_STRATUM_SOW: int = 30
+
+# ---------------------------------------------------------------------------
+# Stage B settings
+# ---------------------------------------------------------------------------
+#: SOW-level bootstrap replicates / seed for the paired HF - PS difference CI.
+HSD_BOOTSTRAP_N: int = 2000
+HSD_BOOTSTRAP_SEED: int = 7
+
+#: Forcing-tercile partition: quantile bins of this theta axis (matches
+#: compare_designs' severity decomposition).
+HSD_TERCILE_AXIS: str = "m"
+HSD_TERCILE_BINS: int = 3
+
+#: Deficit-decile bins for the pool-vs-design coverage-deficit table.
+HSD_DEFICIT_BINS: int = 10
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+HSD_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "hazard_support_decomposition"
+HSD_TABLES_DIR: Path = HSD_OUTPUT_ROOT / "tables"
+HSD_FIGURES_DIR: Path = HSD_OUTPUT_ROOT / "figures"
+
+
+def hsd_table_path(name: str, tagged: bool = False) -> Path:
+    """Path for a named table CSV.
+
+    Smoke runs carry a ``smoke_`` prefix so a smoke pass can never masquerade
+    as the full-scale artifact. Stage-B tables (``tagged=True``) additionally
+    carry the re-eval tag, so numbers scored on an interim SOW subset never
+    share a filename with the production full-E_test result (one cube per
+    claim; the separation is enforced on disk).
+    """
+    prefix = "smoke_" if HSD_SMOKE else ""
+    suffix = f"__{HSD_REEVAL_TAG}" if tagged else ""
+    return HSD_TABLES_DIR / f"{prefix}{name}{suffix}.csv"
+
+
+def hsd_figure_path(name: str, tagged: bool = False) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    prefix = "smoke_" if HSD_SMOKE else ""
+    suffix = f"__{HSD_REEVAL_TAG}" if tagged else ""
+    return HSD_FIGURES_DIR / f"{prefix}{name}{suffix}"
+
+
+###############################################################################
+# Ensemble-size diagnostics: a statistically grounded minimum N (ESD)
+# (docs/notes/methods/ensemble_size_diagnostics.md; SI Texts S4/S5)
+#
+# Derives a pre-registered minimum realization count N for both matched search
+# designs at the fixed L = 10 yr, in two layers plus a design-only third:
+#   Layer A (selection level, ~0 SU): hazard-space representativeness vs N —
+#     HF tail enrichment / stratification / joint coverage on the P=1e6 pool
+#     images and on nested prefixes (the (N, P) ladder); the exact i.i.d. law
+#     of PS subsets of the pool image; descriptor convergence vs N.
+#   Layer B (the sizing criterion, ~50 SU): a per-realization annual-unit
+#     LIBRARY — ESD_N_POLICIES fixed policies x every unique realization in
+#     the union of a 5,000-row i.i.d. pool prefix, the HF selections at every
+#     ladder N for three anchor plans, and the staged production draws —
+#     from which the objective vector of any (design, N, replicate) ensemble
+#     is composed offline. Level SE, paired SE (binding, vs epsilon/2), flip
+#     rate, optimism / construction SD, and n_eff per objective and N.
+#   Layer C (design + cost only): the search-level confirmation.
+# Every threshold, ladder, replicate count, and selection rule below is
+# PRE-REGISTERED (methods note §§2-5); do not retune after results exist.
+###############################################################################
+
+
+def configure_esd_env() -> None:
+    """Apply env knobs for the ensemble-size diagnostics.
+
+    Salinity and temperature LSTMs off (the annual-unit registry uses
+    neither). The scenario design comes from the sourced env file
+    (``workflow/envs/ensemble_size_diagnostics.env`` pins
+    ``hazard_filling_stationary`` with the P = 1e6 pool so the design's own
+    ``pool_slug``/``selector_seed`` resolve); ``historic`` is the fallback so
+    importing ``config`` never requires a staged search ensemble.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+# ---------------------------------------------------------------------------
+# Mode switch
+# ---------------------------------------------------------------------------
+#: ESD_SMOKE=1 proves every stage on the staged P=2,000 smoke pool with a
+#: 200-row reference, a two-rung ladder, two policies, and one library chunk
+#: (a few ranks on `shared`, minutes). Artifacts carry a ``smoke_`` prefix and
+#: the smoke library lives in its own slug so it can never masquerade as the
+#: full-scale run.
+ESD_SMOKE: bool = os.environ.get("NYCOPT_ESD_SMOKE", "0") == "1"
+
+# ---------------------------------------------------------------------------
+# Pools, designs, staged ensembles
+# ---------------------------------------------------------------------------
+#: Candidate-pool size the diagnostic reads (the production P=1e6 pools; the
+#: P=2,000 smoke pools under ESD_SMOKE).
+ESD_POOL_P: int = 2_000 if ESD_SMOKE else 1_000_000
+
+#: Pool draws whose hazard images Layer A scores (d0 is also the library pool).
+ESD_POOL_DRAWS: tuple = (0, 1, 2)
+
+#: The library pool: every regenerated library member comes from THIS pool, so
+#: the PS reference prefix and the HF selections share one i.i.d. population.
+ESD_LIBRARY_POOL_DRAW: int = 0
+
+
+def esd_pool_slug(draw: int) -> str:
+    """Staged slug of the stationary candidate pool for ``draw`` at ESD_POOL_P."""
+    return f"statpool_10yr_n{ESD_POOL_P}_d{draw}"
+
+
+#: Staged production search ensembles evaluated as they are (already prepped):
+#: the PS fresh draws and the HF per-pool-draw constructions at N = 100.
+#: Design -> tuple of (draw, slug). Skipped with a message when not staged.
+ESD_STAGED_ENSEMBLES: "dict[str, tuple[tuple[int, str], ...]]" = {
+    "fixed_probabilistic": tuple(
+        (k, f"fixprob_10yr_n100_d{k}") for k in (0, 1, 2)),
+    "hazard_filling_stationary": tuple(
+        (k, f"hazfill_stat_abs_10yr_n100_d{k}") for k in (0, 1, 2)),
+}
+
+# ---------------------------------------------------------------------------
+# Ladders and replicate counts (Layer A)
+# ---------------------------------------------------------------------------
+#: The N ladder (common to every layer). The campaign point is 100.
+ESD_N_LADDER: tuple = (25, 50) if ESD_SMOKE else (50, 75, 100, 150, 200, 300, 400, 500)
+ESD_N_CAMPAIGN: int = 100
+
+#: Anchor plans per (pool, N) for Layer A: the design's own selector seed for
+#: these "draws" (draw 0 is the production plan; 101+ are extra plans on the
+#: same pool, never confused with the production draws 1-2 which re-roll the
+#: pool). The first ESD_HF_LIBRARY_PLANS of them feed the library.
+ESD_HF_ANCHOR_DRAWS: tuple = (0, 101, 102) if ESD_SMOKE else (0, 101, 102, 103, 104, 105, 106, 107, 108, 109)
+ESD_HF_LIBRARY_PLANS: int = 2 if ESD_SMOKE else 3
+
+#: Random-null seeds (matched random designs of the same N) and the number of
+#: uniform i.i.d. subsets per N for the PS sampling-distribution block.
+ESD_NULL_SEEDS: int = 10 if ESD_SMOKE else 50
+ESD_PS_SUBSETS: int = 20 if ESD_SMOKE else 200
+
+#: Nested-prefix rungs for the joint (N, P) ladder (pool d0 only). A prefix of
+#: an i.i.d. pool is an exact i.i.d. pool of its size (SI Text S2).
+ESD_NP_PREFIXES: tuple = (500, 1_000, 2_000) if ESD_SMOKE else (5_000, 20_000, 100_000, 300_000, 1_000_000)
+
+#: Pool quantiles for the tail statistics; the adequacy gate on the P90 share
+#: (seed-mean convention) is unchanged from the selector diagnostics.
+ESD_TAIL_QUANTILES: tuple = (90.0, 99.0)
+ESD_TAIL_CRITERION: float = 0.30
+
+# ---------------------------------------------------------------------------
+# Policy set and library (Layer B)
+# ---------------------------------------------------------------------------
+#: Formulation of every policy in the set (the campaign FFMP).
+ESD_FORMULATION: str = "ffmp"
+
+#: The epsilon-filtered merged reference sets whose UNION the per-objective
+#: bests and nearest neighbours are drawn from (PS rows before HF rows). The
+#: pilot `_eps20260812` sets are the current substrate (pre-regeneration,
+#: disclosed); point these at the regenerated go/no-go sets when they land —
+#: the selection rule itself does not change.
+ESD_POLICY_SET_FILES: "dict[str, Path]" = {
+    "fixed_probabilistic": _PROJECT_DIR / "outputs" / "fixed_probabilistic"
+    / "ffmp_obj8" / "sets" / "ffmp_obj8_merged_eps20260812.set",
+    "hazard_filling_stationary": _PROJECT_DIR / "outputs" / "hazard_filling_stationary"
+    / "ffmp_obj8" / "sets" / "ffmp_obj8_merged_eps20260812.set",
+}
+
+#: Re-eval tag whose per-design cubes supply the compromise policies
+#: (`factor_mapping.select_compromise`); solution ids index rows of the set
+#: files above (verified: 991 / 784 rows on 2026-08-25).
+ESD_POLICY_REEVAL_TAG: str = "etest_kn_50yr_n25000_first10ch"
+
+#: Per-objective bests taken from the union (annual-registry names).
+ESD_POLICY_BEST_OBJECTIVES: tuple = (
+    "nyc_delivery_reliability_annual",
+    "montague_flow_reliability_annual",
+    "downstream_flood_exceedance_annual",
+    "nyc_storage_min_p01_pct",
+)
+
+#: Size of the fixed policy set (incumbent + 9 by rule; smoke = incumbent + 1).
+ESD_N_POLICIES: int = 2 if ESD_SMOKE else 10
+
+#: Rows of the library pool forming the i.i.d. PS reference (a prefix).
+ESD_P_REF: int = 200 if ESD_SMOKE else 5_000
+
+#: Minimum PS replicate count per N; disjoint prefix blocks are supplemented
+#: to this count with random overlapping subsets (flagged) where floor(P_REF/N)
+#: falls short.
+ESD_PS_MIN_REPLICATES: int = 4 if ESD_SMOKE else 20
+
+#: Regenerated library members are staged in chunks of this many realizations
+#: (one chunk dir = one standalone staged ensemble, step-04 inputs per chunk).
+ESD_CHUNK_SIZE: int = 300 if ESD_SMOKE else 1_000
+
+#: Realizations per simulation block inside one library task (memory: ~1 GB
+#: per rank at 100 x 10 yr under the trimmed RSS model).
+ESD_EVAL_BLOCK: int = 100
+
+#: Where the regenerated library chunks physically live (projects space; the
+#: 25 GB home quota cannot hold ~25 GB of staged chunks). Each chunk dir is
+#: created there and symlinked into ``config.STAGED_ENSEMBLE_DIR`` so every
+#: config path is untouched. ``None`` or a missing path stages in place.
+ESD_STAGING_ROOT: "Path | None" = Path(os.environ.get(
+    "NYCOPT_ESD_STAGING_ROOT",
+    "/anvil/projects/x-ees260021/NYCOptimization/synthetic_ensembles"))
+
+#: Bootstrap draws (realization-level and unit-level) and seed.
+ESD_BOOTSTRAP_B: int = 100 if ESD_SMOKE else 1_000
+ESD_BOOTSTRAP_SEED: int = 11
+
+#: Random-subset seed for the supplemented PS replicates.
+ESD_REPLICATE_SEED: int = 23
+
+#: Epsilon-cube cross-check: realization-axis subsample sizes and draws.
+ESD_EPSCUBE_N: tuple = (25, 50, 75)
+ESD_EPSCUBE_SUBSETS: int = 20
+
+# ---------------------------------------------------------------------------
+# Pre-registered decision thresholds (Layer B; methods note §4.3)
+# ---------------------------------------------------------------------------
+#: Level SE <= ESD_LEVEL_SE_EPS_FRAC x epsilon; paired SE (binding) <=
+#: ESD_PAIRED_SE_EPS_FRAC x epsilon; flip rate <= ESD_FLIP_RATE_MAX; PS
+#: |optimism| <= ESD_OPTIMISM_EPS_FRAC x epsilon; HF construction SD <=
+#: ESD_LEVEL_SE_EPS_FRAC x epsilon.
+ESD_LEVEL_SE_EPS_FRAC: float = 1.0
+ESD_PAIRED_SE_EPS_FRAC: float = 0.5
+ESD_FLIP_RATE_MAX: float = 0.05
+ESD_OPTIMISM_EPS_FRAC: float = 0.5
+
+# ---------------------------------------------------------------------------
+# NFE asymptote (existing runtime archives) and cost pricing
+# ---------------------------------------------------------------------------
+#: (design, slug, seed) runtime archives read for the NFE-asymptote reading.
+ESD_NFE_ARCHIVES: tuple = (
+    ("fixed_probabilistic", "ffmp_obj8", 1),
+    ("hazard_filling_stationary", "ffmp_obj8", 1),
+    ("historic", "ffmp_obj8_mm_full", 1),
+    ("historic", "ffmp_obj8_mm_full", 2),
+)
+#: Hypervolume fractions of the final value at which the attainment NFE is read.
+ESD_NFE_HV_FRACTIONS: tuple = (0.95, 0.99)
+
+#: Cost pricing: SU per 500k-NFE search at N = 100 (methods §6), the measured
+#: trimmed N exponent at L = 10 (`scaling_fits.csv`), the per-rank RSS model
+#: (MB = a + b * N * L; ENSEMBLE_COST_RSS_MB["trimmed"]), node memory and
+#: ranks per node.
+ESD_SU_PER_SEARCH_N100: float = 33_400.0
+ESD_COST_N_EXPONENT: float = 0.951
+ESD_NODE_MEM_GB: int = 256
+ESD_RANKS_PER_NODE: int = 128
+ESD_MEM_SAFETY: float = 0.85
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+ESD_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "ensemble_size_diagnostics"
+ESD_TABLES_DIR: Path = ESD_OUTPUT_ROOT / "tables"
+ESD_FIGURES_DIR: Path = ESD_OUTPUT_ROOT / "figures"
+ESD_LIBRARY_DIR: Path = ESD_OUTPUT_ROOT / "library"
+
+
+def esd_prefix() -> str:
+    """``smoke_`` under ESD_SMOKE, else empty."""
+    return "smoke_" if ESD_SMOKE else ""
+
+
+def esd_table_path(name: str) -> Path:
+    """Path for a named table CSV (smoke-prefixed under ESD_SMOKE)."""
+    return ESD_TABLES_DIR / f"{esd_prefix()}{name}.csv"
+
+
+def esd_json_path(name: str) -> Path:
+    """Path for a named JSON artifact (smoke-prefixed under ESD_SMOKE)."""
+    return ESD_TABLES_DIR / f"{esd_prefix()}{name}.json"
+
+
+def esd_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return ESD_FIGURES_DIR / f"{esd_prefix()}{name}"
+
+
+def esd_library_slug() -> str:
+    """Slug of the chunked regenerated library ensemble (parent dir)."""
+    return f"{esd_prefix()}esd_lib_10yr_p{ESD_POOL_P}_d{ESD_LIBRARY_POOL_DRAW}"
+
+
+def esd_library_path() -> Path:
+    """Path of the merged per-realization annual-unit library (HDF5)."""
+    return ESD_LIBRARY_DIR / f"{esd_prefix()}unit_library_{ESD_FORMULATION}.h5"
+
+
+###############################################################################
+# Objective-dynamics anatomy figures (HISTORIC single trace + local KN ensemble)
+#
+# Two local (non-HPC) diagnostic suites that draw the operational dynamics each
+# objective reduces, for the default FFMP baseline and one storage-conservative
+# contrast policy. scripts/supplemental/objective_dynamics_figures.py scores the
+# historic trace with the whole-trace (§1) performance metrics and shows the
+# annual-unit (§2) strip the optimizer targets; scripts/supplemental/
+# ensemble_objective_dynamics_figures.py scores the kn_50yr_n5 local fixture
+# with the pooled annual-unit (§2) objectives. Plot modules live alongside the
+# drivers (objective_dynamics.py, ensemble_objective_dynamics.py). Strict and
+# refresh toggles are env flags on the drivers (NYCOPT_OBJDYN_NOSTRICT,
+# NYCOPT_ENSOBJDYN_NOSTRICT, NYCOPT_ENSOBJDYN_REFRESH).
+###############################################################################
+
+# ---------------------------------------------------------------------------
+# Output trees (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+#: Historic single-trace suite: figures plus the cached full-model simulations
+#: (``baseline_{formulation}.hdf5``, ``contrast_storage_conservative.hdf5``).
+OBJDYN_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "objective_dynamics"
+OBJDYN_FIGURES_DIR: Path = OBJDYN_OUTPUT_ROOT / "figures"
+
+#: Ensemble suite: figures plus the cached per-realization simulations (.pkl).
+ENSOBJDYN_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "ensemble_objective_dynamics"
+ENSOBJDYN_FIGURES_DIR: Path = ENSOBJDYN_OUTPUT_ROOT / "figures"
+ENSOBJDYN_CACHE_DIR: Path = ENSOBJDYN_OUTPUT_ROOT / "cache"

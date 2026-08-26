@@ -1,3 +1,0 @@
-flag,objective,design,value,detail
-saturated_objective,nyc_delivery_deficit_p99_pct,ALL,1.0,median-solution satisficing fraction is > 0.98 for every design -- non-discriminating
-saturated_objective,nj_delivery_reliability_annual,ALL,1.0,median-solution satisficing fraction is > 0.98 for every design -- non-discriminating

@@ -1,9 +1,0 @@
-objective,kind,default_threshold,default_stringency
-nyc_delivery_reliability_annual,ge,0.65,0.32357345971563983
-nyc_delivery_deficit_p99_pct,le,48.0,0.12472748815165877
-montague_flow_reliability_annual,ge,0.79,0.5329905213270142
-montague_flow_deficit_p99_pct,le,27.0,0.718281990521327
-trenton_flow_reliability_annual,ge,0.87,0.9028744075829384
-downstream_flood_exceedance_annual,le,1.17,0.620760663507109
-nyc_storage_min_p01_pct,ge,26.0,0.8092203791469195
-nj_delivery_reliability_annual,ge,0.74,0.17219905213270142

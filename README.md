@@ -226,6 +226,21 @@ tiny-NFE end-to-end pipeline check per formulation (Anvil `debug` queue,
 Off-pipeline diagnostics (benchmarks, objective-sensitivity sweeps) live in
 `workflow/supplemental/`.
 
+## Outputs are not tracked in git
+
+Everything under `outputs/` is ignored (`.gitignore`: `outputs/`). Result
+CSVs, Borg reference sets, re-evaluation tables, manifests, figures and HDF5
+are all machine-local: they are regenerated from the tracked `workflow/`
+scripts and `workflow/envs/*.env` files, so a laptop artefact can never
+masquerade as an Anvil result. Nothing in `outputs/` is pushed, and `git
+status` will never show changes there. The only synced figures are the final
+manuscript set in `figures/manuscript/`.
+
+To move a specific result between machines, copy it out of band (e.g.
+`rsync -av anvil:.../outputs/comparison/ outputs/comparison/`) rather than
+committing it. Large ensembles live in Anvil project space and are symlinked
+into `outputs/` (see `docs/notes/methods/`).
+
 ## Staging requirements
 
 The `historic` scenario design runs end-to-end with no staged data. Every

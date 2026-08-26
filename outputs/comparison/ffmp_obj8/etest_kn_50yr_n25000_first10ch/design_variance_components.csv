@@ -1,7 +1,0 @@
-metric,statistic,component,method,n,df,ss,ms,var_component,f_stat,p_value,note
-sat_multivariate_sow,best,design (fixed),anova,3,2,0.0,0.0,,,,"F = MS_design / MS_draw; the DRAW is the unit of analysis, so effective n = 3 draws, NOT 3 (design, draw, seed) observations"
-sat_multivariate_sow,best,draw(design) (random),anova,3,0,0.0,,,,,mean draws per design K_bar = 1.00
-sat_multivariate_sow,best,seed(draw) (random / residual),anova,3,0,0.0,,,,,mean seeds per draw S_bar = 1.00 | no seed replication: residual variance is not identified
-sat_multivariate_sow,median,design (fixed),anova,3,2,0.0,0.0,,,,"F = MS_design / MS_draw; the DRAW is the unit of analysis, so effective n = 3 draws, NOT 3 (design, draw, seed) observations"
-sat_multivariate_sow,median,draw(design) (random),anova,3,0,0.0,,,,,mean draws per design K_bar = 1.00
-sat_multivariate_sow,median,seed(draw) (random / residual),anova,3,0,0.0,,,,,mean seeds per draw S_bar = 1.00 | no seed replication: residual variance is not identified
