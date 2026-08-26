@@ -6,66 +6,19 @@ venv/
 .venv/
 
 # ============================================================================
-# Generated outputs — cross-machine sync policy
-#   SHARE : small text results (*.csv, *.json, *.md), the ADOPTED
-#           epsilon-filtered reference sets (sets/*_eps*.set), run
-#           configs (*.env) — the primary results, synced.
-#   LOCAL : figures (except figures/manuscript/) — regenerated per machine,
-#           so a laptop figure can never masquerade as an Anvil result.
-#           Raw/intermediate Borg sets (merged_raw, seed merges) — large,
-#           churn every re-merge, regenerable from tracked workflow.
-#   NEVER : large regenerable binaries (simulation HDF5, caches), MPI job
-#           coordination markers (*.claim/*.done, partial/ dirs).
-# Guard by file TYPE (robust as new experiments appear), plus the wholesale
-# staging dirs that are large in their entirety.
+# outputs/ is NOT tracked. Everything under it (result CSVs, reference sets,
+# figures, HDF5, manifests, ...) is machine-local and regenerable from the
+# tracked workflow/ scripts + env files. The only synced figures are the
+# final manuscript set in figures/manuscript/ (outside outputs/).
+# If a specific result must travel between machines, copy it out of band
+# (rsync/scp) rather than committing it.
 # ============================================================================
-
-# Large regenerable binaries — ignore anywhere under outputs/
-outputs/**/*.hdf5
-outputs/**/*.h5
-outputs/**/*.pkl
-outputs/**/*.npz
-outputs/**/*.npy
-outputs/**/*.parquet
-
-# Solver scratch / large intermediate dumps (regenerable)
-outputs/**/runtime/
-outputs/**/checkpoints/
-outputs/supplemental/objective_determinism/runs/
-
-# MPI job-coordination markers / per-rank partial results (zero remote value)
-outputs/**/partial/
-outputs/**/*.claim
-outputs/**/*.done
-
-# Borg sets: share ONLY the adopted epsilon-filtered reference sets
-# (raw merges + per-seed sets are 25-35 MB each and churn every re-merge)
-outputs/**/sets/*.set
-!outputs/**/sets/*_eps*.set
-
-# Figures — machine-local, never shared (regenerate from tracked scripts+data)
-# outputs/**/*.png
-outputs/**/*.pdf
-outputs/**/*.svg
-outputs/**/*.jpg
-outputs/**/*.jpeg
-outputs/**/*.eps
+outputs/
 
 # Top-level figures: exploratory per-scenario figures are machine-local;
 # only the final manuscript figure set is synced.
 figures/*
 !figures/manuscript/
-
-# Wholesale-large / legacy staging dirs (regenerable in their entirety)
-outputs/optimization/
-outputs/diagnostics/
-outputs/reevaluation/
-outputs/reference_sets/
-outputs/baseline/
-outputs/presim/
-outputs/run_manifests/
-outputs/synthetic_ensembles/
-outputs/supplemental/hazard_selector_diagnostics/
 
 # Borg MOEA (licensed, not distributed)
 lib/borg/

@@ -1,7 +1,0 @@
-design,vector,scale,archive_size,n_policies,n_pareto_eps0
-historic,campaign,0.25,235,513,274
-historic,campaign,0.5,191,513,274
-historic,campaign,1.0,128,513,274
-historic,campaign,2.0,72,513,274
-historic,campaign,4.0,39,513,274
-historic,previous,1.0,172,513,274
