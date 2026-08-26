@@ -137,6 +137,36 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   The regeneration above already covers this — just ensure it runs on
   post-rename code on the cluster (pull both repos before step 02).
 
+- [ ] **[HPC]** ENSEMBLE-SIZE DIAGNOSTICS (minimum N; SI Texts S4/S5) — STARTED
+  2026-08-25. Pre-registered design + criteria in
+  `docs/notes/methods/ensemble_size_diagnostics.md` (§§2-5 frozen before any
+  result). Code: `scripts/supplemental/ensemble_size_{hazard,library_run,figures}.py`,
+  `src/ensemble_size_stats.py`, `supplemental_config.ESD_*`, four wrappers
+  `workflow/supplemental/ensemble_size_*.sh`, env
+  `workflow/envs/ensemble_size_diagnostics.env`, tests
+  `tests/test_ensemble_size_diagnostics.py` (16 pass). Block D of
+  `diagnose_hazard_selectors.py` extended (env N ladder, P99/MST/min-sep
+  records, saturation-mode N sweep). NFE-asymptote reading DONE from the
+  go/no-go archives (note §7.4): no island reaches 95 % of final HV before
+  ~75 % of budget, last-fifth HV gain 3-8 % — NFE cannot be traded for N.
+  Chain: smoke (P=2,000 pool) -> Layer A -> stage chunks (array) -> library
+  eval (1 wholenode, ~50 SU) -> analysis; budget < ~100 SU total.
+  LAYER A DONE 2026-08-25 (job 20142729): HF tail enrichment is FLAT in N at
+  P=1e6 (min per-axis P90 share 0.28-0.29 from N=50 to 500 on all three
+  pools; declines with N only at P' <= 2e4), so the selection-level argument
+  against larger N does not hold at the production pool. BUILD-QC FINDING
+  (needs Trevor's call): on the REGENERATED pools the campaign 6-axis gate
+  is a thin MISS — official re-gate job 20143066 on d0: min share 0.283
+  (drought_magnitude 0.284; pre-regeneration 0.311); Layer A seed means
+  0.271/0.276/0.271 on d0/d1/d2 at N=100. Either re-affirm the gate with
+  its ~0.02 seed tolerance or revisit the axis set/P before the searches.
+  OPEN: run
+  the full chain, fill note §7.1-7.3/7.6, SI Text S5 estimator-stability
+  paragraph, `scenario_design_methods.md` §6, `experimental_design.md`, and
+  the adoption checklist (epsilon re-calibration at N_common, (N, P) gate
+  re-check, E_test 1,225-unit sentence, `production` memory geometry,
+  `NYCOPT_SEARCH_N`, every N=100 cost figure).
+
 - [x] **[local]** REGRET TOLERANCE tau RE-ADOPTED 2026-08-14 on ROUND values
   (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;
   k = 1 unchanged) after pass B ran (job 19910387) and the paired near-tie
@@ -424,6 +454,17 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 - [ ] **[local→HPC]** Flood-axis validity diagnostics for Text S3:
   downstream-stress correlation as a required build diagnostic plus the
   selected-ensemble event-seasonality span check.
+- [x] **[HPC]** Hazard-support decomposition — DECIDED 2026-08-25: the HF
+  candidate pool STAYS STATIONARY for the campaign (no climate-forced
+  sub-ensembles). Evidence + decision record in
+  `docs/notes/methods/hazard_support_decomposition.md` §6–7: 94.3% of E_test
+  sub-windows lie within the P=1e6 stationary pool's q0.99 NN fringe (611
+  in-support / 389 boundary / 0 out-of-support SOWs; the excursion is
+  wet/flood-side), and on the interim go/no-go cubes the HF−PS satisficing
+  advantage is larger BEYOND support (+0.23 [0.14, 0.33]) than inside (+0.09).
+  Optional SI follow-up after the campaign: the same wrapper with
+  `NYCOPT_HSD_REEVAL_TAG=etest_kn_50yr_n25000` (zero simulation) to re-read
+  the no-harm arm on a regenerated incumbent cube.
 
 
 ## 2. Production gates

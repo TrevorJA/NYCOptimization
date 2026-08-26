@@ -53,6 +53,16 @@ All configuration is via environment variables (no CLI value flags):
                                large P), each at the campaign and full axis
                                sets. Skips blocks 1-3, D, E and all figures.
                                Default off.
+    NYCOPT_SELDIAG_N_SWEEP     space-separated N ladder for block D (default
+                               "100 150 200 300"). The ensemble-size diagnostic
+                               (docs/notes/methods/ensemble_size_diagnostics.md)
+                               runs the wider "50 75 100 150 200 300 400 500".
+    NYCOPT_SELDIAG_SATURATION_NSWEEP
+                               1 = also run block D (lhs_nn + random null on
+                               NYCOPT_SELDIAG_N_SWEEP) inside saturation mode,
+                               so a nested-prefix rung carries an N sweep — the
+                               joint (N, P) ladder of the ensemble-size
+                               diagnostic. Default off.
 
 Run after staging the pool hazard image (workflow step 02 with
 ``NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary``; locally use
@@ -103,6 +113,11 @@ SATURATION = os.environ.get("NYCOPT_SELDIAG_SATURATION", "").strip().lower() in 
     "1", "true", "yes", "on",
 )
 
+#: Saturation mode additionally runs block D (the N sweep) when set, so the
+#: nested-prefix ladder doubles as the joint (N, P) ladder.
+SATURATION_NSWEEP = os.environ.get(
+    "NYCOPT_SELDIAG_SATURATION_NSWEEP", "").strip().lower() in ("1", "true", "yes", "on")
+
 #: Output slug: prefix rungs get their own directory so rungs don't clobber.
 OUT_SLUG = f"{POOL_SLUG}_prefix{PREFIX_P}" if PREFIX_P else POOL_SLUG
 
@@ -116,8 +131,16 @@ BOUNDS_SWEEP: tuple[tuple[float, float], ...] = ((0.0, 100.0), (0.5, 99.5), (1.0
 #: Sub-pool halves for the draw-stability block.
 N_SUBPOOLS = 2
 
-#: Ensemble sizes for the sizing decision surface (block D).
-N_SWEEP: tuple[int, ...] = (100, 150, 200, 300)
+#: Ensemble sizes for the sizing decision surface (block D). Env-configurable
+#: so the ensemble-size diagnostic can run its wider ladder without a second
+#: driver.
+N_SWEEP: tuple[int, ...] = tuple(
+    int(n) for n in os.environ.get("NYCOPT_SELDIAG_N_SWEEP", "100 150 200 300").split()
+)
+
+#: Upper pool quantile reported alongside the P90 tail share in block D (the
+#: severe-corner supply that grows scarce first as N rises at fixed P).
+TAIL_UPPER_PCT: float = 99.0
 
 #: Adequacy criterion for the sizing decision: minimum per-axis tail share above
 #: the pool P90 (unbiased rule = 0.10; criterion = >= ~3x the null on EVERY axis).
@@ -283,6 +306,53 @@ def _dimension_sweep(
     return pd.DataFrame.from_records(records)
 
 
+def n_sweep_record(
+    H: np.ndarray, X: np.ndarray, rows: np.ndarray, axes: list[str], *,
+    upper_pct: float = TAIL_UPPER_PCT,
+) -> dict:
+    """One block-D row: per-axis tail shares, stratification, joint coverage.
+
+    Shared with the ensemble-size diagnostic
+    (``scripts/supplemental/ensemble_size_hazard.py``) so both drivers score a
+    selection identically.
+
+    Args:
+        H: ``(M, d)`` pool sub-image on the selection axes (raw metric values).
+        X: The same sub-image normalized once to the campaign unit box
+           (``ss.minmax_normalize(H)``), passed in so repeated calls do not
+           re-normalize a 1e6-row image.
+        rows: Selected row indices.
+        axes: Axis names (columns of ``H``).
+        upper_pct: The upper pool quantile whose tail share is reported beside
+            the P90 share.
+
+    Returns:
+        Flat dict: ``tail_share_min/mean`` (P90), ``tail_share_pXX_min/mean``
+        (upper quantile), ``ks_mean``, ``L2_star_abs``, ``nn_min_abs``,
+        ``mst_edge_mean``, ``mst_edge_min``.
+    """
+    per_axis = sd.per_axis_selection_metrics(H, rows, axes)
+    tails = [m["tail_share_p90"] for m in per_axis.values()]
+    kss = [m["ks_to_uniform"] for m in per_axis.values()]
+    p_up = np.percentile(H, upper_pct, axis=0)
+    tails_up = [float(np.mean(H[rows, k] > p_up[k])) for k in range(H.shape[1])]
+    lb, ub = np.zeros(X.shape[1]), np.ones(X.shape[1])
+    cov = ss.coverage_metrics(X[rows], lb, ub)
+    mst = sd._mst_edge_stats(X[rows])
+    tag = f"p{int(upper_pct)}"
+    return {
+        "tail_share_min": float(np.min(tails)),
+        "tail_share_mean": float(np.mean(tails)),
+        f"tail_share_{tag}_min": float(np.min(tails_up)),
+        f"tail_share_{tag}_mean": float(np.mean(tails_up)),
+        "ks_mean": float(np.mean(kss)),
+        "L2_star_abs": float(cov["L2_star_discrepancy"]),
+        "nn_min_abs": float(cov.get("nn_min", 0.0)),
+        "mst_edge_mean": float(mst["mst_edge_mean"]),
+        "mst_edge_min": float(mst["mst_edge_min"]),
+    }
+
+
 def _n_sweep(
     H_full: np.ndarray, candidate_axes: list[str], axis_sets: dict[str, list[str]]
 ) -> pd.DataFrame:
@@ -290,6 +360,7 @@ def _n_sweep(
     records = []
     for mset, axes in axis_sets.items():
         H = _sub(H_full, candidate_axes, axes)
+        X = ss.minmax_normalize(H)
         for n in N_SWEEP:
             for selector, seeds in (
                 ("lhs_nn", _seeds(N_SEEDS)), ("random", _seeds(N_NULL_SEEDS)),
@@ -299,19 +370,10 @@ def _n_sweep(
                         rows = ss.absolute_filling_subsample(H, n, seed=seed)
                     else:
                         rows = ss.random_subsample(H, n, seed=seed)
-                    per_axis = sd.per_axis_selection_metrics(H, rows, axes)
-                    tails = [m["tail_share_p90"] for m in per_axis.values()]
-                    kss = [m["ks_to_uniform"] for m in per_axis.values()]
-                    X = ss.minmax_normalize(H)
-                    lb, ub = np.zeros(X.shape[1]), np.ones(X.shape[1])
-                    cov = ss.coverage_metrics(X[rows], lb, ub)
                     records.append({
                         "m_set": mset, "m": len(axes), "n": n,
                         "selector": selector, "seed": seed,
-                        "tail_share_min": float(np.min(tails)),
-                        "tail_share_mean": float(np.mean(tails)),
-                        "ks_mean": float(np.mean(kss)),
-                        "L2_star_abs": float(cov["L2_star_discrepancy"]),
+                        **n_sweep_record(H, X, rows, axes),
                     })
     return pd.DataFrame.from_records(records)
 
@@ -695,6 +757,9 @@ def _run_saturation(
 
     per_axis.to_csv(out / "per_axis_coverage.csv", index=False)
     dim.to_csv(out / "dimension_sweep.csv", index=False)
+    if SATURATION_NSWEEP:
+        _n_sweep(H_full, candidate_axes, axis_sets).to_csv(
+            out / "n_sweep.csv", index=False)
 
     adequacy = {}
     for mset, axes in axis_sets.items():
@@ -719,13 +784,16 @@ def _run_saturation(
         "P": int(len(H_full)), "n_select": N_SELECT,
         "seeds": N_SEEDS, "null_seeds": N_NULL_SEEDS,
         "saturation_mode": True,
+        "saturation_nsweep": SATURATION_NSWEEP,
+        "n_sweep": list(N_SWEEP) if SATURATION_NSWEEP else None,
         "axis_screen": {k: v for k, v in screen.items() if k != "spread"},
         "axis_sets": {k: list(v) for k, v in axis_sets.items()},
         "tail_criterion": TAIL_CRITERION,
         "adequacy": adequacy,
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2))
-    print(f"[seldiag] saturation mode: wrote 2 tables + summary.json -> {out}")
+    print(f"[seldiag] saturation mode: wrote {3 if SATURATION_NSWEEP else 2} tables "
+          f"+ summary.json -> {out}")
 
 
 def main() -> None:
