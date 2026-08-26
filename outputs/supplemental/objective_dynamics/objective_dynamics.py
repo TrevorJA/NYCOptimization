@@ -69,7 +69,7 @@ from src.objectives_ensemble import (  # noqa: E402
     _nyc_delivery_failure_weeks_annual,
     _nyc_storage_min_annual,
     _trenton_failure_weeks_annual,
-    water_year_unit_slices,
+    ffmp_year_unit_slices,
 )
 from src.plotting.style import (  # noqa: E402
     ARCH_COLORS,
@@ -137,10 +137,10 @@ def _water_year_labels(index: pd.DatetimeIndex):
     Returns:
         (years, slices): ``years`` is an int array of water-year labels (the
         calendar year of each unit's Sep 30 end); ``slices`` are the positional
-        ``water_year_unit_slices``.
+        ``ffmp_year_unit_slices``.
     """
     idx = pd.DatetimeIndex(index)
-    slices = water_year_unit_slices(idx)
+    slices = ffmp_year_unit_slices(idx)
     years = np.array([idx[sl.start].year + 1 for sl in slices], dtype=int)
     return years, slices
 

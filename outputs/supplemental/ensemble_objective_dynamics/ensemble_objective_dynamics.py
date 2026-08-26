@@ -69,7 +69,7 @@ from src.objectives_ensemble import (  # noqa: E402
     FailureFrequencyOp,
     PooledMeanOp,
     PooledPercentileOp,
-    water_year_unit_slices,
+    ffmp_year_unit_slices,
 )
 from src.plotting.style import save_figure  # noqa: E402
 from src.plotting.style import ARCH_COLORS  # noqa: E402
@@ -255,7 +255,7 @@ def _flood_seasonality(ax, policies) -> None:
         for d in pol.data_per_real:
             over = _flood_over_stage_daily(
                 d["flood_stage"][_DOWNSTREAM_GAUGES], "minor")
-            for sl in water_year_unit_slices(over.index):
+            for sl in ffmp_year_unit_slices(over.index):
                 n_units += 1
                 seg = over.iloc[sl]
                 by_month = seg.groupby(seg.index.month).sum()
