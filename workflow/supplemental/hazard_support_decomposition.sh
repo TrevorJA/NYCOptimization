@@ -34,7 +34,9 @@
 # All settings live in supplemental_config.py (HSD_ section) — no CLI value
 # flags. Smoke: submit with --export=ALL,NYCOPT_HSD_SMOKE=1 (P=2,000 pools,
 # first 200 SOWs; artifacts prefixed smoke_). NYCOPT_HSD_REFRESH=1 forces the
-# stage-A recompute.
+# stage-A recompute. NYCOPT_HSD_FIGURES_ONLY=1 skips the run script and only
+# redraws the figures from the persisted tables (seconds; use it after any
+# labeling or styling change to hazard_support_figures.py).
 #
 # Sizing: memory is dominated by one 1e6 x 8 pool image plus its cKDTree
 # (< 2 GB resident; pools load sequentially). The pool self-NN query
@@ -52,7 +54,9 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
 export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
 
-echo "[hsd] start: $(date -u +%Y-%m-%dT%H:%M:%SZ) (smoke=${NYCOPT_HSD_SMOKE:-0})"
-python3 -u scripts/supplemental/hazard_support_run.py
+echo "[hsd] start: $(date -u +%Y-%m-%dT%H:%M:%SZ) (smoke=${NYCOPT_HSD_SMOKE:-0}, figures_only=${NYCOPT_HSD_FIGURES_ONLY:-0})"
+if [[ "${NYCOPT_HSD_FIGURES_ONLY:-0}" != "1" ]]; then
+    python3 -u scripts/supplemental/hazard_support_run.py
+fi
 python3 -u scripts/supplemental/hazard_support_figures.py
 echo "[hsd] done: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

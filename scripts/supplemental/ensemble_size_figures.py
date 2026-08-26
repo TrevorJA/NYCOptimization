@@ -61,6 +61,9 @@ EPS_COLOR = "#009E73"
 CAMPAIGN_COLOR = "0.35"
 NULL_COLOR = "0.55"
 
+#: Axis label used on every N axis (linear).
+N_LABEL = "ensemble size N (10-yr realizations per evaluation)"
+
 #: Objectives whose operator is a pooled percentile (the tail operators).
 def _is_tail(name: str) -> bool:
     return type(ENSEMBLE_OBJECTIVES[name].unit_operator).__name__ == "PooledPercentileOp"
@@ -74,9 +77,10 @@ def _axis_label(name: str) -> str:
 
 
 def _mark_campaign(ax, eps: float | None = None, eps_frac: float = 1.0,
-                   eps_label: str | None = None) -> None:
+                   eps_label: str | None = None, campaign_label: bool = False) -> None:
     """The N = 100 campaign point and (optionally) the epsilon line."""
-    ax.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":")
+    ax.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
+               label=f"campaign N = {scfg.ESD_N_CAMPAIGN}" if campaign_label else None)
     if eps is not None:
         ax.axhline(eps * eps_frac, color=EPS_COLOR, lw=1.4, ls="--",
                    label=eps_label or (r"$\varepsilon$" if eps_frac == 1.0
@@ -97,67 +101,79 @@ def _table(name: str) -> pd.DataFrame | None:
 
 def fig_a1_tail_share(ladder: pd.DataFrame) -> None:
     """A1: per-axis P90 and P99 tail shares of the HF selection vs N, with the null."""
-    fig, ax = plt.subplots(1, 2, figsize=(10.5, 3.9))
-    for p, (col, ttl, ref) in enumerate((
-        ("tail_share_min", "min per-axis share above pool P90", 0.10),
-        ("tail_share_p99_min", "min per-axis share above pool P99", 0.01),
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4.4))
+    for p, (col, ttl, ref, q) in enumerate((
+        ("tail_share_min", "share of members above the pool's 90th percentile\n(minimum over the 6 selection axes)", 0.10, "P90"),
+        ("tail_share_p99_min", "share of members above the pool's 99th percentile\n(minimum over the 6 selection axes)", 0.01, "P99"),
     )):
         a = ax[p]
         for draw, g in ladder.groupby("pool_draw"):
             sel = g[g.selector == "lhs_nn"].groupby("n")[col]
+            lab = None
+            if draw == 0:
+                lab = "hazard-filling selection, pool d0: mean over 10 anchor plans (bars = range)"
+            elif draw == 1:
+                lab = "hazard-filling selection, pools d1 and d2 (lighter)"
             a.errorbar(sel.mean().index, sel.mean().values,
                        yerr=[sel.mean().values - sel.min().values, sel.max().values - sel.mean().values],
                        fmt="o-", ms=4, capsize=2, color=design_color(HF),
-                       alpha=1.0 if draw == 0 else 0.45,
-                       label=f"HF pool d{draw} (seed mean, range)" if draw in (0, 1) else None)
+                       alpha=1.0 if draw == 0 else 0.45, label=lab)
         null = ladder[(ladder.selector == "random") & (ladder.pool_draw == 0)].groupby("n")[col]
         a.plot(null.mean().index, null.mean().values, "s--", ms=3, color=NULL_COLOR,
-               label="random design (same N)")
-        a.axhline(ref, color="0.6", lw=1, ls="--", label=f"unbiased {ref:g}")
+               label="random selection of the same N (mean over 50 seeds)")
+        a.axhline(ref, color="0.6", lw=1, ls="--",
+                  label=f"expected share for a random sample ({ref:g})")
         if col == "tail_share_min":
             a.axhline(scfg.ESD_TAIL_CRITERION, color="#c1272d", lw=1.2, ls=":",
-                      label=f"adequacy gate {scfg.ESD_TAIL_CRITERION:g}")
-        _mark_campaign(a)
-        a.set_xscale("log")
-        a.set_xlabel("ensemble size N")
-        a.set_ylabel(ttl)
-        a.set_title(("(a) " if p == 0 else "(b) ") + ttl)
-        if p == 0:
-            a.legend(fontsize=7)
-    fig.tight_layout()
+                      label=f"pre-registered adequacy gate ({scfg.ESD_TAIL_CRITERION:g})")
+        _mark_campaign(a, campaign_label=True)
+        a.set_xlabel(N_LABEL)
+        a.set_ylabel(ttl, fontsize=8.5)
+        a.set_ylim(bottom=0)
+        a.set_title(f"({'ab'[p]}) tail enrichment above the pool {q}")
+        a.legend(fontsize=6.5, loc="center right" if p == 0 else "upper right")
+    fig.suptitle("How much of the hazard-filling selection sits in the severe tail of the 10⁶-member candidate pool, as N grows")
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     save_figure(fig, scfg.esd_figure_path("A1_hf_tail_share_vs_n"))
     plt.close(fig)
 
 
 def fig_a2_coverage(ladder: pd.DataFrame) -> None:
     """A2: joint geometry of the HF selection vs the matched random design, vs N."""
-    metrics = (("L2_star_abs", "joint L2-star (abs geometry)"),
-               ("mst_edge_mean", "MST mean edge"),
-               ("nn_min_abs", "minimum pairwise separation"),
-               ("ks_mean", "mean per-axis KS to uniform"))
-    fig, ax = plt.subplots(1, 4, figsize=(14, 3.6))
+    metrics = (("L2_star_abs", "(a) joint L2-star discrepancy",
+                "L2-star discrepancy in the unit hazard box\n(lower = more uniform coverage, log)"),
+               ("mst_edge_mean", "(b) mean minimum-spanning-tree edge",
+                "mean MST edge length in the unit hazard box\n(larger = members more spread out, log)"),
+               ("nn_min_abs", "(c) closest pair of members",
+                "smallest distance between any two members\n(near 0 = near-duplicates, log)"),
+               ("ks_mean", "(d) per-axis stratification",
+                "Kolmogorov–Smirnov distance to uniform,\nmean over the 6 axes (lower = better stratified)"))
+    fig, ax = plt.subplots(1, 4, figsize=(15, 4.2))
     d0 = ladder[ladder.pool_draw == 0]
-    for p, (col, ttl) in enumerate(metrics):
+    for p, (col, ttl, ylab) in enumerate(metrics):
         a = ax[p]
         sel = d0[d0.selector == "lhs_nn"].groupby("n")[col]
         null = d0[d0.selector == "random"].groupby("n")[col]
         a.plot(sel.mean().index, sel.mean().values, "o-", ms=4, color=design_color(HF),
-               label="HF selection")
+               label="hazard-filling selection: mean, band = range over 10 anchor plans")
         a.fill_between(sel.mean().index, sel.min().values, sel.max().values,
                        color=design_color(HF), alpha=0.2, lw=0)
         a.plot(null.mean().index, null.mean().values, "s--", ms=3, color=NULL_COLOR,
-               label="random design")
+               label="random selection of the same N: mean, band = 5–95 % over 50 seeds")
         a.fill_between(null.mean().index, null.quantile(0.05).values, null.quantile(0.95).values,
                        color=NULL_COLOR, alpha=0.15, lw=0)
-        _mark_campaign(a)
-        a.set_xscale("log")
+        _mark_campaign(a, campaign_label=(p == 0))
         if col != "ks_mean":
             a.set_yscale("log")
-        a.set_xlabel("ensemble size N")
-        a.set_title(f"({'abcd'[p]}) {ttl}")
+        else:
+            a.set_ylim(bottom=0)
+        a.set_xlabel(N_LABEL if p == 0 else "N")
+        a.set_ylabel(ylab, fontsize=8)
+        a.set_title(ttl, fontsize=9.5)
         if p == 0:
-            a.legend(fontsize=7)
-    fig.tight_layout()
+            a.legend(fontsize=6, loc="center left")
+    fig.suptitle("Joint coverage geometry of the hazard-filling selection vs a random selection of the same size (pool d0)")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, scfg.esd_figure_path("A2_hf_coverage_vs_n"))
     plt.close(fig)
 
@@ -180,8 +196,7 @@ def fig_a3_np_ladder(npl: pd.DataFrame) -> pd.DataFrame:
     a.axhline(scfg.ESD_TAIL_CRITERION, color="#c1272d", lw=1.2, ls=":", label="gate")
     a.axhline(0.10, color="0.6", lw=1, ls="--", label="unbiased 0.10")
     _mark_campaign(a)
-    a.set_xscale("log")
-    a.set_xlabel("ensemble size N")
+    a.set_xlabel(N_LABEL)
     a.set_ylabel("min per-axis tail share (seed mean)")
     a.set_title("(a) adequacy vs N on nested prefixes")
     a.legend(fontsize=7)
@@ -191,13 +206,13 @@ def fig_a3_np_ladder(npl: pd.DataFrame) -> pd.DataFrame:
     missing = sorted(set(gate.n.unique()) - set(need.n.unique()))
     for n in missing:
         a2.plot([n], [max(Ps)], "x", color="#c1272d", ms=8)
-    a2.set_xscale("log")
     a2.set_yscale("log")
-    a2.set_xlabel("ensemble size N")
-    a2.set_ylabel("smallest P′ holding the gate")
-    a2.set_title("(b) pool size each N needs (x = none passes)")
+    a2.set_xlabel(N_LABEL)
+    a2.set_ylabel("smallest pool size P′ that meets the gate")
+    a2.set_title("(b) pool size each N needs (red × = no tested P′ meets the gate)")
     _mark_campaign(a2)
-    fig.tight_layout()
+    fig.suptitle("Adequacy of the hazard-filling selection over the (N, pool size) plane — prefixes of pool d0 are exact i.i.d. pools of their size")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, scfg.esd_figure_path("A3_np_ladder"))
     plt.close(fig)
     return gate.merge(need, on="n", how="left")
@@ -206,49 +221,49 @@ def fig_a3_np_ladder(npl: pd.DataFrame) -> pd.DataFrame:
 def fig_a4_ps_tail(ps: pd.DataFrame) -> None:
     """A4: the i.i.d. law of a size-N subset: tail counts, quantile error, closed form."""
     axes_names = list(dict.fromkeys(ps.axis))
-    fig, ax = plt.subplots(1, 3, figsize=(14, 3.8))
+    fig, ax = plt.subplots(1, 3, figsize=(15, 4.3))
     a = ax[0]
     for k, axis in enumerate(axes_names):
         g = ps[ps.axis == axis].sort_values("n")
-        a.errorbar(g.n * (1 + 0.02 * (k - len(axes_names) / 2)), g.count_p99_mean,
+        a.errorbar(g.n + 4.0 * (k - len(axes_names) / 2), g.count_p99_mean,
                    yerr=[g.count_p99_mean - g.count_p99_p05, g.count_p99_p95 - g.count_p99_mean],
                    fmt="o-", ms=3, lw=1, capsize=2, elinewidth=0.7, alpha=0.85,
                    label=_axis_label(axis))
-    a.axhline(1.0, color="0.6", lw=1, ls="--")
-    _mark_campaign(a)
-    a.set_xscale("log")
-    a.set_yscale("symlog", linthresh=1.0)
-    a.set_xlabel("ensemble size N")
-    a.set_ylabel("members above pool P99 (mean, 5–95%)")
-    a.set_title("(a) severe-corner members per i.i.d. sample")
-    a.legend(fontsize=6.5, ncol=2)
+    a.axhline(1.0, color="0.6", lw=1, ls="--", label="one member")
+    _mark_campaign(a, campaign_label=True)
+    a.set_xlabel(N_LABEL)
+    a.set_ylabel("members above the pool's 99th percentile, per axis\n(mean and 5–95 % range over 200 random size-N subsets)", fontsize=8)
+    a.set_ylim(bottom=0)
+    a.set_title("(a) how many severe members a random sample of N holds")
+    a.legend(fontsize=6, ncol=2, title="hazard axis", title_fontsize=6.5, loc="upper left")
     a2 = ax[1]
     g0 = ps[ps.axis == axes_names[0]].sort_values("n")
-    a2.plot(g0.n, g0.prob_ge1_p99_closed_form, "-", color="black", label=r"$1-0.99^N$ (closed form)")
+    a2.plot(g0.n, g0.prob_ge1_p99_closed_form, "-", color="black",
+            label=r"beyond the pool's P99: closed form $1-0.99^N$")
     a2.plot(g0.n, 1.0 - g0.prob_zero_p99_empirical, "o", ms=4, color=design_color(PS),
-            label="empirical, axis 1")
-    g1 = ps[ps.axis == axes_names[0]].sort_values("n")
-    a2.plot(g1.n, g1.prob_ge1_p90_closed_form, "-", color="0.5", label=r"$1-0.90^N$")
-    _mark_campaign(a2)
-    a2.set_xscale("log")
-    a2.set_xlabel("ensemble size N")
-    a2.set_ylabel("P(≥ 1 member beyond pool quantile)")
-    a2.set_title("(b) chance of holding a severe member")
-    a2.legend(fontsize=7)
+            label=f"beyond P99: empirical over 200 subsets ({_axis_label(axes_names[0])})")
+    a2.plot(g0.n, g0.prob_ge1_p90_closed_form, "-", color="0.5",
+            label=r"beyond the pool's P90: closed form $1-0.90^N$")
+    _mark_campaign(a2, campaign_label=True)
+    a2.set_xlabel(N_LABEL)
+    a2.set_ylabel("probability that a random size-N sample holds\nat least one member beyond the pool quantile", fontsize=8)
+    a2.set_ylim(0, 1.02)
+    a2.set_title("(b) chance of holding at least one severe member")
+    a2.legend(fontsize=6.5, loc="lower right")
     a3 = ax[2]
     for q, ls in ((50, "-"), (90, "--"), (99, ":")):
         col = f"relerr_p{q}_rms"
         m = ps.groupby("n")[col].mean()
         a3.plot(m.index, m.values, ls, marker="o", ms=3, color=design_color(PS),
-                label=f"P{q} (axis mean)")
-    _mark_campaign(a3)
-    a3.set_xscale("log")
-    a3.set_yscale("log")
-    a3.set_xlabel("ensemble size N")
-    a3.set_ylabel("RMS relative error of the subset quantile")
-    a3.set_title("(c) quantile error vs the pool")
-    a3.legend(fontsize=7)
-    fig.tight_layout()
+                label=f"sample P{q} vs pool P{q} (mean over the 6 axes)")
+    _mark_campaign(a3, campaign_label=True)
+    a3.set_xlabel(N_LABEL)
+    a3.set_ylabel("RMS relative error of the sample's quantile\nagainst the pool's (200 subsets)", fontsize=8)
+    a3.set_ylim(bottom=0)
+    a3.set_title("(c) how far a sample's quantiles sit from the pool's")
+    a3.legend(fontsize=6.5)
+    fig.suptitle("What an i.i.d. sample of N pool members contains, by construction (the fixed-probabilistic design), pool d0")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, scfg.esd_figure_path("A4_ps_tail_sampling"))
     plt.close(fig)
 
@@ -265,23 +280,27 @@ def fig_a5_descriptor_convergence(cv: pd.DataFrame) -> None:
                 g = cv[(cv.axis == axis) & (cv.statistic == stat) & (cv.design == design)].sort_values("n")
                 if g.empty:
                     continue
-                a.plot(g.n, g.p50, "o-", ms=3, color=design_color(design),
-                       label=design_label(design) if k == 0 and r == 0 else None)
+                lab = None
+                if k == 0 and r == 0:
+                    lab = ("fixed-probabilistic (i.i.d.): median, band = 5–95 % over 200 subsets"
+                           if design == PS else "hazard-filling: median, band = range over 10 anchor plans")
+                a.plot(g.n, g.p50, "o-", ms=3, color=design_color(design), label=lab)
                 a.fill_between(g.n, g.p05, g.p95, color=design_color(design), alpha=0.18, lw=0)
             pool_val = cv[(cv.axis == axis) & (cv.statistic == stat)].pool_value.iloc[0]
             a.axhline(pool_val, color="black", lw=0.9, ls="--",
-                      label="pool value" if k == 0 and r == 0 else None)
-            _mark_campaign(a)
-            a.set_xscale("log")
+                      label="value over the full 10⁶-member pool" if k == 0 and r == 0 else None)
+            _mark_campaign(a, campaign_label=(k == 0 and r == 0))
             if r == 0:
                 a.set_title(_axis_label(axis), fontsize=8)
             if k == 0:
-                a.set_ylabel({"pooled_mean": "pooled mean", "ensemble_max": "ensemble maximum"}[stat])
+                a.set_ylabel({"pooled_mean": "mean of the descriptor\nover the ensemble's members",
+                              "ensemble_max": "maximum of the descriptor\nover the ensemble's members"}[stat], fontsize=8)
             if r == 1:
-                a.set_xlabel("N")
-    ax[0, 0].legend(fontsize=6.5)
-    fig.suptitle("Descriptor convergence vs N: pooled means flatten, extremes drift")
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+                a.set_xlabel(N_LABEL if k == 0 else "N", fontsize=8)
+    handles, labels = ax[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=7, frameon=False)
+    fig.suptitle("Hazard descriptors of the ensemble vs N: means converge to the pool value, maxima keep drifting")
+    fig.tight_layout(rect=(0, 0.06, 1, 0.95))
     save_figure(fig, scfg.esd_figure_path("A5_descriptor_convergence"))
     plt.close(fig)
 
@@ -492,7 +511,8 @@ def _grid(n_obj: int):
 
 def fig_b_stat_vs_n(stats: pd.DataFrame, col: str, ylabel: str, stem: str, eps_frac: float,
                     aux_col: str | None = None, aux_label: str | None = None,
-                    log_y: bool = True) -> None:
+                    log_y: bool = True, main_label: str = "", suptitle: str = "") -> None:
+    """One panel per objective: a statistic vs N for both designs, with its epsilon criterion."""
     objs = list(dict.fromkeys(stats.objective))
     fig, ax = _grid(len(objs))
     for k, name in enumerate(objs):
@@ -503,47 +523,51 @@ def fig_b_stat_vs_n(stats: pd.DataFrame, col: str, ylabel: str, stem: str, eps_f
             if g.empty:
                 continue
             a.plot(g.n, g[col], "o-", ms=4, color=design_color(design),
-                   label=design_label(design) if k == 0 else None)
+                   label=f"{design_label(design)}: {main_label}")
             if aux_col:
                 a.plot(g.n, g[aux_col], "o:", ms=3, color=design_color(design), alpha=0.6,
-                       label=(aux_label if k == 0 else None))
-        _mark_campaign(a, eps, eps_frac, eps_label="_nolegend_")
-        if k == 0:
-            a.plot([], [], "--", color=EPS_COLOR,
-                   label=r"$\varepsilon$" if eps_frac == 1.0 else rf"{eps_frac:g}$\varepsilon$")
-        a.set_xscale("log")
+                       label=f"{design_label(design)}: {aux_label}")
+        a.axhline(eps * eps_frac, color=EPS_COLOR, lw=1.4, ls="--",
+                  label=("ε, the archive's precision on this objective" if eps_frac == 1.0
+                         else f"{eps_frac:g} ε, the pre-registered criterion"))
+        a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
+                  label=f"campaign N = {scfg.ESD_N_CAMPAIGN}")
         if log_y:
             a.set_yscale("log")
-            # Objectives pinned at their floor for most policies (e.g. a zero
-            # NYC deficit) give SEs of 1e-10; floor the axis at 1e-3 epsilon so
-            # the panel stays readable.
             lo, hi = a.get_ylim()
             a.set_ylim(bottom=max(lo, 1e-3 * eps), top=max(hi, 2.0 * eps * eps_frac))
         a.set_title(f"({'abcdefgh'[k]}) {_axis_label(name)}", fontsize=9)
-        a.set_xlabel("N")
+        a.set_xlabel(N_LABEL if k % 4 == 0 else "N")
         if k % 4 == 0:
-            a.set_ylabel(ylabel)
+            a.set_ylabel(ylabel, fontsize=8)
     for j in range(len(objs), len(ax)):
         ax[j].axis("off")
-    ax[0].legend(fontsize=6.5)
-    fig.tight_layout()
+    handles, labels = ax[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=7, frameon=False)
+    if suptitle:
+        fig.suptitle(suptitle)
+    fig.tight_layout(rect=(0, 0.07, 1, 0.96))
     save_figure(fig, scfg.esd_figure_path(stem))
     plt.close(fig)
 
 
 def fig_b3_flip(stats: pd.DataFrame) -> None:
-    fig, a = plt.subplots(figsize=(5.2, 3.8))
+    """Flip rate of pairwise epsilon-dominance verdicts vs N."""
+    fig, a = plt.subplots(figsize=(7.0, 4.4))
     for design in (PS, HF):
         g = stats[stats.design == design].groupby("n")["flip_rate"].first()
-        a.plot(g.index, g.values, "o-", ms=4, color=design_color(design), label=design_label(design))
+        a.plot(g.index, g.values, "o-", ms=4, color=design_color(design),
+               label=(f"{design_label(design)}: verdict at N vs the 5,000-member reference" if design == PS
+                      else f"{design_label(design)}: verdict at N vs the majority of its 3–5 constructions"))
     a.axhline(scfg.ESD_FLIP_RATE_MAX, color="#c1272d", lw=1.2, ls=":",
-              label=f"criterion ≤ {scfg.ESD_FLIP_RATE_MAX:g}")
-    _mark_campaign(a)
-    a.set_xscale("log")
-    a.set_xlabel("ensemble size N")
-    a.set_ylabel("ε-dominance flip rate (fraction of pairs)")
-    a.set_title("Pairwise ε-dominance flips vs the reference relation")
-    a.legend(fontsize=7)
+              label=f"pre-registered criterion (≤ {scfg.ESD_FLIP_RATE_MAX:g})")
+    a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
+              label=f"campaign N = {scfg.ESD_N_CAMPAIGN}")
+    a.set_ylim(bottom=0)
+    a.set_xlabel(N_LABEL)
+    a.set_ylabel("fraction of the 45 policy pairs whose ε-dominance verdict\n(A beats B / B beats A / incomparable) differs from the reference", fontsize=8)
+    a.set_title("How often a size-N ensemble reverses an ε-dominance verdict between two policies", fontsize=10)
+    a.legend(fontsize=7, loc="upper right")
     fig.tight_layout()
     save_figure(fig, scfg.esd_figure_path("B3_flip_rate_vs_n"))
     plt.close(fig)
@@ -562,26 +586,28 @@ def fig_b4_optimism(bands: pd.DataFrame, stats: pd.DataFrame) -> None:
             lo = g.groupby("n")["optimism_mean"].min()
             hi = g.groupby("n")["optimism_mean"].max()
             a.plot(m.index, m.values, "o-", ms=4, color=design_color(design),
-                   label=(f"{design_label(design)} (policy median, range)" if k == 0 else None))
+                   label=(f"{design_label(design)}: mean over replicates, median policy (band = range over 10 policies)" if k == 0 else None))
             a.fill_between(m.index, lo.values, hi.values, color=design_color(design), alpha=0.18, lw=0)
             if design == HF:
                 sd = g.groupby("n")["shift_sd"].max()
                 a.plot(sd.index, sd.values, "s:", ms=3, color=design_color(design), alpha=0.7,
-                       label="HF construction SD (max over policies)" if k == 0 else None)
+                       label="hazard-filling: SD across constructions, worst policy" if k == 0 else None)
         a.axhline(0.0, color="black", lw=0.8)
         a.axhline(scfg.ESD_OPTIMISM_EPS_FRAC * eps, color=EPS_COLOR, lw=1.2, ls="--",
-                  label=rf"±{scfg.ESD_OPTIMISM_EPS_FRAC:g}$\varepsilon$" if k == 0 else None)
+                  label=f"± {scfg.ESD_OPTIMISM_EPS_FRAC:g} ε, the pre-registered bias criterion" if k == 0 else None)
         a.axhline(-scfg.ESD_OPTIMISM_EPS_FRAC * eps, color=EPS_COLOR, lw=1.2, ls="--")
-        a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":")
-        a.set_xscale("log")
+        a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
+                  label=f"campaign N = {scfg.ESD_N_CAMPAIGN}" if k == 0 else None)
         a.set_title(f"({'abcdefgh'[k]}) {_axis_label(name)}", fontsize=9)
-        a.set_xlabel("N")
+        a.set_xlabel(N_LABEL if k % 4 == 0 else "N")
         if k % 4 == 0:
-            a.set_ylabel("value at N − PS reference (better = +)")
+            a.set_ylabel("objective at N minus its value on the\n5,000-member i.i.d. reference (+ = looks better)", fontsize=8)
     for j in range(len(objs), len(ax)):
         ax[j].axis("off")
-    ax[0].legend(fontsize=6)
-    fig.tight_layout()
+    handles, labels = ax[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=7, frameon=False)
+    fig.suptitle("Bias of the i.i.d. estimate (PS) and the intended shift of the hazard-filling design (HF), both vs the i.i.d. reference")
+    fig.tight_layout(rect=(0, 0.07, 1, 0.96))
     save_figure(fig, scfg.esd_figure_path("B4_optimism_vs_n"))
     plt.close(fig)
 
@@ -601,22 +627,27 @@ def fig_b5_tail_bands(bands: pd.DataFrame, lib: Library) -> None:
                 g = bands[(bands.design == design) & (bands.objective == name) & (bands.policy_id == pid)].sort_values("n")
                 if g.empty:
                     continue
-                a.plot(g.n, g.p50, "-", color=cmap(p % 10), lw=1.1, label=pid if r == 0 and c == 0 else None)
+                a.plot(g.n, g.p50, "-", color=cmap(p % 10), lw=1.1,
+                       label=(f"{pid} {lib.policy_labels[p].replace('_', ' ')[:34]}" if r == 0 and c == 0 else None))
                 a.fill_between(g.n, g.p05, g.p95, color=cmap(p % 10), alpha=0.13, lw=0)
             ref = bands[(bands.design == design) & (bands.objective == name)].reference
-            a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":")
-            a.set_xscale("log")
+            a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
+                      label=f"campaign N = {scfg.ESD_N_CAMPAIGN}" if r == 0 and c == 0 else None)
             y0 = float(np.nanmedian(bands[(bands.objective == name)].p50))
             a.plot([scfg.ESD_N_LADDER[0]] * 2, [y0, y0 + eps], "-", color=EPS_COLOR, lw=3,
-                   solid_capstyle="butt", label=r"$\varepsilon$ (scale)" if r == 0 and c == 0 else None)
+                   solid_capstyle="butt",
+                   label="bar height = ε, the archive's precision" if r == 0 and c == 0 else None)
             if r == 0:
                 a.set_title(_axis_label(name), fontsize=9)
             if c == 0:
-                a.set_ylabel(f"{design_label(design)}\nreplicate 5–50–95%", fontsize=8)
+                a.set_ylabel(f"{design_label(design)}\nobjective value: median line, band = 5–95 %\nacross replicate ensembles", fontsize=7.5)
             if r == 1:
-                a.set_xlabel("N")
-    ax[0, 0].legend(fontsize=6, ncol=2)
-    fig.tight_layout()
+                a.set_xlabel(N_LABEL if c == 0 else "N")
+    handles, labels = ax[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=7, frameon=False,
+               title="one line per policy (median across replicate ensembles; band = 5–95 %)", title_fontsize=7.5)
+    fig.suptitle("The three pooled-percentile (tail) objectives, policy by policy: where each policy's value sits and how wide its spread is at each N")
+    fig.tight_layout(rect=(0, 0.12, 1, 0.95))
     save_figure(fig, scfg.esd_figure_path("B5_tail_replicate_bands"))
     plt.close(fig)
 
@@ -632,11 +663,11 @@ def fig_b6_neff(neff: pd.DataFrame) -> None:
         hi = np.array([g.quantile(0.9).get(o, np.nan) for o in objs])
         a.errorbar(x + (i - 0.5) * 0.18, med, yerr=[med - lo, hi - med], fmt="o", ms=5, capsize=3,
                    color=design_color(design), label=f"{design_label(design)} (median, 10–90%)")
-    a.axhline(1.0, color="0.5", lw=1, ls="--", label="independent units")
+    a.axhline(1.0, color="0.5", lw=1, ls="--", label="1 = every annual unit counts as independent")
     a.set_xticks(x)
     a.set_xticklabels([_axis_label(o) for o in objs], rotation=35, ha="right", fontsize=7)
-    a.set_ylabel("n_eff / N(L−1)")
-    a.set_title(f"Effective sample size of the pooled annual units at N = {scfg.ESD_N_CAMPAIGN}")
+    a.set_ylabel("effective sample size ÷ pooled annual units N(L−1)\n= (unit-level bootstrap SD / realization-level bootstrap SD)²", fontsize=8)
+    a.set_title(f"How many of the {scfg.ESD_N_CAMPAIGN * 9} pooled annual units act as independent samples (N = {scfg.ESD_N_CAMPAIGN})")
     a.legend(fontsize=7)
     fig.tight_layout()
     save_figure(fig, scfg.esd_figure_path("B6_effective_sample_size"))
@@ -677,6 +708,7 @@ def epscube_crosscheck(lib: Library) -> pd.DataFrame | None:
 
 
 def fig_b7_crosscheck(cross: pd.DataFrame, stats: pd.DataFrame) -> None:
+    """Library level SE (policy median) vs the same statistic on the epsilon-calibration cubes."""
     objs = list(dict.fromkeys(stats.objective))
     fig, ax = _grid(len(objs))
     for k, name in enumerate(objs):
@@ -685,21 +717,26 @@ def fig_b7_crosscheck(cross: pd.DataFrame, stats: pd.DataFrame) -> None:
         for design in (PS, HF):
             g = stats[(stats.objective == name) & (stats.design == design)].sort_values("n")
             a.plot(g.n, g.level_se_median, "o-", ms=4, color=design_color(design),
-                   label=f"library, {design_label(design)}" if k == 0 else None)
+                   label=f"{design_label(design)}: this library (10 rule-selected policies)")
             c = cross[(cross.objective == name) & (cross.design == design)].sort_values("n")
             a.plot(c.n, c.level_se_median, "^--", ms=5, color=design_color(design), alpha=0.7,
-                   label=f"ε-cube subsample, {design_label(design)}" if k == 0 else None)
-        _mark_campaign(a, eps, 1.0)
-        a.set_xscale("log")
+                   label=f"{design_label(design)}: ε-calibration cube (512 random policies), subsampled")
+        a.axhline(eps, color=EPS_COLOR, lw=1.4, ls="--", label="ε, the archive's precision")
+        a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
+                  label=f"campaign N = {scfg.ESD_N_CAMPAIGN}")
         a.set_yscale("log")
+        lo, hi = a.get_ylim()
+        a.set_ylim(bottom=max(lo, 1e-3 * eps))
         a.set_title(f"({'abcdefgh'[k]}) {_axis_label(name)}", fontsize=9)
-        a.set_xlabel("N")
+        a.set_xlabel(N_LABEL if k % 4 == 0 else "N")
         if k % 4 == 0:
-            a.set_ylabel("level SE (policy median)")
+            a.set_ylabel("level SE, median over policies (log)", fontsize=8)
     for j in range(len(objs), len(ax)):
         ax[j].axis("off")
-    ax[0].legend(fontsize=6)
-    fig.tight_layout()
+    handles, labels = ax[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=7, frameon=False)
+    fig.suptitle("Cross-check: the library's estimator noise vs the same statistic on the independent ε-calibration policy population")
+    fig.tight_layout(rect=(0, 0.07, 1, 0.96))
     save_figure(fig, scfg.esd_figure_path("B7_epscube_crosscheck"))
     plt.close(fig)
 
@@ -783,15 +820,16 @@ def fig_b8_nfe(curves: dict, table: pd.DataFrame) -> None:
             ax[1].plot(isl.nfe.values[1:], rate, "-", lw=1.0, color=design_color(design), alpha=0.8)
     for frac in scfg.ESD_NFE_HV_FRACTIONS:
         ax[0].axhline(frac, color="0.6", lw=0.9, ls="--")
-    ax[0].set_xlabel("island NFE")
-    ax[0].set_ylabel("hypervolume / final (per island)")
-    ax[0].set_title("(a) runtime hypervolume, normalized within run")
-    ax[0].legend(fontsize=7)
-    ax[1].set_xlabel("island NFE")
-    ax[1].set_ylabel("ε-progress improvements per NFE")
+    ax[0].set_xlabel("function evaluations per island (4 islands per search)")
+    ax[0].set_ylabel("hypervolume ÷ the island's own final value")
+    ax[0].set_title("(a) runtime hypervolume, one line per island\n(dashed = 95 % and 99 % of final)", fontsize=10)
+    ax[0].legend(fontsize=7, loc="lower right")
+    ax[1].set_xlabel("function evaluations per island")
+    ax[1].set_ylabel("ε-progress improvements per evaluation (log)")
     ax[1].set_yscale("log")
-    ax[1].set_title("(b) ε-progress rate")
-    fig.tight_layout()
+    ax[1].set_title("(b) ε-progress improvements per evaluation\nbetween consecutive snapshots", fontsize=10)
+    fig.suptitle("Are the existing 500k-NFE searches converged? Runtime archives of the go/no-go cells (seed 1) and the 50k-NFE historic runs")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, scfg.esd_figure_path("B8_nfe_asymptote"))
     plt.close(fig)
 
@@ -825,26 +863,29 @@ def cost_pricing(n_common: int | None) -> pd.DataFrame:
 
 def fig_b9_cost(cost: pd.DataFrame, n_common: int | None) -> None:
     fig, ax = plt.subplots(1, 2, figsize=(10.5, 3.9))
-    ax[0].plot(cost.n, cost.su_per_search, "o-", color="black")
-    ax[0].set_xscale("log")
-    ax[0].set_yscale("log")
-    ax[0].set_xlabel("ensemble size N")
-    ax[0].set_ylabel("SU per 500k-NFE search")
-    ax[0].set_title("(a) search cost (measured N exponent 0.951)")
-    ax[1].plot(cost.n, cost.node_gb_at_128_ranks, "o-", color="black")
-    ax[1].axhline(scfg.ESD_NODE_MEM_GB, color="#c1272d", lw=1.2, ls=":", label="node memory")
+    ax[0].plot(cost.n, cost.su_per_search / 1000.0, "o-", color="black",
+               label="33,400 SU × (N/100)^0.951 (measured trimmed-model N exponent)")
+    ax[0].set_xlabel(N_LABEL)
+    ax[0].set_ylabel("thousand SU per 500,000-evaluation search")
+    ax[0].set_ylim(bottom=0)
+    ax[0].set_title("(a) cost of one search")
+    ax[1].plot(cost.n, cost.node_gb_at_128_ranks, "o-", color="black",
+               label="128 ranks × (601 + 0.394·N·L) MB (measured RSS model)")
+    ax[1].axhline(scfg.ESD_NODE_MEM_GB, color="#c1272d", lw=1.2, ls=":", label="Anvil node memory (256 GB)")
     ax[1].axhline(scfg.ESD_NODE_MEM_GB * scfg.ESD_MEM_SAFETY, color="#c1272d", lw=1.0, ls="--",
-                  label=f"{scfg.ESD_MEM_SAFETY:.0%} safety")
-    ax[1].set_xscale("log")
-    ax[1].set_xlabel("ensemble size N")
-    ax[1].set_ylabel("node GB at 128 ranks (trimmed RSS model)")
-    ax[1].set_title("(b) per-node memory at full packing")
-    ax[1].legend(fontsize=7)
+                  label=f"{scfg.ESD_MEM_SAFETY:.0%} of node memory (safety margin)")
+    ax[1].set_xlabel(N_LABEL)
+    ax[1].set_ylabel("memory per node with one evaluator per core (GB)")
+    ax[1].set_ylim(bottom=0)
+    ax[1].set_title("(b) memory at full 128-rank packing")
     for a in ax:
-        a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":")
+        a.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
+                  label=f"campaign N = {scfg.ESD_N_CAMPAIGN}")
         if n_common:
-            a.axvline(n_common, color=design_color(HF), lw=1.2, ls="-.")
-    fig.tight_layout()
+            a.axvline(n_common, color=design_color(HF), lw=1.2, ls="-.", label=f"N_common = {n_common}")
+        a.legend(fontsize=7, loc="upper left")
+    fig.suptitle("Cost and memory of a larger N (a fact table for the budget decision, not a criterion)")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, scfg.esd_figure_path("B9_cost_pricing"))
     plt.close(fig)
 
@@ -894,12 +935,18 @@ def main() -> None:
         print("[esd:B] N_min table:\n" + nmin.to_string(index=False), flush=True)
         neff = n_eff_table(lib)
         neff.to_csv(scfg.esd_table_path("n_eff"), index=False)
-        fig_b_stat_vs_n(stats, "level_se_max", "level SE (max over policies)", "B1_level_se_vs_n",
-                        scfg.ESD_LEVEL_SE_EPS_FRAC, aux_col="level_se_median",
-                        aux_label="policy median")
-        fig_b_stat_vs_n(stats, "paired_se_max", "paired SE (max over pairs)", "B2_paired_se_vs_n",
-                        scfg.ESD_PAIRED_SE_EPS_FRAC, aux_col="paired_se_median",
-                        aux_label="pair median")
+        fig_b_stat_vs_n(stats, "level_se_max",
+                        "SD across replicate ensembles",
+                        "B1_level_se_vs_n", scfg.ESD_LEVEL_SE_EPS_FRAC,
+                        aux_col="level_se_median", aux_label="median policy",
+                        main_label="worst policy",
+                        suptitle="Level standard error: how much one policy's objective value moves from one size-N ensemble to another (solid = worst of 10 policies, dotted = median)")
+        fig_b_stat_vs_n(stats, "paired_se_max",
+                        "SD of the pairwise difference\nacross replicate ensembles",
+                        "B2_paired_se_vs_n", scfg.ESD_PAIRED_SE_EPS_FRAC,
+                        aux_col="paired_se_median", aux_label="median pair",
+                        main_label="worst pair",
+                        suptitle="Paired standard error, the binding criterion: noise in the difference between two policies (solid = worst of 45 pairs, dotted = median pair) vs ½ ε")
         fig_b3_flip(stats)
         fig_b4_optimism(bands, stats)
         fig_b5_tail_bands(bands, lib)
