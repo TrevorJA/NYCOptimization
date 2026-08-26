@@ -1,6 +1,6 @@
 # Ensemble-Size Diagnostics: a Statistically Grounded Minimum N (SI)
 
-*Last updated: 2026-08-25. Supplemental diagnostic (SI Texts S4 and S5) deriving a
+*Last updated: 2026-08-26 (results in §7). Supplemental diagnostic (SI Texts S4 and S5) deriving a
 pre-registered, statistically based minimum realization count N for both matched
 search designs at the fixed record length L = 10 yr. Code:
 `scripts/supplemental/ensemble_size_hazard.py` (Layer A, selection level),
@@ -314,7 +314,174 @@ with its ~0.02 seed-level tolerance or the axis set/P revisited (Trevor's
 call; `TODO.md`); (ii) the N ladder is flat, so the miss is independent of N
 and the ensemble-size decision does not turn on it.
 ### 7.2 Layer B library and QC
-### 7.3 Decision table
+
+**Staging (job array 20143034, 9 tasks × 4 cores):** 8,971 pool members
+regenerated from their global indices in 36 min per 1,000-member chunk
+(2.16 s per realization, serial) plus ~1 min of step-04 prep per chunk;
+≈ 2.3 GB per chunk on projects space, symlinked into the staged tree. The
+regenerated daily flows are bit-identical to the production
+`hazfill_stat_abs_10yr_n100_d0` members (checked per site, per member).
+
+**A defect caught by the end-to-end check (first evaluation, job 20143273,
+quarantined as `unit_library_ffmp_INVALID_cachebug_20143273.h5`):** the
+library rows for the staged `hazfill_d0` members disagreed with the
+regenerated rows of the same pool members on 84 of 100 realizations, with
+unrelated failure-week patterns — not solver jitter. Cause:
+`src.simulation._get_cached_model_dict` keys the cached model dict on the
+ensemble preset name (+ DU signature), and the cached dict carries the
+block's `inflow_ensemble_indices`; the library's per-task specs shared their
+chunk slug, so a rank's later blocks of the same chunk re-simulated the first
+block's realizations. The composition QC cannot see this (it compares a
+task's stored scalars with the same rows) and the smoke run placed one task
+per rank, so only the end-to-end comparison exposed it. Fix: a unique
+`preset_name` per block (the convention `run_simulation_ensemble_batched`
+already uses), plus two new fatal guards in the merge — identical unit
+tensors across two blocks of one (policy, source), and the end-to-end
+mismatch itself — and the analysis script refuses a library whose
+`library_qc.json` is not `library_valid`. The re-run is job 20143847.
+
+**The valid library (job 20143847; 64 ranks on `shared`, 49 min, 48.7
+core-hours ≈ 49 SU):** 10 policies × 9,571 realizations (8,971 regenerated
+pool members + the six staged production draws) × 10 registry objectives × 9
+unit-years, 960 tasks, 0 failures, 182 s median per 100-realization block.
+QC: composition exact (max relative deviation 0); no duplicate blocks; the 100
+staged `hazfill_d0` members agree with their regenerated rows to ≤ 7·10⁻⁴ ε on
+every composed objective (338 of 90,000 unit-years differ — LP jitter of ≤ 2
+failing weeks or ≤ 0.45 % of capacity on annual storage minima — and no
+composed reliability or deficit value moves at all). Cost of the whole
+diagnostic: ≈ 12 SU staging + 49 SU library + ≈ 55 SU for the quarantined
+first evaluation + ≈ 8 SU smoke/analysis ≈ 125 SU.
+
+**Replicates realized:** PS 100/66/53/33/25/20/20/20 at N = 50…500 (the
+N = 100 count includes the three staged `fixprob` draws; N ≥ 300 carry
+4–10 supplemented random subsets, flagged); HF 3 anchor plans at every N and
+5 constructions at N = 100 (plans 0/101/102 on pool d0 plus the production
+d1/d2 draws on fresh pools). HF's standard errors therefore rest on 2–4
+degrees of freedom and are read as orders of magnitude, not to two digits.
+### 7.3 Decision table (`tables/decision_table.csv`, `n_min.csv`; figures B1–B7)
+
+Worst-pair paired SE and other statistics in units of the objective's ε
+(ε = 0.05 reliabilities, 10.0 deficit P99s, 0.3 flood, 5.0 storage):
+
+| design | N | level SE max / ε (worst obj.) | paired SE max / ε (worst obj.) | flip rate | bias (PS) or construction SD (HF) / ε (worst) | passes |
+|---|---|---|---|---|---|---|
+| PS | 50 | 1.14 (Montague def.) | 1.12 (Montague def.) | 0.051 | 0.52 (NYC def.) | no |
+| PS | 75 | 0.87 | 0.86 (Montague def.) | 0.040 | 0.32 | no (paired) |
+| PS | **100** | 0.82 | 0.82 (NYC def.), 0.79 (Montague def.), 0.71 (storage) | 0.037 | 0.27 | no (paired) |
+| PS | 150 | 0.63 | 0.62 (Montague def.), 0.52 (storage) | 0.034 | 0.15 | no (paired) |
+| PS | 200 | 0.64 | 0.63 (Montague def.), 0.61 (NYC def.), 0.51 (storage) | 0.026 | 0.16 | no (paired) |
+| PS | **300** | 0.45 | 0.45 (Montague def.), 0.43 (NYC def.), 0.40 (storage) | 0.026 | 0.09 | **yes** |
+| PS | 400 | 0.46 | 0.45 | 0.019 | 0.08 | yes |
+| PS | 500 | 0.40 | 0.40 | 0.011 | 0.05 | yes |
+| HF | 50 | 1.00 (Montague def.) | 1.10 (storage), 1.00 (Montague def.), 0.93 (NYC def.) | 0.067 | 1.00 | no |
+| HF | 75 | 4.2 (NYC def.) | 4.2 (NYC def.), 1.3 (Montague def.) | 0.059 | 4.2 | no |
+| HF | **100** (5 constructions) | 2.0 (NYC def.) | 2.0 (NYC def.), 0.70 (Montague def.) | 0.058 | 2.0 | no |
+| HF | 150 | 1.9 | 1.9 (NYC def.), 0.59 (Montague def.), 0.58 (storage) | 0.044 | 1.9 | no |
+| HF | 200 | 1.3 | 1.3 (NYC def.), 0.70 (storage) | 0.007 | 1.3 | no |
+| HF | 300 | 1.7 | 1.7 (NYC def.) | 0.015 | 1.7 | no |
+| HF | 400 | 1.6 | 1.7 (NYC def.) | 0.044 | 1.6 | no |
+| HF | 500 | 0.68 | 0.69 (NYC def.) | 0.052 | 0.68 | no |
+
+Every reliability objective and the flood objective pass every criterion at
+every N ≥ 75 for both designs (paired SE ≤ 0.34 ε at N = 100; flood ≤ 0.10 ε).
+The whole decision is carried by the three pooled-percentile operators.
+
+**N_min(PS) = 300**, binding statistic the worst-pair paired SE, binding
+objectives the two deficit-P99 operators and storage P01 in that order
+(N_noise = 300). At the campaign point the worst pair differs by 0.7–0.8 ε
+per replicate on those axes, i.e. two policies one ε-box apart on a deficit
+axis are re-ordered by the sample about one time in five; at N = 300 the
+paired SE is 0.4–0.45 ε. The pair-median paired SE is far smaller (0.11–0.41 ε
+at N = 100, 0.02–0.2 ε at 300): the binding pairs are the ones involving the
+per-objective-best extremes (P3, the flood-optimal policy, and P5/P7, the PS
+compromise pair), which is what the policy rule was meant to expose.
+
+**N_min(HF) is undefined on the ladder**: the between-construction SD of NYC
+deficit P99 is 2–4 ε from N = 75 to 400 and 0.7 ε at N = 500, so the paired-SE
+criterion fails on that objective at every N, and the flip rate (0.058 at
+N = 100, 0.052 at 500 on 3–5 constructions) sits at the criterion. Montague
+deficit P99 and storage P01 pass from N = 200–400. **Mechanism (figure B5,
+`layer_b_policy_bands.csv`):** the worst-1 % annual CVaR90 of NYC deficit
+takes values on discrete shelves set by the FFMP drought-stage delivery cuts
+— seven of the ten policies read exactly the same value in every PS replicate
+(35.00, 49.20, 48.82, 28.92, 30.05, 23.81, 0.29; SD = 0) — and a replicate
+that pushes the worst unit onto the next shelf moves the objective by 10–35
+percentage points, one to three ε at once (P3: 64.6–85.4 across PS replicates
+at N = 100; P5: 19.4 → 31.7). PS crosses a shelf rarely and its paired SE
+decays as N^(−1/2) (0.82 ε → 0.43 ε from N = 100 to 300); HF selects precisely
+the extreme members that decide the shelf, so different anchor plans land on
+different shelves (P1: 0.29 in PS vs 9.95 ± 20 in HF; P5: 19.4 vs 55 ± 10) and
+the construction SD does not fall with N until the selection itself
+stabilizes. Whether that shelf variance averages out with N is exactly what
+the ladder must show, and with three constructions per rung it cannot yet:
+the fitted decay on that axis is β = −0.24 ± 0.25 (table below), which
+does not separate a slow √N-type decay (crossing ε/2 near N ≈ 1,000–2,000)
+from a plateau (never). (Bonham et al. 2024's finding that maximum-type
+statistics do not converge at any tested size is the same phenomenon one
+order statistic in.)
+
+**Decay fits** (log of the worst-pair paired SE/ε on log N over the ladder;
+slope β with its SE and the fitted ε/2 crossing N*):
+
+| objective | PS β | PS N* | HF β | HF N* |
+|---|---|---|---|---|
+| NYC def P99 | −0.48 (0.04) | 232 | −0.24 (0.25) | undetermined (~2·10⁴ by point estimate) |
+| Montague def P99 | −0.44 (0.03) | 283 | −0.64 (0.12) | 184 |
+| storage P01 | −0.41 (0.03) | 210 | −0.68 (0.15) | 158 |
+| NYC rel | −0.58 (0.05) | 55 | −0.45 (0.10) | 45 |
+| Montague rel | −0.55 (0.04) | 35 | −0.43 (0.07) | 44 |
+| flood | −0.61 (0.02) | 7 | −0.46 (0.14) | 4 |
+
+The PS exponents are the √N law of an i.i.d. sample and put N_min(PS)
+between the 200 and 300 rungs (ladder answer 300, ±1 rung). The HF
+exponents on Montague deficit and storage are if anything steeper than √N
+(the shelf variance there does average out, crossing near N ≈ 160–180);
+only NYC deficit P99 is unresolved, and its SE of β is as large as β.
+
+**Bias / design effect (figure B4).** PS estimator bias is ≤ 0.27 ε at N = 100
+(0.24 ε on storage P01, 0.22–0.27 ε on the deficit P99s; identically zero for
+the frequency and mean operators, which the disjoint partition of the
+reference makes exact) and ≤ 0.09 ε at N = 300. The HF construction shift from
+the PS reference — the intended design effect — is N-independent: median over
+policies −0.94 ε on NYC reliability, −0.75 ε Montague reliability, −0.70 ε
+NYC deficit, −0.47 ε Montague deficit, −2.3 ε flood exceedance, −1.4 ε
+storage P01, ≈ 0 on Trenton and NJ reliability.
+
+**Effective sample size (figure B6, `n_eff.csv`, N = 100).** n_eff/N(L−1):
+PS 0.68 (NYC deficit P99), 0.73 (NYC reliability), 0.79 (NJ), 0.82 (storage
+P01), 0.84 (Montague reliability), 0.90 (Montague deficit), 0.93 (Trenton),
+1.02 (flood mean); HF 0.70–1.23 in the same order of magnitude. Serial
+dependence within a realization costs at most ~30 % of the pooled units: the
+900 pooled unit-years of one evaluation act as ≈ 610–900 independent units,
+below but of the same order as the 1,000 one-year realizations of Quinn et al.
+(2017). The naive unit-level bootstrap therefore understates the tail
+operators' SE by up to 20 %; every SE in this note is realization-level.
+
+**Cross-check (figure B7).** Subsampling the epsilon-calibration cubes (513
+random feasible policies, pre-regeneration substrate) at N = 25/50/75 gives
+policy-median level SEs that decay at the same rate and sit within a factor
+of ~1.5 of the library's policy medians on every objective (the library's ten
+front policies are noisier on the deficit axes, as intended).
+
+**Verdict under the pre-registered rule (statistical; cost is a separate
+fact in §7.4/§7.6).** (i) **N_min(PS) = 300**: the smallest ladder N at which
+every criterion holds; N = 100 misses only the paired-SE criterion, on the
+three tail operators, by a factor 1.4–1.6. (ii) **N_min(HF) is not
+established by this ladder.** HF meets every criterion on seven objectives
+(the tail operators Montague deficit and storage from N = 200–400) and
+fails on NYC deficit P99 at every N ≤ 500; the present evidence — three
+constructions per rung (≈ 50 % relative error on an SD) and a ladder that
+ends at 500 — cannot say whether that axis converges at a larger N or never
+does. (iii) **N_common ≥ 300, upper end open.** The rule N_common = max over
+designs bounds the common size from below and leaves it unfixed until
+N_min(HF) is measured. The statistically required next step is incremental
+on the persisted library: raise the HF constructions to ≥ 10 anchor plans
+per N (relative SE of the SD ≈ 20 %), extend the ladder to 750, 1,000 and
+1,500 for both designs (P_ref raised to 15,000 so PS keeps ≥ 10 disjoint
+replicates), and read each crossing from the fitted decay with its
+confidence band rather than from the rung grid. Only after that is
+N_common a number; whether the budget accommodates it is a decision outside
+this note.
 ### 7.4 NFE asymptote (measured 2026-08-25 from the existing archives; `tables/nfe_asymptote.csv`, figure B8)
 
 Per island of the 2026-08-10 go/no-go cells (500k NFE = 125k per island, seed 1):
@@ -377,6 +544,15 @@ is adopted for the campaign outright, the production campaign at N_common is
 the confirmation and only the existing N = 100 go/no-go cells are the
 comparison arm (cost: the campaign delta of §7.4 alone).
 ### 7.6 Consequences of adopting N_common (everything that must change if N_common > 100)
+
+For the measured N_min(PS) = 300: 12 matched searches cost 12 × 94,949 =
+1,139k SU (2.8× the 401k campaign, 1.5× the whole allocation), 93 h wall at 8
+nodes (the 96-h cap), 124 ranks per node or an explicit realization batch,
+and E_test's 1,225-unit SOW resolution falls below one search evaluation's
+2,700 units. N = 150 (589k SU, 48 h) buys the paired SE on the tail operators
+down from 0.7–0.8 ε to 0.5–0.6 ε — not yet ε/2 — and N = 200 (775k SU, 63 h)
+to 0.5–0.6 ε. The K = 3 × S = 2 replication is what the reserve buys at
+N = 100; every N ≥ 150 spends it.
 
 1. **Epsilon calibration is re-run at N_common before any search.** The
    adopted vector [0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05] was calibrated

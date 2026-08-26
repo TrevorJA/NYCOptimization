@@ -79,11 +79,19 @@ honest i.i.d. pools by the global-index seeding).
   better stratified than the null and tail-enriched above it. Snap distance
   dilutes with dimension at fixed P (the expected anchor-to-nearest-member
   distance scales as P^(−1/m)).
-- **N = 100 confirmed; raising N does not buy enrichment at fixed P.** Across
-  N = 100 → 300 per-axis tail shares are flat-to-declining at every axis set
-  (the pool holds only ~P/10 members above P90 per axis), and joint L2-star
-  degrades mildly. N = 100 is the best value in the sweep, and larger N costs
-  linearly in every search.
+- **N = 100 confirmed at P = 2,000; raising N does not buy enrichment at
+  fixed P.** Across N = 100 → 300 per-axis tail shares are flat-to-declining
+  at every axis set (the pool holds only ~P/10 members above P90 per axis),
+  and joint L2-star degrades mildly. N = 100 is the best value in the sweep,
+  and larger N costs linearly in every search. CORRECTION 2026-08-25
+  (`ensemble_size_diagnostics.md` §7.1, block D extended to N = 50…500 on
+  the production P = 10⁶ pools, `NYCOPT_SELDIAG_N_SWEEP`): the decline is a
+  small-pool effect. At P = 10⁶ the campaign-set minimum tail share is flat
+  in N (0.27–0.29 from N = 50 to 500) and joint L2-star improves with N
+  (0.019 → 0.011); the decline appears only on prefixes P′ ≤ 2·10⁴. The
+  same run re-gated the regenerated pool d0 at 0.283 (drought_magnitude
+  binding) — a thin miss of the 0.30 gate that the pre-regeneration pools
+  passed at 0.311.
 - **Robust bounds confirmed (p1/p99).** Full-range (0, 100) bounds degrade
   realized coverage ~2.5–3× (outlier fixation); tail enrichment moves
   smoothly across (2, 98)–(0.5, 99.5) with no cliff at the campaign default.

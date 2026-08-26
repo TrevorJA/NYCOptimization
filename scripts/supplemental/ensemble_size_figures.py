@@ -453,9 +453,10 @@ def decision_table(stats: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
                 if not bool(last[c].all())),
         })
     nmin = pd.DataFrame(rows)
-    vals = [v for v in nmin.n_min if v is not None]
-    n_common = max(vals) if len(vals) == len(nmin) else None
-    nmin["n_common"] = n_common
+    vals = [v for v in nmin.n_min if v is not None and np.isfinite(v)]
+    # N_common is defined only when EVERY design passes somewhere on the ladder.
+    n_common = int(max(vals)) if len(vals) == len(nmin) else None
+    nmin["n_common"] = n_common if n_common is not None else np.nan
     return t, nmin
 
 
@@ -513,6 +514,11 @@ def fig_b_stat_vs_n(stats: pd.DataFrame, col: str, ylabel: str, stem: str, eps_f
         a.set_xscale("log")
         if log_y:
             a.set_yscale("log")
+            # Objectives pinned at their floor for most policies (e.g. a zero
+            # NYC deficit) give SEs of 1e-10; floor the axis at 1e-3 epsilon so
+            # the panel stays readable.
+            lo, hi = a.get_ylim()
+            a.set_ylim(bottom=max(lo, 1e-3 * eps), top=max(hi, 2.0 * eps * eps_frac))
         a.set_title(f"({'abcdefgh'[k]}) {_axis_label(name)}", fontsize=9)
         a.set_xlabel("N")
         if k % 4 == 0:
@@ -871,7 +877,11 @@ def main() -> None:
     lib_path = scfg.esd_library_path()
     plan_path = scfg.esd_json_path("library_plan")
     n_common = None
+    qc_path = scfg.esd_json_path("library_qc")
     if lib_path.exists() and plan_path.exists():
+        qc = json.loads(qc_path.read_text()) if qc_path.exists() else {}
+        if not qc.get("library_valid", False):
+            sys.exit(f"[esd:B] {lib_path} failed its build QC ({qc_path}); refusing to analyze.")
         lib = Library(lib_path, json.loads(plan_path.read_text()))
         stats, bands, _ = layer_b_statistics(lib)
         stats.to_csv(scfg.esd_table_path("layer_b_stats"), index=False)
@@ -880,6 +890,7 @@ def main() -> None:
         dec.to_csv(scfg.esd_table_path("decision_table"), index=False)
         nmin.to_csv(scfg.esd_table_path("n_min"), index=False)
         n_common = None if nmin.n_common.isna().all() else int(nmin.n_common.iloc[0])
+        largest = int(max(scfg.ESD_N_LADDER))
         print("[esd:B] N_min table:\n" + nmin.to_string(index=False), flush=True)
         neff = n_eff_table(lib)
         neff.to_csv(scfg.esd_table_path("n_eff"), index=False)

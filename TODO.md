@@ -160,12 +160,27 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   (drought_magnitude 0.284; pre-regeneration 0.311); Layer A seed means
   0.271/0.276/0.271 on d0/d1/d2 at N=100. Either re-affirm the gate with
   its ~0.02 seed tolerance or revisit the axis set/P before the searches.
-  OPEN: run
-  the full chain, fill note §7.1-7.3/7.6, SI Text S5 estimator-stability
-  paragraph, `scenario_design_methods.md` §6, `experimental_design.md`, and
-  the adoption checklist (epsilon re-calibration at N_common, (N, P) gate
-  re-check, E_test 1,225-unit sentence, `production` memory geometry,
-  `NYCOPT_SEARCH_N`, every N=100 cost figure).
+  LAYER B DONE 2026-08-26 (library job 20143847, 49 SU; total ≈ 125 SU incl.
+  a quarantined first evaluation — model-dict cache keyed on preset name
+  re-simulated blocks; fixed + two fatal QC guards added). DECISION TABLE
+  (note §7.3): PS passes every pre-registered criterion from N = 300
+  (binding: worst-pair paired SE ≤ ε/2 on NYC/Montague deficit P99 and
+  storage P01; 0.7-0.8 ε at N = 100); HF passes at NO N ≤ 500 — NYC deficit
+  P99 construction SD 2-4 ε (shelf-valued operator decided by the selected
+  extremes). Reliability + flood objectives pass from N = 75 in both designs.
+  n_eff/N(L-1) = 0.68-1.0. NFE cannot be traded for N. N = 300 costs 2.8x the
+  campaign searches (1,139k SU) — a budget fact, NOT part of the statistical
+  recommendation. STATISTICAL VERDICT: N_common >= 300, upper end NOT
+  established — the HF ladder (3 constructions per N, N <= 500) cannot
+  separate slow decay (fit N^-0.24 +/- 0.25) from a plateau on NYC deficit
+  P99. NEXT: extend the HF evidence (>= 10 anchor plans per N, ladder to
+  750/1000/1500, P_ref raised so PS keeps >= 10 disjoint replicates) by
+  incremental library extension (~150 SU), then fix N_common. Note §7.6
+  lists everything that changes if N != 100 is adopted (epsilon
+  re-calibration first). Docs updated: SI
+  Text S4/S5, main text 3.1.1 sentence, `scenario_design_methods.md` §6,
+  `experimental_design.md`, `hazard_selector_diagnostics.md` §5. TREVOR'S
+  CALLS: (a) N = 100 vs 150/300, (b) the regenerated-pool gate miss above.
 
 - [x] **[local]** REGRET TOLERANCE tau RE-ADOPTED 2026-08-14 on ROUND values
   (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;

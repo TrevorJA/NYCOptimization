@@ -18,6 +18,8 @@ Two stages, selected by ``NYCOPT_ESD_STAGE`` (set by the wrappers):
     ``_meta.json`` / ``chunk_index.json``. The wrapper then stages the step-04
     pywrdrb inputs for the chunk (``prep_pywrdrb_inputs.py --preset``).
 
+``requalify``    (serial) recomputes QC (ii)/(iii) from the merged library.
+
 ``evaluate``     (MPI task farm; one wholenode)
     Task = (policy, staged ensemble, block of <= ESD_EVAL_BLOCK realizations).
     Each rank runs ``src.simulation.evaluate_annual_units`` on its tasks
@@ -44,6 +46,7 @@ import os
 import sys
 import time
 import traceback
+from dataclasses import replace
 from pathlib import Path
 
 import h5py
@@ -69,10 +72,14 @@ from src.sensitivity_common import (  # noqa: E402
 )
 from src.simulation import evaluate_annual_units  # noqa: E402
 
-#: Relative tolerance for the end-to-end (staged-vs-regenerated) unit check —
-#: pywrdrb's LP solver carries run-to-run jitter at this level; anything larger
-#: is reported as a defect.
-END_TO_END_RTOL: float = 1e-6
+#: End-to-end (staged-vs-regenerated) tolerance, in the study's own currency:
+#: every policy's COMPOSED objective on the 100 common members must agree to
+#: this fraction of the objective's epsilon. pywrdrb's LP solver carries
+#: run-to-run jitter that flips a few failing-week / flood-day counts and moves
+#: annual storage minima by < 0.5 % of capacity on ~0.4 % of unit-years
+#: (measured 2026-08-26); the composed objectives agree to < 1e-3 epsilon.
+#: Unit-level differences are reported alongside, never gated.
+END_TO_END_EPS_FRAC: float = 0.01
 
 
 ###############################################################################
@@ -211,7 +218,17 @@ def _eval_task(task: dict, dvs: np.ndarray, sources: list[dict], objs: list,
                active_idx: list[int]) -> tuple[np.ndarray, np.ndarray]:
     """One task: the ``(R, M, U)`` tensor and the active objectives' Borg scalars."""
     src = sources[task["source"]]
-    spec = with_indices_override(get_ensemble_spec(src["slug"]), task["local"])
+    # A UNIQUE preset_name per block: src.simulation caches the built model
+    # dict by preset name (+ DU signature) and the cached dict carries the
+    # block's inflow_ensemble_indices, so two blocks of one chunk sharing a
+    # name would silently re-simulate the first block's realizations
+    # (observed 2026-08-26; the same reason run_simulation_ensemble_batched
+    # names its batches ``__b{offset}``). inflow_type (the staged dir) is
+    # unchanged.
+    spec = replace(
+        with_indices_override(get_ensemble_spec(src["slug"]), task["local"]),
+        preset_name=f"{src['slug']}__blk{task['local'][0]}",
+    )
     units, names = evaluate_annual_units(
         dvs[task["policy"]], scfg.ESD_FORMULATION, objective_set=objs,
         ensemble_spec=spec, realization_batch=0,
@@ -222,6 +239,118 @@ def _eval_task(task: dict, dvs: np.ndarray, sources: list[dict], objs: list,
         objs[k].compute_for_borg_from_units(units[:, k, :].reshape(-1)) for k in active_idx
     ])
     return units, scalars
+
+
+def _library_checks(units: np.ndarray, sources: list[dict], row_of: dict, policy_ids: list,
+                    objs: list, active_idx: list[int], plan: dict) -> tuple[list, dict]:
+    """The two library-level QC checks (also re-runnable from the merged file).
+
+    (ii) No two blocks of one (policy, source) may hold identical unit tensors —
+    the signature of the model-dict cache reusing another block's inflow
+    indices. (iii) The staged production ``hazfill`` draw of the library pool,
+    simulated from its staged files, must agree with the regenerated library
+    rows of the same pool members: composed objectives within
+    ``END_TO_END_EPS_FRAC`` x epsilon for every policy (gated), unit-level
+    differences reported.
+
+    Returns:
+        ``(duplicate_blocks, end_to_end)`` — a list of ``(source, policy,
+        block_start)`` triples and the end-to-end result dict.
+    """
+    dup_blocks = []
+    for si, src in enumerate(sources):
+        n = len(src["global_ids"])
+        blocks = [list(range(b0, min(n, b0 + scfg.ESD_EVAL_BLOCK)))
+                  for b0 in range(0, n, scfg.ESD_EVAL_BLOCK)]
+        for p in range(len(policy_ids)):
+            seen = []
+            for bl in blocks:
+                if len(bl) < 2:
+                    continue
+                arr = units[p, [row_of[(si, li)] for li in bl], :, :]
+                if np.isnan(arr).all():
+                    continue
+                for prev in seen:
+                    if prev.shape == arr.shape and np.array_equal(prev, arr, equal_nan=True):
+                        dup_blocks.append((src["key"], p, bl[0]))
+                        break
+                seen.append(arr)
+
+    e2e: dict = {"checked": False}
+    pool_rows = {g: row_of[(si, li)] for si, src in enumerate(sources) if src["kind"] == "pool"
+                 for li, g in enumerate(src["global_ids"])}
+    for si, src in enumerate(sources):
+        if src["kind"] != "staged" or src["design"] != "hazard_filling_stationary":
+            continue
+        if src["draw"] != plan["pool_draw"]:
+            continue
+        pairs = [(row_of[(si, li)], pool_rows[g]) for li, g in enumerate(src["global_ids"])
+                 if g in pool_rows]
+        if not pairs:
+            continue
+        a = units[:, [p[0] for p in pairs], :, :]
+        b = units[:, [p[1] for p in pairs], :, :]
+        d = np.abs(a - b)
+        per_obj = {}
+        worst_frac = 0.0
+        for k in active_idx:
+            op, eps = objs[k].unit_operator, objs[k].epsilon
+            va = np.array([float(op(a[p, :, k, :].reshape(-1))) for p in range(a.shape[0])])
+            vb = np.array([float(op(b[p, :, k, :].reshape(-1))) for p in range(b.shape[0])])
+            frac = float(np.nanmax(np.abs(va - vb)) / eps)
+            worst_frac = max(worst_frac, frac)
+            per_obj[objs[k].name] = {"max_abs_composed_diff": float(np.nanmax(np.abs(va - vb))),
+                                     "eps": eps, "diff_over_eps": frac,
+                                     "n_units_differing": int((d[:, :, k, :] > 1e-9).sum()),
+                                     "max_abs_unit_diff": float(np.nanmax(d[:, :, k, :]))}
+        e2e = {"checked": True, "staged_slug": src["slug"], "n_pairs": len(pairs),
+               "n_units_compared": int(d.size),
+               "n_units_differing": int((d > 1e-9).sum()),
+               "n_realizations_differing": int((np.nanmax(d, axis=(0, 2, 3)) > 1e-9).sum()),
+               "worst_composed_diff_over_eps": worst_frac,
+               "eps_frac_tolerance": END_TO_END_EPS_FRAC,
+               "within_tolerance": bool(worst_frac <= END_TO_END_EPS_FRAC),
+               "per_objective": per_obj}
+    return dup_blocks, e2e
+
+
+def stage_requalify(plan: dict) -> None:
+    """Recompute QC (ii)/(iii) from the merged library and rewrite ``library_qc.json``.
+
+    The composition check (i) needs the per-task shards and is carried over
+    from the existing QC file unchanged.
+    """
+    path = scfg.esd_library_path()
+    qc_path = scfg.esd_json_path("library_qc")
+    old = json.loads(qc_path.read_text()) if qc_path.exists() else {}
+    with h5py.File(path, "r") as f:
+        units = f["units"][:]
+        policy_ids = [s.decode() for s in f["policy_ids"][:]]
+    objs = list(ENSEMBLE_OBJECTIVES.values())
+    active = list(config.get_objective_set().names)
+    active_idx = [[o.name for o in objs].index(a) for a in active]
+    sources = _sources(plan)
+    row_of, r = {}, 0
+    for si, src in enumerate(sources):
+        for li in range(len(src["global_ids"])):
+            row_of[(si, li)] = r
+            r += 1
+    if r != units.shape[1]:
+        sys.exit(f"[esd:requalify] library rows {units.shape[1]} != plan rows {r}")
+    dup_blocks, e2e = _library_checks(units, sources, row_of, policy_ids, objs, active_idx, plan)
+    failed = old.get("n_failed_tasks", 0)
+    comp_ok = bool(old.get("composition_exact", False))
+    qc = dict(old)
+    qc.update({"duplicate_blocks": dup_blocks[:20], "n_duplicate_blocks": len(dup_blocks),
+               "duplicates_ok": not dup_blocks, "end_to_end": e2e,
+               "library_valid": bool(comp_ok and not dup_blocks and not failed
+                                     and (not e2e["checked"] or e2e["within_tolerance"])),
+               "requalified": True})
+    qc_path.write_text(json.dumps(qc, indent=2))
+    print(f"[esd:requalify] duplicates={len(dup_blocks)} end_to_end={e2e.get('within_tolerance')} "
+          f"(worst composed diff {e2e.get('worst_composed_diff_over_eps', float('nan')):.2e} eps; "
+          f"{e2e.get('n_units_differing')} / {e2e.get('n_units_compared')} units differ) "
+          f"-> library_valid={qc['library_valid']}")
 
 
 def _merge(partial_dir: Path, plan: dict, tasks: list[dict], dvs: np.ndarray,
@@ -278,28 +407,9 @@ def _merge(partial_dir: Path, plan: dict, tasks: list[dict], dvs: np.ndarray,
         max_dev = max(max_dev, float(dev))
     composition_ok = max_dev == 0.0
 
-    # QC (ii): staged hazfill members vs regenerated library rows (same pool, same ids).
-    e2e = {"checked": False}
-    pool_rows = {g: row_of[(si, li)] for si, src in enumerate(sources) if src["kind"] == "pool"
-                 for li, g in enumerate(src["global_ids"])}
-    for si, src in enumerate(sources):
-        if src["kind"] != "staged" or src["design"] != "hazard_filling_stationary":
-            continue
-        if src["draw"] != plan["pool_draw"]:
-            continue
-        pairs = [(row_of[(si, li)], pool_rows[g]) for li, g in enumerate(src["global_ids"])
-                 if g in pool_rows]
-        if not pairs:
-            continue
-        a = units[:, [p[0] for p in pairs], :, :].astype(float)
-        b = units[:, [p[1] for p in pairs], :, :].astype(float)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            rel = np.abs(a - b) / np.maximum(np.abs(b), 1e-9)
-        e2e = {"checked": True, "staged_slug": src["slug"], "n_pairs": len(pairs),
-               "max_abs_diff": float(np.nanmax(np.abs(a - b))),
-               "max_rel_diff": float(np.nanmax(rel)),
-               "within_tolerance": bool(np.nanmax(rel) <= END_TO_END_RTOL),
-               "rtol": END_TO_END_RTOL}
+    # QC (ii) duplicate blocks and (iii) end-to-end agreement.
+    dup_blocks, e2e = _library_checks(units, sources, row_of, policy_ids, objs, active_idx, plan)
+    duplicates_ok = not dup_blocks
 
     out = scfg.esd_library_path()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -339,7 +449,11 @@ def _merge(partial_dir: Path, plan: dict, tasks: list[dict], dvs: np.ndarray,
         "n_units": n_unit, "n_tasks": len(tasks), "n_failed_tasks": len(failed),
         "failed_task_ids": failed[:50],
         "composition_max_rel_dev": max_dev, "composition_exact": composition_ok,
+        "duplicate_blocks": dup_blocks[:20], "n_duplicate_blocks": len(dup_blocks),
+        "duplicates_ok": duplicates_ok,
         "end_to_end": e2e,
+        "library_valid": bool(composition_ok and duplicates_ok and not failed
+                              and (not e2e["checked"] or e2e["within_tolerance"])),
         "task_seconds_median": float(np.nanmedian(seconds)),
         "task_seconds_p90": float(np.nanpercentile(seconds, 90)),
         "core_hours_total": float(np.nansum(seconds) / 3600.0),
@@ -349,7 +463,7 @@ def _merge(partial_dir: Path, plan: dict, tasks: list[dict], dvs: np.ndarray,
     scfg.esd_json_path("library_qc").write_text(json.dumps(qc, indent=2))
     print(f"\n=== Saved {out}  units={units.shape}  failed={len(failed)}  "
           f"composition max rel dev={max_dev:.2e} ({'OK' if composition_ok else 'MISMATCH'})  "
-          f"end-to-end={e2e}", flush=True)
+          f"duplicate blocks={len(dup_blocks)}  end-to-end={e2e}", flush=True)
     for sh in shards:
         sh.unlink()
     for marker in partial_dir.glob("rank_*.done"):
@@ -358,6 +472,10 @@ def _merge(partial_dir: Path, plan: dict, tasks: list[dict], dvs: np.ndarray,
         partial_dir.rmdir()
     except OSError:
         pass
+    if not qc["library_valid"]:
+        sys.exit(f"[esd:evaluate] LIBRARY INVALID — duplicates={len(dup_blocks)}, "
+                 f"failed={len(failed)}, composition_exact={composition_ok}, "
+                 f"end_to_end={e2e}. Not for analysis.")
     return out
 
 
@@ -437,8 +555,10 @@ def main() -> None:
         stage_materialize(plan)
     elif stage == "evaluate":
         stage_evaluate(plan)
+    elif stage == "requalify":
+        stage_requalify(plan)
     else:
-        sys.exit("[esd:lib] set NYCOPT_ESD_STAGE to 'materialize' or 'evaluate'")
+        sys.exit("[esd:lib] set NYCOPT_ESD_STAGE to 'materialize', 'evaluate', or 'requalify'")
 
 
 if __name__ == "__main__":
