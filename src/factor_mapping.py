@@ -12,22 +12,16 @@ figure output (orchestration lives in ``scripts/main/factor_mapping_run.py``).
 Two SOW coordinate systems are supported:
 
 - **theta space** (PRIMARY): the sampled DU forcing parameters
-  ``(e^m, r1, r2)`` -- the input space of the E_test experimental design, the
-  standard scenario-discovery setting (Hadjimichael et al. 2020; Gold et al.
-  2022; Lau et al. 2023). Three designed-orthogonal LHS axes, so no
-  redundancy screen is needed. Expect ``e^m`` to dominate the importance
-  ranking (|rho_S| = 0.91-0.98 against every objective); the informative
-  content is the PLACEMENT of the probability contour along ``e^m`` and any
-  ``r1``/``r2`` interaction, not the ranking itself.
+  ``(e^m, r1, r2)``, the input space of the E_test design (Hadjimichael et
+  al. 2020; Gold et al. 2022; Lau et al. 2023). Three designed-orthogonal LHS
+  axes, so no redundancy screen is needed.
 - **hazard space** (SUPPLEMENTAL): realized-sequence drought/flood descriptors,
   screened for redundancy first (:func:`screen_hazard_axes`); the space of the
   step-11 coverage-deficit mechanism test.
 
 Classifier: ``GradientBoostingClassifier`` with 250 trees, ``max_depth=2``,
-``learning_rate=0.1`` -- between Lau et al. (2023) (200/3/0.1) and Gold et al.
-(2022) (500/4/0.1), sized for the interim 200-SOW cube and conservative at the
-full 1000. Stratified k-fold CV AUC is reported with every fit as the
-over-trust guard (an honesty mechanism, not a tuning loop).
+``learning_rate=0.1`` (between Lau et al. 2023 and Gold et al. 2022).
+Stratified k-fold CV AUC is reported with every fit.
 """
 
 from __future__ import annotations
@@ -201,13 +195,9 @@ def assert_theta_alignment(X: np.ndarray, raw: rob.RawCube) -> None:
 def cdf_transform(values: np.ndarray, reference: np.ndarray) -> np.ndarray:
     """Map columns of ``values`` into the empirical-CDF/rank space of ``reference``.
 
-    The reference-anchored generalization of
-    ``scengen.subsample.empirical_cdf_normalize`` (which ranks a matrix against
-    itself). Anchoring is REQUIRED for the mechanism test: a search ensemble
-    and E_test must land in one common coordinate system before their
-    distances mean anything, and self-ranking each set separately would map
-    each set's own extremes to 0 and 1 -- destroying exactly the gaps the
-    test looks for.
+    Reference-anchored (unlike ``scengen.subsample.empirical_cdf_normalize``,
+    which ranks a matrix against itself): a search ensemble and E_test must
+    share one coordinate system before their distances mean anything.
 
     Args:
         values: ``(n, m)`` raw hazard coordinates to transform.
@@ -231,14 +221,10 @@ def align_hazard_to_cube(raw: rob.RawCube, image: dict,
                          axis_idx: list) -> np.ndarray:
     """SOW-level hazard coordinates aligned to the re-eval cube's SOW axis.
 
-    The hazard image carries one row per REALIZATION (a realized sequence's
-    drought/flood descriptors); the cube's unit is the SOW. Each SOW's
-    coordinate is the MEAN over its realizations' descriptors -- the natural
-    variability inside the state collapses, matching how the objective values
-    themselves pool the state's realizations. The join is on
-    ``realization_id // realizations_per_sow == sow_id``, never positional: a
-    positional join would silently attach the wrong hazard coordinates to
-    every failure label and quietly invalidate the entire mechanism test.
+    The hazard image carries one row per REALIZATION; the cube's unit is the
+    SOW. Each SOW's coordinate is the MEAN over its realizations' descriptors.
+    The join is on ``realization_id // realizations_per_sow == sow_id``, never
+    positional.
 
     Returns:
         ``(G_cube, len(axis_idx))`` raw hazard coordinates aligned to
@@ -272,13 +258,10 @@ def screen_hazard_axes(H: np.ndarray, axes: list,
                        threshold: float = FM_RHO_THRESHOLD) -> dict:
     """Drop degenerate axes and keep one representative per redundant cluster.
 
-    A discovery-side reduction, deliberately STRONGER than the selection-side
-    axis screen (``scengen.hazard_filling.screen_hazard_axes``, which prunes
-    only near-duplicates at |rho_S| >= 0.95): importances reported over
-    correlated axes are not interpretable (Quinn et al. 2020), so discovery
-    clusters at the lower redundancy cut and keeps one representative per
-    cluster. That is why this runs BEFORE the fit rather than as a footnote
-    after it.
+    Stronger than the selection-side screen
+    (``scengen.hazard_filling.screen_hazard_axes``, |rho_S| >= 0.95):
+    importances over correlated axes are not interpretable (Quinn et al.
+    2020), so discovery clusters at the lower cut before the fit.
 
     Args:
         H: ``(R, m)`` hazard image (raw metric values).
@@ -573,9 +556,7 @@ def select_compromise(raw: rob.RawCube, rule: str = "best_satisficing",
     """Choose the per-design analysis policy, and report both candidate rules.
 
     Scenario discovery is run on a small number of compromise solutions, not
-    the whole Pareto front (Kasprzyk et al. 2013; Gold et al. 2022) -- a
-    factor map of "the front" is not a statement about any policy anyone
-    would adopt.
+    the whole Pareto front (Kasprzyk et al. 2013; Gold et al. 2022).
 
     Args:
         raw: The design's re-eval cube.
@@ -609,9 +590,8 @@ def select_compromise(raw: rob.RawCube, rule: str = "best_satisficing",
     masked_dist = np.where(alive, dist, np.inf)
     masked_sat = np.where(alive, sat, -np.inf)
 
-    # Ties on satisficing are common (a saturated criterion ties everything --
-    # Bonham et al. 2024), so break them on distance-to-ideal rather than on
-    # solution-id order, which would be an arbitrary, ordering-dependent choice.
+    # Ties on satisficing are common (a saturated criterion ties everything),
+    # so break them on distance-to-ideal rather than on solution-id order.
     best_sat = int(np.lexsort((masked_dist, -masked_sat))[0])
     best_dist = int(np.argmin(masked_dist))
     idx = best_sat if rule == "best_satisficing" else best_dist

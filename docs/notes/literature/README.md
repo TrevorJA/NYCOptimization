@@ -27,6 +27,5 @@ citations/DOIs synced to that collection.
 
 - [scenario_design_taxonomy.md](scenario_design_taxonomy.md) — conceptual taxonomy of scenario-design approaches
 - [scenario_design_tables.md](scenario_design_tables.md) — manuscript-candidate scenario tables (counts, lengths)
-- [dmuu_optimization_review.md](dmuu_optimization_review.md) — annotated background on DMUU optimization
 - [topics.md](topics.md) — tag taxonomy for the per-paper notes
 - [notes/](notes/) — per-paper deep-read notes

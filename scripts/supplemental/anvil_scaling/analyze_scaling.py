@@ -93,13 +93,10 @@ def load_packing() -> "tuple[pd.DataFrame | None, pd.DataFrame | None]":
 def _epoch_key(rows: pd.DataFrame) -> pd.Series:
     """Identify the code version each shard row was measured against.
 
-    Prefers the ``code_sha`` the worker records. Shards written before that
-    column existed fall back to a *model fingerprint*: the per-job median
-    objective vector. Identical DVs on the same ensemble must give identical
-    objectives, so a job whose objectives differ from another job's was run
-    against different model code — which is exactly what happened on
-    2026-07-13, when a merge landed while the spot/batch jobs sat in the
-    queue (a SLURM job runs the code present at START time, not submit time).
+    Prefers the ``code_sha`` the worker records. Shards without that column
+    fall back to the per-job objective fingerprint (median objective vector):
+    identical DVs on the same ensemble must give identical objectives, so a job
+    whose objectives differ ran against different model code.
     """
     if "code_sha" in rows.columns and rows["code_sha"].notna().all():
         return rows["code_sha"].astype(str)

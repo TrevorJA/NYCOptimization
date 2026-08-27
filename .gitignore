@@ -25,9 +25,6 @@ lib/borg/
 *.so
 *.dll
 
-# MOEAFramework
-tools/
-
 # HPC
 *.log
 *.err
@@ -57,9 +54,6 @@ docs/notes/literature/pdfs/
 docs/notes/literature/notes/
 docs/notes/literature/fulltext/
 
-# Ad-hoc sandbox: ignore its contents, but keep the deliberately-tracked
-# deck builder (force-added) so it syncs across machines.
+# Ad-hoc sandbox (never referenced by workflow/ or src/)
 scripts/temporary/*
 !scripts/temporary/.gitkeep
-!scripts/temporary/build_proposal_motivation_deck.py
-archive/*

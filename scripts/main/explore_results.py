@@ -1,50 +1,31 @@
 """explore_results.py - Select and visualize solutions from a Pareto front.
 
-One driver over one completed search: it screens the reference set against the
-FFMP baseline, picks traceable representatives with :mod:`src.solution_selection`,
-and renders the figure suite. Everything except the historic-timeseries figure
-is pure post-processing and runs instantly on any run (any scenario / slug /
-formulation).
+Screens one completed search's reference set against the FFMP baseline, picks
+representatives with :mod:`src.solution_selection`, and renders the figure suite.
 
 Figures (under ``outputs/figures/_exploratory/{scenario}/{slug}/explore/``):
 
-    explore_01_baseline_dominance.png   front vs baseline on parallel axes,
-                                        the dominating subset highlighted
-    explore_02_selected_policies.png    the chosen representatives highlighted
-    explore_03_objective_tradeoffs.png  Spearman trade-off structure
-    explore_04_policy_rules_*.png       operating rules of each representative
-    explore_05_historic_timeseries.png  simulated behaviour vs the baseline
-    explore_06_historic_timeseries_drought.png   the same, zoomed on the
-                                        1960s drought of record
-    explore_07_tradeoff_scatter.png     headline pairwise tradeoff scatters,
-                                        colored by NYC delivery reliability
+    explore_01_baseline_dominance.png        front vs baseline on parallel axes
+    explore_02_selected_policies.png         the chosen representatives highlighted
+    explore_03_objective_tradeoffs.png       Spearman trade-off structure
+    explore_04_policy_rules_*.png            operating rules of each representative
+    explore_05_historic_timeseries.png       simulated behaviour vs the baseline
+    explore_06_historic_timeseries_drought.png   the same, zoomed on the 1960s drought
+    explore_07_tradeoff_scatter.png          headline pairwise tradeoff scatters
     explore_08_tradeoff_scatter_matrix.png   lower-triangle scatter matrix
-                                        over every objective pair
-    explore_09_dv_ranges.png            bound-normalized DV ranges of
-                                        criterion-satisfying subsets vs the
-                                        full front (baseline dominance,
-                                        NYC-storage floors)
+    explore_09_dv_ranges.png                 bound-normalized DV ranges of
+                                             criterion-satisfying subsets vs the front
 
 Tables (same directory):
 
-    selected_solutions.csv     one row per selection rule: the reference-set
-                               row index, the rule that picked it, and its full
-                               natural-scale objective vector. Those indices are
-                               how the policies get referenced in any later
-                               re-evaluation, so they are the point of the file.
-    selected_dv_distances.csv  pairwise bound-normalized decision-variable
-                               distance between the highlighted policies — the
-                               check that "distinct" representatives really are
-                               operationally distinct.
+    selected_solutions.csv     one row per selection rule: reference-set row
+                               index, rule, natural-scale objective vector
+    selected_dv_distances.csv  pairwise bound-normalized DV distance between the
+                               highlighted policies
 
-Simulation:
-    Figures 05/06 need a Pywr-DRB run per policy plus one for the baseline
-    (~31 s each on Anvil), so they are OFF unless a cached timeseries exists.
-    Produce the cache with ``--simulate-timeseries`` from a batch job — see
-    ``workflow/supplemental/sim_selected_policies.sh``. Baseline and candidates
-    are always simulated together in one job and in one model mode, because the
-    persisted ``outputs/baseline/ffmp_baseline.hdf5`` was written with the FULL
-    model while search uses the TRIMMED model.
+Figures 05/06 need a cached simulation from
+``workflow/supplemental/sim_selected_policies.sh`` (``--simulate-timeseries``);
+baseline and candidates are simulated together in one model mode.
 
 Usage (from repo root, venv active):
     python3 -m scripts.main.explore_results                       # cheap figures
@@ -112,12 +93,9 @@ def _load_baseline(formulation: str, scenario: str,
     """Scenario-matched baseline vector aligned to the front's objectives.
 
     Resolves through ``config.baseline_objectives_csv`` so an ensemble
-    scenario reads the baseline scored on ITS search ensemble (step 05
-    ``--search-ensemble``) — never the historic-record vector, which is not
-    comparable to ensemble-evaluated fronts. Stale baselines from earlier
-    objective sets exist in this project's history, so a header that is not
-    exactly the active objective set is a hard error rather than a silent
-    positional read.
+    scenario reads the baseline scored on its own search ensemble (step 05
+    ``--search-ensemble``), never the historic-record vector. The header must
+    equal the active objective set exactly (hard error).
 
     Raises:
         FileNotFoundError: If the scenario's baseline CSV is missing.

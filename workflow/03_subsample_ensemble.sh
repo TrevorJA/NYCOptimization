@@ -9,12 +9,12 @@
 # which is an LHS over the generator's forcing parameters with realizations
 # generated at each design point, not a subsample.
 #
-# No array: the pool is fixed and only the LHS anchor seed varies across draws, so
-# the script builds all K draws in one job off a single hazard-image load. Serial
-# (the selector is single-process); the daily pool is read only for the selected
-# realizations. Three draws are staged (d0 searched; d1-d2 for the SI
-# draw-sensitivity re-evaluation); the production pool is selected by passing
-# NYCOPT_CANDIDATE_POOL_N=1000000.
+# No array: all K draws are selected in one job, each from its own draw's pool
+# image (step 02 regenerates the pool per draw, so a draw re-rolls both the pool
+# and the LHS anchor plan). Serial (the selector is single-process); the daily
+# pool is read only for the selected realizations. Three draws are staged (d0
+# searched; d1-d2 for the SI draw-sensitivity re-evaluation); the production
+# pool is selected by passing NYCOPT_CANDIDATE_POOL_N=1000000.
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=1000000 \

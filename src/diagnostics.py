@@ -13,16 +13,10 @@ get_n_vars()/get_n_objs() at build time (one JAR per formulation,
 registered as "drb_{formulation}" in MOEAFramework-5.0/lib/).
 
 The problem definitions declare 0 constraints even though the Borg search
-uses formal constraints (get_n_constrs() == 3): the runtime/.set files
+uses formal constraints (get_n_constrs() == 2): the runtime/.set files
 parsed here contain only feasible solutions in vars+objs format — the C
 writer (BORG_Archive_append) strips constraint violators and never writes
 constraint columns. See the header of 00_setup_borg_jars.sh.
-
-References:
-    - WaterProgramming: "MM Borg MOEA Python Wrapper - Checkpointing,
-      Runtime and Operator Dynamics using MOEA Framework-5.0" (Aug 2025)
-    - WaterProgramming: "Performing runtime diagnostics" (Apr 2024)
-    - WaterProgramming: "MM Borg Training Part 2" (Sep 2024)
 """
 
 import subprocess

@@ -1,89 +1,32 @@
 """
-objectives_ensemble.py - Ensemble (multi-realization) objective framework.
+objectives_ensemble.py - Annual-unit (§2) ensemble objective registry.
 
-Implements the **two-layer annual-unit scheme** of
-`docs/notes/methods/objective_definitions.md` §2 for all ensemble
-(multi-realization) evaluations. Every scenario design is scored through this
-annual-unit registry — including `historic`, which is simply the N=1 case over
-its 77 FFMP-year units (see `src/formulations/__init__.py`); the §1 temporal
-metrics in `src.objectives` supply the shared windowed-series cores and the
-per-realization base metrics of the re-evaluation layer.
+The two-layer annual-unit scheme of docs/notes/methods/objective_definitions.md
+§2, used for every search and re-evaluation (the historic design is the N = 1
+case over its own FFMP-year units):
 
-Two-layer scheme (Hamilton et al. 2022 vocabulary)
---------------------------------------------------
-Stage (i) — **annual metric** per (realization × FFMP-year) unit. Every
-synthetic realization starts December 1 (config ``ENSEMBLE_START_DATE``; the
-historic trace shares the December anchor, config ``START_DATE``) and spans L
-whole years (Dec 1 – Nov 30). The first ``METRIC_EXCLUSION_MONTHS`` (6)
-calendar months (Dec – May) are outside the metric window — the SSI-6
-accumulation spin-up the hazard-selection metrics also exclude — and are
-dropped by date; the remainder begins exactly **Jun 1 of year 1**, the FFMP
-operating-year boundary (the FFMP's seasonal rules reset June 1), and is
-split into whole FFMP years (Jun 1 – May 31). The trailing partial (Jun 1 –
-Nov 30 of year L) is discarded, so an L-year realization yields exactly
-**L − 1 metric-bearing unit-years** spanning Jun 1 year 1 – May 31 year L —
-the IDENTICAL window the hazard-selection metrics score (see
-:func:`ffmp_year_unit_slices`, which derives the units from the dates).
+- Stage (i), annual metric: one value per (realization x FFMP-year) unit.
+  Units are Jun 1 - May 31 FFMP operating years after the
+  ``METRIC_EXCLUSION_MONTHS`` (6) spin-up; an L-year December-start
+  realization yields L - 1 units (:func:`ffmp_year_unit_slices`).
+- Stage (ii), unit operator over the POOLED unit-years of the ensemble:
+  non-failure frequency (a unit-year fails at >= k failing weeks), pooled
+  P99 / P01, or pooled mean.
 
-Stage (ii) — **unit operator** over the POOLED unit-years of the whole
-ensemble (all realizations' units concatenated):
+Non-finite annual metrics count as failure-years for the frequency objectives
+and are replaced by the objective's ``worst_value`` sentinel for the mean and
+percentile objectives. Weekly accounting reuses the windowed-series cores of
+`src.objectives`, so §1 and §2 share one formula per quantity. Deficit-% and
+storage-% metrics are 0-100; frequencies are 0-1 fractions.
 
-- *Failure frequency* (reliability objectives): fraction of unit-years WITHOUT
-  failure, where a unit-year fails when it has >= k failing weeks (k
-  configurable via ``_DEFAULT_FAILURE_K`` / ``NYCOPT_FAILURE_K``). Maximize;
-  0-1 fraction.
-- *Pooled percentile*: P99 of the annual metric for the tail-deficit
-  objectives ("worst-1st-percentile unit-year", minimize) and P01 for the
-  annual-minimum-storage objective (maximize).
-- *Pooled mean*: expected annual flood exceedance (minimize). The P99 unit
-  operator is tie-degenerate at the campaign's 900 pooled unit-years and
-  12-30x noisier under bootstrap; it stays registered as an inactive
-  diagnostic.
+Re-evaluation (`src.reeval_core`, `src.robustness`) pools each E_test SOW's R
+realizations through the same unit operator, so per-SOW values are the search
+objectives recomputed per state of the world. Each :class:`AnnualUnitObjective`
+also carries its §1 ``base`` objective and the satisficing level
+``sat_threshold`` / ``sat_kind`` the robustness layer applies to per-SOW
+values (labels ``<annual name>__sat<thr>``).
 
-Non-finite annual metrics: a non-finite unit-year counts as a **failure-year**
-for the frequency objectives; for the mean/percentile objectives it is
-replaced by the objective's orientation-aware worst-possible sentinel
-(``worst_value``: 100% for the bounded deficit percentages, 5490 ft-days for
-annual flood exceedance, 0% for annual minimum storage) before aggregation, so a
-degenerate unit pushes the objective toward failure instead of being dropped.
-
-Metric reuse: all weekly accounting (weekly sums for delivery, weekly means
-for flows, the 0.99 satisfaction factor, deficit-% normalization, the
-running-average delivery entitlement via ``_delivery_entitlement``, CVaR90 via
-``_cvar_worst_mean``) is imported from `src.objectives` windowed-series cores,
-so §1 and §2 share one formula per quantity. Deficit-% and storage-% metrics
-are 0-100 scales matching §1; frequency objectives are 0-1 fractions.
-
-The active set's epsilons are calibrated in native metric units by the
-epsilon-calibration experiment (see the `_ANNUAL_REGISTRY_SPEC` comment and
-`docs/notes/methods/epsilon_calibration_experiment.md`). NJ delivery is the
-active 8th objective. The inactive-registry entries carry calibrated values
-from the same experiment.
-
-Re-evaluation layer (unified currency)
---------------------------------------
-The re-eval robustness pipeline (`src.reeval_core`, `src.robustness`) scores
-THE SAME annual-unit objectives, recomputed per deeply-uncertain state of the
-world (SOW): each E_test SOW's R realizations contribute their unit-years to
-one pooled sample, the §2 unit operator collapses that pool to the SOW's
-objective value, and robustness/regret are transformations of those per-SOW
-objective values (Herman et al. 2014, 2015; Trindade et al. 2017; McPhail et
-al. 2018). There is ONE metric currency: search, robustness, and regret all
-speak the annual-unit objective statistics.
-
-Each :class:`AnnualUnitObjective` therefore also carries:
-
-- ``base`` — the §1 single-trace ``Objective`` supplying the shared
-  windowed-series cores (provenance; the re-eval path never computes its
-  whole-trace scalar);
-- ``sat_threshold`` / ``sat_kind`` — the satisficing criterion applied to the
-  per-SOW objective values by the robustness layer (``sat_kind`` follows the
-  objective's own direction: maximize → "ge", minimize → "le").
-
-Thresholds are labelled by ``<annual name>__sat<thr>`` keys and remain
-overridable via ``NYCOPT_SAT_THRESHOLDS`` (JSON label→threshold). No CLI flags.
-
-Env overrides (JSON objects; pattern-matched, no CLI flags):
+Env overrides (JSON objects):
     NYCOPT_FAILURE_K       {"<annual objective name>": <k>, ...}
     NYCOPT_SAT_THRESHOLDS  {"<threshold label>": <threshold>, ...}
 """
@@ -128,18 +71,12 @@ from src.objectives import (
 def ffmp_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
     """Positional slices of the metric-bearing FFMP-year units of a trace.
 
-    Unit rule (objective_definitions.md §2): the rule is a pure function of
-    the trace's dates, whatever day it starts. Days earlier than
+    A pure function of the trace's dates: days earlier than
     ``METRIC_EXCLUSION_MONTHS`` (6) calendar months after the first timestamp
-    lie outside the metric window (the SSI-6 accumulation spin-up) and are
-    dropped by date; the remaining days are grouped by FFMP year — the Jun 1
-    – May 31 operating year on which the FFMP's seasonal rules reset (a date
-    with month < 6 belongs to the FFMP year that began the previous June) —
-    and only COMPLETE FFMP years (first day Jun 1, last day May 31) are kept.
-    On the December-start windows the exclusion (Dec – May) ends exactly
-    Jun 1 of year 1, so an L-year realization yields exactly L − 1
-    unit-years spanning Jun 1 year 1 – May 31 year L — the identical window
-    the hazard-selection metrics score.
+    are dropped, the remainder is grouped by FFMP year (Jun 1 - May 31; a
+    date with month < 6 belongs to the FFMP year that began the previous
+    June), and only COMPLETE FFMP years are kept. A December-start L-year
+    realization yields L - 1 units.
 
     Args:
         index: Daily DatetimeIndex of the realization's full window.
@@ -188,12 +125,10 @@ def ffmp_year_unit_slices(index: pd.DatetimeIndex) -> list[slice]:
 class FailureFrequencyOp:
     """Fraction of pooled unit-years WITHOUT failure (maximize; 0-1 fraction).
 
-    The annual metric of a frequency objective is the unit-year's FAILING-WEEK
-    COUNT; a unit-year is a failure-year when that count is >= ``k`` (so k = 1
-    reproduces the §2 table's "any failing week" indicator). A non-finite
-    annual metric counts as a failure-year — a degenerate unit cannot
-    masquerade as a success. An empty pool returns 0.0 (worst), since Borg
-    needs a finite vector.
+    The annual metric is the unit-year's failing-week count; a unit-year is a
+    failure-year when that count is >= ``k``. A non-finite annual metric
+    counts as a failure-year. An empty pool returns 0.0 (Borg needs a finite
+    vector).
     """
 
     def __init__(self, k: int = 1):
@@ -340,10 +275,9 @@ class AnnualUnitObjective:
 ###############################################################################
 # Stage (i) annual-metric functions
 ###############################################################################
-# Each returns a float ndarray with one value per metric-bearing water-year
-# unit (see ffmp_year_unit_slices). Weekly accounting reuses the §1
-# windowed-series cores from src.objectives, restricted to each unit-year's
-# weeks (weekly bins are formed within the unit-year slice).
+# Each returns a float ndarray with one value per metric-bearing FFMP-year
+# unit (see ffmp_year_unit_slices). Weekly bins are formed within the
+# unit-year slice using the §1 windowed-series cores from src.objectives.
 
 
 def _delivery_failure_weeks_annual(data: dict, demand_key: str,
@@ -483,17 +417,9 @@ def _nyc_storage_min_annual(data: dict) -> np.ndarray:
 ###############################################################################
 # Failure-year week-count thresholds (k) & env override
 ###############################################################################
-# k = minimum number of failing weeks that marks a water-year unit as a
-# failure-year for the frequency (reliability) objectives (objective_definitions.md
-# §2). NYC and Montague use k = 3: a failure year is a ~month-scale shortfall, not
-# an isolated off week. This materially raises Montague reliability (its failing
-# weeks are graded, so k reclassifies the 1-2-week years); NYC is nearly
-# threshold-insensitive (its shortfalls are whole-season curtailments), so there
-# the choice is mainly definitional. Trenton and NJ stay at k = 1 — at k = 3
-# Trenton saturates toward 1.0, compressing the metric. The framing-convention
-# k sweep (framing_convention_diagnostics.md §1) confirms no shipped k
-# saturates in either ensemble composition and rankings are stable to k ± 1.
-# Overridable via NYCOPT_FAILURE_K.
+# k = failing weeks that mark a unit-year as a failure-year for the frequency
+# objectives (NYC, Montague 3; Trenton, NJ 1). Sensitivity in
+# framing_convention_diagnostics.md §1. Override via NYCOPT_FAILURE_K.
 _DEFAULT_FAILURE_K: dict[str, int] = {
     "nyc_delivery_reliability_annual":   3,
     "montague_flow_reliability_annual":  3,
@@ -526,61 +452,28 @@ def _resolve_failure_k() -> dict[str, int]:
 ###############################################################################
 # Re-evaluation satisficing thresholds & env override
 ###############################################################################
-# Per-ANNUAL-objective satisficing levels applied by the robustness layer to
-# the PER-SOW annual-unit objective values (the same statistics the search
-# optimizes, pooled per deeply-uncertain state of the world at re-evaluation).
-# Labels use the `<annual name>__sat<thr>` form; they are threshold labels,
-# not objective names.
-#
-# STATUS: ADOPTED 2026-08-08, from the satisficing-threshold diagnostic re-run
-# against the regenerated status-quo E_test re-eval cube (per-SOW annual-unit
-# substrate, 1,000 SOWs x R=25; §0b rules applied — see
-# docs/notes/methods/robustness_threshold_diagnostics.md and the measured
-# basis in supplemental_config.RTD_RECOMMENDED_THRESHOLDS/_BASIS). The final
-# vector equals the 2026-08-07 provisional values — every rule-1
-# maintain-status-quo re-anchor (stricter-side rounding of the annual-unit
-# historic anchors: nyc rel 0.6447 / nyc deficit P99 48.83 / montague rel
-# 0.7895 / montague deficit P99 27.68 / trenton rel 0.8684 / nj rel 0.7368)
-# and both rule-2 external goalposts survive the measured placements, so no
-# label changed. Measured incumbent SOW pass fractions: nyc rel 0.005 /
-# nyc deficit 0.980 / montague rel 0.000 / montague deficit 0.965 /
-# trenton rel 0.054 / flood 0.443 / storage 0.014 / nj rel 0.020; joint
-# Starr 0.000 (binding: montague rel, the one criterion whose anchor lies
-# outside the incumbent's E_test support, max 0.746) — a motivation finding
-# per §0, with ranking-criticality deferred to the OAT stringency sweep.
-# STORAGE GOALPOST RESOLUTION: the carried 26% FFMP L5 floor is a criterion
-# the incumbent itself fails on the historic trace (P01-of-annual-minima =
-# 0%, the 1960s drought emptied storage), so §0b rule 1's re-anchor at
-# maintain-status-quo would place the line at 0% — an all-pass, vacuous
-# criterion. The diagnostic arbitrates FOR keeping the 26% rule-2 external
-# goalpost: it is inside the E_test support (incumbent max 28.8%, 1.4% of
-# SOWs pass), operationally meaningful (the FFMP drought-emergency
-# boundary), and is adopted as a stringent ASPIRATIONAL criterion rather
-# than an acceptable-performance line; the incumbent's historic failure of
-# it is part of the motivation finding. Override via NYCOPT_SAT_THRESHOLDS.
-# Already-persisted reeval_raw_meta.json files keep their snapshotted
-# thresholds by design.
+# Per-annual-objective satisficing levels applied by the robustness layer to
+# the PER-SOW annual-unit objective values. Labels use the
+# `<annual name>__sat<thr>` form (threshold labels, not objective names).
+# Placement rules and evidence: docs/notes/methods/robustness_threshold_diagnostics.md.
+# Override via NYCOPT_SAT_THRESHOLDS; persisted reeval_raw_meta.json files
+# keep their snapshotted thresholds.
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
-    # Rule 1 re-anchors (stricter side of the annual-unit historic anchors).
+    # Rule 1 anchors (stricter side of the annual-unit historic values).
     "nyc_delivery_reliability_annual__sat65":     0.65,
     "nyc_delivery_deficit_p99_pct__sat48":        48.0,
     "montague_flow_reliability_annual__sat79":    0.79,
     "montague_flow_deficit_p99_pct__sat27":       27.0,
     "trenton_flow_reliability_annual__sat87":     0.87,
     "nj_delivery_reliability_annual__sat74":      0.74,
-    # Rule 2 external goalpost, CARRIED: the observed WY2001-2023 mean annual
-    # exceedance in ft-days/yr — the §2 flood objective is the same quantity
-    # (mean over unit-years of within-year ft-day sums), so the goalpost's
-    # meaning survives the substrate change.
+    # Rule 2 external goalpost: observed WY2001-2023 mean annual exceedance
+    # (ft-days/yr), the same quantity as the §2 flood objective.
     "downstream_flood_exceedance_annual__sat1p17": 1.17,
     # DIAGNOSTIC counterpart in days/yr (inactive objective).
     "downstream_flood_days_annual__sat1":         1.0,
-    # Rule 2 external goalpost, CARRIED: the FFMP drought-emergency (L5)
-    # boundary's seasonal floor, 26% of combined capacity — now applied to the
-    # per-SOW P01 of annual minimum storage ("the worst ~1% of unit-years stay
-    # out of drought emergency"). See the status note above: the incumbent
-    # fails this on the historic trace.
+    # Rule 2 external goalpost: 26% = FFMP L5 drought-emergency boundary,
+    # applied to the per-SOW P01 of annual minimum storage.
     "nyc_storage_min_p01_pct__sat26":             26.0,
 }
 
@@ -601,11 +494,9 @@ def _resolve_thresholds() -> dict[str, float]:
     return thresholds
 
 
-# annual_objective_name -> threshold_label. The satisficing direction is NOT
-# recorded here: it is the objective's own direction (maximize -> "ge",
-# minimize -> "le"; ``AnnualUnitObjective.sat_kind``) — one fewer way for the
-# criterion and the objective to disagree. The p99 flood-days diagnostic
-# carries no satisficing role.
+# annual_objective_name -> threshold_label. The satisficing direction is the
+# objective's own direction (``AnnualUnitObjective.sat_kind``). The p99
+# flood-days diagnostic carries no satisficing role.
 _SAT_LABELS: dict[str, str] = {
     "nyc_delivery_reliability_annual":
         "nyc_delivery_reliability_annual__sat65",
@@ -636,16 +527,9 @@ _SAT_LABELS: dict[str, str] = {
 # `operator` is either the string "frequency" (built with the resolved
 # per-objective k) or a stage-(ii) operator instance whose `worst_value` is
 # the metric's orientation-aware non-finite sentinel.
-# Epsilons are the FINAL campaign vector in native metric units. Base
-# calibration (2026-08-05): clean-ceil of max(signal IQR/10, bootstrap noise
-# floor, frequency granularity) over the ensemble campaign designs. Revised
-# 2026-08-12 from the grouped re-filter sweep on the 500k-NFE production
-# fronts (ensemble-averaged objectives are far smoother than the single
-# trace, so the 2026-08-05 vector under-resolved ensemble fronts): one
-# shared epsilon per objective family — reliabilities 0.05, deficit-P99s
-# 10.0 (the measured hazfill recommendation), flood and storage unchanged.
-# Derivation, per-axis exceptions, and disclosures:
-# docs/notes/methods/epsilon_calibration_experiment.md.
+# Epsilons are the campaign vector in native metric units, one shared value
+# per objective family (reliability 0.05, deficit-P99 10, flood 0.3,
+# storage 5); derivation in docs/notes/methods/epsilon_calibration_experiment.md.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
@@ -800,21 +684,3 @@ def build_ensemble_objective_set(items) -> ObjectiveSet:
     return ObjectiveSet(resolved)
 
 
-def list_available_ensemble_objectives() -> str:
-    """Return a formatted table of all registered annual-unit objectives."""
-    lines = [f"Available ensemble objectives ({len(ENSEMBLE_OBJECTIVES)}):"]
-    for name, obj in ENSEMBLE_OBJECTIVES.items():
-        op = obj.unit_operator
-        if isinstance(op, FailureFrequencyOp):
-            op_str = f"failure-frequency(k={op.k})"
-        elif isinstance(op, PooledPercentileOp):
-            op_str = f"P{op.q:g}(sentinel={op.worst_value:g})"
-        elif isinstance(op, PooledMeanOp):
-            op_str = f"mean(sentinel={op.worst_value:g})"
-        else:
-            op_str = type(op).__name__
-        lines.append(
-            f"  {name}: base={obj.base.name}, {obj.direction}, "
-            f"op={op_str}, eps={obj.epsilon} — {obj.description}"
-        )
-    return "\n".join(lines)

@@ -11,27 +11,22 @@ sweep) is a post-hoc reduction of this cube, so the expensive simulation runs
 exactly once per policy per design.
 See ``docs/notes/methods/epsilon_calibration_experiment.md``.
 
-Feasibility: random DV vectors are ~1% feasible under the two DV-space formal
-Borg constraints (the post-simulation reliability floor needs simulation and
-is not sampled against), and Borg's archive only ever holds feasible solutions
-(constraint-dominance), so the calibration population is drawn uniform on the
-FEASIBLE region via rejection (``sample_feasible_dvs`` — pure DV arithmetic,
-no simulation, so the ~100x oversampling is cheap). The realized acceptance
-rate is persisted as QC.
+Feasibility: the population is drawn uniform on the region feasible under the
+DV-space Borg constraints by rejection (``sample_feasible_dvs``, no
+simulation); the realized acceptance rate is persisted as QC.
 
 Design selection: the scenario design is the run identity and comes from the
 environment (``NYCOPT_SCENARIO_DESIGN``, sourced from ``NYCOPT_ENV_FILE`` by
 the SLURM wrapper) — one sbatch job per campaign design. The single-trace
 ``historic`` design is evaluated through the same cube layout as N = 1 over
-its consecutive water-year units.
+its consecutive FFMP-year units.
 
 All other settings (sample size, seed, formulation, batch size, output paths)
 live in ``supplemental_config.py`` — no CLI value flags.
 
-MPI: each rank takes an ``array_split`` slice of the DV vectors, evaluates
-each, writes an ``.npz`` shard + a ``.done`` marker; rank 0 combines the
-shards into the cube HDF5 once all markers appear (filesystem barrier — avoids
-the flaky ``comm.gather`` on this OpenMPI build), then deletes the shards.
+MPI: each rank evaluates an ``array_split`` slice of the DV vectors into an
+``.npz`` shard + ``.done`` marker; rank 0 combines the shards once all markers
+appear (filesystem barrier) and deletes them.
 
 Usage (interactive, single rank — local smoke with EPS_SMOKE=True):
     python scripts/supplemental/epsilon_calibration_run.py
@@ -64,7 +59,7 @@ import config  # noqa: E402
 from src.formulations import get_baseline_values  # noqa: E402
 from src.objectives_ensemble import (  # noqa: E402
     ENSEMBLE_OBJECTIVES,
-    water_year_unit_slices,
+    ffmp_year_unit_slices,
 )
 from src.sensitivity_common import (  # noqa: E402
     assign_rank_slots,
@@ -82,10 +77,10 @@ from src.simulation import (  # noqa: E402
 
 
 def _expected_n_units(spec) -> int:
-    """Number of metric-bearing water-year units per realization.
+    """Number of metric-bearing FFMP-year units per realization.
 
-    An ensemble realization of L water years yields exactly L - 1 units
-    (``water_year_unit_slices``); the single-trace historic design's count is
+    An ensemble realization of L years yields exactly L - 1 units
+    (``ffmp_year_unit_slices``); the single-trace historic design's count is
     derived from the configured simulation window with the same unit rule.
 
     Args:
@@ -97,7 +92,7 @@ def _expected_n_units(spec) -> int:
     if spec.is_ensemble:
         return int(spec.realization_years) - 1
     idx = pd.date_range(config.START_DATE, config.END_DATE, freq="D")
-    return len(water_year_unit_slices(idx))
+    return len(ffmp_year_unit_slices(idx))
 
 
 def _eval_dv(dv: np.ndarray, formulation: str, spec, objs: list,

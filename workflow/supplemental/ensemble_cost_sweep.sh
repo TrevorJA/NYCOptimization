@@ -1,55 +1,20 @@
 #!/bin/bash
-# ensemble_cost_sweep.sh — measure the t_eval(N, L, model) cost surface.
+# ensemble_cost_sweep.sh — measure the t_eval(N, L, model) cost surface: runs
+# the cells of supplemental_config.ENSEMBLE_COST_MODES[NYCOPT_BENCH_MODE]
+# sequentially on one exclusive node, each as `mpirun -np K bench_eval_worker.py`
+# (K = the densest packing that fits node memory, ensemble_cost_cell_k) writing
+# per-rank CSV shards under outputs/supplemental/ensemble_cost_experiment/cells/.
+# A fresh mpirun per cell gives a cold cache; /dev/shm model JSONs are purged
+# between cells; a cell that dies (OOM) is recorded and the sweep continues.
 #
-# On ONE exclusive Anvil node, run the cell list from
-# supplemental_config.ENSEMBLE_COST_MODES[mode] sequentially. For each cell
-# (N realizations, L years, trimmed|full model), `mpirun -np K bench_eval_worker.py`
-# has every rank time 1 cold + M warm evaluations through the production
-# `evaluate()` path and record wall time + peak RSS to per-rank CSV shards under
-# outputs/supplemental/ensemble_cost_experiment/cells/. A fresh mpirun per cell
-# gives a natural cold cache and prevents the (cached) model dict of one cell
-# from surviving into the next.
+# Env inputs: NYCOPT_ENV_FILE (required), NYCOPT_BENCH_MODE
+# (smoke | probe | core | rest_trimmed | rest_full), NYCOPT_COST_BUDGET_S
+# (per-cell walltime guard; a cell starts only if its estimate fits the
+# remaining budget; default 90% of the SLURM limit).
 #
-# K is not a sweep axis here: each cell runs at the densest packing that fits
-# node memory (supplemental_config.ensemble_cost_cell_k), because the packing
-# sweep already showed SU/eval is minimized at full packing. Cells that cannot
-# reach 128 ranks are a result, not a workaround — memory, not contention, is
-# what caps the campaign's density at large N.
-#
-# Usage (from repo root):
-#   # correctness gate on the already-staged kn_20yr_n20 (~15 min, shared):
-#   sbatch --partition=shared --ntasks-per-node=4 --mem=32G --time=01:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_cost.env,NYCOPT_BENCH_MODE=smoke \
-#          workflow/supplemental/ensemble_cost_sweep.sh
-#   # RSS/time calibration at the grid's corners, one rank, no contention:
-#   sbatch --partition=shared --ntasks-per-node=1 --mem=64G --time=04:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_cost.env,NYCOPT_BENCH_MODE=probe \
-#          workflow/supplemental/ensemble_cost_sweep.sh
-#   # the cells that price the campaign:
+# Submit (from repo root; smoke/probe fit the shared partition):
 #   sbatch --time=06:00:00 --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_cost.env,NYCOPT_BENCH_MODE=core,NYCOPT_COST_BUDGET_S=20400 \
 #          workflow/supplemental/ensemble_cost_sweep.sh
-#   # the factorial remainder, one job per model variant (run concurrently):
-#   sbatch --time=08:00:00 --export=ALL,...,NYCOPT_BENCH_MODE=rest_trimmed,NYCOPT_COST_BUDGET_S=27600 ...
-#   sbatch --time=14:00:00 --export=ALL,...,NYCOPT_BENCH_MODE=rest_full,NYCOPT_COST_BUDGET_S=48000 ...
-#
-# Notes:
-#   * NYCOPT_BENCH_MODE (smoke | probe | core | rest_trimmed | rest_full) selects
-#     the cell list — the lists themselves live in supplemental_config.py
-#     (no value flags).
-#   * NYCOPT_COST_BUDGET_S guards the wall clock per cell, using each cell's own
-#     estimated cost (they span ~200x): a cell starts only if its estimate fits
-#     in the remaining budget, so a short allocation degrades by skipping the
-#     tail rather than dying mid-cell. Default 90% of the SLURM time limit.
-#   * A cell that dies (OOM at large N x L) is recorded in its step manifest and
-#     the sweep continues — a missing shard at a large cell IS the memory
-#     ceiling. The worker appends each eval's row as it completes, so even a
-#     killed cell keeps the evals that finished.
-#   * pywrdrb's per-rank /dev/shm model JSONs are never cleaned by the code
-#     (src/simulation.py::_get_temp_dir); stale dirs are purged between cells so
-#     RAM-backed tmpfs doesn't silently shrink usable node memory.
-#   * The node must be exclusive for the wholenode modes so contention comes only
-#     from our own ranks. smoke/probe run on shared with CLI overrides (they
-#     measure single-rank cost and correctness, not contention).
 #
 #SBATCH --job-name=ens_cost
 #SBATCH --account=ees260021

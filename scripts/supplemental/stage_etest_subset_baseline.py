@@ -32,8 +32,8 @@ import argparse
 import sys
 from pathlib import Path
 
-#: The incumbent-on-E_test per-SOW cube, regenerated on the unified substrate 2026-08-08
-#: (jobs 19733672 + 19738752). Lives under the historic mm_full tree but is design-independent.
+#: The incumbent's full-E_test per-SOW cube (design-independent; lives under the
+#: historic mm_full tree).
 DEFAULT_BASELINE_SRC = (
     "outputs/historic/ffmp_obj8_mm_full/reeval/etest_kn_50yr_n25000/baseline"
 )

@@ -24,7 +24,7 @@ wavelet-AR, attribute-targeted generation) are in
   severe in the full record, but the sixteenth and seventeenth centuries saw repeated
   droughts of **similar intensity and greater duration**; the record trends pluvial since
   ~1800, capped by an **unprecedented 43-yr pluvial through 2011**. Directly load-bearing
-  here: the 1945–2022 fitted record is drawn almost entirely from that pluvial, so
+  here: the 1945–2023 fitted record is drawn almost entirely from that pluvial, so
   multi-year drought *duration* risk is understated by the instrumental record itself —
   independent of any climate-change signal. This motivates stressing persistence at least
   to the historical-record level, and is the citation for the "under historical

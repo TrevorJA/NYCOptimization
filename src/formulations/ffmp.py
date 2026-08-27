@@ -68,15 +68,9 @@ _DEFAULT_FLOW_TARGET_FACTORS = {
 }
 
 #: Bounds for the flow-target factor scale multipliers. The effective factor
-#: (default table value x DV) is capped at 1.0 at apply time so adjusted
-#: targets never exceed the Decree-fixed baseline target. The cap binds at
-#: scale ~1.06-1.13 depending on the row, so 1.15 leaves every row just
-#: enough headroom to reach the cap without a long flat region above it.
-#: The 0.65 floor keeps exploration conservative: it caps the reduction of
-#: the FFMP's own negotiated drought-stage flow-target factors at ~35%, so
-#: no searched policy proposes halving a Decree-adjacent downstream flow
-#: obligation (a 0.5 floor did, which downstream states / the river master
-#: would scrutinize on optics).
+#: (default table value x DV) is capped at 1.0 at apply time; the cap binds at
+#: ~1.06-1.13 depending on the row, so 1.15 gives headroom. The 0.65 floor caps
+#: the reduction of the negotiated drought-stage factors at ~35%.
 FLOW_TARGET_SCALE_BOUNDS = [0.65, 1.15]
 
 
@@ -165,21 +159,11 @@ def _merge_salt_front_dvs(dvs: OrderedDict, n_drought_levels: int = None) -> Ord
 ###############################################################################
 
 # --- Flood-zone (L1a/L1b) spill-mitigation release scaling ---
-# Dimensionless multipliers on the DEFAULT FFMP Tables 4a-4g flood-zone
-# release schedule (e.g., L1a Cannonsville = mult x 1500 cfs), applied by
-# simulation._apply_flood_release_scaling. Season-invariant — matching the
-# FFMP, which holds these rows constant across its tables and seasons;
-# seasonal flood policy (void scheduling, CSSO shape) is carried by the
-# zone-boundary shift DVs (zone_vshift_*) instead. The
-# multiplier form preserves the within-year shape (L1a-absent window
-# Apr 16-Jun 15, Neversink L1b step).
-# The Table 5 combined-discharge caps (flood_max_release_{res}_cfs =
-# 4200/2400/3400) are physical/regulatory constants and are NOT decision
-# variables. L1a upper bounds are anchored to the maximum controlled
-# release observed 2000-2021 (2062/842/303 cfs — the demonstrated
-# release-works capacity) divided by the L1a schedule rate (1500/700/190
-# cfs); 2.0 x L1b stays within that demonstrated range for all three
-# reservoirs. All uppers sit below the Table 5 combined caps.
+# Season-invariant multipliers on the FFMP Tables 4a-4g flood-zone release
+# rows (e.g. L1a Cannonsville = mult x 1500 cfs), applied by
+# simulation._apply_flood_release_scaling. Upper bounds are anchored to the
+# maximum controlled release observed 2000-2021; the Table 5 combined-discharge
+# caps are constants, not decision variables.
 FLOOD_RELEASE_ZONES = ["l1a", "l1b"]
 _FLOOD_RESERVOIRS = ["cannonsville", "pepacton", "neversink"]
 _FLOOD_SCALE_UPPER = {
@@ -204,35 +188,12 @@ FLOOD_RELEASE_SCALE_SPECS = OrderedDict(
 )
 
 # --- Storage-zone boundary shifts (two vertical + one temporal per curve) ---
-# Each storage-zone threshold curve is a trapezoid over the year: a low plateau
-# (fall/winter void), a rising ramp, a high plateau (spring/summer refill
-# target), and a falling ramp. Each curve gets three DVs: an additive shift of
-# the LOW plateau (zone_vshift_{level}_lower, fraction of capacity), an additive
-# shift of the HIGH plateau (zone_vshift_{level}_upper), and a temporal shift
-# (zone_tshift_{level}, days) that slides the whole curve along the day-of-year
-# axis. At apply time (simulation._apply_zone_shifts) the two plateau levels are
-# moved independently and the curve values are affinely remapped between them
-# (the two ramps re-interpolate to connect), then rolled, clipped to [0, 1], and
-# cross-curve monotonicity-clamped. All-zero DVs reproduce the default curves
-# exactly. Splitting the vertical shift by plateau decouples void DEPTH from the
-# refill target — the FFMP's own CSSO seasonal-void lever — while preserving the
-# trapezoidal shape (no new kinks); each knob maps to a visible flat segment, so
-# the change stays stakeholder-legible.
-#
-# A curve whose baseline HIGH (refill) plateau sits at full capacity gets NO
-# HIGH-plateau shift DV at all: it could only move down, and lowering the
-# refill target below capacity is a permanent effective-capacity forfeit, not
-# an FFMP-scale operating-rule perturbation. The FFMP treats refill-to-full by
-# ~June 1 as an essential requirement (Appendix A §6: the CSSO "must be limited
-# and ramped" so the reservoirs are "filled on or around June 1st every year");
-# the negotiated flood lever is the seasonal VOID depth (10% in FFMP2014, 15%
-# in FFMP2017), which is exactly the LOW-plateau shift. So level1b/1c/2 keep
-# their refill plateaus fixed at 1.0 and are searched through void depth and
-# timing only. For the remaining curves the up-cap follows baseline geometry:
-# a plateau cannot be raised above capacity, so up-cap =
-# min(_ZONE_VSHIFT_BOUND, 1.0 - plateau); level1b's LOW plateau sits at 0.975,
-# so its zone_vshift_*_lower up-cap is 0.025. The lower bound on every
-# vertical shift is -_ZONE_VSHIFT_BOUND.
+# Per curve: an additive LOW-plateau shift (zone_vshift_{level}_lower, fraction
+# of capacity), an additive HIGH-plateau shift (zone_vshift_{level}_upper) and a
+# temporal shift (zone_tshift_{level}, days); applied by
+# simulation._apply_zone_shifts. Curves whose refill plateau is at capacity get
+# no upper DV. Up-cap on a plateau shift = min(_ZONE_VSHIFT_BOUND, 1 - plateau);
+# the lower bound on every vertical shift is -_ZONE_VSHIFT_BOUND.
 _ZONE_VSHIFT_BOUND = 0.10
 _ZONE_TSHIFT_BOUND = 30.0
 #: Curves whose baseline refill plateau is at full capacity: HIGH plateau is
@@ -307,23 +268,12 @@ FFMP_FORMULATION = {
         # and NYC_DECREE_DIVERSION_CAP_MGD.
 
         # --- NYC + NJ stage-wise allocation reductions ---
-        # Each DV is the ADDITIONAL fractional reduction of the party's
-        # Decree allocation applied on entry to that drought stage; the
-        # effective delivery factor is 1 minus the running sum of reductions
-        # (decoded in simulation._apply_ffmp_params). Non-negative increments
-        # make stage monotonicity structural — a deeper stage can never allow
-        # more diversion than a milder one — so no delivery constraint is
-        # posed to the optimizer. One depth-preserving rule for both Decree
-        # parties: lower bound 0 everywhere (a policy may waive a stage's
-        # reduction; each party's reliability objective measures whether
-        # curtailment earns its keep), and upper bound = negotiated FFMP
-        # increment + headroom, with each party's total headroom allocated in
-        # clean 0.05 steps so the worst-case cumulative curtailment equals
-        # the audited envelope (NYC_MAX_TOTAL_REDUCTION /
-        # NJ_MAX_TOTAL_REDUCTION). Baselines reproduce the negotiated FFMP
-        # factors exactly (NYC 0.85/0.70/0.65 at L3/L4/L5, NJ 0.90/0.80 at
-        # L4/L5). L1a-L2 factors remain effectively unconstrained (set to
-        # large values).
+        # Each DV is the additional fractional reduction applied on entry to
+        # that drought stage; effective factor = 1 - running sum (decoded in
+        # simulation._apply_ffmp_params). Non-negative bounds make stage
+        # monotonicity structural. Upper bounds sum to NYC_MAX_TOTAL_REDUCTION /
+        # NJ_MAX_TOTAL_REDUCTION; baselines reproduce the FFMP factors
+        # (NYC 0.85/0.70/0.65 at L3/L4/L5, NJ 0.90/0.80 at L4/L5).
         "nyc_allocation_reduction_L3": {
             "baseline": 0.15,
             "bounds": [0.0, 0.20],
@@ -461,16 +411,11 @@ def generate_ffmp_formulation(n_zones=None):
     _upper_fixed = set(storage_levels[:3])
     dvs.update(_zone_shift_specs(storage_levels, _lower_cap, _upper_fixed))
 
-    # NYC / NJ stage-wise allocation reductions: the base formulation's
-    # depth-preserving rule applied to each variant's own interpolated
-    # baselines. Each DV is the additional fractional reduction applied on
-    # entry to that stage (effective factor = 1 - running sum, decoded in
-    # simulation._apply_nzone_ffmp_params), so stage monotonicity is
-    # structural. DVs exist for the same levels the factors constrained:
-    # NYC below the unconstrained threshold, NJ where the interpolated
-    # baseline < 1.0. Lowers = 0; uppers = baseline increment + uniform
-    # residual headroom so the worst-case cumulative curtailment matches
-    # the party's audited envelope.
+    # NYC / NJ stage-wise allocation reductions on the variant's interpolated
+    # baselines (decoded in simulation._apply_nzone_ffmp_params). DVs exist
+    # for the constrained levels only; uppers = baseline increment + uniform
+    # residual headroom so the worst-case cumulative curtailment matches the
+    # party's envelope.
     def _reduction_specs(interp, gate, max_total):
         constrained = [(lvl, min(float(v), 1.0))
                        for lvl, v in zip(drought_levels, interp) if v < gate]

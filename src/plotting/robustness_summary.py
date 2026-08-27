@@ -1,23 +1,12 @@
 """robustness_summary.py - DU robustness figure: multivariate satisficing + baseline.
 
-Renders the held-out re-evaluation as the water-resources robustness literature
-reports it (Herman et al. 2015; Trindade et al. 2017; Gold et al. 2022, 2023):
+  Panel A: the joint (Starr) satisficing fraction over SOWs across the acceptable
+    Pareto policies, with the FFMP baseline as a fixed reference and the
+    most-robust policy marked.
+  Panel B: the per-objective (univariate) decomposition of the same criterion,
+    which exposes the binding objective; baseline overlaid per objective.
 
-  Panel A -- the PRIMARY metric. Starr's (1962) multivariate domain criterion on
-    the SOW unit: the fraction of deeply-uncertain states of the world in which a
-    policy meets ALL objective thresholds jointly. Distribution across the
-    acceptable Pareto policies, with the status-quo FFMP baseline drawn as a fixed
-    external reference (Kasprzyk et al. 2013) and the most-robust policy marked.
-
-  Panel B -- the per-objective decomposition of that same criterion (univariate
-    satisficing on the SOW unit), which exposes the BINDING objective: the joint
-    criterion can be no larger than its smallest component, so the objective with
-    the lowest single-criterion satisficing is what caps robustness. Baseline
-    overlaid per objective.
-
-Both panels read the same per-SOW annual-unit objective cube (each SOW's value
-pools its realizations' unit-years through the objective's own operator), so
-Panel B decomposes exactly the Panel A number.
+Both panels read the same per-SOW annual-unit objective cube.
 """
 from __future__ import annotations
 

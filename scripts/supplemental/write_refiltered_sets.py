@@ -1,14 +1,12 @@
 """
-write_refiltered_sets.py - Preserved re-filter of production reference sets.
+write_refiltered_sets.py - Re-filter of production reference sets under the registry epsilons.
 
-Writes `{slug}_merged_{suffix}.set` per scenario: the ε-box nondominated
-archive of the step-07 plain union (`{slug}_merged_raw.set`) under the
-CURRENT registry epsilon vector (config.get_epsilons()) — i.e. the vector
-adopted 2026-08-12. Nothing is deleted or rewritten: the 2026-08-05-ε
-`{slug}_merged.set` and every other production artifact stay verbatim
-(Trevor's preservation rule). Follows the exact line-preserving rewrite
-convention of `src.diagnostics.epsilon_box_filter_set` (header comments
-kept, retained data lines copied byte-for-byte, trailing `#` terminator).
+Writes `{slug}_merged_{suffix}.set` per scenario: the epsilon-box nondominated
+archive of the step-07 raw union (`{slug}_merged_raw.set`) under the current
+registry epsilon vector (config.get_epsilons()); the originals are untouched.
+Follows the line-preserving rewrite convention of
+`src.diagnostics.epsilon_box_filter_set` (header comments kept, retained data
+lines copied byte-for-byte, trailing `#` terminator).
 
 Usage (from repo root, venv; submit via the epsilon_ensemble_refilter.sh
 launcher or any `shared` job):

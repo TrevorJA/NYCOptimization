@@ -1,59 +1,27 @@
 """
-salt_front_dvs.py - Decision-variable specs for the salt-front MRF
-adjustment table, for FFMP-family formulations only.
+salt_front_dvs.py - Decision-variable specs for the salt-front MRF adjustment
+table (FFMP-family formulations only). Dormant: `config.SALT_FRONT_PARAM_MODE`
+defaults to "fixed".
 
-The full operational table (per DRBC §2.5.3, Tables 1-2) has:
+The operational table (DRBC section 2.5.3) has Trenton 2 seasons x 4 RM bands,
+Montague 3 seasons x 4 RM bands, 3 RM-band thresholds and 1 activation drought
+level. `salt_front_dv_specs` emits, in the schema of
+`ffmp.py::FFMP_FORMULATION["decision_variables"]`:
 
-- Trenton: 2 seasons × 4 RM bands = 8 cells (3 unique non-reference values)
-- Montague: 3 seasons × 4 RM bands = 12 cells (multiple unique non-reference values)
-- 3 RM-band thresholds (lo, mid, hi)
-- 1 activation drought-level (which level fires the rule)
+    "fixed"                 -> 0 DVs
+    "multipliers"           -> 11 DVs: every cell whose default is not 1.0
+                               (the 1.0 reference cells stay implicit)
+    "multipliers_with_gate" -> + 1 activation-level DV (12 DVs)
+    "full"                  -> + 3 RM-threshold DVs (15 DVs)
 
-This module exposes those axes as DV specs in the same schema as
-`ffmp.py::FFMP_FORMULATION["decision_variables"]`. The active subset is
-selected by `config.SALT_FRONT_PARAM_MODE`:
-
-    "fixed"               -> 0 DVs
-    "multipliers"         -> 15 multiplier DVs (5 reference cells pinned at 1.0)
-    "multipliers_with_gate" -> + 1 activation-level DV (16 DVs)
-    "full"                -> + 3 RM-threshold DVs (19 DVs)
-
-`apply_salt_front_dvs(params)` translates a flat dict of these DVs into
-the constructor kwargs for `NYCOptParameterizedSaltFrontAdjustmentRatio`:
+`apply_salt_front_dvs(params)` translates a flat dict of these DVs into the
+constructor kwargs for `NYCOptParameterizedSaltFrontAdjustmentRatio`:
 
     {
         "multipliers": {"trenton": [...], "montague": [...]},
         "rm_band_thresholds": [hi, mid, lo],
         "activation_level": int,
     }
-
-Reference cells (value pinned at 1.0 in DRBC tables):
-- Trenton band-1 (87 < sf <= 92.5) — both seasons -> 2 cells
-- Montague band-1 (87 < sf <= 92.5) — all 3 seasons -> 3 cells
-- Montague band-2 (82.9 < sf <= 87)  — all 3 seasons -> 3 cells (also 1.0 by FFMP table)
-
-Wait — looking at the upstream Montague table:
-    (12,1,2,3,4):  [1.185, 1, 1, 0.815]   (idx 0 1 2 3) -> idx 1 AND idx 2 are 1.0
-    (5,6,7,8):     [1.031, 1, 1, 0.688]   -> same
-    (9,10,11):     [1.1, 1, 1, 0.733]     -> same
-
-So Montague has BOTH idx-1 and idx-2 at 1.0 in all rows -> 6 reference cells.
-Trenton has idx-1 at 1.0 in both rows -> 2 reference cells. Plus Trenton
-idx-2 and idx-3 are 0.926 (constant across both seasons -> not really
-"reference 1.0" but constant).
-
-Final count of FREE multiplier cells:
-- Trenton: 2 seasons × 4 cells = 8 - 2 (idx 1 reference 1.0) = 6 free.
-- Montague: 3 seasons × 4 cells = 12 - 6 (idx 1, 2 references 1.0) = 6 free.
-- Total: 12 free multiplier cells.
-
-(Earlier estimate said 15; recount gives 12. Updating mode label below to match.)
-
-For simplicity and full table coverage we expose ALL 4 cells per (season, location),
-including the reference cells. The reference cells default to 1.0 with bounds [1.0, 1.0]
-when "pin_reference=True" (default), so they're effectively fixed but still appear in
-the DV vector for symmetry. This makes the DV-table-to-multiplier-dict mapping
-trivial and uniform.
 """
 
 from __future__ import annotations
@@ -289,6 +257,3 @@ def apply_salt_front_dvs(
     }
 
 
-def salt_front_dv_names(mode: str, **kwargs) -> list[str]:
-    """List of salt-front DV names for the given mode (in registry order)."""
-    return list(salt_front_dv_specs(mode, **kwargs).keys())

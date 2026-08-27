@@ -41,33 +41,19 @@ from src.formulations import (
 def make_borg_objective(formulation_name: str):
     """Build the NFE-aware ``(objectives, constraints)`` callable for Borg.
 
-    Composes the two constraint kinds in ``CONSTRAINT_NAMES`` order:
+    Constraints follow ``CONSTRAINT_NAMES`` order: DV-space constraints
+    (``make_constraint_function``, pure DV arithmetic before simulation;
+    infeasible vectors skip simulation and return penalty objectives with a
+    0.0 post-sim slot) first, then the post-simulation NYC reliability floor
+    (``make_post_sim_constraint_function``). Constraints must be plain Python
+    lists (borg.py truth-tests them).
 
-    - DV-space constraints (``make_constraint_function``): pure DV arithmetic
-      computed BEFORE any Pywr-DRB simulation. Infeasible vectors skip
-      simulation entirely and return penalty objectives — constraint-dominance
-      precedes Pareto dominance in Borg, so their objective values are never
-      consulted against feasible solutions. Their unsimulated post-sim slot
-      reports 0.0 (nothing was measured; the DV violations alone make the
-      solution infeasible).
-    - Post-simulation constraints (``make_post_sim_constraint_function``):
-      read the computed objective vector — currently the NYC weekly delivery
-      reliability floor — and are appended AFTER simulation.
-
-    Constraints must be plain Python lists (borg.py truth-tests them).
-
-    Failure convention: a failed evaluation returns penalty objectives with
-    ZERO constraint violations. It is deliberately feasible-but-maximally-
-    unattractive — the penalty guarantees Pareto domination by every real
-    solution, while a fabricated violation magnitude would distort the
-    |violation|-sum ordering among genuinely infeasible solutions. Two layers
-    share this convention: ``make_objective_function`` catches simulation
-    errors internally (its 1e6 penalty vector is detected by the post-sim
-    constraint's [0, 1] plausibility guard, which then reports 0.0), and the
-    except path here catches anything else — borg.py's innerFunction only
-    catches KeyboardInterrupt, so any other Python exception would propagate
-    through the ctypes C->Python boundary and corrupt the GIL state, causing
-    a fatal Python error on the worker.
+    Failure convention (single home): a failed evaluation returns penalty
+    objectives with ZERO constraint violations (feasible-but-dominated).
+    ``make_objective_function`` catches simulation errors internally; the
+    except path here catches everything else because borg.py only catches
+    KeyboardInterrupt and any other exception would corrupt the GIL across
+    the ctypes boundary.
 
     Args:
         formulation_name: Problem formulation name ("ffmp" / "ffmp_N").
@@ -193,9 +179,6 @@ def run_mmborg(
           f"{max_evaluations} NFE/island", flush=True)
 
     # --- Objective function (passNFE branch passes NFE as second arg) ---
-    # make_borg_objective composes make_objective_function() with the
-    # DV-space (pre-simulation) and post-simulation constraint functions;
-    # see its docstring for the composition and failure conventions.
     objective = make_borg_objective(formulation_name)
 
     # --- Borg instance (dict constructor from passNFE_ALH_PyCheckpoint) ---

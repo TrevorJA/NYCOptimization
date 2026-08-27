@@ -1,23 +1,13 @@
 """
-simulation.py - Pywr-DRB simulation wrapper for optimization.
+simulation.py - Pywr-DRB simulation wrapper for optimization and re-evaluation.
 
-Provides the core evaluation function that:
-1. Takes a flat decision variable vector
-2. Converts it to a NYCOperationsConfig
-3. Builds and runs a Pywr-DRB simulation
-4. Computes and returns the objective vector
-
-Memory/I/O design:
-    During optimization, Borg calls evaluate() ~1M times. Each call
-    must be fast. We still need to write a temporary JSON model file
-    (required by pywr.Model.load), but we avoid HDF5 output by using
-    an InMemoryRecorder that captures data to numpy arrays without
-    writing to disk.
-
-    For baseline and re-evaluation runs, the standard OutputRecorder
-    writes full HDF5 results for post-hoc analysis.
-
-This module is imported by the Borg optimization driver.
+Core evaluation path: flat decision-variable vector -> NYCOperationsConfig ->
+Pywr-DRB simulation -> objective vector. Search (``evaluate``) and
+re-evaluation (``evaluate_annual_units``) both run in memory: the model dict
+is cached and patched per evaluation, a temporary JSON model file is written
+to a per-rank temp dir (pywr.Model.load requires a file), and an
+InMemoryRecorder captures results to numpy arrays. HDF5 output is written
+only by the step-05 baseline (``run_simulation_to_disk``).
 """
 
 import os
@@ -342,8 +332,7 @@ def build_nzone_config(n_zones):
 
     Delegates to pywrdrb's NYCOperationsConfig.from_n_zones(N), which linearly
     interpolates the 6-curve FFMP defaults to N boundary curves (producing N+1
-    drought levels zone_0..zone_N). Byte-level equivalence with the previous
-    local implementation was verified at N ∈ {6, 8, 10, 12}.
+    drought levels zone_0..zone_N).
 
     Args:
         n_zones: Number of storage zone boundary curves (>= 2).
@@ -442,19 +431,11 @@ def _apply_ffmp_params(config, params: dict):
     # targets are 1954-Decree quantities, likewise fixed; only the
     # drought-zone adjustment factors are optimized (below).
 
-    # Delivery constraints
-    # update_delivery_constraints(max_nyc_delivery, drought_factors_nyc, drought_factors_nj, ...)
-    # drought_factors arrays have 7 elements for levels: 1a, 1b, 1c, 2, 3, 4, 5.
-    # The DVs are stage-wise allocation reductions: each is the ADDITIONAL
-    # fractional reduction applied on entry to that stage, so the effective
-    # delivery factor is 1 minus the running sum of reductions (NYC L3-L5,
-    # NJ L4-L5). Non-negative DV bounds make the factor arrays
-    # non-increasing by construction — stage monotonicity is structural,
-    # with no clamp and no Borg constraint.
-    #
-    # IMPORTANT: NYC L1a-L2 defaults are 1,000,000 (effectively unconstrained),
-    # NOT 1.0. NJ L1a-L3 defaults are 1.0 (no reduction). These must come from
-    # the loaded config.constants to preserve correct FFMP behavior.
+    # Delivery constraints: factor arrays have 7 elements for levels 1a, 1b,
+    # 1c, 2, 3, 4, 5. The DVs are stage-wise allocation reductions (decode rule
+    # in src/formulations/ffmp.py): effective factor = 1 minus the running sum
+    # (NYC L3-L5, NJ L4-L5). NYC L1a-L2 defaults are 1,000,000 (unconstrained),
+    # NJ L1a-L3 defaults are 1.0; both must come from config.constants.
     defaults = config.constants
     _NYC_EXPECTED_KEYS = [
         "level1a_factor_delivery_nyc", "level1b_factor_delivery_nyc",
@@ -854,27 +835,12 @@ def compute_constraint_violations(dv_vector,
                                   formulation_name: str = "ffmp") -> list:
     """Compute the DV-SPACE formal Borg constraint violations for a DV vector.
 
-    Pure DV arithmetic on the cached defaults config — no config deepcopy,
-    no Pywr-DRB model build or simulation. Each value is a violation
-    magnitude: 0.0 = feasible, positive values scale linearly with the
-    degree of violation (Borg's constraint-dominance sums |c_i|). The
-    apply-time clamps in this module remain in place, so every simulated
-    policy is operationally valid regardless; these functions give Borg a
-    direct feasibility signal so infeasible vectors can skip simulation.
-
-    This covers only ``src.formulations.DV_CONSTRAINT_NAMES``. The
-    post-simulation constraint (``nyc_reliability_floor``) reads the computed
-    objective vector and lives in
-    ``src.formulations.make_post_sim_constraint_function``; the MM Borg
-    objective wrapper appends it after simulation.
-
-    Delivery-stage monotonicity is deliberately NOT a constraint: the
-    allocation-reduction DVs are non-negative stage increments, so a deeper
-    drought stage can never allow more diversion than a milder one by
-    construction. Zone-curve crossings are likewise NOT a constraint: the
-    zone-shift DV bounds make crossings common under random sampling, and
-    the cross-curve monotonicity clamp resolves them cleanly at apply
-    time — the clamped geometry is the intended policy, not a defect.
+    Pure DV arithmetic on the cached defaults config (no model build or
+    simulation). Each value is a violation magnitude: 0.0 = feasible,
+    positive values scale with the degree of violation. Covers only
+    ``src.formulations.DV_CONSTRAINT_NAMES``; the post-simulation constraint
+    (``nyc_reliability_floor``) lives in
+    ``src.formulations.make_post_sim_constraint_function``.
 
     Args:
         dv_vector: Array-like of decision variable values.
@@ -922,8 +888,7 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
         "nyc_nj_demand_source": NYC_NJ_DEMAND_SOURCE,
         "use_trimmed_model": use_trimmed,
         "initial_volume_frac": INITIAL_VOLUME_FRAC,
-        # Project standard for EVERY simulation; pinned explicitly because
-        # pywrdrb's default has changed across versions (see config).
+        # Pinned explicitly for EVERY simulation; never rely on pywrdrb's default.
         "flow_prediction_mode": PYWRDRB_FLOW_PREDICTION_MODE,
         # Enable downstream stage recorders at Hale Eddy / Fishs Eddy /
         # Bridgeville. Required by the action-stage flood objective.
@@ -1059,17 +1024,9 @@ def _get_temp_dir() -> str:
 # In-Memory Recorder (avoids HDF5 disk I/O and its threading side-effects)
 ###############################################################################
 
-# Minimal-recorder selection. pywrdrb's OutputRecorder records EVERY node and
-# parameter by default — most of the in-memory (and on-disk) footprint. The
-# objectives only consume the result groups pulled by
-# _extract_results_from_recorder: NYC-system reservoir storages, major-flow
-# links (Montague/Trenton/...), NYC/NJ demand+delivery, mrf_target_*, flood
-# stage_*, and (when active) the salinity/temperature LSTM parameters. Recording
-# only those objects gives identical objectives at a fraction of the memory,
-# which in turn allows much larger ensemble batches (fewer model loads -> far
-# less shared-filesystem I/O -> faster re-eval). Toggle off with
-# NYCOPT_MINIMAL_RECORDER=0 to capture everything (e.g. for full-timeseries
-# diagnostics).
+# Minimal-recorder selection: record only the result groups the objectives
+# read (see _extract_results_from_recorder); identical objectives, far less
+# memory. NYCOPT_MINIMAL_RECORDER=0 records everything.
 # NYC/NJ demand+delivery are recorded by exact name; depending on the model
 # build these can be either nodes or parameters, so match them in BOTH lists.
 _OBJECTIVE_EXACT_NAMES = frozenset({
@@ -1123,21 +1080,12 @@ def _minimal_recorder_selection(model):
 
 
 class InMemoryRecorder:
-    """Wrapper around pywrdrb.OutputRecorder that skips HDF5 output.
+    """OutputRecorder wrapper with no-op lifecycle methods and no HDF5 output.
 
-    Root cause of prior crash (double-free in pywr C extension):
-      OutputRecorder.finish() called rec.finish() on each individual
-      NumpyArray*Recorder. But pywr's C code ALREADY calls finish() on
-      every registered recorder automatically at the end of model.run().
-      The double-call freed the internal buffer twice → double-free / abort.
-
-    Fix: replace ALL lifecycle methods on the OutputRecorder wrapper with
-    no-ops. Each NumpyArray*Recorder is registered with the pywr model and
-    receives exactly one lifecycle call (setup/reset/after/finish) from pywr.
-    After model.run() completes, recorder.data is still accessible.
-
-    We also avoid writing HDF5 (which would spawn HDF5 background threads and
-    corrupt the Python GIL state inside Borg's ctypes C→Python callback).
+    pywr already calls setup/reset/after/finish on each registered recorder,
+    so a second finish() from the wrapper double-frees. No HDF5 is written:
+    its background threads corrupt the GIL inside Borg's ctypes callback.
+    ``recorder.data`` stays accessible after ``model.run()``.
     """
 
     def __init__(self, model, minimal=None):
@@ -1146,11 +1094,8 @@ class InMemoryRecorder:
         if minimal is None:
             minimal = _use_minimal_recorder()
 
-        # Create OutputRecorder (this also registers the individual
-        # NumpyArray*Recorders with the pywr model). By default record only the
-        # objective-relevant nodes/parameters (see _minimal_recorder_selection)
-        # to cut memory/output; pass minimal=False (or NYCOPT_MINIMAL_RECORDER=0)
-        # to capture everything.
+        # OutputRecorder registers the individual NumpyArray*Recorders with the
+        # pywr model. minimal=True records only the objective-relevant objects.
         if minimal:
             nodes, parameters = _minimal_recorder_selection(model)
             self._inner = OutputRecorder(
@@ -1160,9 +1105,8 @@ class InMemoryRecorder:
         else:
             self._inner = OutputRecorder(model, output_filename="/dev/null")
 
-        # Make ALL wrapper lifecycle methods no-ops.
-        # pywr's C engine calls setup/reset/after/finish on each individual
-        # registered recorder — the wrapper must not double-call them.
+        # pywr calls setup/reset/after/finish on each registered recorder; the
+        # wrapper must not double-call them.
         _noop = lambda: None
         self._inner.setup = _noop
         self._inner.reset = _noop
@@ -1304,32 +1248,12 @@ def _extract_salinity_records(model, datetime_index, results: dict,
                               scenario: int = 0) -> None:
     """Extract per-sim-day sf_mu/sf_sd from the salinity LSTM after model.run().
 
-    In sync mode (`asycronized_update=False`, our default), the LSTM advances
-    `ml_model.t` once per simulation day, writing each sim day's flow into
-    `ml_model.X[t, :]` and computing that day's forward pass. With `debug=True`
-    on the salinity options, the per-day `sf_mu`/`sf_sd` is recorded in
-    `ml_model.records` at index `t = sim_day_index` — i.e., `records[0]` is
-    the first sim day's salt-front prediction regardless of the LSTM's own
-    `start_date`.
-
-    `ml_model.records["sf_mu"]` is shape `(n_sim, n_scenarios)` after the
-    PywrDRB-ML/Pywr-DRB scenario-aware refactor (2026-05-06), even when
-    `n_scenarios=1`. We slice `[:n_sim, scenario]` to pull the per-realization
-    series and pair it with the simulation's datetime_index. Replaces
-    `results["salinity"]` with this DataFrame; this is the canonical source of
-    truth for the salinity objective.
-
-    Single-trace callers (`run_simulation_inmemory`, `run_simulation_to_disk`)
-    leave `scenario` at its default 0 and get the same series they got pre-
-    refactor. Ensemble callers loop over scenario indices.
-
-    Async mode (`asycronized_update=True`) is intentionally unsupported: in
-    async mode `ml_model.t` never advances during pywrdrb's run loop, so all
-    sim days overwrite `X[0, :]` and the LSTM's forward pass over the full
-    window is dominated by historical training data — not what we want for
-    NYC-policy-driven optimization. The upstream SalinityLSTMModel.update
-    additionally raises NotImplementedError if asycronized_update=True is
-    combined with n_scenarios > 1.
+    In sync mode with ``debug=True`` the LSTM records each sim day's
+    prediction in ``ml_model.records`` at ``t = sim_day_index``.
+    ``records["sf_mu"]`` is ``(n_sim, n_scenarios)``; slice
+    ``[:n_sim, scenario]`` and pair with the datetime index, replacing
+    ``results["salinity"]``. Async mode is unsupported (``ml_model.t`` never
+    advances during the run loop).
 
     Mutates `results` in place when salinity is enabled.
     """
@@ -1346,11 +1270,8 @@ def _extract_salinity_records(model, datetime_index, results: dict,
     n_sim = len(datetime_index)
     sim_index = pd.DatetimeIndex(datetime_index)
 
-    # Under sync mode `ml_model.t` advances once per sim day after the
-    # first (the gate at salt_front_location.py skips day 1 because
-    # `previous_date < ml_model.current_date`), so the expected count is
-    # `n_sim - 1`. A genuine async-mode misconfiguration would leave
-    # `ml_model.t` near zero.
+    # Sync mode advances `ml_model.t` once per sim day after the first (day 1
+    # is gate-skipped), so the expected count is `n_sim - 1`.
     if ml_model.t < n_sim - 1:
         print(f"  [salinity extract] WARN: ml_model.t={ml_model.t} < n_sim-1={n_sim-1}; "
               f"records likely incomplete (async mode?). Leaving recorder-based "
@@ -1447,12 +1368,8 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
          :func:`run_simulation_inmemory`'s output, so existing metric
          functions in ``src/objectives.py`` work unchanged when wrapped by
          an ``AnnualUnitObjective`` from ``src/objectives_ensemble.py``.
-
-      4. Salinity LSTM is now scenario-aware (PywrDRB-ML + Pywr-DRB
-         salt_front_location refactor, 2026-05-06): ``ml_model.records``
-         is shape ``(n_sim, n_scenarios)``, and we call
-         :func:`_extract_salinity_records` once per realization to populate
-         ``data_per_real[s]["salinity"]``.
+         Salinity records are extracted per realization via
+         :func:`_extract_salinity_records`.
 
     Args:
         nyc_config: NYCOperationsConfig instance (DV-applied).
@@ -1479,9 +1396,8 @@ def run_simulation_ensemble_inmemory(nyc_config, ensemble_spec) -> list:
     # model release parameters to PresimulatedReleaseEnsemble (reading from
     # presimulated_releases_mgd.hdf5 staged by STARFITReleaseEnsemble-
     # Preprocessor) when both use_trimmed_model=True AND
-    # inflow_ensemble_indices are set. We pass use_trimmed=None so the
-    # cache picks up USE_TRIMMED_MODEL from config, matching the single-trace
-    # single-trace behavior.
+    # inflow_ensemble_indices are set. use_trimmed=None lets the cache pick up
+    # USE_TRIMMED_MODEL from config, matching the single-trace behavior.
     t0 = time.perf_counter()
     base_dict = _get_cached_model_dict(
         use_trimmed=None,
@@ -1537,11 +1453,10 @@ def run_simulation_ensemble_batched(
 ) -> list:
     """Simulate an inflow ensemble in sequential realization batches.
 
-    The shared realization-handling path for both Borg's ``evaluate()`` ensemble
-    branch and the supplemental policy-sweep diagnostics (epsilon calibration,
-    satisfaction-factor sweep), so all compute identical per-realization
-    results. The ensemble is split into contiguous
-    chunks of ``batch_size`` realizations; each chunk is simulated with one
+    The shared realization-handling path for Borg's ``evaluate()`` ensemble
+    branch, re-evaluation, and the supplemental policy-sweep diagnostics, so
+    all compute identical per-realization results. The ensemble is split into
+    contiguous chunks of ``batch_size`` realizations; each chunk is simulated with one
     :func:`run_simulation_ensemble_inmemory` call (one Pywr model, ``batch_size``
     scenarios), each realization is reduced to a scalar/array via
     ``per_realization_fn``, and the chunk's timeseries are freed before the next
@@ -1624,9 +1539,6 @@ def check_dv_feasibility(nyc_config, ensemble_spec, *, probe_index=None):
     those realizations. Those remain handled by ``skip_failed_batches`` in
     :func:`run_simulation_ensemble_batched`.
 
-    Reusable by the MOEA: ``evaluate()`` can call this and return penalized
-    objectives for structurally-infeasible candidates rather than raising.
-
     Args:
         nyc_config: NYCOperationsConfig (DV-applied).
         ensemble_spec: ``EnsembleSpec`` with ``is_ensemble=True``.
@@ -1658,15 +1570,15 @@ def check_dv_feasibility(nyc_config, ensemble_spec, *, probe_index=None):
 
 
 ###############################################################################
-# Disk-Based Simulation (for baseline runs and re-evaluation)
+# Disk-Based Simulation (step-05 baseline)
 ###############################################################################
 
 def run_simulation_to_disk(nyc_config, output_file: Path,
                            use_trimmed: bool = None) -> dict:
     """Run Pywr-DRB simulation and save results to HDF5.
 
-    Use this for baseline evaluation and re-evaluation where we want
-    to keep the full simulation output for later analysis.
+    Used for the baseline evaluation (and ad-hoc timeseries figures) where
+    the full simulation output is kept for later analysis.
 
     Args:
         nyc_config: NYCOperationsConfig instance.
@@ -1877,11 +1789,9 @@ def evaluate_annual_units(dv_vector, formulation_name="ffmp", objective_set=None
     and the SAME stage-(i) annual-metric reduction as search, returning the raw
     ``(n_realizations, n_objs, n_unit_years)`` tensor instead of search's
     pooled scalar objectives. The re-eval layer pools each SOW's unit-years
-    with the §2 unit operators (``src.reeval_core.sow_objective_matrix``), so
-    the persisted per-SOW values are the search objectives recomputed per
-    deeply-uncertain state — one metric currency across search, robustness,
-    and regret. Mirrors ``evaluate()``'s dispatch (resample / single-trace /
-    batched / unbatched) so re-eval simulations match the search path.
+    with the §2 unit operators (``src.reeval_core.sow_objective_matrix``).
+    Mirrors ``evaluate()``'s dispatch (resample / single-trace / batched /
+    unbatched).
 
     Args:
         dv_vector: Decision-variable vector.
@@ -1954,15 +1864,13 @@ _RESAMPLE_BASE_SEED = 1_000_003  # salt for the resampled-probabilistic per-eval
 
 
 def _resampled_eval_spec(pool_spec, eval_count):
-    """Draw a fresh per-evaluation subset from a resample-per-eval master pool.
+    """Draw a fresh per-evaluation subset from a resample-per-eval pool.
 
     Returns a copy of ``pool_spec`` whose ``realization_indices`` is a random
-    size-``resample_size`` subset (without replacement) of the master pool. The
-    draw is keyed by (base salt, MPI rank, eval_count) so it differs every
-    evaluation and is reproducible given the same rank/eval ordering. This is
-    the Trindade et al. (2017) per-evaluation reshuffling: each candidate sees a
-    fresh random scenario set, so in-search fitness is a noisy estimate and
-    cross-design comparison rests on the held-out re-evaluation.
+    size-``resample_size`` subset (without replacement) of the pool. The draw
+    is keyed by (base salt, MPI rank, eval_count) so it differs every
+    evaluation and is reproducible given the same rank/eval ordering
+    (Trindade et al. 2017 per-evaluation reshuffling).
 
     Args:
         pool_spec: An ``EnsembleSpec`` with ``resample_per_eval=True`` whose
@@ -2044,23 +1952,17 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
 
     nyc_config = dvs_to_config(dv_vector, formulation_name)
     if not ensemble_spec.is_ensemble:
-        # Single-trace (historic) design: evaluate the SAME annual-unit (§2)
-        # objective as the ensembles, treating the one trace as a single
-        # realization (N=1 -> its consecutive FFMP-year units). The objective function
-        # is held fixed across designs; only the scenario set differs
-        # (objective_definitions.md §2/§3). Requires the annual-unit objective
-        # set (AnnualUnitObjective instances), i.e. the set returned by
-        # formulations.get_objective_set() for any wired design.
+        # Single-trace (historic) design: the SAME annual-unit (§2) objective
+        # as the ensembles, with the one trace as a single realization (N=1 ->
+        # its consecutive FFMP-year units). Requires AnnualUnitObjective
+        # instances (formulations.get_objective_set()).
         data = run_simulation_inmemory(nyc_config)
         objs = objective_set.compute_for_borg_ensemble([data])
     elif realization_batch and realization_batch > 0:
-        # Memory-batched ensemble path: simulate in sequential batches,
-        # keeping only each realization's per-unit-year annual metrics
-        # (stage i), then collapse the pooled unit-years with each
-        # objective's unit operator (stage ii) — never holding all N data
-        # dicts at once. Shares run_simulation_ensemble_batched with the
-        # objective-sensitivity diagnostic, so search and diagnostic handle
-        # realizations identically.
+        # Memory-batched ensemble path: sequential batches keep only each
+        # realization's per-unit-year annual metrics (stage i); the pooled
+        # unit-years are collapsed with each objective's unit operator
+        # (stage ii) without holding all N data dicts at once.
         objs = _evaluate_ensemble_batched(
             nyc_config, ensemble_spec, objective_set, realization_batch,
         )
@@ -2070,13 +1972,9 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
         data_per_real = run_simulation_ensemble_inmemory(
             nyc_config, ensemble_spec,
         )
-        # The ensemble dispatch expects an ObjectiveSet built via
-        # `src.objectives_ensemble.build_ensemble_objective_set`, which is
-        # what `formulations.get_objective_set()` returns when
-        # `SEARCH_ENSEMBLE_SPEC.is_ensemble` is True. A single-trace
-        # set leaks through only if a caller hand-built one and passed it
-        # explicitly — fail loudly there rather than silently invoking the
-        # wrong compute path.
+        # Requires an ObjectiveSet built via
+        # src.objectives_ensemble.build_ensemble_objective_set; fail loudly on
+        # a hand-built single-trace set.
         if not hasattr(objective_set, "compute_for_borg_ensemble"):
             raise NotImplementedError(
                 "ensemble evaluation requested but ObjectiveSet has no "

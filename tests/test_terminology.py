@@ -1,33 +1,11 @@
 """
 tests/test_terminology.py - Guards against retired methods and terminology lingering.
 
-This suite exists because of a specific, repeated failure mode. When a method
-changes, the *name* of the old method survives in code, notes, and slides long
-after the thing itself is gone, and a reader cannot tell the difference between
-"this is what we do" and "this is what we used to do". Real instances, all found
-by a human noticing rather than by a test:
-
-  - The notes specified a simulated-annealing selector that was NEVER implemented.
-  - "Master ensemble" survived the deletion of the shared-master architecture,
-    including in the proposal deck, which is how the whole rewrite started.
-  - ``objectives_summary.csv`` columns were named ``*_p99_pct`` (promising a
-    percentile in percent) while containing satisficing fractions in [0, 1].
-  - ``improvement_vs_baseline`` computed a *shortfall*, so a policy that beat the
-    status quo scored 0 and the name said the opposite of the quantity.
-
-Two kinds of check:
-
-  1. RETIRED TERMS must not appear as live claims anywhere in the method surface.
-     A line is allowed to name a retired term only if it also carries a negation
-     marker -- i.e. it is saying "we do NOT do this, and here is why", which is
-     exactly the framing we want to keep.
-  2. NAME/SEMANTICS invariants on the metric columns: a column prefix must mean
-     what it says, and its higher-is-better orientation must be declared
-     correctly. A wrong orientation flag silently inverts an objective in every
-     ranking correlation, with no other symptom.
-
-When a method is retired in future, add its term here in the SAME commit. That is
-the cheap half of the discipline; the test is the half that does not forget.
+Two checks: (1) RETIRED_TERMS must not appear as live claims in the method
+surface (a line may name one only with a negation marker within
+_NEGATION_WINDOW lines); (2) METRIC_CONTRACT declares every scorecard column's
+prefix semantics and higher-is-better orientation. Add a retired term here in
+the same commit that retires it.
 """
 
 import re
@@ -55,12 +33,9 @@ RETIRED_TERMS: dict[str, str] = {
     "fixed_probabilistic_short": "fixed_probabilistic",
     "fixed_probabilistic_long": "deleted from the campaign",
     "regret_from_best": "deleted -- set-relative and design-coupled",
-    # The NAME stays retired even though incumbent-relative regret is now computed.
-    # "Regret from baseline" is ambiguous in exactly the way that produced the
-    # miscitation this project shipped: Herman et al. (2015)'s R1 is regret from a
-    # baseline STATE OF THE WORLD (same policy, reference SOW), while what we
-    # compute is regret from a baseline POLICY (the incumbent, per SOW). The live
-    # names say which: incumbent_advantage / regret_magnitudes / regret_frequencies.
+    # The name stays retired although incumbent-relative regret is computed:
+    # Herman et al. (2015)'s R1 is regret from a baseline STATE OF THE WORLD,
+    # while the live metric is regret from the incumbent POLICY per SOW.
     "regret_from_baseline": "incumbent_advantage + regret_magnitudes / "
                             "regret_frequencies (regret from the incumbent POLICY, "
                             "per SOW) -- the old name conflated that with Herman's "
@@ -70,32 +45,27 @@ RETIRED_TERMS: dict[str, str] = {
     "ensemble objective-sensitivity experiment":
         "framing-convention diagnostics (framing_convention_diagnostics.md; "
         "cube reductions of the epsilon-calibration policy populations + the "
-        "satisfaction-factor sweep). Retired 2026-07-30: its per-realization "
-        "matrix predated the annual-unit scheme and every decision it gated "
-        "is now answered by the newer machinery.",
+        "satisfaction-factor sweep)",
     "ensemble_objective_sensitivity":
         "framing_convention_analysis.py / satisfaction_factor_{run,figures}.py "
         "over the epsilon-calibration cubes (the retired experiment's scripts, "
         "launchers, and ENS_* config are deleted)",
     "nested axis sets":
         "the two diagnostic axis sets: campaign (config.HAZARD_SELECTION_AXES) "
-        "vs the full retained set. The m4/m6 diagnostic nestings were retired "
-        "2026-07-30 (assess_m6_axis_sets.py and its launcher deleted).",
+        "vs the full retained set (the m4/m6 nestings are deleted)",
     "nyc_drought_factor":
         "nyc_allocation_reduction_* (stage-wise ADDITIONAL reduction DVs, "
-        "decoded to delivery factors by cumulative subtraction from 1.0; "
-        "re-parameterized 2026-08-06). Pywr-DRB's model-side "
-        "drought_factor_delivery_* / {level}_factor_delivery_* parameter "
-        "names are unaffected.",
+        "decoded to delivery factors by cumulative subtraction from 1.0). "
+        "Pywr-DRB's model-side drought_factor_delivery_* / "
+        "{level}_factor_delivery_* parameter names are unaffected.",
     "nj_drought_factor":
         "nj_allocation_reduction_* (see nyc_drought_factor)",
     "delivery_monotonicity":
         "deleted -- monotonicity is structural under the non-negative "
         "allocation-reduction DVs; flood_zone_ordering is the only DV-space "
         "Borg constraint",
-    # 2026-08-07 unified-metric-currency refactor: robustness/regret moved onto
-    # the per-SOW annual-unit objective substrate; the whole-trace / realization-
-    # unit machinery below dissolved into it.
+    # Whole-trace / realization-unit robustness machinery, replaced by the
+    # per-SOW annual-unit objective substrate.
     "improvement_vs_baseline":
         "the incumbent-advantage regret family (regret_mean__/gain_mean__ are "
         "its one-sided halves, natural units, SOW unit)",
@@ -112,10 +82,8 @@ RETIRED_TERMS: dict[str, str] = {
         "persist-time per-SOW pooling (reeval_core.sow_objective_matrix)",
     "SatisficingAgg":
         "AnnualUnitObjective.sat_threshold/sat_kind + robustness._satisfy",
-    # 2026-08 subset-criteria redesign: criterion sets became Quinn-2017-style
-    # explicit subsets (1-3 thresholded objectives, others unconstrained); the
-    # deviations-merge construction and the all-8-axis analysis conjunction
-    # were retired (the latter survives only as the reference_all8 set).
+    # Criterion sets are explicit subsets (1-3 thresholded objectives, others
+    # unconstrained); the all-axes conjunction is the reference_all8 set only.
     "deviations from the adopted vector":
         "CriterionSet.criteria (an explicit member-axis subset; non-member "
         "axes non-binding at +/-inf), src/satisficing_criteria.py",
@@ -125,10 +93,9 @@ RETIRED_TERMS: dict[str, str] = {
     "all eight criteria jointly":
         "all criteria in the set jointly (see reference_all8 for the "
         "all-axes reference conjunction)",
-    # 2026-08-18 hazard-metric terminology alignment with the drought literature
-    # (and SynHydro's get_drought_metrics columns): severity = peak SSI deficit,
-    # magnitude = cumulative deficit; the flood axis was renamed so the
-    # manuscript symbols work out (M = drought magnitude, D = peak discharge).
+    # Hazard-metric names follow the drought literature (and SynHydro's
+    # get_drought_metrics columns): severity = peak SSI deficit, magnitude =
+    # cumulative deficit; the flood axis is peak discharge.
     "drought_peak_depth": "drought_severity (peak SSI-based deficit)",
     "peak depth": "drought severity (peak SSI-based deficit)",
     "drought_deficit_volume": "drought_magnitude (cumulative SSI deficit)",
@@ -136,8 +103,7 @@ RETIRED_TERMS: dict[str, str] = {
     "flood_peak_magnitude": "flood_peak_discharge (window max daily flow / "
                             "reference mean)",
     "peak magnitude": "peak discharge (window max daily flow / reference mean)",
-    # 2026-08-18 June alignment: the annual unit moved from the USGS water year
-    # (Oct-Sep) to the FFMP operating year (Jun-May), on December-start
+    # The annual unit is the FFMP operating year (Jun-May) on December-start
     # realizations, so hazard metrics and objectives score the identical
     # [Jun 1 year 1, May 31 year L] window.
     "water_year_unit_slices":
@@ -145,10 +111,9 @@ RETIRED_TERMS: dict[str, str] = {
     "water-year unit":
         "FFMP-year unit (Jun 1 - May 31, the FFMP operating year; "
         "objectives_ensemble.ffmp_year_unit_slices)",
-    # 2026-08-26 the pass/fail threshold on the hazard-filling selection's tail
-    # share was dropped. The statistic (min per-axis share above the pool P90,
-    # seed-mean convention) is reported against the 0.10 i.i.d. share as a
-    # property of the selector on the pool's joint geometry; no gate exists.
+    # The hazard-filling selection's tail share (min per-axis share above the
+    # pool P90, seed-mean convention) is reported against the 0.10 i.i.d.
+    # share as a property of the selector; no pass/fail threshold exists.
     "adequacy gate":
         "the reported min per-axis tail share (no threshold; "
         "hazard_selector_diagnostics.md §4 block D)",
@@ -159,10 +124,9 @@ RETIRED_TERMS: dict[str, str] = {
     "TAIL_CRITERION":
         "deleted (ESD_TAIL_QUANTILES keeps the quantiles; TAIL_NULL_SHARE is "
         "the 0.10 i.i.d. reference; no threshold constant exists)",
-    # 2026-08-26 campaign design adopted at N = 300 (campaign_design.md): one
-    # search draw per design, the seed as the unit of analysis, seed-indexed
-    # NFE, 12-node geometry, the measured cost basis, and no resume. The old
-    # campaign's numbers and the false snapshot-resume claim are retired.
+    # Campaign design (campaign_design.md): N = 300, one search draw per
+    # design, the seed as the unit of analysis, seed-indexed NFE, 12-node
+    # geometry, the measured cost basis, and no resume.
     "K = 3":
         "K = 1 search draw per design (d0); draws d1-d2 are staged only for "
         "the SI draw-sensitivity re-evaluation (campaign_design.md §1)",

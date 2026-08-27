@@ -40,9 +40,8 @@ export NYCOPT_ESD_STAGE=materialize
 export NYCOPT_ESD_CHUNK="${SLURM_ARRAY_TASK_ID:-0}"
 
 # The chunk slug and size come from the persisted plan (smoke-aware via
-# supplemental_config). The prep rank count is capped at the chunk size: the
-# pywrdrb ensemble preprocessors hang when a rank owns zero realizations
-# (observed 2026-08-25 on a 6-member chunk under 8 ranks).
+# supplemental_config). The prep rank count is capped at the chunk size because
+# the pywrdrb ensemble preprocessors hang when a rank owns zero realizations.
 read -r CHUNK_SLUG CHUNK_N < <(python3 -c "import json, sys, supplemental_config as s; c = json.load(open(s.esd_json_path('library_plan')))['chunks'][int(sys.argv[1])]; print(c['slug'], c['n_realizations'])" "${NYCOPT_ESD_CHUNK}")
 PREP_NP="${SLURM_NTASKS:-1}"
 (( CHUNK_N < PREP_NP )) && PREP_NP="${CHUNK_N}"

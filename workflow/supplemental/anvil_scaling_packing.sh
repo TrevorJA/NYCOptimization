@@ -1,47 +1,20 @@
 #!/bin/bash
 # anvil_scaling_packing.sh — Stage A of the Anvil scaling experiment: the
-# single-node packing/concurrency sweep (manuscript supplement).
+# one-node packing K-ladder. Runs the steps of
+# supplemental_config.PACKING_MODES[NYCOPT_BENCH_MODE] sequentially on one
+# exclusive 128-core node, each as `mpirun -np K bench_eval_worker.py` writing
+# per-rank CSV shards under outputs/supplemental/anvil_scaling_experiment/packing/.
+# A fresh mpirun per step gives a cold cache; /dev/shm model JSONs are purged
+# between steps; a step that dies (OOM at high K) is recorded and the ladder
+# continues.
 #
-# On ONE exclusive 128-core Anvil node, run the K-ladder from
-# supplemental_config.PACKING_MODES sequentially: for each step,
-# `mpirun -np K bench_eval_worker.py` has every rank time 1 cold + M warm
-# trimmed-model ensemble evaluations (the exact Borg-worker `evaluate()` path)
-# and record wall time + peak RSS to per-rank CSV shards under
-# outputs/supplemental/anvil_scaling_experiment/packing/. A fresh mpirun per
-# step gives a natural cold cache at every K.
+# Env inputs: NYCOPT_ENV_FILE (required), NYCOPT_BENCH_MODE
+# (smoke | ladder | spot | batch), NYCOPT_PACK_BUDGET_S (walltime guard,
+# default 9600 s), NYCOPT_PACK_BATCH_KSTAR (batch mode's K*).
 #
-# Usage (from repo root; the allocation account is set in the header below):
-#   # ~10-min smoke on the debug partition:
-#   sbatch --partition=debug --time=00:30:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_BENCH_MODE=smoke \
-#          workflow/supplemental/anvil_scaling_packing.sh
-#   # full ladder (defaults below):
+# Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env \
 #          workflow/supplemental/anvil_scaling_packing.sh
-#   # spot re-measurement (edit PACKING_MODES["spot"] first, then):
-#   sbatch --partition=debug --time=02:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_BENCH_MODE=spot,NYCOPT_PACK_BUDGET_S=6000 \
-#          workflow/supplemental/anvil_scaling_packing.sh
-#   # batched-evaluation (K, B) sweep at K=1 and K*=NYCOPT_PACK_BATCH_KSTAR
-#   # (set K* from the ladder's packing_summary before submitting):
-#   sbatch --partition=debug --time=02:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/anvil_scaling_packing.env,NYCOPT_BENCH_MODE=batch,NYCOPT_PACK_BATCH_KSTAR=32,NYCOPT_PACK_BUDGET_S=6600 \
-#          workflow/supplemental/anvil_scaling_packing.sh
-#
-# Notes:
-#   * NYCOPT_BENCH_MODE (smoke | ladder | spot) selects the step list — the
-#     ladders themselves live in supplemental_config.py (no value flags).
-#   * The node must be exclusive (wholenode, or debug which is node-exclusive)
-#     so contention comes only from our own ranks; --ntasks-per-node=128
-#     reserves every core for the densest step.
-#   * A step that dies (e.g. OOM at K=128) is recorded and the ladder
-#     continues — missing shards at high K are the memory ceiling, not a bug.
-#   * NYCOPT_PACK_BUDGET_S (default 9600 s) guards the wall clock: a new step
-#     starts only if at least the worst-case step time (~40 min) remains, so a
-#     shorter allocation degrades by skipping tail steps instead of dying.
-#   * pywrdrb's per-rank /dev/shm model JSONs are never cleaned by the code
-#     (src/simulation.py::_get_temp_dir); stale dirs are purged between steps
-#     so RAM-backed tmpfs doesn't silently shrink usable node memory.
 #
 #SBATCH --job-name=anvscale_pack
 #SBATCH --account=ees260021

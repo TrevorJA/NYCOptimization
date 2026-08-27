@@ -3,10 +3,9 @@
 Verifies that a STAGED ensemble's stamped months carry the right statistical
 season: the monthly climatology of the staged flows, grouped by TRUE index
 month, must align with the historic record's monthly climatology at circular
-shift zero. This is the check the generator-side validations cannot perform —
+shift zero. This is the check the generator-side validations cannot perform:
 they score the generator's own frames, while a stamping defect lives only in
-the staged artifact (the +3-month rotation this check exists to catch was
-invisible to every generator-side diagnostic).
+the staged artifact.
 
 For each of the twelve circular shifts s, the staged cycle rotated by s is
 correlated with the historic cycle; the best-aligned shift must be 0. The

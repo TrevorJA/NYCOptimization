@@ -1,9 +1,9 @@
 """ensemble_prep.py - Stage a streamflow ensemble into pywrdrb HDF5 inputs.
 
-Shared Step-3 logic for both the main workflow
+Shared step-04 logic for the main workflow
 (``scripts/main/prep_pywrdrb_inputs.py``) and the local test-fixture staging
 (``src/local_test_ensemble.py``). Given an :class:`~src.ensembles.EnsembleSpec`
-whose ``catchment_inflow_mgd.hdf5`` has already been staged by the Step-1
+whose ``catchment_inflow_mgd.hdf5`` has already been staged by the step-02
 generator (``src/ensemble_generation.py``), this produces the remaining files
 the trimmed-model ensemble simulation path requires under
 ``STAGED_ENSEMBLE_DIR/{inflow_type}/``:
@@ -130,8 +130,8 @@ def stage_pywrdrb_ensemble_inputs(
     base_inflow = flows_dir / _CATCHMENT_INFLOW
     if not base_inflow.exists():
         raise FileNotFoundError(
-            f"Base ensemble inflows not found: {base_inflow}. Run the Step-1 "
-            "generator (generate_kirsch_nowak_ensemble) for this inflow_type first."
+            f"Base ensemble inflows not found: {base_inflow}. Run the step-02 "
+            "generator for this inflow_type first."
         )
 
     def _log(msg: str) -> None:

@@ -30,6 +30,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# src.etest does not import config (it imports only scengen.seeds and
+# src.scenario_designs), so the campaign re-eval tag can be read here without
+# breaking the configure_*_env import-order contract above.
+from src.etest import campaign_reeval_preset
+
 _PROJECT_DIR: Path = Path(__file__).resolve().parent
 
 #: Root for all supplemental outputs (gitignored, regenerable); each experiment
@@ -167,21 +172,15 @@ def figure_path(name: str, ext: str) -> Path:
 # (docs/notes/methods/epsilon_calibration_experiment.md;
 #  workflow/supplemental/epsilon_calibration.sh)
 #
-# Recalibrates the ANNUAL-UNIT (§2) search epsilons — the values Borg's
-# ε-dominance archive actually uses — on the CAMPAIGN search measures, replacing
-# the 24-policy historic-trace provenance. One sbatch job per scenario design
-# (design selected by the sourced NYCOPT_ENV_FILE, exactly as the MM-Borg
-# launcher does): sample EPS_N_POLICIES constraint-FEASIBLE random DV vectors
-# (uniform-on-feasible via rejection; random vectors are ~1% feasible),
-# evaluate each on that design's search ensemble through the same batched path
-# Borg workers run, and persist the full per-unit annual-metric cube
-# (n_dv x n_real x n_obj x n_units). The figures script then derives, per
-# objective and per design: the signal scale (IQR/10 across feasible policies),
-# the estimator noise floor (bootstrap over realizations; over unit-years for
-# the single-trace historic design), the frequency-granularity floor, an
-# ε-nondominated archive-size sweep, and a clean-rounded recommendation
-# eps = ceil_clean(max(signal, noise, granularity)) — combined across designs
-# into the single campaign vector (JARs and the Borg problem share one set).
+# Calibrates the annual-unit search epsilons on the campaign search measures.
+# One sbatch job per scenario design (design from the sourced NYCOPT_ENV_FILE):
+# EPS_N_POLICIES constraint-feasible random DV vectors are evaluated on that
+# design's search ensemble through the batched worker path and persisted as a
+# per-unit annual-metric cube (n_dv x n_real x n_obj x n_units). The figures
+# script derives per objective the signal scale, the estimator noise floor,
+# the frequency-granularity floor and an archive-size sweep, then recommends
+# eps = ceil_clean(max(signal, noise, granularity)); the campaign vector is the
+# max over EPS_CAMPAIGN_DESIGNS.
 ###############################################################################
 
 # ---------------------------------------------------------------------------
@@ -245,13 +244,11 @@ EPS_BOOTSTRAP_SEED: int = 7
 EPS_SCALE_GRID: tuple = (0.25, 0.5, 1.0, 2.0, 4.0)
 
 #: Designs whose raw floors enter the campaign epsilon max (figures script).
-#: The historic single-trace design is deliberately EXCLUDED: it is a
-#: reported reference arm, not a matched-contrast arm, and
-#: its 76-unit-year estimator's noise floor would coarsen the shared vector
-#: ~3-4x beyond what the ensemble search measures need (e.g. reliability
-#: epsilon 0.10 instead of 0.02 on the 0-1 scale). Its cube and per-design
-#: diagnostics stay reported for context; the historic arm's archive
-#: consequently resolves below its own noise floor (accepted, disclosed).
+#: The historic single-trace design is excluded: it is the reported reference
+#: design, not a matched design, and its 77-unit-year noise floor would coarsen
+#: the shared vector well beyond what the ensemble search measures need. Its
+#: cube and diagnostics stay reported; its archive resolves below its own noise
+#: floor (disclosed).
 EPS_CAMPAIGN_DESIGNS: tuple = ("fixed_probabilistic", "hazard_filling_stationary")
 
 # ---------------------------------------------------------------------------
@@ -299,27 +296,14 @@ def epsilon_figure_path(name: str, design: "str | None" = None,
 # Anvil parallel-scaling experiment
 # (workflow/supplemental/anvil_scaling_*.sh; manuscript supplement)
 #
-# Two measured stages plus a post-hoc analysis, following the Reed-group
-# scaling-experiment conventions (strong scaling, speedup vs ideal, parallel
-# efficiency = speedup/p, replicate bands):
-#
-#   Stage A (packing): on ONE exclusive 128-core Anvil node, sweep the number
-#     of concurrent MPI ranks K, each rank timing cold+warm trimmed-model
-#     ensemble evaluations (the exact `evaluate()` path Borg workers run).
-#     Yields per-eval slowdown vs K, node throughput, SU cost per eval, and
-#     per-rank peak RSS vs the 256 GB node memory — the ranks-per-node choice.
-#   Stage B (Borg strong scaling): fixed total NFE, sweep island x worker
-#     geometry (registered as `scale_*` MOEA configs in src/moea_config.py),
-#     >=2 seeds per geometry, on the historic design with the DEBUG_SIM short
-#     window (~13 s/eval; Borg coordination overhead is measured, not search
-#     quality — the inflated overhead:eval ratio makes this a conservative
-#     efficiency bound).
-#
-# IMPORTANT: Stage A must never combine with DEBUG_SIM / PYWRDRB_SIM_* date
-# overrides — the ensemble window self-derives from the realization length
-# (src/simulation.py::_ensemble_window) and a date override would shift it off
-# the staged HDF5 axis. Stage B (historic single-trace) is where the short
-# window is valid.
+# Stage A (packing): on one exclusive 128-core node, sweep the number of
+#   concurrent MPI ranks K, each rank timing cold + warm evaluate() calls;
+#   yields per-eval slowdown, node throughput, SU per eval and peak RSS vs K.
+#   Must never combine with DEBUG_SIM / PYWRDRB_SIM_* overrides (the ensemble
+#   window self-derives from the realization length).
+# Stage B (Borg strong scaling): fixed total NFE across the scale_* MOEA
+#   configs, >= 2 seeds per geometry, historic design with DEBUG_SIM, so it
+#   measures coordination overhead rather than search quality.
 ###############################################################################
 
 
@@ -353,10 +337,8 @@ PACKING_MODES: "dict[str, list[tuple[int, int, int]]]" = {
     "smoke":  [(1, 1, 0), (4, 1, 0)],
     "ladder": [(1, 6, 0), (8, 4, 0), (16, 2, 0), (32, 2, 0),
                (48, 2, 0), (64, 2, 0), (96, 2, 0), (128, 2, 0)],
-    # Spot densities from the packing-ladder measurements: slowdown is
-    # only ~1.17x at K=128 with ~89 GB projected node memory, so SU/eval is
-    # minimized at full packing — re-measure the two densest points, plus one
-    # batched step at K* for the memory-vs-time trade.
+    # Spot densities re-measured after the ladder, plus one batched step at
+    # K* for the memory-vs-time trade.
     "spot":   [(96, 4, 0), (128, 4, 0), (128, 4, 16)],
 }
 
@@ -415,9 +397,8 @@ BORG_SCALE_SEEDS: int = 2
 SCALING_NODE_CORES: int = 128
 SCALING_NODE_MEM_GB: int = 256
 
-#: Production-campaign projection grid (figure F5): candidate node counts and
-#: island counts at the chosen packing density K*, and the campaign NFE the
-#: projection is expressed for (mm_full's 50k total NFE).
+#: Projection grid (figure F5): candidate node counts and island counts at the
+#: chosen packing density K*, and the total NFE the projection is expressed for.
 SCALING_PROJECTION_NODES: "tuple[int, ...]" = (2, 4, 8, 16)
 SCALING_PROJECTION_ISLANDS: "tuple[int, ...]" = (2, 4, 8)
 SCALING_PROJECTION_TOTAL_NFE: int = 50_000
@@ -439,51 +420,15 @@ def packing_shard_path(k: int, batch: int, rank: int, job_id: str) -> Path:
             / f"k{k:03d}_b{batch}_rank{rank:03d}_{job_id}.csv")
 
 
-def packing_step_manifest_path(k: int, batch: int, job_id: str) -> Path:
-    """JSON manifest path (exit code, epochs) for one packing step."""
-    return SCALING_PACKING_DIR / f"step_k{k:03d}_b{batch}_{job_id}.json"
-
-
-def borg_timing_csv_path(config_name: str, seed: int, job_id: str) -> Path:
-    """One-row wall-time CSV path for one Stage B (geometry, seed) job."""
-    return SCALING_BORG_DIR / f"timing_{config_name}_seed{seed:02d}_{job_id}.csv"
-
-
 ###############################################################################
-# Ensemble-cost experiment — the t_eval(N, L, model) cost surface
-# (docs/notes/methods/ensemble_cost_experiment.md;
-#  workflow/supplemental/ensemble_cost_*.sh)
+# Ensemble-cost experiment: the t_eval(N, L, model) cost surface
+# (workflow/supplemental/ensemble_cost_*.sh)
 #
-# The Anvil packing sweep measured ONE ensemble shape (kn_20yr_n20) across
-# ranks-per-node. It says nothing about how a Borg evaluation's cost moves with
-# the ensemble's SHAPE, and the campaign is sized in that shape: N realizations
-# x L years, trimmed model for search AND re-evaluation (full model only for
-# presim passes + the historic baseline). pywrdrb
-# runs realizations as pywr SCENARIOS inside one model, so per-eval cost is
-# sub-linear in N (vectorized per-timestep work) but ~linear in L (timesteps);
-# a cost per scenario-year taken from one (N, L) point therefore misprices every
-# other point, in the direction that matters most for the N-vs-L trade.
-#
-# This experiment measures that surface directly: for every cell (N, L, model),
-# K concurrent ranks on one exclusive node each run 1 cold + M warm evaluations
-# through the production ``evaluate()`` path (the same worker the packing sweep
-# uses), recording wall time and peak RSS. The analysis derives the empirical N
-# and L exponents, the full/trimmed ratio, and the SU projection for the search
-# campaign and the held-out test-ensemble re-evaluation.
-#
-# DENSITY. Cells run at the largest memory-feasible ranks-per-node K <= 128.
-# The packing sweep found SU/eval is minimized at full packing (128 ranks:
-# 20.8 SU/1000 evals vs 71.7 at 32, only 1.17x per-eval slowdown), so 128 is the
-# density the campaign would actually run at and therefore the density the cost
-# surface must be priced at. Memory is the binding constraint, not contention:
-# a 256 GB node gives ~2 GB/rank at K=128, and the large cells exceed that.
-# ``ensemble_cost_cell_k`` derives each cell's K from the measured RSS model
-# below; K is recorded in every shard and all SU math normalizes by it.
-#
-# IMPORTANT: never combine this experiment with DEBUG_SIM or PYWRDRB_SIM_* date
-# overrides — the window self-derives from the realization length
-# (src/simulation.py::_ensemble_window) and an override shifts it off the staged
-# HDF5 date axis.
+# For every cell (N, L, model), K = ensemble_cost_cell_k ranks (the densest
+# memory-feasible packing) on one exclusive node each run 1 cold + M warm
+# evaluate() calls, recording wall time and peak RSS; K is recorded in every
+# shard and all SU math normalizes by it. Never combine with DEBUG_SIM or
+# PYWRDRB_SIM_* overrides (ensemble windows self-derive).
 ###############################################################################
 
 
@@ -503,17 +448,12 @@ def configure_ensemble_cost_env() -> None:
 # ---------------------------------------------------------------------------
 # The measured grid
 # ---------------------------------------------------------------------------
-#: Realizations N. Spans the campaign design point (100) by an order of
-#: magnitude either side, so the sub-linear exponent is estimated over a decade
-#: rather than interpolated between neighbours.
+#: Realizations N. Spans the cost-surface anchor cell (N=100) by an order of
+#: magnitude either side so the N exponent is estimated over a decade.
 ENSEMBLE_COST_N_GRID: "tuple[int, ...]" = (1, 10, 20, 50, 100, 200)
 
-#: Realization length L in years. 10 is the campaign design length; 30 bounds
-#: the held-out test ensemble's L_test.
+#: Realization length L in years. 10 is the campaign L; 30 the longest measured.
 ENSEMBLE_COST_L_GRID: "tuple[int, ...]" = (5, 10, 20, 30)
-
-#: Model variants: the search path and the re-evaluation path.
-ENSEMBLE_COST_MODELS: "tuple[str, ...]" = ("trimmed", "full")
 
 #: Formulation whose baseline DVs are evaluated. Per-eval cost is set by model
 #: size x timesteps x scenarios, not by DV values; identical DVs across ranks
@@ -527,38 +467,18 @@ ENSEMBLE_COST_STAGGER_MAX_S: int = 30
 # ---------------------------------------------------------------------------
 # Cost model — sets each cell's packing density K and the sweep's time guard
 # ---------------------------------------------------------------------------
-# Both models below are CALIBRATION CONSTANTS, not results: they exist only to
-# choose K per cell and to guard the job's walltime. They are committed edits
-# (the artifact of record, per the packing sweep's convention), seeded from the
-# packing sweep's measured point and updated from the "probe" mode's corner
-# cells before the production sweeps run. Every reported number comes from the
-# measurement, never from these.
+# Calibration constants (from the probe cells) that choose K per cell and size
+# the walltime guard only; every reported number comes from the measurement.
 
-#: Peak RSS per rank, MB: base + per_ry * (N * L). CALIBRATED from the probe
-#: (K=1, no contention) at (N=1, L=5) and (N=200, L=10), plus the smoke cell at
-#: (N=20, L=20). Fitted to the two LARGE cells, which makes the model
-#: over-predict the small ones (603 MB vs an actual 441 MB at 5
-#: realization-years) — the safe direction, since the error only costs a small
-#: cell some packing density it does not need, while an under-prediction at the
-#: large end would OOM a node.
-#: The full model's memory is barely above the trimmed model's (+3% base, +13%
-#: slope), NOT the 1.5-2x its extra live reservoirs suggested. Those reservoirs
-#: are STARFIT release rules, not additional LP structure.
+#: Peak RSS per rank, MB: base + per_ry * (N * L), fitted to the large probe
+#: cells so it over-predicts small cells (the safe direction).
 ENSEMBLE_COST_RSS_MB: "dict[str, tuple[float, float]]" = {
     "trimmed": (601.0, 0.394),
     "full": (617.0, 0.444),
 }
 
-#: Warm per-eval seconds: a + b * L * N**alpha. CALIBRATED from the same three
-#: cells (a = the fixed per-eval overhead read off the N=1 cell; alpha from the
-#: N=200 cell). Reproduces the smoke cell to within 3% (trimmed) and 12%
-#: (full, over-predicting).
-#: NOTE the exponents: ~0.96 trimmed, ~0.93 full — cost is very nearly LINEAR in
-#: N, not the strong sub-linearity the pywr-scenario structure was assumed to
-#: buy. Cost per scenario-year is almost flat (0.158 s/ry at 400 ry vs 0.145 s/ry
-#: at 2000 ry). These constants only size the sweep's walltime guard; the
-#: exponent is MEASURED properly by the N sweep at fixed L (see
-#: ``scaling_fits.csv``), which is the deliverable.
+#: Warm per-eval seconds: a + b * L * N**alpha. Sizes the walltime guard only;
+#: the N exponent is measured by the sweep itself (scaling_fits.csv).
 ENSEMBLE_COST_T_EST_S: "dict[str, tuple[float, float, float]]" = {
     "trimmed": (1.5, 0.182, 0.956),
     "full": (1.5, 0.248, 0.929),
@@ -655,13 +575,10 @@ def ensemble_cost_step_estimate_s(n: int, ell: int, model: str, m_warm: int) -> 
 # recalibrating the RSS model then re-picks every density from one edit. smoke
 # and probe pin k explicitly because they run on the shared partition.
 #
-# Priority order follows the budget question. The campaign design point
-# (N=100, L=10) is measured first and with more warm evals than anything else,
-# because it is the number that prices the whole campaign; then the N sweep at
-# L=10 (the sub-linearity), the L sweep at N=100 (the linearity), and the
-# full-model points needed for the re-evaluation ratio. Everything else is the
-# factorial remainder, split trimmed/full so the memory-hungry full cells cannot
-# take the trimmed surface down with them.
+# Priority order: the anchor cell (N=100, L=10) first, then the N sweep at
+# L=10, the L sweep at N=100, and the full-model points for the re-evaluation
+# ratio. The factorial remainder is split trimmed/full so the memory-hungry
+# full cells cannot take the trimmed surface down with them.
 
 #: Cheap correctness gate on the already-staged kn_20yr_n20: proves the full
 #: model builds and runs on a staged ensemble, and that NYCOPT_USE_TRIMMED_MODEL
@@ -672,16 +589,9 @@ ENSEMBLE_COST_SMOKE: "list[tuple[int, int, str, int, int]]" = [
 ]
 
 #: Cells at K=1 (one rank, no contention) that calibrate
-#: ``ENSEMBLE_COST_RSS_MB`` and ``ENSEMBLE_COST_T_EST_S`` before any wholenode
-#: job runs. Both models at the cheapest cell and at a large one: the base is
-#: read off the former, the slope off the lever arm between them.
-#: The large end is (200, 10) = 2000 realization-years rather than the grid's
-#: true corner (200, 30). Staging a 200-realization x 20-30 yr ensemble is by far
-#: the slowest step in the experiment (step 04's predicted-inflow pass is
-#: compute-bound and runs for hours at that size), and the calibration does not
-#: need it: RSS is linear in realization-years, so a 5 -> 2000 lever arm pins the
-#: model and extrapolates to 6000 fine. Blocking the whole sweep on those two
-#: ensembles would buy nothing.
+#: ``ENSEMBLE_COST_RSS_MB`` and ``ENSEMBLE_COST_T_EST_S``: both models at the
+#: cheapest cell (base) and at (200, 10) = 2000 realization-years (slope; RSS is
+#: linear in realization-years, so the grid corner is not needed).
 ENSEMBLE_COST_PROBE: "list[tuple[int, int, str, int, int]]" = [
     (1, 5, "trimmed", 1, 1),
     (1, 5, "full", 1, 1),
@@ -695,8 +605,7 @@ ENSEMBLE_COST_CORE: "list[tuple[int, int, str, int, int]]" = [
     # degenerate edge case, and it costs ~1 min — surface any failure in the
     # job's first minutes rather than after hours.
     (1, 10, "trimmed", 2, 0),
-    # (1) The campaign design point, both models. More warm evals than anywhere
-    # else: every SU number in the projection is this cell's median.
+    # (1) The cost-surface anchor cell, both models, with the most warm evals.
     (100, 10, "trimmed", 4, 0),
     (100, 10, "full", 4, 0),
     # (2) N sweep at L=10, trimmed — the sub-linearity in N.
@@ -709,8 +618,7 @@ ENSEMBLE_COST_CORE: "list[tuple[int, int, str, int, int]]" = [
     (100, 20, "trimmed", 2, 0),
     (100, 30, "trimmed", 2, 0),
     # (4) Extra full-model points so the full/trimmed ratio is measured at >= 3
-    # (N, L) cells rather than assumed constant, and so the re-eval projection
-    # rests on a full-model point at the L_test=30 end.
+    # (N, L) cells, including the L=30 end.
     (20, 10, "full", 2, 0),
     (100, 30, "full", 2, 0),
 ]
@@ -751,57 +659,6 @@ def ensemble_cost_staging_cells() -> "list[tuple[int, int]]":
 
 
 # ---------------------------------------------------------------------------
-# Campaign projection — what the measured surface is FOR
-# ---------------------------------------------------------------------------
-#: Search side: 6 scenario designs x K draws x S MOEA seeds independent Borg
-#: runs, each of NFE evaluations at the cost-surface anchor cell (N=100, L=10;
-#: the campaign N=300 scales from it) on the trimmed model. The grids were the
-#: open sizing decisions at measurement time.
-ENSEMBLE_COST_PROJ_DESIGNS: int = 6
-ENSEMBLE_COST_PROJ_DRAWS: "tuple[int, ...]" = (5, 10)
-ENSEMBLE_COST_PROJ_SEEDS: "tuple[int, ...]" = (2, 3)
-ENSEMBLE_COST_PROJ_NFE: "tuple[int, ...]" = (25_000, 50_000, 100_000)
-
-#: The cost-surface anchor cell: the (N, L) measured with the most warm
-#: evaluations, from which the campaign cost at N=300 is scaled by the fitted
-#: N exponent (campaign_design.md §6).
-ENSEMBLE_COST_DESIGN_POINT: "tuple[int, int]" = (100, 10)
-
-#: MM-Borg geometry the search projection assumes: nodes per Borg run and
-#: islands. The worker count is nodes*K - 1 - islands (one controller rank plus
-#: one master per island), matching the Stage-B convention in analyze_scaling.py.
-ENSEMBLE_COST_PROJ_NODES: int = 4
-ENSEMBLE_COST_PROJ_ISLANDS: int = 2
-
-#: Parallel efficiency applied to Borg search. Measured on the Anvil Stage-B
-#: strong-scaling sweep (scale_1x64: speedup 5.83 vs ideal 8.0 -> 0.729,
-#: outputs/supplemental/anvil_scaling_experiment/tables/borg_summary.csv). That
-#: run used ~13 s evals, so coordination overhead is a LARGER share of wall time
-#: there than at the campaign's minute-scale ensemble evals: applying it here
-#: over-estimates walltime, i.e. the search projection is conservative.
-ENSEMBLE_COST_PROJ_EFFICIENCY: float = 0.729
-
-#: Re-evaluation side: n_policies archived policies re-simulated on the held-out
-#: test ensemble E_test (N_theta forcing draws x R realizations each, L_test yr)
-#: on the TRIMMED model. 1,200 = ~400 policies per design
-#: at the calibrated epsilons, merged across seeds. The adopted E_test cell is
-#: (N_theta, R, L_test) = (500 re-evaluated of 1000 generated, 25, 50); the grid
-#: brackets it.
-ENSEMBLE_COST_REEVAL_POLICIES: int = 1200
-ENSEMBLE_COST_ETEST_NTHETA: "tuple[int, ...]" = (500, 1000, 1500)
-ENSEMBLE_COST_ETEST_R: "tuple[int, ...]" = (10, 25)
-ENSEMBLE_COST_ETEST_LTEST: "tuple[int, ...]" = (10, 50)
-
-#: Re-evaluation is an embarrassingly parallel task farm, not a Borg search: no
-#: island coordination, no synchronizing generations. Its only loss is a master
-#: rank plus the ragged tail of the last wave, so it is priced at a utilization
-#: factor, NOT at the Borg efficiency above.
-ENSEMBLE_COST_REEVAL_UTILIZATION: float = 0.90
-
-#: The allocation every projected cost is stated as a fraction of.
-ENSEMBLE_COST_ALLOCATION_SU: int = 1_000_000
-
-# ---------------------------------------------------------------------------
 # Output tree (gitignored, regenerable; self-contained for the supplement)
 # ---------------------------------------------------------------------------
 ENSEMBLE_COST_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "ensemble_cost_experiment"
@@ -839,26 +696,11 @@ def ensemble_cost_figure_path(name: str) -> Path:
 # Objective-determinism experiment
 # (scripts/supplemental/check_objective_determinism.py)
 #
-# The Pywr-DRB LP solver is mildly nondeterministic: repeated identical
-# simulations can differ at the state-trajectory level. The campaign's working
-# assumption is that the OBJECTIVES are deterministic — the solver jitter must
-# not propagate through the metric window (6-month exclusion) and the
-# annual-unit aggregation into the objective vector. This experiment measures
-# that directly: DETERMINISM_N_REPEATS repeated evaluations of each policy on
-# each simulation path the campaign uses, every repeat in a FRESH python
-# process (fresh interpreter, fresh model build, fresh solver instance — an
-# in-process rerun could be masked by module-level caching), comparing
-# per-objective max absolute / relative deviation across repeats. One
-# state-level series (daily aggregate NYC storage) is captured per repeat to
-# document the underlying jitter the objectives are expected to absorb.
-#
-# VERDICT RULE (stated before running): an objective counts as deterministic
-# on a path iff its across-repeat deviation is exactly zero or at
-# floating-point noise scale (max relative deviation <= DETERMINISM_REL_TOL).
-# Anything larger is reported as propagation, per objective, with the worst
-# offender identified. Rerunnable after any model change; completed
-# (path, repeat) runs are skipped, so delete outputs/supplemental/
-# objective_determinism/runs/ to force a full re-measurement.
+# Measures whether the Pywr-DRB LP solver's run-to-run jitter reaches the
+# objective vector: DETERMINISM_N_REPEATS repeats of each policy on each
+# simulation path, every repeat in a fresh process, compared by per-objective
+# max absolute / relative deviation. Verdict tolerance: DETERMINISM_REL_TOL.
+# Completed (path, repeat) runs are skipped; delete the runs/ dir to re-measure.
 ###############################################################################
 
 
@@ -948,15 +790,12 @@ def determinism_figure_path(name: str) -> Path:
 
 ###############################################################################
 # Framing-convention analysis (cube reductions; no simulation)
-# (docs/notes/methods/framing_convention_diagnostics.md diagnostics 1 + 4,
-#  plus the flood unit-operator comparison and the annual-unit redundancy
-#  screen for the 8th objective)
+# (docs/notes/methods/framing_convention_diagnostics.md;
+#  scripts/supplemental/framing_convention_analysis.py)
 #
-# Pure post-processing of the epsilon-calibration per-unit annual-metric cubes
-# (`epsilon_cube_glob()`): the same 512 constraint-feasible policies + FFMP
-# baseline evaluated on each campaign design's own search ensemble already
-# hold every stage-(i) annual metric these diagnostics reduce (failing-week
-# counts, annual flood-day counts). Zero simulation; seconds of runtime.
+# Reduces the epsilon-calibration per-unit cubes (epsilon_cube_glob()): the
+# failure-week k grid, the flood unit operators, and the annual-unit
+# redundancy screen.
 ###############################################################################
 
 #: Candidate annual failure-week counts k for the saturation / ranking screen
@@ -999,17 +838,14 @@ def framing_figure_path(name: str) -> Path:
 
 ###############################################################################
 # Weekly satisfaction-factor sweep
-# (docs/notes/methods/framing_convention_diagnostics.md diagnostic 2)
+# (docs/notes/methods/framing_convention_diagnostics.md diagnostic 2;
+#  scripts/supplemental/satisfaction_factor_{run,figures}.py)
 #
-# The 0.99 weekly satisfaction factor sits inside the weekly reduction
-# (src/objectives.py::_weekly_delivery_ok), UPSTREAM of the stored failing-week
-# counts, so it cannot be recovered from the epsilon cubes. This sweep
-# re-evaluates the SAME feasible-policy population (EPS_SEED / EPS_N_POLICIES,
-# so rows align with the epsilon cubes) on the active design's search ensemble
-# and stores, for the two delivery objectives (NYC, NJ), the per-unit
-# failing-week counts AND the §1 weekly reliability at each candidate factor —
-# one small extra cube axis computed inside a single simulation pass.
-# One sbatch job per design, exactly like the epsilon calibration.
+# The 0.99 weekly satisfaction factor sits inside the weekly reduction,
+# upstream of the stored failing-week counts, so it cannot be recovered from
+# the epsilon cubes. Re-evaluates the same feasible-policy population (rows
+# aligned with the epsilon cubes) on the active design's search ensemble at
+# each candidate factor, one sbatch job per design.
 ###############################################################################
 
 #: SF_SMOKE=True is a tiny laptop dry-run (few policies on the historic
@@ -1071,18 +907,14 @@ def sf_figure_path(name: str) -> Path:
 
 ###############################################################################
 # Flood-objective definition diagnostics
-# (docs/notes/methods/flood_objective_diagnostics.md)
+# (docs/notes/methods/flood_objective_diagnostics.md;
+#  scripts/supplemental/flood_objective_{run,figures}.py)
 #
-# Decides the flood objective definition: the incumbent any-gauge minor-stage
-# day count (`downstream_flood_days_minor`) vs magnitude-weighted exceedance
-# candidates (stage-ft and flow bases). One local simulation pass evaluates a
-# feasible-policy sample plus a flood-release-scale sweep ladder on the
-# historic trace AND the local KN stationary fixture, persisting per-policy x
-# realization x FFMP-year-unit candidate values and per-gauge flood-day
-# records; the figures script reduces that cube (discriminating power,
-# monotone-response gate, sampling noise, epsilon proposal) and scores every
-# candidate sim-vs-obs on the flood-gauge diagnostic experiment's 2000-2023
-# output (zero re-simulation).
+# One local simulation pass evaluates a feasible-policy sample plus a
+# flood-release-scale sweep ladder on the historic trace and the local KN
+# fixture, persisting per-policy x realization x FFMP-year candidate flood
+# metrics; the figures script reduces that cube and scores each candidate
+# sim-vs-obs on the flood-gauge diagnostic output.
 ###############################################################################
 
 
@@ -1119,25 +951,19 @@ FLOODOBJ_SWEEP_POINTS: int = 9
 FLOODOBJ_FORMULATION: str = "ffmp"
 
 #: Ensemble pass fixture: the local KN stationary test ensemble
-#: (src/local_test_ensemble.py). Its flood-augmented inflows MUST postdate the
-#: 2026-07-31 flood-node inflow fix; the run script audits and re-stages.
+#: (src/local_test_ensemble.py); the run script verifies the staged flood-node
+#: inflows by content and re-stages when stale.
 FLOODOBJ_ENSEMBLE_SLUG: str = "kn_50yr_n5"
-
-#: Realizations per simulation batch (0 = one block, the campaign default).
-FLOODOBJ_REALIZATION_BATCH: int = 150   # mirrors the campaign batch (memory at N=300)
 
 # ---------------------------------------------------------------------------
 # Sim-vs-obs block (reuses the Pywr-DRB flood-gauge diagnostic experiment)
 # ---------------------------------------------------------------------------
 #: The flood-gauge diagnostic experiment (read-only sibling repo). Its
-#: post-fix default-policy output HDF5 and helper module
-#: (`diagnostics.py`) provide the sim-vs-obs scoring at zero re-simulation.
+#: default-policy output HDF5 and helper module (`diagnostics.py`) provide the
+#: sim-vs-obs scoring at zero re-simulation.
 FLOODOBJ_GAUGE_EXPERIMENT_DIR: Path = (
     _PROJECT_DIR.parent / "Pywr-DRB" / "experiments" / "nyc_flood_gauge_diagnostics"
 )
-
-#: Observed-comparison window (matches the gauge experiment's START/END).
-FLOODOBJ_OBS_WINDOW: tuple = ("2000-01-01", "2023-12-31")
 
 # ---------------------------------------------------------------------------
 # Noise / epsilon reductions
@@ -1179,15 +1005,11 @@ def floodobj_figure_path(name: str) -> Path:
 # Robustness satisficing-threshold diagnostics
 # (docs/notes/methods/robustness_threshold_diagnostics.md)
 #
-# Places the satisficing thresholds (`objectives_ensemble._DEFAULT_THRESHOLDS`,
-# PROVISIONAL since the 2026-08-07 substrate change) against measured
-# evidence: the baseline FFMP policy's persisted E_test re-eval cube (step 05
-# `--reeval`; per-SOW annual-unit objective values), the E_test DU forcing
-# factors, and an apples-to-apples historic-trace anchor recomputed from the
-# persisted baseline HDF5. Zero simulation — two scripts reduce persisted
-# artifacts only:
+# Satisficing-threshold placement diagnostics: reduce the incumbent's E_test
+# cube (step 05 --reeval), the E_test forcing factors and the historic-trace
+# anchor into the SI tables. Zero simulation, two scripts:
 #   robustness_threshold_anchor.py   annual-unit anchor -> JSON cache
-#   robustness_threshold_figures.py  tables + SI figures + recommendation
+#   robustness_threshold_figures.py  tables + SI figures
 ###############################################################################
 
 
@@ -1219,9 +1041,8 @@ RTD_FORCING_NPZ: Path = (
     / "forcing_profiles.npz")
 
 #: Persisted historic-trace baseline simulation (full model) and its
-#: annual-unit objective vector. Since the 2026-08-07 substrate change the CSV
-#: is in the SAME metric space as the cube (annual-unit search objectives), so
-#: it serves as a cross-check on the anchor recompute.
+#: annual-unit objective vector; the CSV is in the annual-unit metric space and
+#: cross-checks the anchor recompute.
 RTD_BASELINE_HDF5: Path = _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline.hdf5"
 RTD_BASELINE_ANNUAL_CSV: Path = (
     _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline_objectives.csv")
@@ -1298,27 +1119,10 @@ RTD_CRITICAL_M_WINDOW: int = 101
 #: with the generator at near-zero forcing change.
 RTD_NEAR_HISTORIC_K: int = 25
 
-#: FINAL recommended threshold vector, filled AFTER inspecting the pass-1
-#: outputs (two-pass workflow; empty dicts on pass 1 leave the recommendation
-#: columns NaN). Keys are ANNUAL objective names; basis strings are the short
-#: per-objective justification carried into the summary table.
-#:
-#: ADOPTED 2026-08-08 (pass 1 re-run against the regenerated status-quo E_test
-#: cube on the per-SOW annual-unit substrate; §0b rules re-applied). The
-#: recommendation equals the provisional vector — every rule-1 maintain-
-#: status-quo re-anchor and both rule-2 external goalposts survive the
-#: measured placements — so no threshold labels changed. Measured SOW pass
-#: fractions at the vector (n = 1,000): nyc rel 0.005, nyc deficit 0.980,
-#: montague rel 0.000, montague deficit 0.965, trenton rel 0.054, flood
-#: 0.443, storage 0.014, nj rel 0.020; joint Starr 0.000 (binding: montague
-#: rel). Degenerate incumbent fractions are motivation results per §0; the
-#: montague-rel anchor lies OUTSIDE the incumbent's E_test support (max
-#: 0.746 vs 0.79, the only criterion for which that holds) and is kept per
-#: rule 1's stricter-side rounding because no §0b-admissible inside-support
-#: anchor exists (rule 4 forbids distribution features) and candidate
-#: policies optimize this objective directly; its ranking-criticality is
-#: tested by the framing-diagnostic-3 OAT stringency sweep. Storage
-#: arbitration recorded in objectives_ensemble._DEFAULT_THRESHOLDS.
+#: The adopted satisficing threshold vector (annual objective names) and the
+#: one-phrase basis strings carried into the summary table; the evidence is in
+#: robustness_threshold_diagnostics.md. Empty dicts leave the recommendation
+#: columns NaN.
 RTD_RECOMMENDED_THRESHOLDS: dict = {
     "nyc_delivery_reliability_annual":     0.65,
     "nyc_delivery_deficit_p99_pct":        48.0,
@@ -1384,26 +1188,15 @@ def rtd_figure_path(name: str) -> Path:
 
 ###############################################################################
 # Regret-tolerance diagnostics (RTOL)
-# docs/notes/methods/regret_tolerance_diagnostics.md
+# (docs/notes/methods/regret_tolerance_diagnostics.md)
 ###############################################################################
-# Fixes the two free parameters of the incumbent-relative regret comparison
-# BEFORE the campaign result is inspected: the no-harm tolerance
-# ``tau_i = k * eps_i`` and the non-inferiority margin ``delta`` on
-# ``no_harm_freq_tau``. Both are pre-registration quantities, so the admissible
-# anchors are restricted by what they can bias (note section 1):
-#
-#   Tier A  estimator noise / measurement resolution  -> admissible for both
-#   Tier B  external decision increments (Decree, observed record) -> tau only
-#   Tier C  the candidate-policy regret distribution  -> INADMISSIBLE (circular)
-#   Tier D  within-design nuisance variance (seed / draw pairs) -> delta only
-#
-# Tier C is the trap this block exists to prevent, and it is the same trap
-# RTD_CANDIDATE_QUANTILES is reported-but-never-adopted for: a tolerance read off
-# the distribution it is meant to test guarantees its own answer.
+# Fixes the no-harm tolerance tau_i and the non-inferiority margin delta on
+# no_harm_freq_tau before the campaign result is inspected; admissible anchors
+# per regret_tolerance_diagnostics.md section 1 (never the candidate-policy
+# regret distribution itself).
 
-#: The incumbent's E_test cube. Same artifact the threshold diagnostics use; the
-#: noise floor (Tier A) is a pure function of it and needs NO policy runs, so
-#: pass A can be run as soon as step 05 lands and long before any search finishes.
+#: The incumbent's E_test cube (the same artifact the threshold diagnostics
+#: use); the noise floor is a pure function of it.
 RTOL_REEVAL_BASELINE_DIR: Path = RTD_REEVAL_BASELINE_DIR
 
 #: Multipliers ``k`` on each objective's just-noticeable difference (the ANNUAL
@@ -1416,7 +1209,6 @@ RTOL_TAU_GRID: tuple = (0.0, 0.5, 1.0, 2.0, 5.0, 10.0)
 #: identical to the incumbent is falsely flagged as harming a given objective in
 #: a given SOW at most 5% of the time.
 RTOL_FALSE_HARM_Z: float = 1.645
-RTOL_TARGET_FALSE_HARM: float = 0.05
 
 #: E_test forcing profiles (theta per realization), joined to the cube's SOW
 #: labels via realization_id // realizations_per_sow. The dominant axis ``m``
@@ -1473,55 +1265,18 @@ RTOL_MARGIN_RULE: str = (
     "number that could only be computed later."
 )
 
-#: ADOPTED 2026-08-08 from pass A on the regenerated step-05 incumbent cube
-#: (per-SOW annual-unit substrate; 1,000 SOWs x R=25). Ladder SHAPE = `max`
-#: (tau_i = k * max(eps_i, tau_floor_i)): 6 of 8 epsilons sit BELOW their
-#: measured noise floors (reliability axes 5.5-8.1x, flood 3.1x, storage
-#: 1.2x; rtol_ladder_shapes.csv), so the eps-shape ladder cannot carry a
-#: shared k. Under the max shape the S3 rule (smallest rung clearing every
-#: floor) gives k = 1; the eps-shape answer (k = 10, binding
-#: trenton_flow_reliability_annual, k_floor 8.12) is reported in
-#: rtol_noise_floor.csv and rejected — a rung that large is far outside the
-#: noise on every other axis. The adopted tau vector (the unit_max column,
-#: = the floors where noise binds, eps where resolution binds) is recorded
-#: as NYCOPT_REGRET_TAU in the run env files; floors artifact:
-#: outputs/supplemental/regret_tolerance_diagnostics/tables/rtol_floors.json.
-#: The floors are unpaired UPPER BOUNDS — pass B replaces them with the
-#: paired estimate once any policy cube exists (note S2/S8), and records
-#: whether the rung moves.
-#:
-#: PASS B RAN 2026-08-14 AND THE TAU VECTOR WAS REPLACED; k = 1 is unchanged.
-#: The paired near-tie floor is 5.7-21.8x SMALLER than the unpaired pass-A
-#: bound on the five axes where the floor set tau (reliabilities 0.017-0.024
-#: vs 0.122-0.137; flood 0.043 vs 0.927), confirming the caution above. At the
-#: pass-A vector every design scored no_harm_freq_tau = 1.000 with a paired
-#: bootstrap SE of exactly 0 and assay sensitivity FAILED, so the RQ1 null was
-#: an artifact of the tolerance. The adopted vector is now ROUND and
-#: stakeholder-stated (reliabilities 0.02, deficit-P99 2 pp, flood 0.25
-#: ft-d/yr, storage 5 pp) — see the comment block in workflow/envs/*.env for
-#: the per-axis anchoring and outputs/supplemental/regret_tolerance_diagnostics/
-#: tables/rtolB_*.csv for the evidence.
-#:
-#: CAVEATS carried from pass B: with K = 1 draw and S = 1 seed the section-5
-#: draw-level null is NOT estimable, so delta is only `2 x paired bootstrap SE`
-#: (a lower bound, 0.102 all-8 / 0.065 compromise-3), and the matched-design
-#: ordering on the all-8 metric flips with the flood tolerance alone (between
-#: tau_flood 0.25 and 0.30) and must be reported with that sensitivity.
+#: k = 1 on the max ladder, tau_i = k * max(eps_i, floor_i); the adopted round
+#: tau vector is NYCOPT_REGRET_TAU in the run env files. Basis in
+#: regret_tolerance_diagnostics.md.
 RTOL_ADOPTED_K: float | None = 1.0
 
 RTOL_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "regret_tolerance_diagnostics"
 RTOL_TABLES_DIR: Path = RTOL_OUTPUT_ROOT / "tables"
-RTOL_FIGURES_DIR: Path = RTOL_OUTPUT_ROOT / "figures"
 
 
 def rtol_table_path(name: str) -> Path:
     """Path for a named regret-tolerance table CSV."""
     return RTOL_TABLES_DIR / f"{name}.csv"
-
-
-def rtol_figure_path(name: str) -> Path:
-    """Path stub for a named regret-tolerance figure."""
-    return RTOL_FIGURES_DIR / name
 
 
 ###############################################################################
@@ -1531,19 +1286,14 @@ def rtol_figure_path(name: str) -> Path:
 # Decomposes the hazard_filling - fixed_probabilistic difference on E_test by
 # where each SOW sits relative to the stationary candidate pool's hazard
 # support. Zero simulation, two stages:
-#   stage A (policy-free, runs post-regeneration): support membership of every
-#     E_test SOW against the P=1e6 pool images in the selector's own scaled
-#     coordinates, strata labels, per-axis excursion attribution, and the
-#     SOW-level pool coverage deficit (the step-11 complement);
-#   stage B (pre-campaign): the design contrast (Starr satisficing + no-harm
-#     frequency) re-scored per support stratum and per forcing tercile from
-#     the persisted per-SOW cubes that exist BEFORE the campaign (the go/no-go
-#     sets re-evaluated on the interim first10ch E_test subset), consuming the
-#     stage-A labels unchanged. The point is to settle the stationary-vs-
-#     climate-augmented pool question before search SUs are spent.
-# All definitional constants here are PRE-REGISTERED (see the methods note).
-# DECISION RECORDED 2026-08-25 (methods note section 7): the HF candidate pool
-# stays stationary for the campaign.
+#   stage A (policy-free): support membership of every E_test SOW against the
+#     P=1e6 pool images in the selector's own scaled coordinates, strata
+#     labels, per-axis excursion attribution and the SOW-level pool coverage
+#     deficit;
+#   stage B: the design contrast (Starr satisficing + no-harm frequency)
+#     re-scored per support stratum and per forcing tercile from the persisted
+#     per-SOW re-eval cubes on HSD_REEVAL_TAG, using the stage-A labels.
+# All definitional constants here are pre-registered (methods note).
 ###############################################################################
 
 
@@ -1567,13 +1317,12 @@ def configure_hsd_env() -> None:
 # ---------------------------------------------------------------------------
 #: HSD_SMOKE=1 proves the code path on the P=2,000 smoke pools and the first
 #: HSD_SMOKE_N_SOW SOWs of the E_test sub-window image (login-scale, seconds).
-#: The full run uses the P=1e6 pools and all 1,000 generated SOWs (the campaign
-#: re-evaluation's 500 SOWs are the leading half, so its strata are nested).
+#: The full run uses the P=1e6 pools and all 1,000 generated SOWs; the campaign
+#: re-evaluation's 500 SOWs are the leading half, so its strata are nested.
 HSD_SMOKE: bool = os.environ.get("NYCOPT_HSD_SMOKE", "0") == "1"
 
-#: SOW count for the smoke pass (prefix of the theta index; the LHS rows are
-#: randomly ordered, so a prefix is a well-spread subsample). 200 matches the
-#: first10ch interim re-eval subset, so a smoke stage B can label its cubes.
+#: SOW count for the smoke pass (a prefix of the theta index; LHS rows are
+#: randomly ordered, so a prefix is a well-spread subsample).
 HSD_SMOKE_N_SOW: int = 200
 
 # ---------------------------------------------------------------------------
@@ -1596,11 +1345,11 @@ HSD_POOL_SLUGS: tuple = tuple(
 HSD_HAZFILL_SLUGS: tuple = tuple(f"hazfill_stat_abs_10yr_n100_d{k}"
                                  for k in range(3))
 
-#: The re-eval tag stage B discovers runs under (default: the interim 200-SOW
-#: subset the pre-campaign go/no-go sets were re-evaluated on), and the moea
-#: formulation identity. Stage-B artifacts carry this tag in their filenames.
+#: The re-eval tag stage B discovers runs under (default: the campaign
+#: re-evaluation subset) and the moea formulation identity. Stage-B artifacts
+#: carry this tag in their filenames.
 HSD_REEVAL_TAG: str = os.environ.get("NYCOPT_HSD_REEVAL_TAG",
-                                     "etest_kn_50yr_n25000_first10ch")
+                                     campaign_reeval_preset())
 HSD_FORMULATION: str = "ffmp"
 
 # ---------------------------------------------------------------------------
@@ -1656,9 +1405,8 @@ def hsd_table_path(name: str, tagged: bool = False) -> Path:
 
     Smoke runs carry a ``smoke_`` prefix so a smoke pass can never masquerade
     as the full-scale artifact. Stage-B tables (``tagged=True``) additionally
-    carry the re-eval tag, so numbers scored on an interim SOW subset never
-    share a filename with the production full-E_test result (one cube per
-    claim; the separation is enforced on disk).
+    carry the re-eval tag, so numbers scored on different SOW subsets never
+    share a filename.
     """
     prefix = "smoke_" if HSD_SMOKE else ""
     suffix = f"__{HSD_REEVAL_TAG}" if tagged else ""
@@ -1676,22 +1424,12 @@ def hsd_figure_path(name: str, tagged: bool = False) -> Path:
 # Ensemble-size diagnostics: a statistically grounded minimum N (ESD)
 # (docs/notes/methods/ensemble_size_diagnostics.md; SI Texts S4/S5)
 #
-# Derives a pre-registered minimum realization count N for both matched search
-# designs at the fixed L = 10 yr, in two layers plus a design-only third:
-#   Layer A (selection level, ~0 SU): hazard-space representativeness vs N —
-#     HF tail enrichment / stratification / joint coverage on the P=1e6 pool
-#     images and on nested prefixes (the (N, P) ladder); the exact i.i.d. law
-#     of PS subsets of the pool image; descriptor convergence vs N.
-#   Layer B (the sizing criterion, ~50 SU): a per-realization annual-unit
-#     LIBRARY — ESD_N_POLICIES fixed policies x every unique realization in
-#     the union of a 5,000-row i.i.d. pool prefix, the HF selections at every
-#     ladder N for three anchor plans, and the staged production draws —
-#     from which the objective vector of any (design, N, replicate) ensemble
-#     is composed offline. Level SE, paired SE (binding, vs epsilon/2), flip
-#     rate, optimism / construction SD, and n_eff per objective and N.
-#   Layer C (design + cost only): the search-level confirmation.
-# Every threshold, ladder, replicate count, and selection rule below is
-# PRE-REGISTERED (methods note §§2-5); do not retune after results exist.
+# Layer A: selection-level hazard-space representativeness vs N on the P=1e6
+#   pool images. Layer B: a per-realization annual-unit library (ESD_N_POLICIES
+#   fixed policies x every library realization) from which any (design, N,
+#   replicate) ensemble's objective vector is composed offline; level SE,
+#   paired SE, flip rate, optimism and n_eff per objective and N. Layer C: cost.
+# Every threshold, ladder and replicate count below is pre-registered.
 ###############################################################################
 
 
@@ -1785,10 +1523,7 @@ ESD_TAIL_QUANTILES: tuple = (90.0, 99.0)
 ESD_FORMULATION: str = "ffmp"
 
 #: The epsilon-filtered merged reference sets whose UNION the per-objective
-#: bests and nearest neighbours are drawn from (PS rows before HF rows). The
-#: pilot `_eps20260812` sets are the current substrate (pre-regeneration,
-#: disclosed); point these at the regenerated go/no-go sets when they land —
-#: the selection rule itself does not change.
+#: bests and nearest neighbours are drawn from (PS rows before HF rows).
 ESD_POLICY_SET_FILES: "dict[str, Path]" = {
     "fixed_probabilistic": _PROJECT_DIR / "outputs" / "fixed_probabilistic"
     / "ffmp_obj8" / "sets" / "ffmp_obj8_merged_eps20260812.set",
@@ -1798,8 +1533,8 @@ ESD_POLICY_SET_FILES: "dict[str, Path]" = {
 
 #: Re-eval tag whose per-design cubes supply the compromise policies
 #: (`factor_mapping.select_compromise`); solution ids index rows of the set
-#: files above (verified: 991 / 784 rows on 2026-08-25).
-ESD_POLICY_REEVAL_TAG: str = "etest_kn_50yr_n25000_first10ch"
+#: files above.
+ESD_POLICY_REEVAL_TAG: str = campaign_reeval_preset()
 
 #: Per-objective bests taken from the union (annual-registry names).
 ESD_POLICY_BEST_OBJECTIVES: tuple = (
@@ -1923,18 +1658,11 @@ def esd_library_path() -> Path:
 
 
 ###############################################################################
-# Objective-dynamics anatomy figures (HISTORIC single trace + local KN ensemble)
-#
-# Two local (non-HPC) diagnostic suites that draw the operational dynamics each
-# objective reduces, for the default FFMP baseline and one storage-conservative
-# contrast policy. scripts/supplemental/objective_dynamics_figures.py scores the
-# historic trace with the whole-trace (§1) performance metrics and shows the
-# annual-unit (§2) strip the optimizer targets; scripts/supplemental/
-# ensemble_objective_dynamics_figures.py scores the kn_50yr_n5 local fixture
-# with the pooled annual-unit (§2) objectives. Plot modules live alongside the
-# drivers (objective_dynamics.py, ensemble_objective_dynamics.py). Strict and
-# refresh toggles are env flags on the drivers (NYCOPT_OBJDYN_NOSTRICT,
-# NYCOPT_ENSOBJDYN_NOSTRICT, NYCOPT_ENSOBJDYN_REFRESH).
+# Objective-dynamics anatomy figures (historic single trace + local KN ensemble)
+# (docs/notes/methods/objective_dynamics_diagnostics.md; drivers
+#  scripts/supplemental/objective_dynamics_figures.py and
+#  ensemble_objective_dynamics_figures.py; env flags NYCOPT_OBJDYN_NOSTRICT,
+#  NYCOPT_ENSOBJDYN_NOSTRICT, NYCOPT_ENSOBJDYN_REFRESH)
 ###############################################################################
 
 # ---------------------------------------------------------------------------

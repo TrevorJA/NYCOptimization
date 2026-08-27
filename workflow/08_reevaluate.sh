@@ -4,23 +4,24 @@
 # like search: the non-NYC STARFIT releases are policy-independent and are
 # presimulated once per realization by step 04 (the staged ensemble must carry
 # presimulated_releases_mgd.hdf5), then reused for every Pareto set.
-# Merges the former per-arm and common-ensemble re-eval launchers.
 #
 # Everything comes from env vars / the env file — no positional args:
-#   NYCOPT_ENV_FILE                required — the arm being re-evaluated
+#   NYCOPT_ENV_FILE                required — the design being re-evaluated
 #   NYCOPT_REEVAL_ENSEMBLE_PRESET  required — the common held-out ensemble
-#                                  (e.g. etest_kn_50yr_n25000_first25ch, the campaign subset). Required explicitly so
-#                                  cross-arm comparability is a recorded
-#                                  choice, never a silent default.
+#                                  (campaign: etest_kn_50yr_n25000_first25ch);
+#                                  explicit so cross-design comparability is a
+#                                  recorded choice, never a silent default
 #   NYCOPT_REEVAL_MODE             single | mpi (from env file; default single)
 #   FORMULATION                    identifier, default ffmp
 #   DRAW                           optional, default 0 — ensemble draw of the
-#                                  searched run being re-evaluated (selects the
-#                                  "_d{k}" slug for k>0, like step 06)
+#                                  searched run (selects the "_d{k}" slug for
+#                                  k>0, like step 06)
 #   SEED                           optional, per-seed output subdir
 #   MAX_SOLUTIONS                  default 0 = all Pareto solutions
 #   NYCOPT_REEVAL_SCORE=1          opt-in offline robustness scoring
-#   NYCOPT_REEVAL_BASELINE_DIR     optional, for improvement-vs-baseline
+#   NYCOPT_REEVAL_BASELINE_DIR     optional — incumbent cube for the
+#                                  incumbent-relative regret family
+#                                  (auto-detected under reeval/{tag}/baseline)
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_REEVAL_SCORE=1 \
@@ -92,10 +93,11 @@ case "${MODE}" in
 esac
 
 # ---- Optional offline robustness scoring (opt-in) ----
-# Scores the persisted raw matrix (reeval_raw.parquet) into a multi-metric
-# robustness scorecard. Cheap, no re-simulation. Improvement-vs-baseline also
-# needs a baseline raw pass: run `python3 scripts/main/run_baseline.py
-# --formulation ${FORMULATION} --reeval` first and pass --baseline-dir.
+# Scores the persisted raw matrix (reeval_raw.parquet) into the robustness
+# scorecard. Cheap, no re-simulation. The incumbent-relative regret family
+# needs the incumbent's cube on the same preset (step 05 `run_baseline.py
+# --reeval`); pass its directory via NYCOPT_REEVAL_BASELINE_DIR if it is not
+# under reeval/{tag}/baseline.
 if [[ "${NYCOPT_REEVAL_SCORE:-0}" == "1" ]]; then
     echo "=== Robustness scoring ==="
     SCORE_ARGS="--formulation ${FORMULATION}"

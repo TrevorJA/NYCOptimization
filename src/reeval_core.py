@@ -1,37 +1,18 @@
-"""reeval_core.py - shared helpers for re-evaluating Pareto-optimal policies on
-a COMMON (held-out) streamflow ensemble.
+"""reeval_core.py - shared helpers for re-evaluating Pareto policies on the
+common held-out test ensemble.
 
-Both ``src.reevaluate`` (multiprocessing) and ``src.reevaluate_mpi`` (MPI) use
-these so the two execution paths score solutions identically.
+Used by ``src.reevaluate`` (multiprocessing), ``src.reevaluate_mpi`` (MPI),
+and ``src.chunk_reeval`` (chunked MPI) so every driver scores solutions
+identically. Re-evaluation computes the SAME annual-unit objectives the search
+optimized (``src.objectives_ensemble``), recomputed per SOW: each SOW's R
+realizations contribute their stage-(i) unit-years to one pooled sample and
+the §2 unit operator collapses it. The persisted artifact is the per-SOW
+objective matrix, which ``src.robustness`` scores offline.
 
-Why this exists
----------------
-Comparing the objective scores an MOEA produced for *different* search
-ensembles is invalid — each arm's scores are computed on its own ensemble. The
-only sound cross-design comparison re-evaluates every arm's Pareto **policies**
-(decision-variable vectors) on ONE common ensemble and compares those scores.
-
-One metric currency
--------------------
-Re-evaluation computes THE SAME annual-unit objectives the search optimized
-(``src.objectives_ensemble``), recomputed per deeply-uncertain state of the
-world (SOW): each SOW's R realizations contribute their stage-(i) unit-years
-to one pooled sample, and the objective's §2 unit operator collapses that pool
-to the SOW's objective value. The persisted artifact is the per-SOW objective
-matrix — the substrate every robustness and regret metric in
-``src.robustness`` is a transformation of (Herman et al. 2014, 2015; Trindade
-et al. 2017; McPhail et al. 2018). No second metric definition exists at
-re-evaluation.
-
-Flexibility
------------
-The common ensemble is whatever ``config.REEVAL_ENSEMBLE_SPEC`` resolves to,
-selected by the ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` env var. It can be ANY
-registered preset, a ``kn_{Y}yr_n{N}`` slug, or any staged ensemble directory
-carrying a ``_meta.json`` (see ``src.ensembles.get_ensemble_spec``). Swap the
-re-eval ensemble by changing that one env var — nothing else. Outputs are
-written under a per-ensemble subdir (``reeval/{tag}/``) so re-evals on different
-common ensembles never clobber each other.
+The common ensemble is ``config.REEVAL_ENSEMBLE_SPEC``, selected by
+``NYCOPT_REEVAL_ENSEMBLE_PRESET`` (any registered preset, ``kn_{Y}yr_n{N}``
+slug, or staged directory with a ``_meta.json``). Outputs are written under
+``reeval/{tag}/`` per ensemble.
 """
 from __future__ import annotations
 
@@ -53,9 +34,8 @@ def resolve_reeval(objectives=None, reeval_spec=None):
     ``config.ACTIVE_OBJECTIVES`` and caches the result. Pass explicit
     ``objectives`` / ``reeval_spec`` to override (not cached).
 
-    The objective set is ALWAYS the annual-unit set — re-evaluation speaks the
-    search's metric currency on every ensemble, including a single-trace spec
-    (the N = 1 case over that trace's unit-years).
+    The objective set is ALWAYS the annual-unit set, including for a
+    single-trace spec (the N = 1 case over that trace's unit-years).
     """
     global _REEVAL_CACHE
     if _REEVAL_CACHE is not None and objectives is None and reeval_spec is None:
@@ -180,12 +160,9 @@ def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str):
     """Re-evaluate one policy and return its per-SOW objective matrix.
 
     The re-eval work unit: simulate the policy on the common ensemble, reduce
-    each realization to its stage-(i) annual metrics, and pool each SOW's
-    unit-years through the §2 unit operators. Robustness and regret are scored
-    offline from the persisted per-SOW matrix (see ``src.robustness``). The
-    stage-(i) reduction is the search path's own
-    (``AnnualUnitObjective.annual_units``), so re-eval metrics match search
-    byte-for-byte; only the ensemble and the pooling unit differ.
+    each realization to its stage-(i) annual metrics
+    (``AnnualUnitObjective.annual_units``, the search path's own reduction),
+    and pool each SOW's unit-years through the §2 unit operators.
 
     Returns:
         ``(solution_id, sow_matrix | None, obj_names | None,
@@ -222,19 +199,12 @@ def evaluate_solution_raw(solution_id: int, dv_vector, formulation: str):
 def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, int | None]:
     """Recover which deeply-uncertain state of the world (SOW) each realization belongs to.
 
-    A *SOW* is one forcing profile theta. When the ensemble was generated with
-    ``realizations_per_profile = R``, realization ``k`` was generated under profile
-    ``p = k // R``, so the R realizations sharing a theta are R samples of natural
-    variability WITHIN one deeply-uncertain state — the pooling unit of the re-eval
-    objective matrix and of the Triangle-lineage robustness measure (Herman et al.
-    2014; Trindade et al. 2017; Gold et al. 2022, 2023).
-
-    Read from the staged ensemble's ``forcing_profiles.npz`` (which stores
-    ``realizations_per_profile`` alongside the per-realization theta), falling back to
-    the staged ``_meta.json``. An ensemble with NO forcing profiles — a stationary
-    ensemble, or the historic single trace — has no SOW structure, so this returns
-    ``(None, None, None)`` and the per-SOW objective unit is undefined for it. A
-    grouping is never fabricated.
+    A SOW is one forcing profile theta. With ``realizations_per_profile = R``,
+    realization ``k`` belongs to profile ``p = k // R``. Read from the staged
+    ensemble's ``forcing_profiles.npz``, falling back to ``_meta.json``. An
+    ensemble with no forcing profiles (stationary, or the historic trace) has
+    no SOW structure and returns ``(None, None, None)``; a grouping is never
+    fabricated.
 
     Args:
         spec: The re-eval ``EnsembleSpec``.
@@ -284,13 +254,11 @@ def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, in
 def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
     """Self-describing metadata sidecar for the persisted per-SOW matrix.
 
-    Snapshots everything the offline scorer needs to compute robustness WITHOUT
-    re-importing the live objective registry or honoring a changed
-    ``NYCOPT_SAT_THRESHOLDS`` at scoring time (the moving-measuring-stick guard,
-    McPhail et al. 2020). Carries per-objective thresholds/kinds/directions and
-    unit-operator provenance, the objective column order, the SOW labels each
-    matrix row maps to, and the run provenance ``(scenario_design, slug, seed)``
-    so re-evals are poolable across designs for cross-design comparison.
+    Snapshots everything the offline scorer needs WITHOUT re-importing the
+    live objective registry or honoring a changed ``NYCOPT_SAT_THRESHOLDS``:
+    per-objective thresholds/kinds/directions, unit-operator provenance, the
+    objective column order, the SOW labels each matrix row maps to, and the
+    run provenance ``(scenario_design, slug, seed)``.
     """
     obj_set, spec, is_ensemble = resolve_reeval()
     ens_objs = list(obj_set)
@@ -382,10 +350,7 @@ def persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions,
     meta = reeval_raw_meta(formulation, n_solutions, seed)
     # Record every attempted solution id (including fully-failed ones that
     # contribute no rows) so the offline scorer reconstructs the full solution
-    # axis instead of inferring it from the rows present — otherwise an
-    # all-failed solution silently vanishes from the scorecard while still
-    # appearing (NaN) in objectives_summary.csv (schema drift across
-    # designs/seeds at join time).
+    # axis; otherwise an all-failed solution vanishes from the scorecard.
     meta["solution_ids"] = sorted(int(sid) for sid, *_ in raw_results)
     obj_names = list(meta["obj_names"])
     sow_labels = meta["sow_labels"] or [0]

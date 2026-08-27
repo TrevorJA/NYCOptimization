@@ -1,7 +1,6 @@
 # Literature Review: Delaware River Basin Regulations and NYC Reservoir Operations
 
 Trevor Amestoy, Reed Research Group, Cornell University
-February 2026
 
 ---
 
@@ -41,7 +40,7 @@ The decree created the position of Delaware River Master within the USGS. The Ri
 
 ## 3. DRBC and the Evolution of Flow Management
 
-The Delaware River Basin Commission (DRBC) was created in 1961, partly in response to the 1961-1967 "drought of record" which revealed a fundamental tension: NYC cannot simultaneously (1) divert its authorized 800 MGD, (2) maintain the 1,750 CFS compensating release at Montague, and (3) provide adequate ecological flows during drought.
+The Delaware River Basin Commission (DRBC) was created in 1961. The 1960s drought of record (1964-1967) revealed a fundamental tension: NYC cannot simultaneously (1) divert its authorized 800 MGD, (2) maintain the 1,750 CFS compensating release at Montague, and (3) provide adequate ecological flows during drought.
 
 Key milestones in flow management:
 
@@ -162,49 +161,7 @@ The 3,000 CFS Trenton target exists to repel the salt front (7-day average locat
 Upper Delaware communities face flood risk from reservoir spill and high-volume releases. The 2017 FFMP's 15% void target and flood monitoring nodes (Hale Eddy, Fishs Eddy, Bridgeville) represent attempts to mitigate this, but tension remains between maintaining storage for drought resilience and creating void for flood mitigation.
 
 
-## 6. Implications for Multi-Objective Optimization
-
-The FFMP framework reveals several key features relevant to optimization study design:
-
-### 6.1 Natural Objective Set
-
-The DRB system has clearly competing objectives that emerge from its governance structure:
-
-- **NYC water supply reliability**: Meeting diversion demands under drought
-- **Downstream flow compliance**: Montague and Trenton targets
-- **Ecological flow quality**: Temperature, rapid flow change, spawning habitat
-- **Flood risk mitigation**: Downstream stage at vulnerable communities
-- **Storage equity/drought resilience**: Maintaining reserves for future drought
-- **NJ diversion reliability**: Meeting NJ's allocation
-
-### 6.2 Decision Variables
-
-The NYCOperationsConfig in Pywr-DRB exposes ~31 constants plus daily/monthly profile tables, including:
-- MRF baselines (3 reservoirs + 2 downstream targets)
-- Drought level factors for diversions and releases
-- Storage zone thresholds (seasonally varying)
-- Flood release maximums
-- Delivery constraints and running-average windows
-
-### 6.3 Constraints and Institutional Realities
-
-Any optimization must respect:
-- The 1954 Supreme Court decree (hard constraints on maximum diversions)
-- Unanimous consent requirement for operational changes
-- Physical infrastructure limits (aqueduct capacity, release valve limits)
-- Time-of-travel lags for downstream target compliance
-- The annual May 31 running-average reset for NYC diversions
-
-### 6.4 Deep Uncertainties
-
-- Future streamflow regimes under climate change
-- Demand growth or reduction (NYC has been below 800 MGD)
-- Salt front dynamics under sea level rise
-- Ecological flow requirements as understanding evolves
-- Institutional willingness to adopt new operational rules
-
-
-## 7. Key References
+## 6. Key References
 
 - Hamilton, A. L., Amestoy, T. J., & Reed, P. M. (2024). Pywr-DRB: An open-source Python model for water availability and drought risk assessment. *Environmental Modelling & Software*, 106185.
 - Kolesar, P., & Serio, J. (2011). Breaking the deadlock: Improving water-release policies on the Delaware River. *Interfaces*, 41(1), 18-34.

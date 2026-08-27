@@ -12,7 +12,7 @@ These §1 whole-trace metrics are the interpretable historical narrative and the
 per-realization base of the re-evaluation layer; they are NOT the optimization
 objectives. The optimizer targets the annual-unit (§2) versions even on the
 historic trace (``simulation.evaluate`` -> ``compute_for_borg_ensemble``), shown
-here as the per-water-year "annual-unit view" strips.
+here as the per-FFMP-year "annual-unit view" strips.
 
 Figures and the cached ``*.hdf5`` simulations are written under
 ``supplemental_config.OBJDYN_OUTPUT_ROOT`` (gitignored, regenerable).

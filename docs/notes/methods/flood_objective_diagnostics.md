@@ -1,7 +1,6 @@
 # Flood-Objective Definition Diagnostics (SI)
 
-*Last updated: 2026-08-05. Measured results of the diagnostics behind the
-active flood objective: **`downstream_flood_exceedance_minor`** (§1 scale) /
+*Measured results of the diagnostics behind the active flood objective: **`downstream_flood_exceedance_minor`** (§1 scale) /
 **`downstream_flood_exceedance_annual`** (§2 scale) — Σ over days of the
 max-across-gauges (stage − NWS minor flood stage)⁺, in ft·days/yr. The day
 counts are registered diagnostics. Evidence: one local simulation pass

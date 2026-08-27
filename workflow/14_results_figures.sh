@@ -13,16 +13,15 @@
 # robustness_scorecard_criteria.csv companion) and baseline/ cubes.
 #
 # Everything comes from the environment — no positional args, no value flags:
-#   NYCOPT_REEVAL_TAG    E_test re-eval tag; defaults to the campaign spec's
-#                        tag. The interim 200-SOW subset MUST set it, e.g.
-#                        NYCOPT_REEVAL_TAG=etest_kn_50yr_n25000_first10ch
+#   NYCOPT_REEVAL_TAG    E_test re-eval tag; defaults to the campaign tag
+#                        (etest_kn_50yr_n25000_first25ch). Set it only for a
+#                        non-campaign re-eval.
 #   NYCOPT_RESULTS_SLUG  moea slug shared by the campaign runs (ffmp_obj8)
 #   NYCOPT_FOCAL_CRITERION  focal criterion set (default: compromise)
 #   FIGURES              optional comma-separated subset (names or stems)
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_REEVAL_TAG=etest_kn_50yr_n25000_first10ch \
-#       workflow/14_results_figures.sh
+#   sbatch workflow/14_results_figures.sh
 #
 # Sizing: loads three <10 MB parquet cubes and renders matplotlib figures;
 # minutes on a single shared core.

@@ -15,7 +15,8 @@
 # plan (docs/notes/methods/ensemble_size_diagnostics.md §§3-4).
 #
 # Reads the staged P=1e6 pool hazard images (d0-d2), the two matched designs'
-# epsilon-filtered reference sets, and their first10ch re-eval cubes. Writes
+# epsilon-filtered reference sets, and their campaign re-eval cubes
+# (supplemental_config.ESD_POLICY_REEVAL_TAG). Writes
 # tables under outputs/supplemental/ensemble_size_diagnostics/tables/,
 # including library_plan.json — the array size of the next stage:
 #   python3 -c 'import json;print(len(json.load(open("outputs/supplemental/ensemble_size_diagnostics/tables/library_plan.json"))["chunks"]))'

@@ -50,7 +50,7 @@ def _format_value(v: float, scale_max: float = 1.0) -> str:
 
     Percent-scale axes (the axis range reaches beyond 10) round to the
     nearest integer; unit-interval-scale axes (reliabilities, small rates)
-    round to the nearest hundredth (project rule, 2026-08-21).
+    round to the nearest hundredth.
     """
     return f"{v:.0f}" if abs(scale_max) > 10 else f"{v:.2f}"
 

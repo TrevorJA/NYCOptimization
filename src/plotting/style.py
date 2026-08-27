@@ -123,16 +123,11 @@ def design_label(design: str) -> str:
 # Objective labels
 # ---------------------------------------------------------------------------
 
-# Objective display labels name the METRIC, its statistic, AND its timescale /
-# aggregation, in the language of the water-resources DMDU literature
-# (objective_definitions.md §0-§2, §6): Hashimoto (1982) reliability; CVaR90
-# deficit (Rockafellar & Uryasev 2000; Quinn et al. 2017); count of flood days
-# over the NWS minor-flood stage (Quinn et al. 2017); low-percentile storage as a
-# vulnerability proxy (Quinn et al. 2017). Each objective is keyed by BOTH names:
-# the whole-trace (§1) metric carries its native timescale (weekly reliability /
-# CVaR90, whole-record flood count, daily-storage percentile); the annual-unit
-# (§2) search metric is marked "annual" (per-water-year metric). Labels therefore
-# differ between the two reductions exactly where the timescale/statistic differs.
+# Objective display labels name the metric, its statistic, and its timescale.
+# Each objective is keyed by both names: the whole-trace (§1) metric carries its
+# native timescale; the annual-unit (§2, FFMP-year) search metric is marked
+# "annual". Labels differ between the two reductions only where the
+# timescale/statistic differs.
 
 #: Compact single-line objective labels; ``label_for`` falls back to the raw name.
 OBJECTIVE_LABELS: dict[str, str] = {
@@ -207,11 +202,10 @@ def short_label_for(name: str) -> str:
     return OBJ_SHORT_LABELS.get(name, label_for(name))
 
 
-# The RESULTS-figure sequence uses exactly TWO objective naming conventions
-# (project rule, 2026-08-14): the long form (`label_for` / OBJECTIVE_LABELS,
-# metric + statistic + unit) and the abbreviation (`short_label_for` /
-# OBJ_SHORT_LABELS). Any other rendering -- e.g. the multi-line parallel-axis
-# label below -- is DERIVED from the long form, never a third hand-written set.
+# Two objective naming conventions only: the long form (`label_for` /
+# OBJECTIVE_LABELS) and the abbreviation (`short_label_for` / OBJ_SHORT_LABELS).
+# Any other rendering (e.g. the multi-line parallel-axis label) is derived from
+# the long form.
 
 def objective_direction(name: str) -> str:
     """The optimization direction of an objective, by name.
@@ -253,22 +247,14 @@ def axis_label_for(name: str, direction: str = None) -> str:
 
 #: Sequential colormap for robustness MAGNITUDE (fraction of SOWs satisficing)
 #: wherever robustness colors a mark: one hue family, light -> dark, CVD-safe.
-ROBUSTNESS_CMAP = "viridis"
 
-#: Diverging colormap for classified success/failure PROBABILITY surfaces
-#: (factor maps): P(success) runs red (fail) -> neutral -> blue (success), so
-#: the class boundary is the neutral midpoint at P = 0.5 and each class gains
-#: saturation toward certainty. A diverging ramp (ColorBrewer RdBu) is used
-#: instead of two flat class tints because two light tints are not
-#: CVD-separable (protan dE ~ 5 measured); lightness carries the message here.
-#: Draw the P = 0.5 contour explicitly so the boundary never relies on hue.
+#: Diverging colormap for success/failure probability surfaces (factor maps):
+#: red (fail) -> neutral at P = 0.5 -> blue (success); the P = 0.5 contour is
+#: drawn explicitly so the boundary never relies on hue.
 FACTOR_MAP_CMAP = "RdBu"
 
-#: Factor-map SOW scatter marks over the probability shading: luminance- and
-#: shape-separated (white-filled circle vs dark filled X), never hue-only.
-#: Both carry a contrasting outline because each mark sits over BOTH ends of
-#: the diverging field -- a plain black cross disappears into the dark-red
-#: failure region, which is exactly where most crosses fall.
+#: Factor-map SOW scatter marks: luminance- and shape-separated, each with a
+#: contrasting outline so it reads over both ends of the diverging field.
 FACTOR_MAP_MARKS = {
     "success": {"marker": "o", "facecolor": "white", "edgecolor": "0.25"},
     "failure": {"marker": "X", "facecolor": "0.10", "edgecolor": "white"},
@@ -296,7 +282,6 @@ SCATTER_PAIRS: list[tuple[int, int]] = [
 
 FIGSIZE_SINGLE = (7, 5)
 FIGSIZE_WIDE   = (13, 5)
-FIGSIZE_GRID_2X3 = (12.6, 7.0)
 
 #: Main-manuscript 2x2 panel grid. Square-ish so each panel can be forced square
 #: via ``ax.set_box_aspect(1)`` without the layout squeezing the tick labels.
@@ -389,14 +374,13 @@ def save_figure(fig, out_stub) -> None:
         fig.savefig(stub.with_suffix(f".{ext}"))
 
 
-#: Output formats for main-manuscript figures. PNG only during the iteration
-#: rounds (Trevor, 2026-08-14: no PDFs yet); the vector copy is added at the
-#: manuscript-final styling pass by extending this tuple to ("png", "pdf").
+#: Output formats for main-manuscript figures. PNG only until the
+#: manuscript-final pass extends this tuple to ("png", "pdf").
 MANUSCRIPT_FIGURE_FORMATS: tuple = ("png",)
 
 
 def save_manuscript_figure(fig, out_stub) -> list:
-    """Save ``fig`` as both PNG and PDF; return the paths written.
+    """Save ``fig`` in every :data:`MANUSCRIPT_FIGURE_FORMATS` format; return the paths.
 
     Args:
         fig: Matplotlib figure.

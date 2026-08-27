@@ -1,4 +1,4 @@
-"""objective_dynamics.py - Operational-dynamics anatomy figures for the 7 active
+"""objective_dynamics.py - Operational-dynamics anatomy figures for the 8 active
 objectives, on the historical single trace.
 
 One figure per operational quantity (NYC delivery, Montague flow, Trenton flow,
@@ -10,8 +10,8 @@ baseline and one interpretable contrasting policy:
     storage / gauge-stage series);
   * the statistical reduction that collapses it to a score (CVaR90 deficit tail,
     storage duration curve); and
-  * the §2 per-water-year decomposition that Borg actually optimizes on the
-    historic trace (N=1 realization over its ~76 water-year units).
+  * the §2 per-FFMP-year decomposition that Borg actually optimizes on the
+    historic trace (N=1 realization over its FFMP-year units, Jun 1 - May 31).
 
 Guiding principle: the figures compute nothing the objective functions don't.
 Every threshold, weekly-resample basis, metric-window cut and tail rule is imported
@@ -125,14 +125,14 @@ def _style_time_axis(ax) -> None:
 
 
 def _water_year_labels(index: pd.DatetimeIndex):
-    """Return (water_years, slices) for the metric-bearing units of a trace.
+    """Return (year labels, slices) for the metric-bearing FFMP-year units of a trace.
 
     Args:
         index: Daily DatetimeIndex of the realization.
 
     Returns:
-        (years, slices): ``years`` is an int array of water-year labels (the
-        calendar year of each unit's Sep 30 end); ``slices`` are the positional
+        (years, slices): ``years`` is an int array of FFMP-year labels (the
+        calendar year of each unit's May 31 end); ``slices`` are the positional
         ``ffmp_year_unit_slices``.
     """
     idx = pd.DatetimeIndex(index)
@@ -237,11 +237,11 @@ def _tail_panel(ax, policies, deficit_getter, obj_name: str,
 
 def _annual_strip(ax, policies, annual_getter, index_getter, *, ylabel: str,
                   step: bool = True) -> None:
-    """Per-water-year annual metric (the §2 unit the optimizer pools), both policies.
+    """Per-FFMP-year annual metric (the §2 unit the optimizer pools), both policies.
 
     Args:
-        annual_getter: policy -> ndarray of one annual value per water-year unit.
-        index_getter: policy -> daily DatetimeIndex used to derive water years.
+        annual_getter: policy -> ndarray of one annual value per FFMP-year unit.
+        index_getter: policy -> daily DatetimeIndex used to derive the units.
         ylabel: y-axis label (native metric units).
         step: draw as a mid-step line (True) or markers (False).
     """
@@ -315,7 +315,7 @@ def plot_delivery_anatomy(policies, *, output_file=None,
                 lambda p: _nyc_weekly_delivery_deficit_pct(p.data).values,
                 cvar_name, eps=1.5, strict=strict)
 
-    # (c) §2 per-water-year failing-weeks (what Borg minimizes; N=1 over units).
+    # (c) §2 per-FFMP-year failing-weeks (what Borg minimizes; N=1 over units).
     _annual_strip(ax_strip, policies,
                   lambda p: _nyc_delivery_failure_weeks_annual(p.data),
                   lambda p: p.data["ibt_demands"]["demand_nyc"].index,
@@ -447,7 +447,7 @@ def plot_storage_anatomy(policies, *, output_file=None,
                           label="95% exceedance (● = p5 score)"))
     ax_dur.legend(handles=handles, loc="upper right", framealpha=0.9, fontsize=8)
 
-    # (c) §2 per-water-year annual-minimum storage %.
+    # (c) §2 per-FFMP-year annual-minimum storage %.
     _annual_strip(ax_strip, policies,
                   lambda p: _nyc_storage_min_annual(p.data),
                   lambda p: p.data["res_storage"].index,
@@ -469,7 +469,7 @@ def plot_flood_anatomy(policies, *, output_file=None,
 
     Panel (a) shows the three reservoir-tail gauge stages of the BASELINE policy
     against each gauge's NWS minor-flood line (explains what a flood day is);
-    panel (b) is the §2 per-water-year flood-day count for both policies (the
+    panel (b) is the §2 per-FFMP-year flood-day count for both policies (the
     baseline-vs-contrast comparison), annotated with each policy's §1 total.
     """
     obj_name = "downstream_flood_days_minor"
@@ -496,7 +496,7 @@ def plot_flood_anatomy(policies, *, output_file=None,
                        "(dotted = NWS minor stage; a flood day = any gauge above)",
                        fontsize=10)
 
-    # (b) §2 per-water-year flood-day count, both policies; §1 total annotated.
+    # (b) §2 per-FFMP-year flood-day count, both policies; §1 total annotated.
     for pol in policies:
         years, _ = _water_year_labels(pol.data["flood_stage"].index)
         vals = np.asarray(_flood_days_minor_annual(pol.data), dtype=float)

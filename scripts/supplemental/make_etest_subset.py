@@ -1,39 +1,27 @@
 """
 make_etest_subset.py - Stage a metadata-only chunk-PREFIX subset of a staged, chunked E_test.
 
-Purpose: the campaign re-evaluates every Pareto set on the leading ``E_TEST_REEVAL_N_THETA``
+The campaign re-evaluates every Pareto set on the leading ``E_TEST_REEVAL_N_THETA``
 SOWs of the generated 1,000-point E_test design (``src.etest``; 500 SOWs = the first 25 chunks,
-``etest_kn_50yr_n25000_first25ch``), and interim, cost-bounded re-evaluations used shorter
-prefixes (``first10ch``, 200 SOWs). This tool stages either. The subset keeps R (realizations per
-SOW) untouched, so every per-SOW objective value is computed in exactly the final metric currency —
-only the cross-SOW Monte Carlo error depends on the prefix length (worst-case SE of a satisficing
-fraction is 0.5/sqrt(N_theta): +/-3.5 pp at 200 SOWs, +/-2.2 pp at 500, +/-1.6 pp at 1,000).
+``etest_kn_50yr_n25000_first25ch``). The subset keeps R (realizations per SOW) untouched, so
+every per-SOW objective value is computed in the final metric currency; only the cross-SOW
+Monte Carlo error depends on the prefix length (worst-case SE of a satisficing fraction is
+0.5/sqrt(N_theta)).
 
 NOTHING is regenerated, copied, or re-prepped. The subset directory holds only three metadata
-files — ``_meta.json``, ``chunk_index.json``, ``forcing_profiles.npz`` — and its chunk entries
-point at the parent pool's ALREADY-STAGED chunk directories (step-04 presim included). The
-chunked re-eval (``src.chunk_reeval`` via ``pool_chunk_specs``) then runs on it end-to-end with
-no code changes; outputs land under a distinct ``reeval/{subset_slug}/`` tag, so interim cubes
-can never be confused with (or clobber) the eventual full-E_test cube.
+files (``_meta.json``, ``chunk_index.json``, ``forcing_profiles.npz``) whose chunk entries
+point at the parent pool's already-staged chunk directories (step-04 presim included); the
+chunked re-eval (``src.chunk_reeval`` via ``pool_chunk_specs``) runs on it unchanged and its
+outputs land under the distinct ``reeval/{subset_slug}/`` tag.
 
 PREFIX-ONLY, by construction: unit rows are keyed by GLOBAL SOW id (``global_realization_id //
 R``) while the reduced spec's index space is ``range(K * chunk_size)``, so the selected chunks
-must be the leading chunks (global ids starting at 0, contiguous). A non-prefix selection would
-key rows past the reduced SOW space and break the merge. This is statistically sound because
-the E_test LHS theta rows are randomly ordered (scipy ``LatinHypercube`` assigns strata by
-independent random permutation per axis), so a prefix is an unbiased, well-spread subsample —
-verified 2026-08-12 on ``etest_kn_50yr_n25000``: the first-200-SOW axis means/ranges match the
-full 1,000 (e.g. axis ``m``: 0.076 vs 0.067 over a (-0.144, 0.278) range).
+must be the leading chunks. The E_test LHS theta rows are randomly ordered (scipy
+``LatinHypercube`` permutes strata independently per axis), so a prefix is an unbiased
+subsample. The subset passes ``assert_staged_etest_contract`` and carries full provenance in
+its ``_meta.json``.
 
-Scope note: ``src.etest``'s "never subsampled" contract concerns the search-side control
-argument (uniform subsets of i.i.d. pools vs LHS); it does not preclude an interim theta-subset
-for re-evaluation. The subset still passes ``assert_staged_etest_contract`` (LHS, R > 1,
-``etest:*`` seed domain), and this script stamps full provenance into the subset ``_meta.json``.
-Manuscript numbers must come from ONE cube per claim — never mix subset-cube and full-cube
-values; the separate re-eval tag enforces the separation on disk.
-
-Usage (login node is fine — pure metadata I/O). The campaign subset (``--n-chunks`` defaults to
-the campaign value, 25):
+Usage (login node is fine; pure metadata I/O). ``--n-chunks`` defaults to the campaign value (25):
     python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000
 
 Then point every re-eval step at it (steps 05, 08, 09, 09b, 10):

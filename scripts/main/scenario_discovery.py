@@ -1,72 +1,31 @@
-"""scenario_discovery.py - Scenario discovery on E_test failures, IN HAZARD SPACE.
+"""scenario_discovery.py - Scenario discovery on E_test failures in hazard space (step 11).
 
-This is the **mechanism test** for the study's central claim, not a decorative
-post-processing step. The claim is that covering *hazard space* during MOEA
-search produces policies that are more robust on the held-out test ensemble
-``E_test``. The falsifiable prediction it implies is::
+Per scenario design:
 
-    A design's policies should FAIL on E_test in the hazard region that design
-    UNDER-COVERED during search.
+1. Scenario discovery. Label each E_test SOW success/failure for the design's
+   analysis policy (the multivariate Starr criterion on the per-SOW annual-unit
+   objective values, under the criterion set or the regret label), then fit the
+   boosted classifier of ``src.factor_mapping`` on the SOW's hazard coordinates
+   in rank space. Hazard axes are screened first with the selector's redundancy
+   screen (``scengen.diagnostics.spearman_clusters``, ``|rho_S| >= 0.7``, one
+   representative per cluster; degenerate axes dropped). Reports importances, a
+   2-D factor map, and the per-axis failure/success shift (two-sample KS).
 
-so the script does two things, per scenario design:
+2. Coverage-deficit test. For each E_test SOW, the rank-space distance to the
+   nearest member of the design's search ensemble; reported as the AUC of the
+   deficit as a failure predictor, its excess over the random-coverage null
+   (:func:`random_coverage_null`), an empirical p-value, the logistic slope, and
+   failure rate by deficit decile. A null result is written as such.
 
-1. **Scenario discovery.** Label each E_test state of the world (SOW)
-   success/failure for the design's compromise policy (the multivariate Starr
-   domain criterion on the per-SOW annual-unit objective values — the same
-   all-criteria conjunction that defines the primary robustness metric, so
-   discovery inherits exactly the robustness criteria, as is standard), then fit
-   a gradient-boosted classifier of failure on the SOW's HAZARD coordinates
-   (the within-SOW mean of its realizations' realized-sequence descriptors).
-   Reports factor importances, a 2-D factor map, and the failure/success
-   distributional shift per axis (two-sample KS).
-
-2. **The mechanism test.** For each E_test SOW, compute the **coverage
-   deficit** — the distance, in the E_test hazard image's empirical-CDF/rank
-   space, to the nearest member of that design's SEARCH ensemble — and test
-   whether failure probability is POSITIVELY associated with it (AUC of deficit
-   as a failure predictor, its excess over a RANDOM-COVERAGE null, an empirical
-   p-value, the logistic slope, and failure rate by deficit decile).
-   Hazard-filling designs, having filled the space, should show NO excess
-   association; ``historic`` / ``fixed_probabilistic`` should show failures
-   concentrating where their ensembles left hazard space unsampled. A null is a
-   real, reportable result and is written as such.
-
-   The random-coverage null is load-bearing, not a nicety: nearest-neighbor
-   distance is systematically larger near the boundary of the hazard manifold, and
-   failures sit in a tail, so a uniformly-covering ensemble still scores AUC ~ 0.62
-   from geometry alone. The verdict is therefore read off AUC MINUS its null, never
-   off the raw AUC (see :func:`random_coverage_null`).
-
-Where this sits. The study's PRIMARY scenario-discovery factor maps run in the
-sampled DU input space (theta), via ``src.factor_mapping`` and
-``scripts/main/factor_mapping_run.py`` -- the standard setting of Hadjimichael
-et al. (2020) and Gold et al. (2022). THIS script is the hazard-space
-supplement: the mechanism test lives here because the coverage hypothesis is
-stated in hazard space -- the only space in which "the design under-covered
-here" is even definable -- and the hazard-space classifier/factor map is the
-supplemental view of the same labels.
-
-Classifier. ``src.factor_mapping.fit_classifier`` (gradient boosting, 250
-trees, ``max_depth=2``, ``learning_rate=0.1``, stratified-CV AUC reported).
-Trees are monotone-invariant, so the fit is done in rank space (where the
-factor map is plotted); importances are unchanged by that choice.
-
-Correlated-axis caveat, IMPLEMENTED not just documented. Factor importances are
-unstable under correlated factors — Quinn et al. (2020) show Sobol first-order
-indices going NEGATIVE (a negative interaction term = redundancy) exactly in
-this situation. So the hazard axes are SCREENED before fitting with the same
-Olden & Poff (2003) redundancy screen the hazard-filling selector uses
-(``scengen.diagnostics.spearman_clusters``, ``|rho_S| >= 0.7``, one
-representative per cluster; degenerate axes dropped by ``per_metric_spread``).
-Retained axes and the clusters are written out, and a warning is printed if any
-residual pair still exceeds the threshold.
+The theta-space factor maps of ``scripts/main/factor_mapping_run.py`` are the
+primary scenario-discovery view; this script is the hazard-space companion.
 
 Inputs (all pre-existing):
   * ``outputs/{design}/{moea_slug}/reeval/{reeval_tag}[/seed_NN]/reeval_raw.parquet``
-  * ``{STAGED_ENSEMBLE_DIR}/{etest_slug}/hazard_image.npz``  (E_test hazard image;
-    generate E_test with ``compute_hazard_image=True`` — workflow step 02)
-  * each design's SEARCH ensemble hazard image (loaded, or computed and cached
-    from the staged daily inflows with the identical generation-time code path).
+  * ``{STAGED_ENSEMBLE_DIR}/{etest_slug}/hazard_image.npz`` (E_test hazard image,
+    written by workflow step 12)
+  * each design's search-ensemble hazard image (loaded, or computed and cached
+    from the staged daily inflows with the generation-time code path).
 
 Outputs (namespaced by slug, re-eval tag, and label -- runs never overwrite
 each other):
@@ -300,36 +259,12 @@ def _auc(scores: np.ndarray, y: np.ndarray) -> float:
 
 def random_coverage_null(X_test: np.ndarray, y: np.ndarray, n_search: int,
                          n_boot: int = N_NULL_BOOT, seed: int = 0) -> dict:
-    """Null distribution of the deficit->failure AUC under RANDOM hazard coverage.
+    """Null distribution of the deficit->failure AUC under random hazard coverage.
 
-    **This baseline is not optional, and the test is invalid without it.** The
-    nearest-neighbor deficit is systematically LARGER near the boundary of the
-    hazard manifold (fewer neighbors on one side), so any failure region that sits
-    in a tail — which is precisely where failures sit — inherits a positive
-    deficit-failure association from pure geometry, with no coverage gap at all.
-    Measured on this project's own synthetic fixture, a search ensemble covering
-    hazard space UNIFORMLY still scores AUC ~ 0.62 against a tail failure region.
-    An absolute AUC threshold would therefore "support the mechanism" for every
-    design, including the ones that have no gap.
-
-    So the observed AUC is compared against the AUC obtained when the search
-    ensemble is a RANDOM sample of the same hazard manifold at the same size — the
-    same logic ``scengen.diagnostics.expected_random_discrepancy`` uses to judge
-    coverage relative to chance rather than asserting it. Random subsets are drawn
-    from the E_test manifold itself (its empirical joint law, correlations
-    included, rather than an idealized uniform cube); exact self-matches are
-    excluded from the nearest-neighbor query, since a realization coinciding with
-    a search member is an artifact of resampling one finite point set, not a
-    property a real search ensemble has.
-
-    Power and calibration (measured on ``tests/test_scenario_discovery.py``'s
-    fixture: R = 400, m = 3, n_search = 60). The null AUC is 0.53 +/- 0.07, so a
-    SINGLE search-ensemble draw carries an AUC standard error of ~0.07: this test
-    detects a gross coverage gap (planted gap scores +0.45 excess) but is not
-    powered to resolve small differences between two well-covering designs. The
-    false-positive rate at the nominal 5% level measures ~8-10%, slightly
-    anti-conservative. Report ``auc_null_std`` alongside ``auc_excess``, and
-    compare designs on the SIGN and MAGNITUDE of the excess, not on p-values alone.
+    Random size-``n_search`` subsets of the E_test manifold itself stand in for
+    the search ensemble (exact self-matches excluded from the nearest-neighbor
+    query). Nearest-neighbor distance is boundary-inflated, so the verdict is
+    the observed AUC minus this null, never the raw AUC.
 
     Args:
         X_test: ``(R, m)`` normalized E_test hazard coordinates.

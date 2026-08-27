@@ -1,31 +1,22 @@
 #!/bin/bash
-# Step 7: Run MOEAFramework runtime diagnostics — builds the cross-seed
-# reference set ({slug}_merged.set) and ε-BOX FILTERS it to archive
-# resolution under the campaign epsilon vector (the raw plain-dominance
-# union is kept as *_raw.set; see src/diagnostics.py::epsilon_box_filter_set
-# — ResultFileMerger alone ignores --epsilon for archiving), plus per-seed
-# merged sets and per-island runtime metrics scored against the filtered
-# cross-seed set, then renders the standard post-search figure suite
-# (parallel axes, hypervolume convergence, six-indicator runtime panel)
-# under figures/{scenario}/{slug}/ (src/plotting/search_diagnostics.py).
-# The filtered {slug}_merged.set is the FIRST-choice reference set of the
-# step 08/09 re-evaluation (src/reevaluate{,_mpi}.py), so this step must run
-# between search and re-evaluation for every optimization configuration.
+# Step 7: MOEAFramework runtime diagnostics. Builds the cross-seed reference
+# set {slug}_merged.set (epsilon-box filtered under the campaign epsilons; the
+# raw plain-dominance union is kept as *_raw.set, src/diagnostics.py), the
+# per-seed sets and per-island runtime metrics, and renders the search figures
+# under figures/{scenario}/{slug}/. The filtered merged set is the reference
+# set of the step 08/09 re-evaluation, so this step runs between 06 and 08.
 #
-# Run identity comes from the env file (optional here): NYCOPT_ENV_FILE picks
-# the scenario design + MOEA config, and DRAW=k (default 0) the ensemble draw,
-# exactly as in step 06 — with no positional args the target is the active
-# config's own derived slug (plus the variable-resolution sweep slugs).
-# Positional args are LITERAL moea slugs (an escape hatch for ad-hoc dirs) and
-# are used as given. Runs targets in parallel as background jobs; the
-# MOEAFramework CLI is I/O bound so there's no contention issue.
+# Env inputs: NYCOPT_ENV_FILE (optional; picks design + MOEA config) and DRAW=k
+# (default 0), as in step 06. With no positional args the targets are the
+# active config's derived slug plus the variable-resolution sweep slugs;
+# positional args are literal moea slugs. Targets run in parallel unless
+# --serial is passed.
 #
-# Usage (from repo root):
-#   NYCOPT_ENV_FILE=workflow/envs/<file>.env bash workflow/07_run_diagnostics.sh   # active slug + VR sweep
-#   DRAW=1 NYCOPT_ENV_FILE=... bash workflow/07_run_diagnostics.sh                 # a d1 replicate's outputs
-#   bash workflow/07_run_diagnostics.sh ffmp_obj8_mm_moderate                      # explicit slug(s)
-#   bash workflow/07_run_diagnostics.sh --serial ffmp_obj8_mm_moderate             # single, serial
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=... workflow/07_run_diagnostics.sh
+# Submit (from repo root):
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<file>.env workflow/07_run_diagnostics.sh
+#   bash workflow/07_run_diagnostics.sh --serial ffmp_obj8      # explicit slug, serial
+#
+# Outputs: outputs/{scenario}/{slug}/sets/*.set, runtime metrics, figures.
 #
 #SBATCH --job-name=diagnostics
 #SBATCH --account=ees260021

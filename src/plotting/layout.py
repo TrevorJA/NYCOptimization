@@ -20,7 +20,6 @@ from src.plotting.style import (INCUMBENT_COLOR, add_figure_footer,
 
 #: AGU column widths in inches (95 mm / 190 mm) -- every manuscript figure is
 #: built at one of these two widths so fonts land at true print size.
-WIDTH_SINGLE_COL = 3.74
 WIDTH_DOUBLE_COL = 7.48
 
 #: Display label for the status-quo policy, shared across figures.
@@ -34,8 +33,7 @@ def panel_grid(nrows: int, ncols: int, *, width: float = WIDTH_DOUBLE_COL,
     Args:
         nrows: Grid rows.
         ncols: Grid columns.
-        width: Figure width in inches (:data:`WIDTH_SINGLE_COL` or
-            :data:`WIDTH_DOUBLE_COL`).
+        width: Figure width in inches (default :data:`WIDTH_DOUBLE_COL`).
         panel_aspect: Height/width ratio of one panel; sets figure height.
         **kwargs: Forwarded to ``plt.subplots``.
 
@@ -98,17 +96,6 @@ def add_colorbar(fig, mappable, axes, *, label: str, **kwargs):
     cbar = fig.colorbar(mappable, ax=axes, label=label, **kwargs)
     cbar.outline.set_visible(False)
     return cbar
-
-
-def design_legend_handles(designs: Sequence[str],
-                          incumbent: bool = True) -> list:
-    """Entity-stable legend handles for the scenario designs (+ incumbent)."""
-    handles = [Line2D([], [], color=design_color(d), lw=2.4,
-                      label=design_label(d)) for d in designs]
-    if incumbent:
-        handles.append(Line2D([], [], color=INCUMBENT_COLOR, lw=2.4,
-                              label=INCUMBENT_LABEL))
-    return handles
 
 
 def criteria_footer(fig, cset, thresholds: dict, kinds: dict,

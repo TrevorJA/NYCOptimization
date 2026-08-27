@@ -8,28 +8,25 @@ ensemble, with every objective's stage-(i) annual metric stored per unit-year
 annual deficits/storage minima). Zero simulation; every diagnostic below is a
 reduction of the stored cubes.
 
-Implements four of the pre-campaign framing closures
-(``docs/notes/methods/framing_convention_diagnostics.md`` diagnostics 1 and 4,
-the flood unit-operator comparison, and the annual-unit redundancy screen for
-the 8th objective):
+Four SI diagnostics of the adopted framing
+(``docs/notes/methods/framing_convention_diagnostics.md``):
 
   1. **Failure-week count k sweep** - for each frequency objective and
      k in ``FRAMING_K_GRID``, the policy population's reliability values,
      saturation fractions (<= band / >= 1 - band), and Kendall tau_b of the
-     induced ranking against the shipped ``_DEFAULT_FAILURE_K``. Gates the
-     final k per objective.
+     induced ranking against the adopted ``_DEFAULT_FAILURE_K``.
   2. **Flood unit operator (mean vs P99)** - pooled-mean vs pooled-P99 annual
      flood days per policy: ranking agreement (tau_b) and a
      bootstrap-over-realizations noise / ranking-stability comparison at the
-     campaign unit count. Gates the flood unit-operator choice.
+     campaign unit count.
   3. **Flood-days controllability** - empirical exogenous floor F_min(u) over
      the policy population per pooled unit-year, the policy-invariant floor
      share of the baseline's flood days, and its complement (a LOWER bound on
      the controllable fraction; the floor is a sample minimum, not an oracle).
   4. **Annual-unit redundancy screen** - Spearman matrix over the policy
-     population of all nine registry objective values (shipped k), flagging
-     |rho| >= ``FRAMING_RHO_FLAG_THRESHOLD`` (Olden & Poff 2003). Gates the
-     8th objective (``nj_delivery_reliability_annual``) activate-or-drop.
+     population of all nine registry objective values (adopted k), flagging
+     |rho| >= ``FRAMING_RHO_FLAG_THRESHOLD`` (Olden & Poff 2003), for the
+     8th objective (``nj_delivery_reliability_annual``).
 
 Outputs -> ``outputs/supplemental/framing_convention/{tables,figures}``.
 Configuration lives in ``supplemental_config.py`` (FRAMING_* section) — no CLI

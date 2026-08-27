@@ -1,35 +1,22 @@
 #!/bin/bash
-# epsilon_calibration.sh — MPI-parallel epsilon-calibration evaluation for ONE
-# scenario design, then the serial cross-design analysis. Evaluates (baseline +
-# EPS_N_POLICIES constraint-feasible random DV vectors) on the design's search
-# ensemble through the same batched path Borg workers run, persisting the
-# per-unit annual-metric cube; the figures script then derives the per-objective
-# signal/noise/granularity floors, the archive-size sweep, and the campaign
-# epsilon recommendation — the max over the ENSEMBLE campaign designs
-# (supplemental_config.EPS_CAMPAIGN_DESIGNS); the historic cube is analyzed
-# and reported as a reference arm but excluded from the max.
+# epsilon_calibration.sh — MPI evaluation of the feasible-policy population on
+# ONE design's search ensemble (scripts/supplemental/epsilon_calibration_run.py),
+# then the serial cross-design analysis (epsilon_calibration_figures.py).
+# Requires NYCOPT_ENV_FILE (the design is the run identity); one job per
+# design. Settings: supplemental_config.py (EPS_* section; EPS_SMOKE=False for
+# the full run), no CLI value flags.
 #
-# REQUIRES NYCOPT_ENV_FILE (the design is the run identity — same contract as
-# workflow/06_run_mmborg.sh). Submit once per campaign design:
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_historic.env \
-#       workflow/supplemental/epsilon_calibration.sh
+# Prerequisites: step 01 and, for the ensemble designs, steps 02-04 under the
+# same design.
+#
+# Submit (from repo root), once per design:
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_fixed_probabilistic.env \
 #       workflow/supplemental/epsilon_calibration.sh
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_hazard_filling_stationary.env \
-#       workflow/supplemental/epsilon_calibration.sh
+#   (also eps_calib_historic.env, eps_calib_hazard_filling_stationary.env)
 #
-# PREREQUISITES: steps 01 (presim) and, for the ensemble designs, 02-04
-# (generate / subsample / prep the search ensemble) under the same design.
-#
-# All other settings (sample size, seed, bootstrap, output paths) live in
-# `supplemental_config.py` (EPS_* section) — this script carries NO value
-# flags. Set EPS_SMOKE=False there for the full run.
-#
-# Sizing: 513 policies x ~540 s/eval (N=300 x 10-yr trimmed, batched at 150
-# realizations per model run via supplemental_config.EPS_REALIZATION_BATCH) on
-# 128 ranks = ~5 eval waves ~= 1 h on one wholenode node; the feasible-DV
-# rejection sample and the analysis stage add minutes. historic evaluations are
-# cheaper (single trace).
+# Outputs: outputs/supplemental/epsilon_calibration/{cubes,tables,figures}.
+# Sizing: 513 policies x ~540 s/eval on 128 ranks ~= 1 h on one wholenode node
+# for an N=300 design; historic is far cheaper (single trace).
 #
 #SBATCH --job-name=eps_calib
 #SBATCH --account=ees260021

@@ -22,8 +22,7 @@ Reuses the one generation path (``src.ensemble_generation.generate_forcing_ensem
     chunk_size > 0             E_test is the largest ensemble in the study; the chunked re-eval path
                                (src/chunk_reeval.py, workflow step 09) exists for exactly this.
 
-Sizing lives in ``src/etest.py`` (decided 2026-07-30, env-overridable). No CLI value flags: ``--variant``
-is an identifier.
+Sizing lives in ``src/etest.py`` (env-overridable). No CLI value flags: ``--variant`` is an identifier.
 
     python3 -m scripts.main.generate_test_ensemble                  # the campaign E_test (kn)
     python3 -m scripts.main.generate_test_ensemble --variant hmm    # opt-in sensitivity
@@ -36,7 +35,7 @@ no workflow step depends on it.
 E_test needs no ``PRESETS`` entry -- point ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` at the printed slug.
 Set ``NYCOPT_ENSEMBLE_FORCE=1`` to overwrite an already-staged slug.
 
-Sharded generation (the ~84 h serial build parallelized across a Slurm array): the same
+Sharded generation (the serial build parallelized across a Slurm array): the same
 ``NYCOPT_ENSEMBLE_SHARD_COUNT`` / ``NYCOPT_ENSEMBLE_SHARD_INDEX`` / ``NYCOPT_ENSEMBLE_MERGE_SHARDS``
 contract as the candidate-pool path (``scripts/main/generate_stochastic_ensemble.py``). Each shard
 owns a chunk-aligned slice of the LHS profiles, writes its daily chunk dirs plus a hazard-image

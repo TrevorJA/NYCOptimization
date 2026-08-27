@@ -1,34 +1,16 @@
 #!/bin/bash
-# Step 13: Render the MAIN-MANUSCRIPT figure sequence.
+# Step 13: Render the main-manuscript figure tier from the unified registry
+# (src/figures/registry.py) through scripts/main/figures.py; figures whose data
+# needs are absent are skipped with a message. Builds the flow-duration-curve
+# cache behind Figure 3 (d) first when it is missing (~11 GB of E_test daily
+# flows across 50 staged chunks; NYCOPT_FIG_REFRESH=1 forces a rebuild). The
+# SI tier renders in step 14; off-pipeline diagnostic figures keep their own
+# drivers under workflow/supplemental/si_figures_*.sh.
 #
-# The single entry point for every polished figure that appears in the
-# manuscript body. Two stages:
+# Requires: the staged campaign E_test (step 12) with forcing_profiles.npz and
+# its daily chunk directories, and the sibling CMIP6_multimodel_streamflow repo.
 #
-#   1. Compute caches that are too expensive to rebuild per render.
-#      Currently just the flow-duration-curve cache behind Figure 3 panel (d),
-#      which reads ~11 GB of E_test daily flows across 50 staged chunks.
-#      Skipped when the cache already exists (NYCOPT_FIG_REFRESH=1 forces it).
-#   2. Render the manuscript tier from the unified registry
-#      (src/figures/registry.py) through scripts/main/figures.py; figures
-#      whose data needs are absent are skipped with a message.
-#
-# The registry's manuscript tier IS the sequence: a figure renders here only
-# if it is registered there (`python -m scripts.main.figures --list` shows
-# it). Retired figures are parked in figures/manuscript/outdated_unused/ and
-# are not in the registry, so they never regenerate.
-#
-# SI-tier figures render in step 14 (same driver, --tier si); off-pipeline
-# diagnostic figures keep their own drivers:
-#   workflow/supplemental/si_figures_design.sh   (pre-campaign, design support)
-#   workflow/supplemental/si_figures_results.sh  (needs campaign outputs)
-#
-# Requires:
-#   * the staged campaign E_test (workflow step 12) with forcing_profiles.npz
-#     and its daily chunk directories
-#   * the sibling CMIP6_multimodel_streamflow repo (change-factor table +
-#     per-run daily pywrdrb inputs)
-#
-# Everything comes from the environment — no positional args, no value flags:
+# Env inputs (no positional args, no value flags):
 #   NYCOPT_FIG_REFRESH        1 rebuilds the FDC cache even if present
 #   NYCOPT_FIG_ENVELOPE_PCTL  envelope definition for Fig 3 (c)/(d), default "0,100"
 #                             e.g. "5,95" for a trimmed band

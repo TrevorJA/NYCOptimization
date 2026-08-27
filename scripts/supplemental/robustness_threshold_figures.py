@@ -1,11 +1,9 @@
 """robustness_threshold_figures.py - Satisficing-threshold placement diagnostics.
 
-Reduces the baseline FFMP policy's persisted E_test re-eval cube (1,000
-theta-SOWs; step 05 ``--reeval``; per-SOW ANNUAL-UNIT objective values — the
-search objectives recomputed per deeply-uncertain state) into the
-manuscript-SI evidence for placing the satisficing thresholds
-(``objectives_ensemble._DEFAULT_THRESHOLDS``, PROVISIONAL pending this
-diagnostic's re-run on the per-SOW substrate):
+Reduces the incumbent FFMP policy's persisted E_test re-eval cube (1,000
+theta-SOWs; step 05 ``--reeval``; per-SOW annual-unit objective values) into
+the SI threshold-placement evidence for the satisficing thresholds
+(``objectives_ensemble._DEFAULT_THRESHOLDS``):
 
 Tables (outputs/supplemental/robustness_threshold_diagnostics/tables/):
   rtd_sow_summary.csv                per-objective quantiles of the per-SOW
@@ -46,23 +44,18 @@ Figures (figures/):
   S_rtd_conjunction              failure-combination frequencies + sole/co-failure
                                  attribution of the Starr conjunction
 
-The SOW is the only scoring unit: pooling each state's realizations' unit
-years through the §2 unit operator IS the per-SOW value, so there is no
-within-SOW collapse knob and no realization-unit co-report (the retired
-unit-collapse diagnostic measured a knob that no longer exists). The
-satisfaction rule mirrors ``src.robustness._satisfy`` exactly (inclusive
-comparison, non-finite = fail); thresholds/kinds come from the cube's own
-``reeval_raw_meta.json`` snapshot (the moving-measuring-stick guard), never the
-live registry. The historic anchor comes from the JSON cache written by
+The SOW is the only scoring unit (each state's unit-years pooled through the
+§2 unit operator). The satisfaction rule mirrors ``src.robustness._satisfy``
+exactly (inclusive comparison, non-finite = fail); thresholds/kinds come from
+the cube's own ``reeval_raw_meta.json`` snapshot, never the live registry. The
+historic anchor comes from the JSON cache written by
 ``robustness_threshold_anchor.py`` — this script never imports pywrdrb.
 
-Figure conventions: clean and minimal — no in-panel text annotations; exact
-values live in the companion tables, panel titles carry at most the pass
-fraction, and reference lines are distinguished by style + legend.
+Figure conventions: no in-panel text annotations; exact values live in the
+companion tables, and reference lines are distinguished by style + legend.
 
 Configuration lives in supplemental_config.py (RTD_* section) — no CLI value
-flags. Pass 2 (after filling RTD_RECOMMENDED_THRESHOLDS) reruns this script
-unchanged.
+flags.
 
 Usage (never on a login node):
     sbatch workflow/supplemental/robustness_threshold_diagnostics.sh

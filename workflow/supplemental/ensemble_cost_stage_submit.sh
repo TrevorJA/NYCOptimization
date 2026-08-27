@@ -13,18 +13,11 @@
 #   bash workflow/supplemental/ensemble_cost_stage_submit.sh            # submit
 #   bash workflow/supplemental/ensemble_cost_stage_submit.sh --dry-run  # print only
 #
-# Notes:
-#   * "Already staged" means all five required HDF5s exist and are non-empty
-#     (src.ensembles.staged_ensemble_missing) — NOT "the directory exists". A
-#     metadata-only leftover directory would otherwise make step 02's own
-#     already-staged check skip generation, and step 04 would then die on the
-#     absent inflow file. Any cell whose directory exists but is incomplete is
-#     regenerated with NYCOPT_ENSEMBLE_FORCE=1.
-#   * Step 04 runs one pywrdrb preprocessor pass per realization across MPI
-#     ranks, so small-N cells get fewer ranks (N=1 with 33 ranks would hand 32
-#     ranks an empty slice); large-N cells get a longer walltime.
-#   * The (N, L) shape is passed via --export; the generator resolves it through
-#     the scaling_stationary design (NYCOPT_SCALING_KN_REALS / _YEARS).
+# "Already staged" = all required HDF5s present and non-empty
+# (src.ensembles.staged_ensemble_missing); an incomplete directory is
+# regenerated with NYCOPT_ENSEMBLE_FORCE=1. Step 04's rank count is capped at
+# N (one preprocessor pass per realization). The (N, L) shape is passed via
+# --export (NYCOPT_SCALING_KN_REALS / _YEARS, scaling_stationary design).
 
 set -euo pipefail
 

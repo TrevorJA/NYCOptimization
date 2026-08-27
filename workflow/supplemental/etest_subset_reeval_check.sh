@@ -1,22 +1,13 @@
 #!/bin/bash
-# Acceptance gate for the metadata-only E_test chunk-prefix subset
-# (scripts/supplemental/make_etest_subset.py): on the mini E_test fixture
-# (etest_kn_10yr_n4: N_theta=2 x R=2 x 10 yr, 2 chunks of 2), re-evaluate the
-# baseline policy against
-#   (a) the FULL mini pool (2 chunks, SOWs {0,1}), and
-#   (b) the first1ch SUBSET (1 chunk, SOW {0}),
-# IN THE SAME JOB, and require the subset's reeval_raw rows to be BIT-IDENTICAL
-# to the full run's rows restricted to SOW 0. Same job/node/env => bit-identity
-# is a valid gate (the cross-job FP nondeterminism caveat does not apply; cf.
-# workflow/supplemental/mini_etest_reeval_bitcompare.sh, the same-job precedent).
-# Identity holds by construction: both paths evaluate the identical
-# (solution, chunk000) unit via the same chunk spec and batch boundaries.
-#
-# Also asserts the subset run's meta records exactly 1 SOW (no phantom NaN SOWs
-# — the failure mode that ruled out ALLOW_PARTIAL merging on the full slug).
-#
-# Idempotent: reuses the staged mini fixture if present; regenerates it only if
-# missing (tiny; the REAL E_test is never touched by any of this).
+# Check of the metadata-only E_test chunk-prefix subset
+# (scripts/supplemental/make_etest_subset.py) on the mini E_test fixture
+# (etest_kn_10yr_n4: N_theta=2 x R=2 x 10 yr, 2 chunks of 2): re-evaluates the
+# baseline policy on (a) the full mini pool (SOWs {0,1}) and (b) its first1ch
+# subset (SOW {0}) in the same job, and requires the subset's reeval_raw rows
+# to be bit-identical to the full run's SOW-0 rows (same job, node and env,
+# so bit identity is a valid test) and the subset meta to record exactly one
+# SOW. Idempotent: the mini fixture is regenerated only if missing; the real
+# E_test is never touched.
 #
 # Submit:
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \

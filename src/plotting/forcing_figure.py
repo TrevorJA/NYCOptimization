@@ -3,9 +3,7 @@ forcing_figure.py - Manuscript Figure 3: the deeply uncertain forcing space.
 
 Composes the four panels of ``src.plotting.forcing_space`` (harmonic model,
 fitted CMIP6 parameters + sampled box, implied monthly change factors, change in
-the flow duration curve). Moved from the retired ``scripts/main/manuscript_figures.py``
-driver into the builder layer; rendering is orchestrated by
-``scripts/main/figures.py`` via the registry.
+the flow duration curve); rendered via the registry (``scripts/main/figures.py``).
 """
 
 from __future__ import annotations

@@ -1,71 +1,26 @@
 """compare_designs.py - Cross-design comparison of re-evaluated Pareto sets.
 
-Every scenario design is optimized independently and its final Pareto set is
-re-evaluated on ONE common held-out test ensemble E_test. Re-evaluated
-performance is the SOLE basis of cross-design comparison
-(``docs/notes/methods/experimental_design.md`` §"Controls for fair comparison",
-item 3). This script is the only consumer of the per-run robustness artifacts
-written by ``src.robustness`` -- it reads them across designs, draws and seeds
-and produces the cross-design tables and figures.
+Every scenario design is optimized independently and its Pareto set is
+re-evaluated on the one common held-out test ensemble E_test; re-evaluated
+performance is the sole basis of cross-design comparison. This script reads the
+per-run robustness artifacts written by ``src.robustness`` across designs, draws
+and seeds and produces the cross-design tables and figures:
 
-What it produces, and why each piece exists
--------------------------------------------
-1. **Satisficing-threshold sweep (the SI uniform-stringency sweep).** Quinn et
-   al. (2020) found that robustness-rank agreement ACROSS scenario designs
-   *degrades as the satisficing criterion becomes more stringent*, so the design
-   effect is largest at the conservative end and a single threshold could
-   manufacture or hide the entire result. The thresholds themselves are ADOPTED
-   (2026-08-08, into ``objectives_ensemble._DEFAULT_THRESHOLDS``); the named
-   criterion subsets of ``src.satisficing_criteria`` are the analysis framings,
-   and the pooled-quantile sweep here is the SI uniform-stringency sweep over
-   the all-axes reference conjunction (``reference_all8``), verifying the
-   comparison does not hinge on the adopted placement. The per-run
-   ``robustness_threshold_spectrum.csv`` cannot answer this: it is univariate,
-   and the primary metric is the MULTIVARIATE (all-criteria conjunction) Starr
-   domain criterion over the per-SOW annual-unit objective values. So the sweep
-   is recomputed from the raw cube (``robustness.load_raw`` +
-   ``robustness.satisficing_multivariate_sow`` with a swept threshold dict).
-
-   The sweep is driven by ONE scalar stringency knob ``s``: each objective's
-   threshold is the ``s``-quantile of the *pooled across designs* per-SOW value
-   distribution (oriented, so ``s`` = the marginal fraction of pooled SOW values
-   the criterion excludes). Pooling across designs is load-bearing -- a per-design
-   quantile would make "the same stringency" a different magnitude for each
-   design and the comparison at fixed ``s`` would be meaningless. The
-   adopted-default thresholds are located on the same axis and marked, each
-   named criterion set's member placements are located on it too
-   (``criterion_stringency.csv``), and a subset-aware companion sweep moves
-   only each named set's member axes (``design_threshold_sweep_by_set.csv``).
-
-2. **Cross-design scorecard aggregation + ranking stability.** Metric choice
-   changes rankings (Herman et al. 2015; McPhail et al. 2018), so if satisficing
-   and maximin rank the campaign designs differently that is itself a result.
-   This is Kendall tau_b among the DESIGN rankings induced by each metric (not
-   among solution rankings -- ``robustness.ranking_stability`` already does those).
-
-3. **Variance components.** ``outcome ~ design (fixed) + draw(design) (random) +
-   seed(draw) (random)``. With draw replication the unit of analysis for
-   between-design tests is the DRAW (seeds within a draw are pseudoreplicates,
-   effective n ~= K, not K*S) and the design F-test uses the draw mean-square
-   as its denominator. The campaign searches ONE draw per design (K = 1;
-   experimental_design.md §"Replication"), so the draw stratum is not
-   identified, the SEED is the unit of analysis, and the F-test falls back to
-   the seed mean-square with the comparison stated as conditional on the draw.
-
-4. **Raw performance distributions (mandatory sanity check).** A robustness
-   scalar can be stable, optimizable and still perverse: Huang et al. (2025) show
-   a deviation metric driven to zero by being *uniformly terrible* (a policy is
-   "robust" because it is consistently awful), and Bonham et al. (2024) show a
-   saturated criterion ties everything. So the raw re-evaluated distributions are
-   co-reported next to every robustness number, with the satisficing threshold
-   drawn on the same axis (the threshold-margin diagnostic of Gold et al. 2023),
-   and degeneracy flags are printed loudly.
-
-5. **Attainability screen.** Pooling the cubes of ALL designs answers "is this
-   E_test state of the world winnable by ANY policy from ANY design?".
-   Shavazipour et al. (2021) found 23% of their test scenarios unwinnable by any
-   feasible policy; without this you cannot separate "this design searched
-   badly" from "this test state is impossible".
+1. Satisficing-threshold sweep over one pooled-quantile stringency knob ``s``
+   (each objective's threshold is the ``s``-quantile of the per-SOW values pooled
+   across designs, so one ``s`` means one stringency for every design),
+   recomputed from the raw cubes with the multivariate Starr criterion; the
+   adopted thresholds and each named criterion set's placements are located on
+   the same axis (``criterion_stringency.csv``), and a per-set companion sweep
+   moves only each set's member axes (``design_threshold_sweep_by_set.csv``).
+2. Cross-design scorecard aggregation + ranking stability (Kendall tau_b among
+   the design rankings induced by each metric).
+3. Variance components, ``outcome ~ design + draw(design) + seed(draw)``; with
+   K = 1 the seed is the unit of analysis (see :func:`variance_components`).
+4. Raw re-evaluated performance distributions co-reported next to every
+   robustness number, with degeneracy flags.
+5. Attainability screen over the pooled cubes of all designs (is an E_test SOW
+   winnable by any policy from any design).
 
 Inputs (per design, per moea slug, per re-eval tag, optionally per seed):
     outputs/{design}/{moea_slug}/reeval/{reeval_tag}[/seed_NN]/
@@ -84,7 +39,7 @@ identifiers.
 
 Run::
 
-    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_10yr_n1000 \
+    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
         python scripts/main/compare_designs.py --formulation ffmp
 """
 
@@ -426,12 +381,10 @@ def design_level(summary: pd.DataFrame, statistic: str = "best") -> pd.DataFrame
 
 def design_ranking_stability(level: pd.DataFrame,
                              higher_better: dict) -> pd.DataFrame:
-    """Kendall tau_b between the DESIGN rankings induced by each metric.
+    """Kendall tau_b between the design rankings induced by each metric.
 
-    Not solution rankings -- ``robustness.ranking_stability`` already does those.
-    If satisficing and maximin order the designs differently, the design ranking
-    is metric-dependent and that is a headline result, not a footnote (Herman et
-    al. 2015; McPhail et al. 2018).
+    Design rankings, not solution rankings (``robustness.ranking_stability``
+    does those).
     """
     if level.empty or level.shape[0] < 3:
         warnings.warn(
@@ -875,12 +828,10 @@ def sweep_design_level(sweep: pd.DataFrame, statistic: str = "best") -> pd.DataF
 
 
 def rank_agreement(sweep: pd.DataFrame) -> pd.DataFrame:
-    """Kendall tau_b of the DESIGN ranking at each stringency vs at the default.
+    """Kendall tau_b of the design ranking at each stringency vs at the default.
 
-    The direct test of whether the design ranking is threshold-invariant. If the
-    lines cross -- if tau_b falls away from 1 as the criterion tightens -- the
-    design effect is threshold-dependent (Quinn et al. 2020) and MUST be reported
-    as such rather than quoted at one convenient threshold.
+    tau_b falling away from 1 as the criterion tightens means the design effect
+    is threshold-dependent.
     """
     rows = []
     for statistic in ("best", "median"):
@@ -897,19 +848,8 @@ def rank_agreement(sweep: pd.DataFrame) -> pd.DataFrame:
 
 
 ###############################################################################
-# 2b. Incumbent-relative regret: tolerance sweep + severity decomposition
+# 2b. Incumbent-relative regret: tolerance sweep + severity decomposition (RQ1)
 ###############################################################################
-# These answer RQ1 and, jointly with the satisficing sweep above, the working
-# hypothesis: that hazard filling buys robustness WITHOUT paying the price of
-# robustness (Bertsimas & Sim 2004) in regret against current operations.
-# Bartholomew & Kwakkel (2020) supply both halves of the expectation -- "the more
-# robustness is considered in the search phase ... the higher the robustness
-# attainment ... during re-evaluation", and, in their section 5.2, "optimizing for
-# robustness comes in general at the expense of attainable hypervolume in any
-# given reference scenario". Measuring the second half against a FIXED external
-# incumbent per SOW, rather than by hypervolume against reference scenarios,
-# avoids the pooled-reference-set and cardinality biases this study rejects
-# (objective_definitions.md section 4.3).
 
 #: Multipliers ``k`` on each objective's just-noticeable difference, defining the
 #: no-harm tolerance ``tau_i = k * eps_i``. k = 0 is the strict weak-Pareto-
@@ -955,12 +895,9 @@ def regret_tolerance_sweep(runs: list[ReevalRun],
                            ) -> pd.DataFrame:
     """No-harm frequency vs the tolerance ladder, per run.
 
-    ``Pi_tau`` is the fraction of E_test states of the world in which a policy
-    degrades NO objective by more than ``tau_i = k * eps_i`` relative to the
-    incumbent -- the literal reading of RQ1's "without degrading others below
-    current performance". Sweeping ``k`` reports the tolerance at which the claim
-    holds rather than asserting it at one arbitrary point, the same discipline the
-    satisficing criterion sweep applies (Quinn et al. 2020).
+    ``Pi_tau`` is the fraction of E_test SOWs in which a policy degrades no
+    objective by more than ``tau_i = k * eps_i`` relative to the incumbent;
+    sweeping ``k`` reports the tolerance at which the RQ1 claim holds.
 
     Args:
         runs: Re-evaluated runs to sweep.
@@ -1031,17 +968,7 @@ def _severity_terciles(spec, n_sow: int, bins: int = SEVERITY_BINS):
 
 def regret_by_severity(runs: list[ReevalRun], spec,
                        bins: int = SEVERITY_BINS) -> pd.DataFrame:
-    """Robustness and regret within quantile bins of the forcing-severity axis.
-
-    The mechanism test for the price of robustness. Giuliani & Castelletti (2016)
-    predict that a policy searched under a severity-shifted measure and scored
-    under the test measure is systematically penalised; if hazard filling pays that
-    price, it should land in the BENIGN futures. The structure to look for is a
-    robustness gain concentrated in the driest bin and a no-harm loss concentrated
-    in the wettest -- an insurance premium, which is a finding, not a failure.
-
-    Formally this is McPhail et al. (2018)'s T2 (scenario subset selection) applied
-    deliberately, on the same cube, at no simulation cost.
+    """Robustness and no-harm frequency within quantile bins of the forcing-severity axis.
 
     Returns:
         Tidy frame: design, draw, seed, severity_bin, bin_lo, bin_hi, n_sow,
@@ -1096,9 +1023,7 @@ def regret_plane_points(loaded: Iterable[LoadedRun],
                         y: str = "no_harm_freq_tau") -> pd.DataFrame:
     """One row per re-evaluated policy: its robustness and its no-harm frequency.
 
-    Both axes come from the SAME policy, which is the load-bearing detail: reading
-    "more robust" off one policy and "no more regret" off another would not be a
-    claim about anything. Both are unit-free, so the plane needs no normalization.
+    Both axes come from the same policy and both are unit-free.
 
     Returns:
         Tidy frame: design, draw, seed, solution_id, ``x``, ``y``. Empty when no
@@ -1171,18 +1096,13 @@ def performance_distributions(loaded: list[LoadedRun]) -> pd.DataFrame:
 def degeneracy_flags(summary: pd.DataFrame, perf: pd.DataFrame,
                      pooled: dict[str, np.ndarray], kinds: dict,
                      directions: dict) -> pd.DataFrame:
-    """Screen for robustness scalars that are stable, optimizable and perverse.
+    """Screen for degenerate robustness scalars.
 
-    Two failure modes, both of which would invalidate a design ranking computed
-    on top of them:
-
-    * **Saturation** -- an objective whose satisficing fraction is above
-      ``SATURATION_HI`` (or below ``SATURATION_LO``) for EVERY design cannot
-      discriminate designs; the criterion ties everything (Bonham et al. 2024).
-    * **Uniformly terrible** -- a design that scores highly robust while its
-      median re-evaluated performance sits in the pooled worst tail. The
-      robustness scalar is then measuring consistency, not quality (Huang et al.
-      2025).
+    * Saturation: an objective whose satisficing fraction is above
+      ``SATURATION_HI`` (or below ``SATURATION_LO``) for every design cannot
+      discriminate designs (Bonham et al. 2024).
+    * Uniformly terrible: a design that scores highly robust while its median
+      re-evaluated performance sits in the pooled worst tail (Huang et al. 2025).
 
     Returns:
         Frame: flag, objective, design, value, detail. Empty when nothing fires.
@@ -1244,15 +1164,10 @@ def degeneracy_flags(summary: pd.DataFrame, perf: pd.DataFrame,
 def attainability(runs: list[ReevalRun]) -> pd.DataFrame:
     """Per-design and POOLED attainability of the E_test states of the world.
 
-    A SOW is attainable for a design if ANY of that design's re-evaluated
-    solutions meets all criteria jointly; the POOLED row ORs across every design,
-    answering "is this state winnable by ANY policy from ANY design?" The
-    complement is structurally unwinnable -- Shavazipour et al. (2021) found 23%
-    of their test scenarios in that class, and without the screen a design that
-    searched badly is indistinguishable from a test state that is impossible.
-
-    This is an EMPIRICAL bound, not a true ceiling: it says no policy *in this
-    pooled set* wins the SOW, not that none exists.
+    A SOW is attainable for a design if any of that design's re-evaluated
+    solutions meets all criteria jointly; the pooled row ORs across every design.
+    This is an empirical bound: no policy in this pooled set wins the SOW, not
+    that none exists.
 
     Returns:
         Frame: design ("POOLED_ALL_DESIGNS" for the pooled row), n_sow,
@@ -1320,14 +1235,12 @@ def _design_labels(designs: Iterable[str]) -> dict:
 
 def fig_threshold_sweep(sweep: pd.DataFrame, agreement: pd.DataFrame,
                         defaults: pd.DataFrame, fig_dir: Path) -> Path:
-    """THE main-text figure: design robustness vs stringency + rank agreement.
+    """Design robustness vs stringency + rank agreement.
 
     Left: the primary metric per design across the stringency grid (solid =
-    best solution, faint dashed = median solution), with the registry-default
-    criterion marked. Crossing lines mean the design effect is threshold-
-    dependent. Right: Kendall tau_b of the design ranking at each stringency
-    against the ranking at the default -- the direct test of threshold
-    invariance (Quinn et al. 2020).
+    best solution, faint dashed = median solution), with the default criterion
+    marked. Right: Kendall tau_b of the design ranking at each stringency
+    against the ranking at the default.
     """
     best = sweep_design_level(sweep, "best")
     med = sweep_design_level(sweep, "median")
@@ -1425,11 +1338,8 @@ def fig_performance_distributions(perf: pd.DataFrame, thresholds: dict,
                                   fig_dir: Path) -> Path:
     """Raw re-evaluated performance per objective, with the threshold drawn on.
 
-    The mandatory co-report: a robustness scalar alone cannot distinguish a good
-    policy from a uniformly terrible one (Huang et al. 2025) or a discriminating
-    criterion from a saturated one (Bonham et al. 2024). Drawing the satisficing
-    threshold on the same axis makes the threshold margin visible (Gold et al.
-    2023, Fig. 5).
+    Co-reported beside every robustness number so the threshold margin and any
+    degenerate (saturated or uniformly terrible) case are visible.
     """
     objectives = sorted(perf["objective"].unique())
     designs = sorted(perf["design"].unique())

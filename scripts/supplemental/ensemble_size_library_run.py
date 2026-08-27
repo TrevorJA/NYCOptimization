@@ -2,37 +2,22 @@
 
 Builds and persists the per-realization annual-unit LIBRARY of
 ``docs/notes/methods/ensemble_size_diagnostics.md`` §2: every policy of the
-fixed set (``tables/policies.csv``, written by ``ensemble_size_hazard.py``)
-evaluated ONCE on every unique realization the Layer-B replicates need, with
-the stage-(i) annual metrics kept per (realization, unit-year) so that the
-objective vector of any (design, N, replicate) ensemble is composed offline.
+fixed set (``tables/policies.csv``) evaluated once on every unique realization
+the Layer-B replicates need, with the stage-(i) annual metrics kept per
+(realization, unit-year) so any (design, N, replicate) ensemble's objective
+vector is composed offline.
 
-Two stages, selected by ``NYCOPT_ESD_STAGE`` (set by the wrappers):
+Stages, selected by ``NYCOPT_ESD_STAGE`` (set by the wrappers):
 
-``materialize``  (serial; one array task per chunk, ``NYCOPT_ESD_CHUNK``)
-    Regenerates chunk ``j`` of the library plan (``tables/library_plan.json``)
-    from the stream-only candidate pool bit-for-bit
-    (``src.ensembles.materialize_subset`` -> global-index child streams) into
-    the staged chunk dir ``{library_slug}__chunkJJJ`` (kept on projects space
-    via a symlink when ``ESD_STAGING_ROOT`` exists), and writes the parent
-    ``_meta.json`` / ``chunk_index.json``. The wrapper then stages the step-04
-    pywrdrb inputs for the chunk (``prep_pywrdrb_inputs.py --preset``).
-
-``requalify``    (serial) recomputes QC (ii)/(iii) from the merged library.
-
-``evaluate``     (MPI task farm; one wholenode)
-    Task = (policy, staged ensemble, block of <= ESD_EVAL_BLOCK realizations).
-    Each rank runs ``src.simulation.evaluate_annual_units`` on its tasks
-    (the re-eval path: the same simulation and stage-(i) reduction as search)
-    for the FULL annual-unit registry, stores the pooled Borg-form scalars of
-    the active objectives per task alongside, writes an ``.npz`` shard + a
-    ``.done`` marker; rank 0 merges the shards into ``library/unit_library_*.h5``
-    (filesystem barrier, as the epsilon calibration does) and runs the QC:
-    (i) re-pooling every task's rows from the merged library reproduces its
-    stored scalars EXACTLY (composition path == driver path), and (ii) the
-    staged production ``hazfill_..._d0`` members, simulated from the staged
-    files, agree with the regenerated library rows of the same pool members
-    (regeneration determinism end to end, reported at LP-jitter tolerance).
+``materialize``  regenerates chunk ``NYCOPT_ESD_CHUNK`` of the library plan from
+    the stream-only candidate pool (``src.ensembles.materialize_subset``) into
+    ``{library_slug}__chunkJJJ`` and writes the parent metadata.
+``requalify``    recomputes the QC from the merged library.
+``evaluate``     MPI task farm over (policy, staged ensemble, realization block)
+    through ``src.simulation.evaluate_annual_units``; rank 0 merges the shards
+    into ``library/unit_library_*.h5`` and runs the QC (``_library_checks``:
+    composition reproduces the stored scalars; staged production members agree
+    with the regenerated library rows at LP-jitter tolerance).
 
 Settings in ``supplemental_config.py`` (``ESD_*``); no CLI value flags.
 Wrappers: ``workflow/supplemental/ensemble_size_library_stage.sh`` and
@@ -73,12 +58,10 @@ from src.sensitivity_common import (  # noqa: E402
 from src.simulation import evaluate_annual_units  # noqa: E402
 
 #: End-to-end (staged-vs-regenerated) tolerance, in the study's own currency:
-#: every policy's COMPOSED objective on the 100 common members must agree to
-#: this fraction of the objective's epsilon. pywrdrb's LP solver carries
-#: run-to-run jitter that flips a few failing-week / flood-day counts and moves
-#: annual storage minima by < 0.5 % of capacity on ~0.4 % of unit-years
-#: (measured 2026-08-26); the composed objectives agree to < 1e-3 epsilon.
-#: Unit-level differences are reported alongside, never gated.
+#: every policy's COMPOSED objective on the common members must agree to this
+#: fraction of the objective's epsilon (pywrdrb's LP solver carries run-to-run
+#: jitter at the unit level). Unit-level differences are reported alongside,
+#: never gated.
 END_TO_END_EPS_FRAC: float = 0.01
 
 
@@ -220,11 +203,10 @@ def _eval_task(task: dict, dvs: np.ndarray, sources: list[dict], objs: list,
     src = sources[task["source"]]
     # A UNIQUE preset_name per block: src.simulation caches the built model
     # dict by preset name (+ DU signature) and the cached dict carries the
-    # block's inflow_ensemble_indices, so two blocks of one chunk sharing a
-    # name would silently re-simulate the first block's realizations
-    # (observed 2026-08-26; the same reason run_simulation_ensemble_batched
-    # names its batches ``__b{offset}``). inflow_type (the staged dir) is
-    # unchanged.
+    # block's inflow_ensemble_indices, so two blocks sharing a name would
+    # silently re-simulate the first block's realizations (the same reason
+    # run_simulation_ensemble_batched names its batches ``__b{offset}``).
+    # inflow_type (the staged dir) is unchanged.
     spec = replace(
         with_indices_override(get_ensemble_spec(src["slug"]), task["local"]),
         preset_name=f"{src['slug']}__blk{task['local'][0]}",

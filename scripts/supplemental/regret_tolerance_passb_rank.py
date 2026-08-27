@@ -2,22 +2,11 @@
 
 Companion to ``regret_tolerance_passb_candidates.py``. MEASUREMENT ONLY.
 
-The first script established two structural facts that decide how a candidate
-must be scored:
-
-  * On the FULL 8-axis conjunction the median policy's ``Pi_tau`` is 0 for every
-    round tolerance, because ``montague_flow_deficit_p99_pct`` is negative in
-    ~90% of (policy, SOW) cells with a median degradation of ~-21 percentage
-    points. The all-8 conjunction is a ONE-BINDING-OBJECTIVE metric, so the
-    endpoint that carries information there is the BEST policy, not the median.
-  * On the ``compromise`` 3-axis subset the BEST policy is at ``Pi_tau = 1`` for
-    every design at every non-zero tolerance (some policy weakly dominates the
-    incumbent on all three axes in all 200 SOWs), so there the endpoint that
-    carries information is the MEDIAN policy.
-
-This script therefore scores each candidate on the endpoint that is not
-degenerate for that axis set, adds the whole ``Pi_tau`` distribution rather than
-two order statistics, and ranks on assay separation from ``historic``.
+Scoring rule: on the all-8 conjunction (a one-binding-objective metric) the
+informative endpoint is the BEST policy; on the ``compromise`` 3-axis subset
+it is the MEDIAN policy. Each candidate is scored on that endpoint, the whole
+``Pi_tau`` distribution is reported alongside, and candidates are ranked on
+assay separation from ``historic``.
 """
 from __future__ import annotations
 

@@ -25,9 +25,16 @@ scipy
 h5py
 pyarrow            # parquet engine for the re-eval raw matrix; without it,
                    # persistence falls back to the slower/larger csv.gz path
+scikit-learn       # scenario discovery / factor mapping (steps 11, 13, 14)
+statsmodels        # cross-design comparison models (step 10)
 
 # Visualization
 matplotlib
+seaborn
 
 # Dev / tests
 pytest
+
+# Optional: scripts/temporary deck and diagram builders only
+# python-pptx
+# lxml

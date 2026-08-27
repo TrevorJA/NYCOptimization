@@ -1,8 +1,9 @@
 # Forcing-space parameterization (method)
 
-**Status:** method (adopted). The climate forcing space is parameterized by an **interpretable
-low-order harmonic model** of the monthly change factor, sampled as a **deeply-uncertain (DMDU)
-hypercube** whose bounds are taken from the CMIP6 ensemble. **Date:** 2026-06-24. **Evidence /
+The climate forcing space is parameterized by an **interpretable low-order harmonic model** of
+the monthly change factor, sampled as a **deeply-uncertain (DMDU) hypercube** whose bounds are
+taken from the CMIP6 ensemble. It enters the study only through the held-out re-evaluation
+ensemble E_test (every campaign search design is stationary; manuscript SI Text S6). **Evidence /
 figures:** `outputs/diagnostics/forcing_parameterization/` (gitignored, regenerable):
 `SI_harmonic_fit.png`, `SI_harmonic_param_space.png`, `SI_harmonic_lhs_sampling.png`,
 `SI_harmonic_best_worst_fits.png`, `SI_harmonic_monthly_flow_comparison.png`, `cmip6_harmonic_params.csv`.
@@ -101,10 +102,10 @@ plausible range. This matches the exploratory intent (and the sampling design of
 so a single outlier GCM run does not drive the box; with the phases fixed the reconstructed monthly
 envelope does not over-disperse, so this already keeps the LHS monthly envelope tightly bounded to the
 CMIP6 monthly range (`SI_harmonic_monthly_flow_comparison.png`). An optional `margin` widens (`>0`,
-extrapolation) or tightens (`<0`) the box. Two boxes use this machinery at different widths: the
-search-side DU designs sample the default `(5, 95)` box with `margin = 0`, while **E_test samples the
-FULL empirical range `(0, 100)` widened by `margin = +0.25`** (`src/etest.py::E_TEST_BOUND_PCT` /
-`E_TEST_MARGIN`), so the test envelope strictly contains the search box.
+extrapolation) or tightens (`<0`) the box. **E_test samples the FULL empirical range `(0, 100)`
+widened by `margin = +0.25`** (`src/etest.py::E_TEST_BOUND_PCT` / `E_TEST_MARGIN`). The
+non-campaign DU search designs (`campaign=False` in `src/scenario_designs.py`) sample the default
+`(5, 95)` box with `margin = 0`, so the test envelope strictly contains that box.
 
 **Phase / spring-runoff timing.** Phases are fixed at the canonical CMIP6 shape (above). `τ₁` varies
 only ~0.6 month across CMIP6, and the DRB (~39–42°N) lies south of the ~44°N snowmelt-timing band
@@ -130,11 +131,11 @@ axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitiv
 
 ## Validation and limitations
 
-- **Hazard-coverage check.** Because hazards (drought_magnitude, drought_onset_rate,
-  flood_peak_discharge, flood_pulse_duration) are nonlinear tail functionals, the seasonal-mean harmonic
-  slightly smooths the late-summer high-flow tail; coverage of the flood/drought corners is checked in
-  **hazard space** (hull volume, tail percentiles) rather than on forcing-space fit alone. If a corner
-  is under-covered, add the 3rd harmonic (shape-R² → 0.93) or a bounded per-month residual.
+- **Hazard-coverage check.** Because the six selection axes are nonlinear tail functionals, the
+  seasonal-mean harmonic slightly smooths the late-summer high-flow tail; coverage of the flood and
+  drought corners is checked in **hazard space** (hull volume, tail percentiles) rather than on
+  forcing-space fit alone. A 3rd harmonic (shape-R² 0.93) or a bounded per-month residual is the
+  available extension if a corner were under-covered.
 - **Scope.** The forcing perturbs only the monthly mean/CV of the Kirsch marginals; it does not perturb
   interannual **persistence** (which dominates multi-year drought; no persistence DU axis —
   disclosure only, `persistence_axis_diagnostics.md`). Daily structure within each month comes from the

@@ -28,8 +28,8 @@ one failure never blocks the others. Figures 1 (a-d) and 2 also work after step
 
 Usage (from repo root, venv active):
   python3 -m scripts.main.plot_run_results \
-      --slug ffmp_obj8_mm_moderate --scenario historic \
-      --preset etest_kn_10yr_n200 --formulation ffmp
+      --slug ffmp_obj8 --scenario historic \
+      --preset etest_kn_50yr_n25000_first25ch --formulation ffmp
 """
 from __future__ import annotations
 

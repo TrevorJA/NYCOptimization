@@ -1,23 +1,14 @@
 """
-ensembles.py - Ensemble-evaluation source registry for multi-realization MOEA.
+ensembles.py - Ensemble source registry: preset name -> ``EnsembleSpec``.
 
-This module is the single source of truth for how the optimizer maps a *preset
-name* (e.g., ``"historic_single"``, ``"wcu_kirsch_n5"``) to an immutable
-``EnsembleSpec`` describing the inflow source, the realization indices to
-draw, deeply-uncertain (DU) factor specs, and the slug-fragment that
-identifies this ensemble in output paths.
-
-The single-realization path is itself a preset (``historic_single``) with
-``is_ensemble=False`` and ``realization_indices=(0,)``: its slug fragment is
-empty and the simulation layer routes it through ``run_simulation_inmemory``.
-
-Static presets registered here:
-    - ``historic_single``       — single-trace passthrough (default)
-    - ``wcu_kirsch_n5``         — N=5 Kirsch–Nowak ensemble test fixture
-    - ``reeval_wcu_kirsch_n300``— independent N=300 re-eval ensemble
-
-Static presets carry no DU factors; the ``du_factors`` field is the forward
-hook.
+``get_ensemble_spec`` resolves, in order, the two static presets registered
+here (``historic_single``, the single-trace passthrough with
+``is_ensemble=False``; ``wcu_kirsch_n5``, a test fixture), then any
+``kn_{Y}yr_n{N}`` slug, then any staged directory under
+``config.STAGED_ENSEMBLE_DIR`` carrying a ``_meta.json`` (every generated
+design ensemble, candidate pool and E_test). The spec carries the inflow
+source, the realization indices, the realization length and epoch, and the
+resample-per-eval flag.
 """
 
 import re
@@ -46,39 +37,21 @@ ENSEMBLE_START_DATE = "1945-12-01"
 class EnsembleSpec:
     """Immutable specification of an ensemble for an optimization or re-eval run.
 
-    Attributes
-    ----------
-    preset_name
-        Name used to look this spec up in the ``PRESETS`` registry. Persisted
-        in slugs and output directory names.
-    inflow_type
-        The pywrdrb inflow-dataset key. For ``is_ensemble=True`` specs this
-        names the staged HDF5 directory under
-        ``Pywr-DRB/input_data/synthetic_ensembles/{inflow_type}/`` that
-        ``FlowEnsemble`` will load. For ``is_ensemble=False`` it is the
-        registered single-trace key (e.g. ``"pub_nhmv10_BC_withObsScaled"``).
-    realization_indices
-        Tuple of integer realization IDs. ``len(realization_indices)``
-        equals the number of pywr scenarios. For ``historic_single`` this is
-        ``(0,)`` (single trace, treated as a 1-realization scenario block).
-    du_factors
-        Mapping of factor-name -> per-realization value spec. Empty for
-        static presets; forward hook for DU-factor work. Treat as immutable.
-    seed
-        Optional seed used by the underlying generator. Carried so the staging
-        pipeline can reproduce or re-stage the ensemble deterministically.
-    is_ensemble
-        ``True`` when the simulation layer should route through the
-        ensemble-aware path (``run_simulation_ensemble_inmemory``) and use
-        pywrdrb's ``inflow_ensemble_indices`` plumbing. ``False`` for the
-        single-trace passthrough.
-    source_kind
-        Short identifier for the generator family: ``"historic"``,
-        ``"synhydro_kn"``, ``"moeafind"``. Used for diagnostics and
-        for dispatching the correct generator class in the staging pipeline.
-    slug_fragment
-        String inserted into the output slug (e.g. ``"wcu5"``). Empty for
-        ``historic_single``.
+    Attributes:
+        preset_name: Registry / slug name of this spec.
+        inflow_type: The pywrdrb inflow-dataset key. For ``is_ensemble=True``
+            the staged directory under ``config.STAGED_ENSEMBLE_DIR``; for
+            ``is_ensemble=False`` the registered single-trace key.
+        realization_indices: Integer realization ids; the length is the number
+            of pywr scenarios (``(0,)`` for the single trace).
+        du_factors: Factor-name -> per-realization value spec; empty for every
+            registered spec (forward hook). Treat as immutable.
+        seed: Provenance seed of the generator, when recorded.
+        is_ensemble: ``True`` routes the simulation layer through the
+            ensemble-aware path with pywrdrb's ``inflow_ensemble_indices``.
+        source_kind: Generator family, e.g. ``"historic"``, ``"synhydro_kn"``,
+            ``"synhydro_hmm"``.
+        slug_fragment: Identifier used in output paths; empty for the single trace.
     """
 
     preset_name: str
@@ -165,11 +138,11 @@ PRESETS: dict[str, EnsembleSpec] = {
     ),
 }
 
-# The held-out test ensemble E_test needs NO entry here: ``_spec_from_staged_dir``
+# The held-out test ensemble E_test needs no entry here: ``_spec_from_staged_dir``
 # resolves any staged directory carrying a ``_meta.json`` by slug, so
-# ``NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_30yr_n1000`` resolves once step 02 has
-# staged it. E_test is an ``EnsembleSpec``, never a ``ScenarioDesign``: it never
-# enters search, and no search ensemble is drawn from it.
+# ``NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch`` resolves once
+# step 12 has staged it. E_test is an ``EnsembleSpec``, never a
+# ``ScenarioDesign``: it never enters search.
 
 
 ###############################################################################
@@ -246,11 +219,8 @@ def _spec_from_staged_dir(slug: str) -> EnsembleSpec | None:
     """Build an ``EnsembleSpec`` from a staged ensemble's ``_meta.json``, or None.
 
     Any directory ``STAGED_ENSEMBLE_DIR/{slug}/`` that carries a ``_meta.json``
-    written by a generator (the Step-1 Kirsch-Nowak generator or the scengen
-    hazard-filling driver) resolves to an ensemble of ``n_realizations``
-    realizations numbered ``0..N-1``. This is the generic handoff: scengen emits
-    a final ensemble HDF5 + ``_meta.json``, NYCOptimization resolves it by slug
-    with no manifest-as-contract and no realization-index override.
+    written by a generator (step 02, step 03 or step 12) resolves to an
+    ensemble of ``n_realizations`` realizations numbered ``0..N-1``.
     """
     import json
 
@@ -287,10 +257,9 @@ def get_ensemble_spec(preset_name: str) -> EnsembleSpec:
 
     Resolution order:
         1. the static ``PRESETS`` registry;
-        2. the ``kn_{Y}yr_n{N}`` slug grammar (parsed from the name, no I/O), for
-           ensembles staged by ``scripts/main/generate_stochastic_ensemble.py``;
+        2. the ``kn_{Y}yr_n{N}`` slug grammar (parsed from the name, no I/O);
         3. any other staged ensemble directory carrying a ``_meta.json`` (e.g.
-           a scengen hazard-filling final ensemble ``hazfill_{L}yr_n{N}_s{seed}``).
+           ``fixprob_{L}yr_n{N}_d{k}``, ``hazfill_stat_abs_{L}yr_n{N}_d{k}``).
 
     Raises ``KeyError`` if none resolves.
     """
@@ -323,9 +292,8 @@ def with_indices_override(spec: EnsembleSpec, indices: list[int]) -> EnsembleSpe
     """Return a copy of ``spec`` with ``realization_indices`` replaced.
 
     Used by the ``NYCOPT_ENSEMBLE_INDICES`` env hook to subset an ensemble
-    for smoke testing without authoring a separate preset, and by the
-    resampled-probabilistic per-evaluation draw to install the freshly drawn
-    subset of master-pool indices.
+    for smoke testing, and by the resampled-probabilistic per-evaluation draw
+    to install the freshly drawn subset of pool indices.
     """
     return replace(spec, realization_indices=tuple(indices))
 
@@ -652,20 +620,9 @@ def register_ensemble_path(inflow_type: str) -> None:
     """Register a staged ensemble directory with pywrdrb's path navigator.
 
     Adds ``flows/{inflow_type}`` to the pywrdrb shortcut namespace
-    (``pn.sc``) pointing at the staged-ensemble directory. After calling
-    this, ``pn.sc.get(f"flows/{inflow_type}")`` resolves correctly, which
-    is the lookup ``FlowEnsemble`` / ``PredictionEnsemble`` /
-    ``PredictedInflowEnsemblePreprocessor`` use.
-
-    NOTE: ``FloodNodeInflowEnsemblePreprocessor`` (added to pywrdrb in
-    commit 7d5e210 on the nyc_opt branch) uses a different API
-    (``pn.flows.get_str(inflow_type)``) which only works for inflow
-    types that physically live under pywrdrb's bundled ``flows/`` tree.
-    A fix-up patch on the pywrdrb side would switch the new preprocessor
-    to ``pn.sc.get`` for consistency with the other ensemble
-    preprocessors.
-
-    Idempotent. Safe to call multiple times.
+    (``pn.sc``) pointing at the staged-ensemble directory, which is the
+    lookup ``FlowEnsemble`` / ``PredictionEnsemble`` and the ensemble
+    preprocessors use. Idempotent.
     """
     import pywrdrb
     pn_config = pywrdrb.get_pn_config()

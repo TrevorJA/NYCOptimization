@@ -1,64 +1,33 @@
 """
-objectives.py - Objective function framework for NYC reservoir optimization.
+objectives.py - Whole-trace (§1) objective metric cores and registry.
 
-Single source of truth for every objective METRIC. Provides an `Objective`
-class, an `ObjectiveSet` container, a name-indexed `OBJECTIVES` registry of
-pre-built metric instances, and a `build_objective_set()` assembler. Runs
-select objectives by listing registry names (strings); swapping the objective
-set is therefore a config edit (`config.ACTIVE_OBJECTIVES` /
-`NYCOPT_OBJECTIVES`), never a code change.
+Provides the `Objective` class, the `ObjectiveSet` container, the name-indexed
+`OBJECTIVES` registry, and `build_objective_set()`. Runs select objectives by
+listing registry names (`config.ACTIVE_OBJECTIVES` / `NYCOPT_OBJECTIVES`).
 
-Naming convention
------------------
-Every registered name is `{location}_{quantity}_{statistic}[_{unit}]` so the
-name alone states *what is measured* and *how it is aggregated over time*:
+The ACTIVE search objectives are the annual-unit forms in
+`src.objectives_ensemble`, which reuse the windowed-series cores defined here;
+the whole-trace metrics in this module are single-trace diagnostics. Rationale
+for the metric choices lives in docs/notes/methods/objective_definitions.md.
+
+Naming convention: `{location}_{quantity}_{statistic}[_{unit}]`, e.g.
     nyc_delivery_reliability_weekly   -> NYC delivery, weekly reliability frequency
     nyc_delivery_deficit_cvar90_pct   -> NYC delivery, CVaR90 of weekly deficit, in %
-    montague_flow_deficit_max_pct     -> Montague flow, worst-week deficit, in %
-    downstream_flood_days_minor       -> tail-gauge flooding, days/yr >= NWS minor stage
-    nyc_storage_p5_pct                -> NYC storage, 5th-percentile, in % of capacity
+    downstream_flood_exceedance_minor -> tail-gauge ft-days/yr above NWS minor stage
+    nyc_storage_p5_pct                -> NYC storage, 5th percentile, in % of capacity
 
-Temporal-aggregation design
-----------------------------
-- **Reliability** (Hashimoto reliability): fraction of weeks a Decree threshold
-  is met. Stable, fast-converging satisficing frequency (Herman et al. 2015;
-  Bonham et al. 2024). Used for NYC/NJ delivery and Montague/Trenton flow.
-- **Deficit CVaR90** (recommended) vs **deficit max** (diagnostic): the worst-
-  week maximum is a high-variance, low-information signal (Quinn et al. 2017);
-  CVaR90 — the mean of the worst 10% of weekly deficits — keeps the tail-risk
-  focus but is far more reproducible across realizations (Rockafellar & Uryasev
-  2000; Fairbrother et al. 2022). The active set uses CVaR90; the max variants
-  remain registered as diagnostics.
-- **Flood days**: mean annual count (days/yr) of days any reservoir-tail gauge
-  is at/above a named NWS stage — the metric-window day count divided by the
-  window length in years, so values are comparable across windows of different
-  lengths. Count-over-threshold avoids the expectation-of-damage trap (Quinn et
-  al. 2017). Active objective uses the `minor` (NWS flood-onset) stage; `major`
-  and `action` variants are registered for swapping.
-- **Storage p5** (recommended) vs **storage min** (diagnostic): a low percentile
-  is a stable vulnerability proxy; the single-day minimum is dominated by one
-  drought event (Quinn et al. 2017).
-
-Decree goalposts are the *static* 1954-Decree quantities (NYC 800 MGD; Montague
-1131.05 MGD = 1750 cfs; Trenton 1938.95 MGD), never the time-varying live FFMP
-`mrf_target` — scoring against the live target would let a policy "succeed" by
-triggering drought step-downs that lower its own goalpost.
-
-NYC (and NJ) delivery is a running-*average* right, not a daily ceiling: pywr-drb's
-`FfmpNycRunningAvgParameter` / `FfmpNjRunningAvgParameter` let daily diversion
-exceed the flat baseline by drawing down banked allowance, so long as the running
-average stays within the right. The delivery metrics therefore do NOT clip daily
-demand; they score against the reconstructed running-average entitlement
-`min(demand, allowance)` (`_delivery_entitlement`), where the allowance bank is
-accrued at the *static* Decree baseline — never the policy's drought-scaled
-allowance — so demand spikes within the banked right are honored and a policy
-cannot lower its own goalpost via drought step-downs.
-
-Diagnostic-only metrics (registered, not in the default active set): the
-worst-case variants above, salt-front intrusion (the Trenton flow objective
-covers the same physics, and the LSTM is unreliable in extreme drought), and
-the deferred Lordville thermal metric. NJ delivery reliability is the active
-8th objective.
+Contracts:
+- Reliability = fraction of metric-window weeks a Decree threshold is met.
+- Deficit CVaR90 = mean of the worst 10% of weekly deficits (max variants are
+  diagnostics).
+- Active flood metric = magnitude-weighted downstream flood exceedance
+  (ft-days/yr at the worst tail gauge); day counts are diagnostics.
+- Decree goalposts are the static 1954 quantities (NYC 800 MGD; Montague
+  1131.05 MGD; Trenton 1938.95 MGD), never the live FFMP `mrf_target`.
+- NYC/NJ delivery is scored against the running-average entitlement
+  `min(demand, allowance)` (`_delivery_entitlement`), with the allowance bank
+  accrued at the static baseline cap (a policy cannot lower its own goalpost).
+- Salt-front and Lordville thermal metrics are diagnostic/deferred only.
 
 Usage:
     from src.objectives import build_objective_set
@@ -85,12 +54,11 @@ from config import (
 )
 
 
-# Reservoir-tail USGS gauges, used by the downstream flood metrics:
+# Reservoir-tail USGS gauges used by the downstream flood metrics (flooding
+# here is attributable to NYC release decisions):
 #   01426500 Hale Eddy   (below Cannonsville)
 #   01421000 Fishs Eddy  (below Pepacton)
 #   01436690 Bridgeville (below Neversink)
-# These respond to NYC release decisions, unlike Montague mainstem flow which is
-# dominated by exogenous storms — so flooding here is operations-attributable.
 _DOWNSTREAM_GAUGES = ["01426500", "01421000", "01436690"]
 
 # Tail fraction for the CVaR (Conditional Value-at-Risk) deficit metrics.
@@ -219,26 +187,19 @@ class ObjectiveSet:
 ###############################################################################
 # Shared temporal-aggregation helpers
 ###############################################################################
-# These factor the common reductions so the registered metric functions stay
-# one-liners and so the CVaR vs. max (and p5 vs. min) variants are guaranteed to
-# operate on identical underlying series.
-#
-# The `_weekly_*` / `_flood_over_*` / `_nyc_storage_pct_daily` cores operate on
-# ALREADY-WINDOWED daily series (no exclusion handling inside): the §1 metrics
-# below apply `_metric_window` before calling them, and the annual-unit ensemble
-# metrics in `src.objectives_ensemble` apply FFMP-year unit slicing instead —
-# guaranteeing the two paths share one weekly-accounting formula.
+# The `_weekly_*` / `_flood_*` / `_nyc_storage_pct_daily` cores operate on
+# ALREADY-WINDOWED daily series: the §1 metrics apply `_metric_window` first,
+# and the annual-unit metrics in `src.objectives_ensemble` apply FFMP-year unit
+# slicing instead, so both paths share one weekly-accounting formula.
 
 
 def _metric_window(obj):
     """Restrict a daily series to the metric window of its scenario.
 
-    The metric window starts ``METRIC_EXCLUSION_MONTHS`` (6) calendar months
-    after the first timestamp: the SSI-6 accumulation spin-up, which the
-    hazard-selection metrics also exclude. On the December-start windows the
-    cut lands exactly on June 1, the FFMP operating-year boundary. The cut is
-    BY DATE, so leap years need no special case (6 months from Dec 1 is 182
-    or 183 days).
+    The window starts ``METRIC_EXCLUSION_MONTHS`` (6) calendar months after
+    the first timestamp (the SSI-6 spin-up); on December-start traces the cut
+    lands on June 1, the FFMP operating-year boundary. The cut is by date, so
+    leap years need no special case.
 
     Args:
         obj: Daily-indexed pandas Series or DataFrame.
@@ -257,12 +218,9 @@ def _metric_window(obj):
 def _cvar_worst_mean(values, frac: float = _CVAR_TAIL_FRAC) -> float:
     """Mean of the worst (largest) ``frac`` fraction of finite values.
 
-    For a deficit/severity series where larger = worse this is the Conditional
-    Value-at-Risk at level ``(1 - frac)`` — the mean of the worst
-    ``ceil(frac * N)`` weekly values. Tail-averaging (rather than taking the
-    single maximum) gives a lower-variance, more reproducible signal across
-    realizations (Quinn et al. 2017; Rockafellar & Uryasev 2000). Non-finite
-    entries are dropped; an empty series returns 0.0.
+    For a series where larger = worse this is the CVaR at level ``(1 - frac)``,
+    the mean of the worst ``ceil(frac * N)`` values. Non-finite entries are
+    dropped; an empty series returns 0.0.
     """
     arr = np.asarray(values, dtype=float)
     arr = arr[np.isfinite(arr)]
@@ -277,37 +235,18 @@ def _running_avg_budget(delivery: pd.Series, cap: float,
                         reset: str = "annual") -> pd.Series:
     """Reconstruct the FFMP running-average delivery allowance (the daily bank).
 
-    Mirrors pywr-drb's running-average delivery parameters
-    (``FfmpNycRunningAvgParameter`` / ``FfmpNjRunningAvgParameter``): the
-    allowance starts at ``cap``, accrues ``cap - delivery`` each day, and resets
-    to ``cap`` at the start of each budget period. It is accrued at the *static*
-    Decree/baseline ``cap`` — never the model's drought-scaled allowance — so the
-    deficit goalpost cannot be lowered by a policy's own drought step-downs (the
-    same anti-gaming rule the flow-Decree goalposts use). The returned series is
-    the maximum diversion the running-average right permits on each day, so a
-    demand spike above the flat daily baseline is legitimate whenever prior
-    under-use has banked the allowance for it.
-
-    Implementation is the exact day-by-day recursion the model uses
-    (``budget[t] = max(0, budget[t-1] + cap - delivery[t-1])``, or ``cap`` on a
-    reset day). The zero-floor essentially never binds for valid NYC output —
-    the static-``cap`` accrual is never slower than the model's own
-    (drought-scaled) accrual from the shared May-31 reset, so delivery never
-    exceeds the reconstructed bank — but it is applied exactly rather than
-    assumed away (the NJ path does not mirror the model's drought-factor resets).
-    The per-day loop is negligible beside the Pywr-DRB simulation that produced
-    ``delivery``.
+    Mirrors pywr-drb's ``FfmpNycRunningAvgParameter`` / ``FfmpNjRunningAvgParameter``
+    recursion: ``budget[t] = max(0, budget[t-1] + cap - delivery[t-1])``, or
+    ``cap`` on a reset day. The bank accrues at the STATIC ``cap``, never the
+    model's drought-scaled allowance, so a policy cannot lower its own goalpost.
 
     Args:
         delivery: Daily delivery series (MGD) over the FULL realization window
-            (the bank is path-dependent, so it must be built before any metric-
-            window or water-year slicing).
+            (the bank is path-dependent, so build it before any windowing).
         cap: Static running-average allowance (MGD); the daily accrual rate.
-        reset: Budget-period reset — ``"annual"`` (NYC: the model resets on
-            May 31, so the allowance is ``cap`` again on Jun 1) or ``"monthly"``
-            (NJ: reset on the 1st of each month). The NJ drought-factor reset and
-            its separate daily cap are intentionally not modeled — this is the
-            static-right entitlement, and NJ is a diagnostic objective.
+        reset: ``"annual"`` (NYC: reset on Jun 1) or ``"monthly"`` (NJ: reset on
+            the 1st of each month). The NJ drought-factor reset and separate
+            daily cap are not modeled.
 
     Returns:
         Daily allowance series aligned to ``delivery.index``.
@@ -339,12 +278,10 @@ def _delivery_entitlement(demand: pd.Series, delivery: pd.Series, cap: float,
                           reset: str = "annual") -> pd.Series:
     """Daily realizable delivery entitlement = min(demand, running-avg allowance).
 
-    Demand is NOT clipped at a flat daily ``cap``: the Decree limits the running
-    *average* diversion, so a day's entitlement is the smaller of what was
-    demanded and the running-average allowance banked to that day
-    (:func:`_running_avg_budget`). Voluntary low-take days keep entitlement =
-    demand (no penalty); demand spikes are honored up to the banked allowance;
-    demand beyond the banked right is not counted as owed.
+    Demand is not clipped at a flat daily ``cap``: a day's entitlement is the
+    smaller of the demand and the allowance banked to that day
+    (:func:`_running_avg_budget`), so demand beyond the banked right is not
+    counted as owed.
 
     Args:
         demand: Daily demand series (MGD) over the full realization window.
@@ -365,11 +302,9 @@ def _weekly_delivery_deficit_pct(target: pd.Series, delivery: pd.Series,
                                  cap: float) -> pd.Series:
     """Weekly delivery deficit as % of a static Decree cap (windowed series).
 
-    ``target`` is the daily realizable entitlement (:func:`_delivery_entitlement`)
-    — min(demand, running-average allowance) — so only shortfalls below the
-    running-average Decree right count and demand spikes above the banked
-    allowance do not. Normalized to the *static* ``cap`` so a fixed shortfall
-    reads identically year-round.
+    ``target`` is the daily realizable entitlement (:func:`_delivery_entitlement`).
+    Normalized to the static ``cap`` so a fixed shortfall reads identically
+    year-round.
 
     Args:
         target: Already-windowed daily entitlement series (MGD).
@@ -405,14 +340,10 @@ def _weekly_flow_deficit_pct(flow: pd.Series, target: float) -> pd.Series:
     return 100.0 * deficit / target
 
 
-#: Numerical tolerance (MGD) on the weekly Decree-target comparison. Under
-#: perfect foresight the FFMP directed-release chain delivers the target
-#: EXACTLY, so summation rounding leaves weekly means ~1e-12 MGD below it;
-#: a strict >= then counts zero-deficit weeks as failures and the metric
-#: re-rolls with every ulp-level build change (measured 2026-08-03: the
-#: Pywr-DRB presim-consistency rebuild flipped 190 zero-deficit weeks and
-#: halved Montague reliability). Any value in 1e-9..1e-3 gives identical
-#: results; 1e-6 is far below the 0.01-MGD scale of real deficits.
+#: Numerical headroom (MGD) on the weekly Decree-target comparison so weeks
+#: meeting the target exactly count as successes (rounding leaves weekly means
+#: ~1e-12 MGD below target). 1e-6 is far below the 0.01-MGD scale of real
+#: deficits.
 _FLOW_TARGET_TOL_MGD = 1e-6
 
 
@@ -498,11 +429,9 @@ def _flood_exceedance_daily(stage: pd.DataFrame, level: str) -> pd.Series:
     """Daily max-across-gauges positive exceedance above the named stage (ft).
 
     Operates on an already-windowed daily stage DataFrame whose columns are
-    the ``_DOWNSTREAM_GAUGES`` ids. Each day contributes the LARGEST
-    exceedance above the named NWS stage across the three gauges — the
-    max-gauge basis avoids triple-counting a basin-wide event and is robust
-    to the model's inability to stage two gauges simultaneously
-    (flood_objective_diagnostics.md §0b).
+    the ``_DOWNSTREAM_GAUGES`` ids. Each day contributes the largest
+    exceedance across the three gauges (max-gauge basis avoids triple-counting
+    a basin-wide event; flood_objective_diagnostics.md §0b).
     """
     thresh = pd.Series(
         {g: flood_stage_thresholds[g][level] for g in _DOWNSTREAM_GAUGES}
@@ -540,18 +469,12 @@ def _nyc_combined_storage_pct(data: dict) -> pd.Series:
 ###############################################################################
 # Public aliases of the shared reductions
 ###############################################################################
-# The private cores above are the single source of truth for HOW an objective
-# scores a simulation. Post-processing that must AGREE with the objective
-# values it annotates — chiefly the historic-timeseries figure, which marks
-# Decree violations and shades the excluded spin-up — imports these names
-# instead of re-deriving the logic. Re-deriving it is how the two silently
-# disagree: the weekly comparison in `weekly_flow_ok` carries
-# `FLOW_TARGET_TOL_MGD` of headroom precisely because a strict `>=` once
-# flipped 190 exactly-on-target weeks into failures.
+# Post-processing that must agree with the objective values it annotates
+# (e.g. the historic-timeseries figure) imports these instead of re-deriving
+# the logic.
 
 metric_window = _metric_window
 weekly_flow_ok = _weekly_flow_ok
-weekly_delivery_ok = _weekly_delivery_ok
 delivery_entitlement = _delivery_entitlement
 nyc_storage_pct_daily = _nyc_storage_pct_daily
 FLOW_TARGET_TOL_MGD = _FLOW_TARGET_TOL_MGD
@@ -573,11 +496,7 @@ def _nyc_delivery_reliability_weekly(data: dict) -> float:
 
 
 def _nyc_delivery_deficit_cvar90_pct(data: dict) -> float:
-    """CVaR90 of weekly NYC delivery deficit, as % of the 800 MGD Decree cap. [0, 100].
-
-    Mean of the worst 10% of weekly deficits — the stable tail-risk replacement
-    for the single worst-week maximum.
-    """
+    """CVaR90 of weekly NYC delivery deficit, as % of the 800 MGD Decree cap. [0, 100]."""
     return _cvar_worst_mean(_nyc_weekly_delivery_deficit_pct(data).values)
 
 
@@ -593,12 +512,7 @@ def _nyc_delivery_deficit_max_pct(data: dict) -> float:
 
 
 def _nj_delivery_reliability_weekly(data: dict) -> float:
-    """Fraction of weeks NJ diversion meets >= 99% of its capped right. [0, 1].
-
-    Optional second NJ stakeholder axis (the explicit NJ-supply leg). Included
-    in the active set only if the redundancy screen shows it is not collinear
-    with the Trenton flow objective.
-    """
+    """Fraction of weeks NJ diversion meets >= 99% of its capped right. [0, 1]."""
     return _delivery_reliability_weekly(
         data["ibt_demands"]["demand_nj"],
         data["ibt_diversions"]["delivery_nj"],
@@ -620,11 +534,7 @@ def _montague_flow_reliability_weekly(data: dict) -> float:
 
 
 def _montague_flow_deficit_cvar90_pct(data: dict) -> float:
-    """CVaR90 of weekly Montague flow deficit, % of Decree target. [0, 100].
-
-    Montague flow is storm-dominated, so its single worst week is largely
-    exogenous noise — CVaR90 is especially preferable to the maximum here.
-    """
+    """CVaR90 of weekly Montague flow deficit, % of Decree target. [0, 100]."""
     return _cvar_worst_mean(
         _weekly_flow_deficit_pct(
             _metric_window(data["major_flow"]["delMontague"]),
@@ -644,10 +554,7 @@ def _montague_flow_deficit_max_pct(data: dict) -> float:
 ###############################################################################
 # Metric Functions — Trenton flow Decree (target = 1938.95 MGD)
 ###############################################################################
-# Lower-basin / NJ flow obligation. Replaces the salt-front objective: the
-# Trenton target exists largely to repel salt intrusion (so the two are
-# physically redundant), and Trenton flow is a clean hydrologic signal whereas
-# the salt-front LSTM is unreliable in extreme drought.
+# Lower-basin flow obligation; Trenton flow also proxies salt-front repulsion.
 
 
 def _trenton_flow_reliability_weekly(data: dict) -> float:
@@ -696,11 +603,7 @@ def _downstream_flood_days_action(data: dict) -> float:
 
 
 def _nyc_storage_p5_pct(data: dict) -> float:
-    """5th percentile of daily combined NYC storage, % of capacity. [0, 100].
-
-    Stable low-percentile vulnerability proxy: "how depleted does the system
-    routinely get", without the single-day minimum's dependence on one event.
-    """
+    """5th percentile of daily combined NYC storage, % of capacity. [0, 100]."""
     s = _nyc_combined_storage_pct(data)
     if len(s) == 0:
         return 0.0
@@ -716,9 +619,7 @@ def _nyc_storage_min_pct(data: dict) -> float:
 ###############################################################################
 # Metric Functions — Salt-front intrusion (LSTM) — DIAGNOSTIC ONLY
 ###############################################################################
-# Retained for re-evaluation diagnostics only; the Trenton flow Decree metric
-# covers the same physics in the active set (LSTM unreliable in extreme
-# drought). Active only when INCLUDE_SALINITY_MODEL=True.
+# Diagnostic only; computed only when INCLUDE_SALINITY_MODEL=True.
 
 
 def _salt_front_intrusion_max_rm(data: dict) -> float:
@@ -743,8 +644,8 @@ def _salt_front_intrusion_max_rm(data: dict) -> float:
 ###############################################################################
 # Metric Functions — Lordville thermal (LSTM) — DEFERRED
 ###############################################################################
-# Inputs require multivariate meteorology not available for stochastic re-eval
-# scenarios. Kept registered so the metric is one config flag from re-enable.
+# DEFERRED: inputs (multivariate meteorology) are unavailable for synthetic
+# scenarios. Registered so the metric is one config flag from re-enable.
 
 
 def _lordville_temp_exceedance_days(data: dict) -> float:
@@ -765,17 +666,14 @@ def _lordville_temp_exceedance_days(data: dict) -> float:
 ###############################################################################
 # Objective Registry
 ###############################################################################
-# Single source of truth for all available objective metrics. The default
-# active subset is config.ACTIVE_OBJECTIVES; everything else is a registered
-# diagnostic available for swapping by name (no code change required).
+# The active subset is config.ACTIVE_OBJECTIVES; everything else is a
+# registered diagnostic selectable by name.
 
 OBJECTIVES: dict[str, Objective] = {}
 
 
-# These §1 epsilons are signal-scale values (Reed et al. 2013: epsilon ~
-# IQR/10 across random DV policies on the historic reference trace, rounded to
-# clean steps) and apply to single-trace diagnostics only. The CAMPAIGN
-# epsilons live on the annual-unit registry in src/objectives_ensemble.py.
+# §1 epsilons apply to single-trace diagnostics only; the CAMPAIGN epsilons
+# live on the annual-unit registry in src/objectives_ensemble.py.
 def _register(name, direction, epsilon, description, func):
     OBJECTIVES[name] = Objective(
         name=name, direction=direction, epsilon=epsilon,
@@ -825,10 +723,8 @@ _register("trenton_flow_deficit_cvar90_pct", "minimize", 0.03,
           _trenton_flow_deficit_cvar90_pct)
 
 # --- Downstream flood exposure (any of Hale Eddy / Fishs Eddy / Bridgeville) ---
-# ACTIVE metric = magnitude-weighted exceedance (flood_objective_diagnostics.md):
-# the day count is degenerate across policies while the exceedance integral
-# resolves fully and responds strictly monotonically to the flood-release DVs.
-# The day counts stay registered as diagnostics.
+# ACTIVE metric = magnitude-weighted exceedance (flood_objective_diagnostics.md);
+# the day counts stay registered as diagnostics.
 _register("downstream_flood_exceedance_minor", "minimize", 0.01,
           "Mean annual ft-days above NWS minor flood stage at the "
           "worst-affected tail gauge (flood exceedance) [ft-days/yr]",
@@ -860,7 +756,7 @@ _register("salt_front_intrusion_max_rm", "minimize", 0.5,
           f"(DRBC reference RM {SALT_FRONT_REFERENCE_RM})",
           _salt_front_intrusion_max_rm)
 
-# --- Lordville thermal (LSTM) — DEFERRED; see decision doc ---
+# --- Lordville thermal (LSTM) — DEFERRED (inputs unavailable for synthetic scenarios) ---
 _register("lordville_temp_exceedance_days", "minimize", 2.0,
           f"DEFERRED: days max water temp at Lordville > "
           f"{LORDVILLE_THERMAL_THRESHOLD_C} °C",

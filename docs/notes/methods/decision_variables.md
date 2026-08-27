@@ -3,7 +3,8 @@
 The decision vector parameterizes the 2017 FFMP rule structure with **36
 variables** (`src/formulations/ffmp.py`; applied to the model in
 `src/simulation.py`). Variable-resolution variants `ffmp_N` share the same
-group structure with zone-indexed names.
+group structure with zone-indexed names. The FFMP source for every table
+and section cited below is `docs/Appendix_A_FFMP-20180716-Final.pdf`.
 
 | Group | DVs | Names | Baseline | Bounds | Units |
 |---|---|---|---|---|---|
@@ -61,8 +62,7 @@ and spillway.
   steps so the summed uppers equal the audited worst-case cumulative
   curtailment (`NYC_MAX_TOTAL_REDUCTION` = 0.50, `NJ_MAX_TOTAL_REDUCTION`
   = 0.35 in `src/formulations/ffmp.py` — i.e. delivery factors bottom out
-  at 0.50 for NYC and 0.65 for NJ, exactly the depth the prior
-  factor-space envelope allowed). Both Decree parties may be curtailed to
+  at 0.50 for NYC and 0.65 for NJ). Both Decree parties may be curtailed to
   renegotiation-scale depth, each guarded by its own reliability
   objective, and no searched policy approaches near-total curtailment of
   either party. Zero reductions (full delivery at every stage) are
@@ -157,9 +157,7 @@ by name, `nyc_delivery_reliability_weekly`) back to the natural 0–1 scale:
    `config.NYC_RELIABILITY_FLOOR` (env `NYCOPT_NYC_RELIABILITY_FLOOR`,
    default 0.5). A policy delivering below-floor weekly reliability is
    unacceptable to stakeholders regardless of the rest of the trade-off.
-   Constraint-dominance excludes such policies from search and archive;
-   `src/pareto_filter.py` applies the same floor as a post-hoc screen for
-   archives that predate the formal constraint.
+   Constraint-dominance excludes such policies from search and archive.
 
 Borg applies constraint-dominance ahead of Pareto/epsilon dominance: any
 feasible solution dominates every infeasible one, and infeasible solutions
@@ -179,8 +177,7 @@ per island) but essentially zero compute and zero simulated scenario-years;
 the budget→NFE derivation must account for the feasible fraction of
 evaluations. With delivery monotonicity structural, only flood-zone
 ordering can reject a vector pre-simulation, so the DV-infeasible fraction
-under random sampling is far smaller than under the retired factor-space
-parameterization.
+under random sampling is small.
 
 The MOEAFramework problem JARs (workflow step 00) deliberately declare
 **zero** constraints: every file they parse (solveMPI runtime snapshots,

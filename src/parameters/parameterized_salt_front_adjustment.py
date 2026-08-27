@@ -3,9 +3,9 @@ parameterized_salt_front_adjustment.py — DV-controllable salt-front
 adjustment parameter.
 
 Subclasses upstream `pywrdrb.parameters.salt_front_location.FlowTargetSaltFrontAdjustmentRatio`
-and replaces the hardcoded multiplier dicts (lines 412-422 in upstream) with
-attributes loaded from the Pywr model JSON. This lets the FFMP-family DV
-registry expose the operational table to the optimizer.
+and replaces its hardcoded multiplier dicts with attributes loaded from the
+Pywr model JSON, so the FFMP-family DV registry can expose the operational
+table to the optimizer (dormant; see `src/formulations/salt_front_dvs.py`).
 
 Registered with Pywr under `type="NYCOptParameterizedSaltFrontAdjustmentRatio"`.
 

@@ -115,7 +115,7 @@ def _panel_flow(ax, results: dict, colors: dict, column: str, name: str,
     The number in the legend is the WHOLE-TRACE weekly reliability (§1): the
     fraction of metric-window weeks that meet the target. When a scenario
     design is wired the SEARCHED objective is the annual-unit (§2) reduction of
-    these same indicators — the fraction of water years with fewer than k
+    these same indicators — the fraction of FFMP years with fewer than k
     failing weeks — so the legend value is a different statistic from the
     ``*_reliability_annual`` column in the selection CSV and is labelled as
     such rather than presented as the objective value.

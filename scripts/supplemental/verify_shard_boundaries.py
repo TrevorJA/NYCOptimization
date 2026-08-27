@@ -14,14 +14,10 @@ All configuration is via environment variables (no CLI value flags):
     NYCOPT_ENSEMBLE_SHARD_COUNT   shard count used at generation (default 50)
 
 Rows are compared with a per-axis tolerance of 1% of the image's robust
-(p1-p99) axis range rather than bit equality. Bit identity holds only within a
-generation era: a 2026-07-29 Anvil system update changed post-update
-regeneration deterministically by up to ~0.5% of the drought-magnitude robust
-range (dry axes only; flood axes bit-identical) relative to pools generated
-before it, on every node and BLAS thread count tested. Genuine partition bugs
-(row misalignment, duplication, wrong-realization content) produce multi-axis
-errors of order the full axis range and blow through the tolerance; era-level
-library drift does not. Exact matches are still reported when they occur.
+(p1-p99) axis range rather than bit equality: cross-era system-library drift
+moves the dry axes by ~0.5% of range, while genuine partition bugs (row
+misalignment, duplication, wrong-realization content) produce multi-axis
+errors of order the full axis range. Exact matches are still reported.
 
 Exits nonzero on any beyond-tolerance mismatch — the ladder must not run on a
 broken image.

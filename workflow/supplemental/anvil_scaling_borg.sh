@@ -1,29 +1,15 @@
 #!/bin/bash
-# anvil_scaling_borg.sh — Stage B of the Anvil scaling experiment: MM Borg
-# strong scaling (manuscript supplement).
+# anvil_scaling_borg.sh — Stage B of the Anvil scaling experiment: one
+# (scale_* geometry, seed) MM Borg run at fixed total NFE (src/moea_config.py
+# scale_* entries) on the historic design with DEBUG_SIM's short window. Wall
+# time to the fixed NFE is the strong-scaling measurement; a one-row timing CSV
+# lands under outputs/supplemental/anvil_scaling_experiment/borg/ and Borg's
+# .runtime files under outputs/historic/{slug}_scale_*/runtime/.
 #
-# One job = one (scale_* geometry, seed) MM Borg run at fixed TOTAL NFE
-# (1,280 across all geometries; see the scale_* entries in
-# src/moea_config.py), historic single-trace design, DEBUG_SIM short window
-# (~13 s/eval). Wall time to complete the fixed NFE is the strong-scaling
-# measurement; a one-row timing CSV lands under
-# outputs/supplemental/anvil_scaling_experiment/borg/. Borg's own .runtime
-# files (NFE + elapsed seconds per snapshot) land in the standard
-# outputs/historic/{slug}_scale_*/runtime/ tree and give the NFE-vs-time
-# trajectories.
-#
-# Submit via workflow/supplemental/anvil_scaling_borg_submit.sh, which
+# Submitted by workflow/supplemental/anvil_scaling_borg_submit.sh, which
 # exports NYCOPT_MOEA_CONFIG=scale_* and sizes --ntasks/--time per geometry
-# (the env file deliberately omits NYCOPT_MOEA_CONFIG so the submit-time
-# export survives `set -a` sourcing). --array index = Borg seed.
-#
-# This is a separate script from workflow/06_run_mmborg.sh because 06's
-# #SBATCH header pins --exclusive + wholenode, which cannot be unset at
-# submit time; every scale_* geometry fits one node (<=69 ranks), so the
-# shared partition's per-core SU charging is the right container. The shared
-# node is NOT exclusive — other users' jobs may share it, so absolute wall
-# times carry that (small, seed-band-visible) noise; the packing sweep
-# (Stage A) is the controlled-contention measurement.
+# (the env file omits NYCOPT_MOEA_CONFIG on purpose); --array index = Borg
+# seed. Runs on the shared partition (06's header pins --exclusive + wholenode).
 #
 #SBATCH --job-name=anvscale_borg
 #SBATCH --account=ees260021

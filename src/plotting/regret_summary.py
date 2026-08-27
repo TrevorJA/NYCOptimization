@@ -1,34 +1,16 @@
 """regret_summary.py - Figures for incumbent-relative regret (RQ1 + the hypothesis).
 
-Three figures, each answering a question the satisficing figures cannot.
+Three figures over the cross-design robustness scorecards:
 
-  **The plane** (:func:`plot_regret_robustness_plane`) -- every re-evaluated policy
-    plotted as (satisficing robustness, no-harm frequency), with each design's
-    non-dominated frontier drawn through it. This is the figure the working
-    hypothesis lives or dies on: hazard filling is supposed to sit UP (more robust)
-    without sitting LEFT (more regret against current operations). Bartholomew &
-    Kwakkel (2020) report both halves of the expectation -- robustness bought in
-    the search phase does survive re-evaluation, and it is normally paid for
-    elsewhere, the "price of robustness" (Bertsimas & Sim 2004). A frontier that
-    moves up and stays right is the result; one that moves up and shifts left is
-    the price being paid, which is equally reportable.
-
-    Both axes are unit-free by construction, which is exactly why the regret
-    magnitudes are NOT on this plot: they are in each objective's own natural
-    units and are never combined (see :func:`plot_regret_decomposition`).
-
-  **The tolerance sweep** (:func:`plot_regret_tolerance_sweep`) -- the no-harm
-    frequency against the tolerance ladder ``tau_i = k * eps_i``. A single
-    tolerance could manufacture or hide the whole RQ1 answer, so the claim is
-    reported as the tolerance at which it holds, mirroring the discipline applied
-    to the satisficing criteria (Quinn et al. 2020).
-
-  **The decomposition** (:func:`plot_regret_decomposition`) -- per objective, in
-    NATURAL units, the tail regret and the mean gain against the status quo. This
-    is where a reader learns WHICH party pays and HOW MUCH, which the frequency
-    axes deliberately do not say. Gain is drawn alongside regret because a policy
-    scores zero regret by BEING the incumbent: regret is never shown alone
-    (Huang et al. 2025's degeneracy warning, already adopted repo-wide).
+  * :func:`plot_regret_robustness_plane`: every re-evaluated policy as
+    (satisficing robustness, no-harm frequency vs the incumbent), with each
+    design's non-dominated frontier. Regret magnitudes are not on this plot
+    (they are in natural units and never combined).
+  * :func:`plot_regret_tolerance_sweep`: no-harm frequency against the tolerance
+    ladder ``tau_i = k * eps_i``.
+  * :func:`plot_regret_decomposition`: per objective, in natural units, the tail
+    regret and the mean gain against the incumbent (gain is always drawn beside
+    regret because the incumbent itself scores zero regret).
 """
 from __future__ import annotations
 

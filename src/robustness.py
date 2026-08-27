@@ -3,82 +3,27 @@ robustness.py - Offline robustness scoring from the persisted per-SOW matrix.
 
 The re-eval drivers (``src.reevaluate`` / ``src.reevaluate_mpi`` /
 ``src.chunk_reeval``) persist the per-SOW annual-unit objective matrix
-(``reeval_raw.parquet`` + a self-describing ``reeval_raw_meta.json``): each
-E_test state of the world's R realizations pooled through the §2 unit
-operators, giving the SEARCH OBJECTIVES recomputed per deeply-uncertain state.
-This module scores robustness metrics from that matrix *offline*, so different
-metrics — which rank solutions differently (McPhail et al. 2018; Giuliani &
-Castelletti 2016; Herman et al. 2015; Bonham et al. 2024) — are computed
-without re-simulating.
+(``reeval_raw.parquet`` + ``reeval_raw_meta.json``): each E_test SOW's R
+realizations pooled through the §2 unit operators, i.e. the search objectives
+recomputed per state of the world. This module scores robustness from that
+matrix offline, without re-simulating. Rationale for the metric set lives in
+docs/notes/methods/objective_definitions.md and experimental_design.md.
 
-One metric currency
--------------------
-Every quantity here is a transformation of the per-SOW values of the SAME
-annual-unit objectives the MOEA optimized — the standard construction of the
-robustness literature, where the performance measure inside the robustness
-calculation IS the optimization objective re-evaluated per state of the world
-(Herman et al. 2014, 2015 Eq. 1-7; Trindade et al. 2017 "as calculated with
-Eqs. (16)-(20)"; Quinn et al. 2018; Gold et al. 2023; McPhail et al. 2018,
-whose f(x, S) is titled "objectives and performance metrics"). What differs
-between search and re-evaluation is the ENSEMBLE (search ensemble vs held-out
-E_test) and the OUTER aggregation across SOWs (satisficing / maximin / regret)
-— never the definition of the statistic.
+The SOW is the only scoring unit. Metrics:
 
-The SOW is the only scoring unit: pooling each state's R realizations' unit
-years through the unit operator IS the within-state collapse, so there is no
-separate within-SOW risk-attitude knob and no realization-unit metric family.
-E_test carries no probability measure over the forcing space (Lamontagne et
-al. 2018), so counting SOWs keeps designed LHS coverage separate from fitted
-stochastic variability.
+  - multivariate Starr satisficing (``sat_multivariate_sow``) [PRIMARY]: the
+    fraction of SOWs whose objective vector meets all thresholds jointly;
+  - univariate satisficing (``sat_uni_sow__``): its per-objective decomposition;
+  - Laplace mean and maximin over SOWs, in natural units;
+  - incumbent-relative regret: one-sided adverse deviation from the status-quo
+    FFMP policy on the same SOWs, in natural units, plus unit-free harm
+    frequencies;
+  - threshold spectrum, attainability screen, and ranking stability
+    (Kendall tau_b across metrics).
 
-The metric set. **No perfect-foresight optimization appears anywhere.**
-
-  - **Multivariate (Starr 1962) domain criterion [PRIMARY]**
-    (``sat_multivariate_sow``) — the fraction of SOWs whose objective vector
-    meets *all* thresholds jointly. The standard measure of the Herman
-    (2014/2015) / Trindade (2017, 2019) / Gold (2023) lineage. Ranking
-    converges at 50-300 *distinct* scenarios (Bonham 2024).
-  - **Univariate satisficing** (``sat_uni_sow__``) — its per-objective
-    decomposition.
-  - **Laplace / mean** (McPhail T3 = mean) — the risk-neutral anchor.
-  - **Maximin** (McPhail T3 = worst-case) — the risk-averse anchor. Both are
-    free, and their absence would be asked about: metric choice changes
-    rankings (Herman 2015; McPhail 2018), so one robustness family is never
-    sufficient.
-  - **Incumbent-relative regret** — the one-sided (adverse) deviation from the
-    status-quo FFMP policy on the *same* SOWs, in NATURAL UNITS, plus the
-    unit-free harm frequencies. A FIXED external reference (it does not move
-    when designs are added or dropped), costing one policy simulation that
-    workflow step 05 already performs. It answers "what would the Decree
-    parties give up by adopting?", and it discriminates exactly where the
-    domain criterion saturates.
-  - **Threshold spectrum** — satisficing vs the magnitude threshold. Robustness
-    is threshold-dependent (Hadjimichael et al. 2020), and rank agreement
-    ACROSS scenario designs degrades as the criterion tightens (Quinn et al.
-    2020), so a single threshold could manufacture or hide the entire design
-    effect.
-  - **Attainability screen** — which SOWs no policy can win, separating a bad
-    design from an impossible state (Shavazipour et al. 2021).
-  - **Ranking-stability** — Kendall τ_b across metrics (McPhail 2020; Bonham
-    2024).
-
-Deliberately absent: **regret-from-best** (set-relative and design-coupled, so
-dropping one design changes every other design's score; needs 400+ scenarios
-and never converges on a tail objective — Bonham 2024); the **search-vs-test
-overfitting gap** (undefined in Brodeur 2020, and structurally invalid under a
-measure change); and any **|baseline|-normalized deviation** (the denominator
-is zero exactly in the benign SOWs — flood exceedance and the deficit tails —
-so the dropped cells bias the estimator, and Herman et al. 2015 show the
-normalized form selects poor-baseline solutions as a "mathematical artifact").
-The retired ``improvement_vs_baseline`` was that normalized form; its signed
-information survives as ``gain_mean__`` / ``regret_mean__``, the two one-sided
-halves of the same incumbent advantage on the same unit.
-
-Self-describing: thresholds/kinds/directions and the objective column order
-are read from ``reeval_raw_meta.json`` (snapshotted at simulation time), so
-scoring never depends on the live objective registry or a changed
-``NYCOPT_SAT_THRESHOLDS`` (the moving-measuring-stick guard, McPhail et al.
-2020).
+Thresholds, kinds, directions, and the objective column order are read from
+``reeval_raw_meta.json`` (snapshotted at simulation time), so scoring never
+depends on the live registry or a changed ``NYCOPT_SAT_THRESHOLDS``.
 """
 from __future__ import annotations
 
@@ -271,16 +216,11 @@ def _satisfy(cube: np.ndarray, obj_names: list, thresholds: dict,
 
 def satisficing_multivariate_sow(raw: RawCube, thresholds: dict = None,
                                  kinds: dict = None) -> pd.Series:
-    """Starr (1962) domain criterion [THE ADOPTED PRIMARY].
+    """Starr (1962) domain criterion [PRIMARY].
 
-    The fraction of deeply-uncertain states of the world in which the per-SOW
-    annual-unit objective vector meets ALL thresholds jointly — the Herman et
-    al. (2014) / Trindade et al. (2017) / Gold et al. (2023) construction,
-    computed on the search's own objective statistics recomputed per SOW.
-
-    **Precision is governed by N_theta, not by N_test.** Adding realizations
-    per SOW sharpens each SOW's pooled estimate but adds no new states of the
-    world; only more thetas do.
+    The fraction of SOWs in which the per-SOW annual-unit objective vector
+    meets ALL thresholds jointly. Precision is governed by the SOW count, not
+    by the realizations per SOW.
     """
     sat = _satisfaction_cube(raw, thresholds, kinds)
     joint = sat.all(axis=2).mean(axis=1)  # (S,)
@@ -307,25 +247,19 @@ def satisficing_univariate_sow(raw: RawCube, thresholds: dict = None,
 
 
 ###############################################################################
-# Risk-attitude anchors (McPhail et al. 2018, T3)
+# Risk-attitude references (Laplace mean, maximin)
 ###############################################################################
 
 def _reduce_over_sows(values: np.ndarray, agg: Callable) -> np.ndarray:
-    """Reduce an ``(S, G)`` slice over SOWs (axis 1), NaN-safe.
-
-    The composability seam: ``agg=np.nanmean`` is Laplace, ``agg=np.nanmin``
-    on an oriented slab is maximin, and a percentile or Hurwicz blend is a
-    thin wrapper over the same matrix.
-    """
+    """Reduce an ``(S, G)`` slice over SOWs (axis 1), NaN-safe."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         return agg(values, axis=1)
 
 
 def laplace_mean(raw: RawCube) -> pd.DataFrame:
-    """Mean per-SOW performance, per objective (McPhail T3 = mean).
+    """Mean per-SOW performance, per objective (risk-neutral reference).
 
-    The risk-neutral anchor (Laplace's principle of insufficient reason).
     Reported in the objective's NATURAL orientation, so "higher is better"
     follows the objective's own direction.
     """
@@ -340,11 +274,10 @@ def laplace_mean(raw: RawCube) -> pd.DataFrame:
 
 
 def maximin(raw: RawCube) -> pd.DataFrame:
-    """Worst-SOW performance, per objective (McPhail T3 = worst).
+    """Worst-SOW performance, per objective (risk-averse reference).
 
-    The risk-averse anchor (Wald). Computed on the direction-oriented slab and
-    returned in natural units, so it is the worst SOW's value: the minimum for
-    a maximize objective, the maximum for a minimize objective.
+    Computed on the direction-oriented slab and returned in natural units:
+    the minimum for a maximize objective, the maximum for a minimize one.
     """
     signs = raw.direction_signs()
     S, G, M = raw.cube.shape
@@ -361,65 +294,16 @@ def maximin(raw: RawCube) -> pd.DataFrame:
 ###############################################################################
 # Incumbent-relative regret
 ###############################################################################
-# WHAT THIS IS, in the McPhail et al. (2018) T1/T2/T3 scheme:
-#
-#   T1 = regret from a fixed BASELINE DECISION ALTERNATIVE, evaluated per
-#        SOW. McPhail license this reference explicitly -- "Alternative
-#        metrics that are based on the relative performance of decision
-#        alternatives use some type of baseline performance for a given
-#        scenario instead of the performance of the best decision alternative"
-#        -- but never name, tabulate, or test it. Making it explicit is the
-#        contribution; it is not a new metric family.
-#   T2 = the ADVERSE SUBSET (the SOWs in which the policy is worse than the
-#        incumbent). This is not ad-hoc clipping: it is exactly the subset
-#        selection of McPhail's "undesirable deviations" metric (Kwakkel et
-#        al. 2016b: T1 = regret from median, T2 = worst-half, T3 = sum), with
-#        the reference changed from the policy's own median to the incumbent.
-#   T3 = mean / 90th percentile over SOWs. The 90th percentile follows Herman
-#        et al. (2015) R1/R2, "intended to reflect the tail end of poor
-#        performance while reducing susceptibility to outliers".
-#
-# WHY IT IS NOT REDUNDANT WITH SATISFICING. The satisficing criteria are fixed
-# scalars; the regret reference is the incumbent's performance in THAT SOW, a
-# bar that moves with the forcing. Where the fixed criterion drives the domain
-# criterion to 0 for every policy, satisficing ties everything -- Bonham et
-# al. (2024)'s saturation failure mode -- and regret still separates policies.
-#
-# WHY NATURAL UNITS, AND NO CROSS-OBJECTIVE SCALAR. Dividing by the baseline's
-# own per-SOW value is degenerate for this objective set: flood exceedance is
-# EXACTLY 0 in a large share of SOWs and both deficit tails are 0 in wet ones,
-# so the cell would be dropped -- and the dropped cells are precisely the
-# benign ones, biasing the estimator toward the flood-active subset. Working
-# in natural units dissolves that rather than patching it: no denominator, no
-# dropped cell, every SOW contributes. Herman et al. (2015) hit the same wall
-# ("normalized by the objective value itself rather than the best value
-# because the latter often approaches zero"), and show the normalized form
-# rewards poor baseline performance outright; Eker & Kwakkel (2018) add +1 to
-# both terms for the same reason. The two published scales are both unusable
-# here -- Cohen et al. (2021) normalize on the per-scenario span to a
-# PERFECT-FORESIGHT optimum (one MOEA run per scenario, out of budget), and
-# Sunkara et al. (2023) rescale over the ALTERNATIVE SET, which is
-# design-coupled and so carries the exact defect that disqualifies best-in-set
-# regret. The cost of natural units is that there is no cross-objective regret
-# scalar; the unit-free harm FREQUENCIES below carry that role instead.
-#
-# NO MAX REGRET. Bonham et al. (2024): regret families need 400+ scenarios and
-# never converge on extreme-of-extremes operators. McPhail et al. document the
-# tie-degeneracy directly ("many of the decision alternatives have a
-# reliability of 0% in the worst-case scenario ... the maximin metric ...
-# ranks many of the decision alternatives as equal").
+# Regret = the one-sided adverse deviation D_i from the incumbent (status-quo
+# FFMP policy) per SOW, in natural units, never summed across objectives; the
+# unit-free harm frequencies carry the cross-objective role. There is no
+# max-regret and no baseline-normalized form (justification in
+# docs/notes/methods/objective_definitions.md §4).
 
-#: Decree-party grouping of the annual objectives, for the party-level harm
-#: frequencies. The DRB renegotiation is unanimity-bound, so one party's loss
-#: is NOT compensable by another's gain -- which is why the party summary is a
-#: FREQUENCY over a disjunction and never a summed or averaged party score.
-#: Sunkara et al. (2023) document what the compensating form costs: their
-#: all-actor metric looks stable only because "the water supply sector may
-#: fail in certain scenarios, but those failures are in aggregate countered by
-#: increasing levels of success for the ecology-MEF sector".
-#: Judgment call recorded: NYC aggregate storage sits under `nyc` because the
-#: objective is NYC's own supply security, though the same storage also
-#: underwrites downstream release capability.
+#: Decree-party grouping of the annual objectives for the party-level harm
+#: frequencies. Party harm is a frequency over a disjunction (the
+#: renegotiation is unanimity-bound), never a summed score. NYC storage sits
+#: under `nyc`.
 DECREE_PARTY_OBJECTIVES: dict[str, tuple[str, ...]] = {
     "nyc": (
         "nyc_delivery_reliability_annual",
@@ -441,10 +325,9 @@ DECREE_PARTY_OBJECTIVES: dict[str, tuple[str, ...]] = {
     ),
 }
 
-#: Multiplier ``k`` on the per-objective just-noticeable difference that defines
-#: the no-harm tolerance ``tau_i = k * eps_i``. MUST be declared before results are
-#: inspected (the manuscript pre-specifies its other endpoints); override with
-#: ``NYCOPT_REGRET_TAU_K``. k = 0 is the strict weak-Pareto-improvement form.
+#: Multiplier ``k`` on the per-objective tolerance unit, ``tau_i = k * u_i``.
+#: Fixed before results are inspected; override with ``NYCOPT_REGRET_TAU_K``.
+#: k = 0 is the strict weak-Pareto-improvement form.
 REGRET_TAU_K: float = float(os.environ.get("NYCOPT_REGRET_TAU_K", "1"))
 
 
@@ -507,10 +390,7 @@ def incumbent_advantage(raw: RawCube, baseline: RawCube) -> np.ndarray:
 def regret_magnitudes(raw: RawCube, baseline: RawCube) -> pd.DataFrame:
     """Per-objective regret and gain magnitudes, in each objective's OWN units.
 
-    Reads directly: "the worst 1% of unit-years' minimum storage is 3.2
-    percentage points lower than under current operations". These columns are
-    never summed, averaged, or compared ACROSS objectives -- see the section
-    header for why there is no scalar.
+    These columns are never summed, averaged, or compared ACROSS objectives.
 
     Columns, per objective:
       - ``regret_mean__``  mean over SOWs of ``max(0, -D)``  (risk-neutral)
@@ -548,35 +428,16 @@ def regret_magnitudes(raw: RawCube, baseline: RawCube) -> pd.DataFrame:
 def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
     """Per-objective no-harm tolerance in natural units: ``tau_i = k * u_i``.
 
-    The tolerance UNIT ``u_i`` is:
+    ``u_i = max(eps_i, floor_i)``, where ``eps_i`` is the objective's
+    annual-unit epsilon (``src.objectives_ensemble.ENSEMBLE_OBJECTIVES``) and
+    ``floor_i`` the measured noise floor of its per-SOW estimator
+    (``scripts/supplemental/regret_tolerance_diagnostics.py`` pass A), or 0
+    when ``floors`` is not supplied. Rationale in
+    docs/notes/methods/regret_tolerance_diagnostics.md.
 
-    - the objective's ANNUAL-UNIT epsilon from
-      ``src.objectives_ensemble.ENSEMBLE_OBJECTIVES`` -- the campaign's own
-      calibrated just-noticeable difference (epsilon-calibration experiment:
-      clean-ceil of max(signal IQR/10, bootstrap noise floor, frequency
-      granularity)), measured in exactly the annual-unit metric space the
-      per-SOW cube lives in. The regret tolerance and the search resolution
-      are on ONE calibration, so the ladder reads "no objective degraded by
-      more than k search-resolution steps";
-    - ``max(eps_i, floor_i)`` when ``floors`` is supplied, where ``floor_i`` is
-      the measured noise floor of that objective's per-SOW estimator.
-
-    **Why floors exist.** An epsilon BELOW its objective's noise floor makes
-    every rung meaningless on that axis -- the criterion fires on Monte Carlo
-    noise rather than on harm -- and because one ``k`` is shared across
-    objectives, a single such axis silently sets what every rung means. Taking
-    the max keeps epsilon where resolution binds and the floor where noise
-    binds, so ``k`` means the same thing on every axis. Floors are measured by
-    ``scripts/supplemental/regret_tolerance_diagnostics.py`` (pass A) and are
-    a property of the incumbent alone, so using them is not circular.
-
-    Env override ``NYCOPT_REGRET_TAU`` (JSON ``{obj_name: tau}``) replaces the
-    WHOLE vector, for the case where an adopted vector is recorded rather than
-    derived. It must cover every objective: a partial override would leave the
-    rest on a different tolerance basis without saying so. The override states
-    the tolerance at the ADOPTED rung ``NYCOPT_REGRET_TAU_K``, so it is scaled
-    by ``k / REGRET_TAU_K`` -- at the adopted rung that is the identity, and a
-    k-sweep still sweeps.
+    ``NYCOPT_REGRET_TAU`` (JSON ``{obj_name: tau}``) replaces the WHOLE vector
+    with the tolerance at rung ``REGRET_TAU_K`` and is rescaled by
+    ``k / REGRET_TAU_K``, so a k-sweep still sweeps.
 
     Args:
         obj_names: Annual objective names, in cube column order.
@@ -589,9 +450,8 @@ def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
 
     Raises:
         KeyError: If an objective name has neither a registered epsilon nor an
-            override -- a silent 0 would turn a tolerance into a strict
-            criterion without saying so -- or if the env override is partial
-            or names a stranger.
+            override, or if the env override is partial or names an unknown
+            objective.
     """
     from src.objectives_ensemble import ENSEMBLE_OBJECTIVES
 
@@ -610,22 +470,13 @@ def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
                 f"partial vector would leave those objectives on a different "
                 f"tolerance basis than the rest."
             )
-        # The override is the tolerance AT THE ADOPTED RUNG, so it supplies the
-        # ladder's UNIT, not a constant. Returning it unscaled made every rung
-        # of a k-sweep identical, which silently turned the tolerance profile
-        # (and the figure drawn from it) into a flat line whose shape was an
-        # artifact of the override rather than a property of the metric.
+        # The override is the tolerance at rung REGRET_TAU_K and scales with k.
         scale = REGRET_TAU_K if k is None else float(k)
         unit = 1.0 if REGRET_TAU_K == 0 else scale / REGRET_TAU_K
         return {n: float(override[n]) * unit for n in obj_names}
 
     if not floors:
-        # No adopted vector AND no measured floors: this is the eps-only
-        # ladder, which is NOT the adopted basis (six of eight adopted taus
-        # are floor-bound, not epsilon-bound). Legitimate for the pass-B
-        # k-sweep, which unsets the override on purpose -- but silent drift
-        # onto a different tolerance basis is exactly what the whole-vector
-        # override exists to prevent, so say so.
+        # Eps-only ladder: not the adopted basis, so warn.
         warnings.warn(
             "regret tau: no NYCOPT_REGRET_TAU override and no measured "
             "floors, so the tolerance falls back to k*epsilon. This is NOT "
@@ -653,10 +504,8 @@ def adopted_floors() -> dict | None:
 
     Reads the ``rtol_floors.json`` written by
     ``scripts/supplemental/regret_tolerance_diagnostics.run_pass_a`` so that
-    k-sweeps which deliberately unset ``NYCOPT_REGRET_TAU`` still sweep the
-    adopted ``max(eps, floor)`` basis via ``tau_ladder(floors=...)`` instead of
-    silently dropping to the eps-only ladder (most adopted taus are
-    floor-bound, not epsilon-bound).
+    k-sweeps which unset ``NYCOPT_REGRET_TAU`` still sweep the
+    ``max(eps, floor)`` basis via ``tau_ladder(floors=...)``.
 
     Returns:
         ``{obj_name: tau_floor}`` in natural units, or ``None`` when pass A has
@@ -673,10 +522,7 @@ def adopted_floors() -> dict | None:
 
 def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
                        parties: dict = None, axes=None) -> pd.DataFrame:
-    """Unit-free harm frequencies. These carry the scalar role.
-
-    Because the magnitudes above stay in natural units, the cross-objective and
-    cross-policy summaries are frequencies, which need no normalization at all.
+    """Unit-free harm frequencies; these carry the cross-objective scalar role.
 
     Columns:
       - ``harm_freq__{obj}``        fraction of SOWs with ``D_i < 0``
@@ -749,21 +595,12 @@ def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
 def incumbent_spread(baseline: RawCube) -> dict:
     """Per-objective ``q90 - q10`` of the incumbent's per-SOW values.
 
-    The OPTIONAL normalization scale, offered so a reviewer asking for a
-    dimensionless regret can be answered without re-simulating -- and so rank
-    agreement between the natural-unit and normalized orderings can be checked
-    with Kendall's tau_b. It is never the reported primary (see the section
-    header).
-
-    Unlike a per-cell baseline denominator it is a single fixed vector: non-zero
-    by construction (the incumbent's performance varies across the DU box),
-    publishable as a table, and independent of which policies or designs are in
-    the comparison. It is the simulation-free stand-in for Cohen et al.
-    (2021)'s achievable span.
+    An OPTIONAL normalization scale for a dimensionless regret; never the
+    reported primary.
 
     Raises:
-        ValueError: If any objective's spread is zero -- silently dividing by it
-            would produce infinities that read as catastrophic regret.
+        ValueError: If any objective's spread is zero (dividing by it would
+            read as catastrophic regret).
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -789,17 +626,10 @@ def criterion_shortfall(raw: RawCube, thresholds: dict,
                         kinds: dict = None) -> pd.DataFrame:
     """Satisficing-regret: how far below a criterion the failing SOWs sit.
 
-    The McPhail et al. (2021) satisficing-regret transform ``max(0, c - f)``:
-    per axis with a FINITE threshold, the shortfall of the per-SOW value from
-    the criterion -- ``max(0, thr - v)`` for "ge" axes, ``max(0, v - thr)``
-    for "le" -- aggregated over SOWs. Where the binary Starr count saturates
-    (all-pass or all-fail), the shortfall still discriminates: two policies
-    failing the same SOWs differ in how badly they miss.
-
-    Values stay in each objective's NATURAL units and are never summed across
-    objectives (the module's no-composite-scalar rule). Non-finite cells are
-    NaN -- a failed SOW has no defined shortfall magnitude; its frequency is
-    already carried by the satisficing fraction.
+    The McPhail et al. (2021) transform ``max(0, c - f)``: per axis with a
+    FINITE threshold, ``max(0, thr - v)`` for "ge" axes and ``max(0, v - thr)``
+    for "le", aggregated over SOWs. Values stay in natural units and are never
+    summed across objectives. Non-finite cells are NaN.
 
     Args:
         raw: The per-SOW re-eval cube.
@@ -921,10 +751,8 @@ def score_criteria(raw: RawCube, baseline: Optional[RawCube] = None,
 def criterion_ranking_stability(per_set: pd.DataFrame) -> pd.DataFrame:
     """Kendall τ_b between the solution rankings of each criterion set.
 
-    The Quinn et al. (2017) conclusion-invariance check: if the same policies
-    rank as most robust under every stakeholder framing, the criteria choice
-    eases rather than raises tension. Operates on the ``sat_set__*`` columns
-    of :func:`score_criteria`'s scorecard (all higher-better).
+    The Quinn et al. (2017) conclusion-invariance check over the ``sat_set__*``
+    columns of :func:`score_criteria`'s scorecard (all higher-better).
     """
     cols = [c for c in per_set.columns if c.startswith("sat_set__")]
     return ranking_stability(per_set[cols], {c: True for c in cols})
@@ -938,21 +766,13 @@ def attainability_screen(raw: RawCube, thresholds: dict = None,
                          kinds: dict = None) -> pd.DataFrame:
     """Per-SOW: can ANY solution in this set meet all the criteria?
 
-    Separates "this design searched badly" from "this state of the world is
-    unwinnable for anyone" -- a distinction that is otherwise invisible, and
-    that matters: Shavazipour et al. (2021) found 23% of their test scenarios
-    could not meet the reliability criterion under ANY feasible policy, so the
-    satisficing ceiling was structural rather than a search failure.
-
-    This is the free substitute for a per-scenario oracle. It costs zero extra
-    simulation (the cube already exists), but it is an EMPIRICAL attainability
-    bound, not a true ceiling: it says only that no policy *in this set* wins
-    the SOW, not that none exists. Report it as such. Pool the cubes of all
-    designs before calling this if the question is "unwinnable by anyone."
+    An EMPIRICAL attainability bound, not a ceiling: no policy in this set
+    wins the SOW, which does not mean none exists. Pool the cubes of all
+    designs before calling this for "unwinnable by anyone".
 
     Returns a tidy frame (sow_id, n_satisficing_solutions, attainable, plus
-    per-objective ``anysat__{name}`` columns showing WHICH criterion is
-    binding where nothing attains the joint criterion).
+    per-objective ``anysat__{name}`` columns showing which criterion binds
+    where nothing attains the joint criterion).
     """
     sat = _satisfaction_cube(raw, thresholds, kinds)     # (S, G, M)
     joint = sat.all(axis=2)                              # (S, G)
@@ -975,12 +795,9 @@ def threshold_spectrum(raw: RawCube, quantiles=(0.10, 0.25, 0.50, 0.75, 0.90)
                        ) -> pd.DataFrame:
     """Satisficing fraction as a function of the magnitude threshold.
 
-    Robustness depends on the threshold (Hadjimichael et al. 2020): a solution
-    robust at one magnitude can be fragile at a neighbor. For each objective
-    the threshold grid is the pooled per-SOW-distribution quantiles (plus the
-    labeled default from the meta), and satisficing is reported at each.
-    Returns a tidy DataFrame (solution_id, objective, threshold, is_default,
-    satisficing).
+    For each objective the threshold grid is the pooled per-SOW-distribution
+    quantiles plus the labeled default from the meta. Returns a tidy DataFrame
+    (solution_id, objective, threshold, is_default, satisficing).
     """
     rows = []
     for k, name in enumerate(raw.obj_names):
@@ -1017,10 +834,9 @@ def threshold_spectrum(raw: RawCube, quantiles=(0.10, 0.25, 0.50, 0.75, 0.90)
 
 def sow_quantiles(raw: RawCube,
                   quantiles=(0.05, 0.25, 0.50, 0.75, 0.95)) -> pd.DataFrame:
-    """Per-solution per-objective distribution of per-SOW values.
+    """Per-solution per-objective quantiles of the per-SOW values.
 
-    A scalar scorecard discards the distribution the matrix exists to preserve;
-    this keeps it (Hadjimichael et al. 2023). Tidy: (solution_id, objective, qXX...).
+    Tidy: (solution_id, objective, qXX...).
     """
     rows = []
     qcols = [f"q{int(q * 100):02d}" for q in quantiles]
@@ -1061,9 +877,8 @@ def ranking_stability(scorecard: pd.DataFrame,
                       higher_better: dict) -> pd.DataFrame:
     """Kendall τ_b between every pair of metric columns over the solution set.
 
-    Metric rankings disagree (McPhail 2020); this quantifies how much. Columns
-    where lower is better (regret) are negated so all are "higher = more robust"
-    before correlating. Bonham (2024) treats τ_b ≥ 0.975 as effectively stable.
+    Columns where lower is better (regret) are negated so all are
+    "higher = more robust" before correlating.
     """
     cols = list(scorecard.columns)
     mat = scorecard.to_numpy(dtype=float).copy()
@@ -1076,28 +891,6 @@ def ranking_stability(scorecard: pd.DataFrame,
         for j in range(n):
             tau[i, j] = 1.0 if i == j else _kendall_tau(mat[:, i], mat[:, j])
     return pd.DataFrame(tau, index=cols, columns=cols)
-
-
-# There is deliberately NO search-vs-test "overfitting gap" here.
-#
-# Two independent reasons, and the first alone is disqualifying:
-#
-# 1. Brodeur et al. (2020) DEFINES NO SUCH METRIC. Overfitting is diagnosed there
-#    *graphically*, by plotting cost distributions over the training and held-out
-#    ensembles side by side. There is no gap equation, no gap magnitude, and no
-#    gap-based ranking anywhere in that paper. Citing it for a defined gap metric
-#    would not survive review.
-#
-# 2. It is structurally invalid for THIS study. The hazard-filling designs compute
-#    their in-sample objectives under a deliberately distorted (coverage-weighted)
-#    measure, while the re-evaluation is under E_test's natural measure. The
-#    difference of the two is a difference of two expectations under two DIFFERENT
-#    measures -- an artifact of the measure change, not an overfitting quantity.
-#    It would GROW with the very coverage the method advocates. Brodeur's own
-#    caveat is the citation: they restrict all claims to *relative* rankings across
-#    the two periods and never interpret the absolute train-vs-test difference,
-#    precisely because their two ensembles are not drawn from the same
-#    distribution.
 
 
 ###############################################################################
@@ -1263,16 +1056,15 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
     scorecard.to_csv(out)
 
     # Per-criterion-set companion scorecard (Quinn 2017 subset criteria) and
-    # the cross-set conclusion-invariance matrix. Written beside -- never
-    # into -- the main scorecard, so existing consumers are unaffected.
+    # the cross-set conclusion-invariance matrix, written beside the main
+    # scorecard.
     criteria_scorecard, _ = score_criteria(raw, baseline, ALL_SETS)
     criteria_scorecard.to_csv(reeval_dir / "robustness_scorecard_criteria.csv")
     criterion_ranking_stability(criteria_scorecard).to_csv(
         reeval_dir / "robustness_criterion_stability.csv")
 
-    # Every scoring-time choice that MOVES a number is recorded next to the
-    # numbers rather than left implicit in a default: the no-harm tolerance
-    # ladder that defines `no_harm_freq_tau`.
+    # Every scoring-time choice that moves a number (tolerance ladder,
+    # criterion sets) is snapshotted beside the numbers.
     meta = {
         "metrics": list(metrics),
         "substrate": raw.meta.get("substrate"),
@@ -1287,10 +1079,8 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
         meta["regret_tau"] = tau_ladder(raw.obj_names)
     except KeyError:
         meta["regret_tau"] = None
-    # The criterion sets are scoring-time choices that move numbers, so the
-    # full resolved vectors are snapshotted (moving-measuring-stick guard,
-    # extended to sets). Sets naming axes absent from this cube are omitted,
-    # matching score_criteria's skip.
+    # Sets naming axes absent from this cube are omitted, matching
+    # score_criteria's skip.
     meta["criteria_variant"] = active_variant()
     meta["criterion_sets"] = {
         c.key: {
@@ -1309,17 +1099,11 @@ def run(reeval_dir, baseline_dir=None, metrics=_DEFAULT_METRICS) -> Path:
     ranking_stability(scorecard, higher_better).to_csv(
         reeval_dir / "robustness_ranking_stability.csv")
 
-    # The threshold spectrum is the substrate for the design-ranking threshold
-    # sweep: rank agreement ACROSS scenario designs degrades as the satisficing
-    # criterion tightens (Quinn et al. 2020), so a single threshold could
-    # manufacture or hide the entire design effect.
+    # Substrate for the design-ranking threshold sweep.
     threshold_spectrum(raw).to_csv(
         reeval_dir / "robustness_threshold_spectrum.csv", index=False)
 
-    # Raw distributions, always: a robustness scalar can be stable, optimizable,
-    # and still perverse (Huang et al. 2025: a deviation metric is driven to zero
-    # by being uniformly terrible; Bonham et al. 2024: a saturated criterion ties
-    # everything). Co-reporting the distribution is the sanity check.
+    # Raw per-SOW distributions are always co-reported beside the scalars.
     sow_quantiles(raw).to_csv(
         reeval_dir / "robustness_quantiles.csv", index=False)
 

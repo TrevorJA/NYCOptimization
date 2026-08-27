@@ -1,15 +1,15 @@
 """
-reevaluate.py - Re-simulate Pareto-optimal solutions on the re-evaluation
-ensemble and save per-solution HDF5 outputs + objective summary CSV.
+reevaluate.py - Multiprocessing re-evaluation of Pareto solutions on the
+re-evaluation ensemble, persisting ``reeval_raw`` + ``objectives_summary``
+via ``src.reeval_core``.
 
 Runs the TRIMMED model, like search (``config.USE_TRIMMED_MODEL``): the
-non-NYC STARFIT releases are policy-independent, presimulated once per staged
-realization by step 04 and reused for every Pareto set.
+non-NYC STARFIT releases are presimulated once per staged realization by
+step 04 and reused for every policy.
 
-Runs independent solutions in parallel via multiprocessing.Pool (spawn
-context, so each worker builds its own model instance). On HPC this should
-be invoked from a single node; for multi-node re-evaluation, split by seed
-and launch one job per seed.
+Independent solutions run in parallel via multiprocessing.Pool (spawn
+context). Single-node only; ``src.reevaluate_mpi`` is the multi-node
+counterpart.
 
 Example
 -------

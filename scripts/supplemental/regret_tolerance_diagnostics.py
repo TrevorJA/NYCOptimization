@@ -1,88 +1,24 @@
-"""regret_tolerance_diagnostics.py - Fix the two free parameters of the regret comparison.
+"""regret_tolerance_diagnostics.py - Anchors for the regret-comparison tolerance.
 
-The incumbent-relative regret comparison has exactly two numbers that are not
-determined by the data: the no-harm tolerance ``tau_i = k * eps_i`` (eps = the
-ANNUAL-UNIT epsilon of ``objectives_ensemble.ENSEMBLE_OBJECTIVES``) and the
-non-inferiority margin ``delta`` on ``no_harm_freq_tau``. Both are
-pre-registration quantities. This script measures everything that is admissible
-as an anchor for them, and nothing that is not.
+Measures the admissible anchors for the no-harm tolerance ``tau_i`` and the
+non-inferiority margin of the incumbent-relative regret comparison
+(``docs/notes/methods/regret_tolerance_diagnostics.md``), from persisted cubes
+only; zero simulation. Neither pass uses the between-design contrast.
 
-**The trap it exists to avoid.** A tolerance read off the distribution of
-candidate-policy regret guarantees its own answer, exactly as a satisficing
-threshold read off the baseline's own E_test quantiles would
-(``robustness_threshold_diagnostics.md`` section 0b, rule 4 — those candidates
-are reported in every table and never adopted). Worse, the hypothesis here is a
-NON-INFERIORITY claim ("hazard filling is not worse in regret"), and
-non-inferiority claims are flattered by insensitivity: a loose tolerance
-saturates ``no_harm_freq_tau`` at 1 for every design and makes the claim
-trivially true. Every choice below is therefore biased toward the DISCRIMINATING
-end, and the assay-sensitivity check (pass B) exists to prove the comparison
-could have detected a difference had one been there.
+Pass A (incumbent cube only): sorts the SOWs on the forcing axis ``m``, bins
+them in consecutive groups of ``RTOL_M_BIN_SIZE``, and takes ``sigma_i`` = the
+median within-bin SD of the per-SOW objective; ``tau_floor_i = z * sqrt(2) *
+sigma_i`` is an unpaired upper bound on the estimator-noise floor.
 
-Two passes, deliberately separable.
-
-**Pass A — needs only the incumbent's cube, so it can run the moment step 05
-lands and long before any search finishes.** It answers "how small can a
-tolerance be before it is measuring Monte Carlo noise rather than harm?" Under
-the null that a policy is operationally identical to the incumbent, the per-SOW
-difference of the annual-unit objective values is pure estimator noise (finite
-R realizations pooled per SOW); a tolerance below that scale reports noise as
-harm.
-
-**Floor estimator (changed with the per-SOW substrate, 2026-08-07).** The
-persisted cube now carries ONE value per (SOW, objective) — the SOW's R
-realizations already pooled through the §2 unit operator — so the within-SOW
-spread of per-realization metrics no longer exists to be measured, and the
-former within-SOW machinery (parametric sigma/sqrt(R) and the split-half null)
-is retired with it. The Monte Carlo noise of J(theta) from finite R cannot be
-recovered from the cube alone; it is instead BOUNDED from the incumbent's
-per-SOW values: sort the SOWs on the dominant forcing axis ``m`` (theta joined
-on sow_id), partition them into consecutive bins of ``RTOL_M_BIN_SIZE`` SOWs,
-and take ``sigma_i`` = the median across bins of the within-bin standard
-deviation — the local (binned-in-theta) spread of J around its forcing
-response. ``tau_floor = z * sqrt(2) * sigma_i`` is then the tolerance at which
-two independent estimates of an operationally identical policy are flagged as
-harm at most Phi(-z) of the time.
-
-This floor is an UPPER BOUND, conservative in three stacked ways, all stated
-wherever it is used: (1) the within-bin spread still contains real structure —
-the r1/r2 response and the residual m-trend inside each narrow bin — so
-sigma_i overstates the estimator noise; (2) it is UNPAIRED — the real
-comparison simulates a policy and the incumbent on the same inflow sequences,
-cancelling most of the shared variability; (3) the median across bins guards
-against a few bins straddling a steep response but never deflates below the
-typical local spread. An overstated floor pushes ``k`` up, i.e. toward less
-discrimination, which is the direction that flatters the hypothesis: hence the
-labels, and hence pass B, which replaces the floor with the paired estimate
-the moment any policy cube exists on E_test.
-
-**Pass B — needs the re-evaluated policy sets.** It answers "over what range of
-tolerance is the comparison informative at all, and how big is a difference that
-means nothing?"
-
-  - the discrimination band: the ``k`` at which ``no_harm_freq_tau`` is starved
-    (< RTOL_SATURATION_LO for every design) or saturated (> RTOL_SATURATION_HI)
-  - the paired SOW-level bootstrap standard error of the BETWEEN-DESIGN
-    difference (both designs are scored on the same SOWs, so the difference is
-    paired and its error is smaller than either margin's)
-  - two empirical nulls: seed-pairs within a draw (pure search stochasticity) and
-    draw-pairs within a design (search + ensemble construction). The campaign
-    searches one draw per design with the seed as the unit of analysis, so the
-    draw level is empty there, the seed level is the only within-design null,
-    and the design contrast is conditional on one draw per design
-  - assay sensitivity against ``historic``, the unmatched reference expected to be
-    worse
-  - the binding objective, and how much of the joint no-harm frequency is
-    co-occurrence rather than independent accumulation across eight objectives
-
-Neither pass uses the between-design contrast to set either parameter. Pass B's
-nulls are within-design quantities, which is what makes them admissible: they fix
-the scale of "no difference" without touching the direction of the answer.
-
-Zero simulation; every number is a reduction of persisted cubes.
+Pass B (re-evaluated policy cubes): the discrimination band of ``k``
+(starved < RTOL_SATURATION_LO, saturated > RTOL_SATURATION_HI), the paired
+SOW-level bootstrap SE of the between-design difference, the within-design
+seed-pair null (the campaign searches one draw per design, so the draw-pair
+null is empty), assay sensitivity against ``historic``, and the binding
+objective / co-occurrence decomposition of the joint no-harm frequency.
 
 Run:
-    venv/Scripts/python.exe scripts/supplemental/regret_tolerance_diagnostics.py
+    python scripts/supplemental/regret_tolerance_diagnostics.py
 """
 from __future__ import annotations
 

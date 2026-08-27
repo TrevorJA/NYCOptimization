@@ -3,13 +3,14 @@ tests/test_ensembles.py - Unit tests for the ensemble-evaluation registry.
 
 Covers:
   1. EnsembleSpec immutability and derived properties.
-  2. PRESETS registry contents (v1 ships three: historic_single,
+  2. PRESETS registry contents (two static presets: historic_single,
      wcu_kirsch_n5). The held-out test ensemble E_test needs no preset entry:
      it resolves from its staged _meta.json by slug.
   3. get_ensemble_spec resolver behavior (hit / miss).
   4. with_indices_override returns a new spec without mutating the original.
-  5. derive_slug integration: ensemble fragment is inserted only when the
-     active search preset is an ensemble (legacy slugs preserved).
+  5. derive_slug integration: the ensemble is never part of the moea slug (it
+     is the parent scenario directory); only the non-default MOEA config and
+     an indices override add suffixes.
 
 Run:
     venv/Scripts/python -m pytest tests/test_ensembles.py -v
@@ -96,11 +97,11 @@ def test_no_reeval_preset_is_registered():
     assert not [k for k in PRESETS if k.startswith("reeval")]
 
 
-def test_historic_single_is_legacy_passthrough():
+def test_historic_single_has_no_slug_fragment():
     spec = PRESETS["historic_single"]
     assert spec.is_ensemble is False
     assert spec.realization_indices == (0,)
-    assert spec.slug_fragment == "", "historic_single must have empty slug fragment to preserve legacy paths"
+    assert spec.slug_fragment == "", "single-trace search adds no ensemble slug fragment"
     assert spec.inflow_type == "pub_nhmv10_BC_withObsScaled"
 
 

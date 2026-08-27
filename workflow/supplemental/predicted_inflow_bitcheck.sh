@@ -7,8 +7,7 @@
 # bit-compares every dataset against the staged production artifact (produced
 # by the scalar path). Exact equality expected; any nonzero diff is reported
 # per column against the 1% robust-range cross-era tolerance and the job exits
-# nonzero. The staged chunk is never opened for writing. Retained (unlike the
-# ad-hoc presim bitcheck, job 19660330) so future kernel changes re-run it.
+# nonzero. The staged chunk is never opened for writing.
 #
 # Submit:
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \

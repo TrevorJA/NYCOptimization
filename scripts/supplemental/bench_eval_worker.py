@@ -20,29 +20,13 @@ Two experiments share this worker, selected by ``NYCOPT_BENCH_EXPERIMENT``:
                    Prices the campaign. (workflow/supplemental/ensemble_cost_sweep.sh)
 
 The experiments differ only in which env knobs the calling SLURM script varies
-and where the shards land; the timed code path is identical, which is the point
-— a cost surface measured by a different harness than the packing sweep would
-not be comparable to it.
-
-Design choices:
-    * The concurrency level K is ``MPI.COMM_WORLD.Get_size()`` — never a
-      value flag (repo convention).
-    * Baseline DVs for every eval: per-eval cost is set by model size x
-      timesteps x scenarios, not DV values, and identical DVs make the objective
-      vector byte-comparable across ranks (a free correctness check, recorded as
-      ``objs_ok`` plus the first three objective values). It also detects a
-      silent env-plumbing failure in the ensemble-cost sweep: if
-      ``NYCOPT_USE_TRIMMED_MODEL`` never reached ``config``, the "full" cells
-      would re-measure the trimmed model and produce identical objectives.
-    * Lock-step memory-phase artifacts are broken by a per-rank start stagger
-      (rank r sleeps ``min(r, stagger_max)`` s), recorded in the shard and
-      excluded from all timings.
-    * Rows are appended to the shard as each eval completes, so a walltime kill
-      preserves the evals that finished. A rank killed by the OOM reaper leaves
-      a partial (or no) shard — that is a measurement, not a failure; the step's
-      exit code lands in the step manifest written by the SLURM script.
-    * No gather / combine: the mpirun exit is the barrier and the analysis
-      scripts glob the shards.
+and where the shards land; the timed code path is identical so the two are
+comparable. K is ``MPI.COMM_WORLD.Get_size()``; every eval uses the baseline
+DVs (identical DVs make the objective vector byte-comparable across ranks,
+recorded as ``objs_ok``); a per-rank start stagger (excluded from timings)
+breaks lock-step memory phases; rows are appended as each eval completes, so
+a kill (walltime or OOM) keeps the finished evals; no gather, the analysis
+scripts glob the shards.
 
 Environment (set per step by the calling SLURM script):
     NYCOPT_BENCH_EXPERIMENT          packing | ensemble_cost (default packing)

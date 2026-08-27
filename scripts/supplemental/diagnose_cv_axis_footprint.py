@@ -1,9 +1,9 @@
 """diagnose_cv_axis_footprint.py - Hazard-space footprint of the CV forcing axis.
 
-Supplemental (SI) diagnostic for the ``ENSEMBLE_FORCING_VARIANCE_AXIS`` decision:
-does adding the independent CMIP6-derived CV axis (``c = a * v``) materially widen the
-drought/flood tail stress the forced ensembles present, beyond what the 3-D mean box
-``[m, r1, r2]`` already spans?
+Supplemental (SI) diagnostic: paired ON/OFF generations measuring whether the
+independent CMIP6-derived CV axis (``c = a * v``, ``ENSEMBLE_FORCING_VARIANCE_AXIS``,
+OFF for the campaign) widens the drought/flood tail stress beyond what the 3-D mean
+box ``[m, r1, r2]`` already spans.
 
 Design: two PAIRED generations over the E_test forcing box (full CMIP6 range widened by
 ``E_TEST_MARGIN``), sharing one root seed:

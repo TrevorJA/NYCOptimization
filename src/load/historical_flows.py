@@ -1,12 +1,8 @@
 """historical_flows.py - Load pywrdrb-shipped historical streamflow datasets.
 
-Thin adapter around pywrdrb's path navigator. Used by Step 1 (Kirsch-Nowak
-ensemble generation) to load the ``pub_nhmv10_BC_withObsScaled`` reconstruction
-into pandas DataFrames suitable for SynHydro's ``KirschGenerator.preprocessing()``.
-
-Mirrors the loader in
-``../StochasticExploratoryExperiment/methods/load.py::load_baseline_historical_flow``,
-trimmed to just what NYCOpt needs.
+Thin adapter around pywrdrb's path navigator. Used by Kirsch-Nowak ensemble
+generation to load the ``pub_nhmv10_BC_withObsScaled`` reconstruction into
+pandas DataFrames suitable for SynHydro's ``KirschGenerator.preprocessing()``.
 """
 
 from __future__ import annotations

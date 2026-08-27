@@ -1,5 +1,5 @@
 """
-test_simulation_api.py - Test pywrdrb model build/run/extract pipeline.
+simulation_api_check.py - Manual check of the pywrdrb build/run/extract pipeline (not a pytest module).
 
 Verifies:
 1. ModelBuilder.make_model() produces model_dict
@@ -9,7 +9,7 @@ Verifies:
 5. Name mapping from raw pywr keys to standard pywrdrb node names
 6. Whether objectives can be computed from extracted data
 
-Run: python tests/test_simulation_api.py
+Run: python scripts/supplemental/simulation_api_check.py
 """
 
 import sys

@@ -25,12 +25,8 @@ Figures (under ``figures/{scenario}/{slug}/``):
       additive epsilon-indicator, maximum Pareto-front error), one panel
       each, islands drawn in their seed's color.
 
-The indicator battery is the standard MOEA runtime-diagnostics set (Reed et
-al. 2013, Adv. Water Resour.; Hadka & Reed 2013, Evol. Comput.; hypervolume
-per Zitzler et al. 2003). Metrics are computed against the CROSS-SEED merged
-reference set (see src/diagnostics.py), so indicator values are comparable
-across seeds and the residual final-snapshot gap measures each seed's
-shortfall from the best known front.
+Metrics are scored against the cross-seed merged reference set
+(src/diagnostics.py), so indicator values are comparable across seeds.
 """
 
 import re

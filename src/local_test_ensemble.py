@@ -45,9 +45,9 @@ def ensure_local_test_ensemble(*, force: bool = False, verbose: bool = True):
     Idempotent: if the ensemble is already fully staged (all
     :data:`~src.ensembles.STAGED_ENSEMBLE_FILES` present and non-empty) and
     ``force`` is ``False``, this only resolves and returns the spec without any
-    simulation or file I/O. Otherwise it runs the Step-1 Kirsch-Nowak generator
-    (when the base inflows are missing) and the Step-3 pywrdrb preprocessors
-    (flood-node inflows, STARFIT presim releases, predicted inflows).
+    simulation or file I/O. Otherwise it runs the Kirsch-Nowak generator (when
+    the base inflows are missing) and the pywrdrb preprocessors (flood-node
+    inflows, STARFIT presim releases, predicted inflows).
 
     Salinity and temperature LSTMs are forced off for the run (via
     ``os.environ.setdefault`` before ``config`` is imported): the ensemble

@@ -35,8 +35,8 @@ Blocks (all tables under ``outputs/supplemental/ensemble_size_diagnostics/tables
 
 The HF selections are made with the same primitive the step-03 selector uses
 (``scengen.subsample.absolute_filling_subsample`` on the screened campaign
-axes), and the N = 100 / anchor-draw-0 selection is asserted equal to the
-staged production ``hazfill_stat_abs_10yr_n100_d0`` member list.
+axes), and the campaign-N (``ESD_N_CAMPAIGN``) / anchor-draw-0 selection is
+asserted equal to the staged production draw-0 member list.
 
 Settings in ``supplemental_config.py`` (``ESD_*``); no CLI value flags.
 Wrapper: ``workflow/supplemental/ensemble_size_hazard.sh``.
@@ -157,7 +157,7 @@ def hf_ladder(pools: list[dict]) -> tuple[pd.DataFrame, dict]:
 
 
 def assert_production_identity(selections: dict) -> dict:
-    """Check the N = 100 / anchor-draw-0 selection equals the staged production draw.
+    """Check the campaign-N / anchor-draw-0 selection equals the staged production draw.
 
     Returns a small QC dict (written into the plan); raises when the staged
     ensemble exists and the member lists differ.
@@ -181,7 +181,7 @@ def assert_production_identity(selections: dict) -> dict:
                "n_common": len(set(ours) & set(theirs))})
     if ours != theirs:
         raise RuntimeError(
-            f"Layer-A N=100 anchor-draw-0 selection differs from staged {slug} "
+            f"Layer-A N={n_key} anchor-draw-0 selection differs from staged {slug} "
             f"({qc['n_common']}/{len(theirs)} common members)"
         )
     print(f"[esd:A-HF] production identity check PASSED against {slug}")

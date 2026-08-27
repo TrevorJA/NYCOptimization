@@ -25,9 +25,10 @@
 #   outputs/synthetic_ensembles/etest_kn_50yr_n25000/forcing_profiles.npz
 #
 # All settings live in supplemental_config.py (RTD_ section) — no CLI value
-# flags. Pass 2 (after filling RTD_RECOMMENDED_THRESHOLDS) reruns this same
-# wrapper; the anchor JSON cache makes the first step near-instant
+# flags. The anchor JSON cache makes the first step near-instant on reruns
 # (NYCOPT_RTD_REFRESH=1 forces the recompute).
+#
+# Submit: sbatch workflow/supplemental/robustness_threshold_diagnostics.sh
 #
 # Sizing: the anchor step is one pywrdrb.Data() load of a ~133 MB HDF5 plus 8
 # annual-unit objective reductions (~1-2 min); the figures step is pandas/numpy

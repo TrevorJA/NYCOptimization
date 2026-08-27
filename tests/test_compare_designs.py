@@ -11,8 +11,10 @@ Asserts that the deliverables are produced with the right shapes:
      the registry-default level) and its design x stringency matrix;
   2. the design-ranking rank-agreement curve (Kendall tau_b vs the default);
   3. the cross-design scorecard aggregation + design-ranking stability matrix;
-  4. the nested variance components, with the DRAW as the unit of analysis
-     (effective n = K, not K*S);
+  4. the nested variance components: with K > 1 draws (as in this synthetic
+     tree) the draw is the unit of analysis (effective n = K, not K*S); the
+     campaign's K = 1 falls back to the seed unit (campaign_design.md;
+     tests/test_campaign_design.py);
   5. the raw performance distributions, degeneracy flags and pooled attainability
      (per E_test SOW).
 

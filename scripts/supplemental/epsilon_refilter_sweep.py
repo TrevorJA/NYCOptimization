@@ -1,47 +1,27 @@
 """
-epsilon_refilter_sweep.py - Post-shakeout epsilon revision diagnostics.
+epsilon_refilter_sweep.py - Epsilon re-filter sweep on a converged front.
 
-Re-filters a completed MM-Borg run's Pareto-approximate sets under candidate
-epsilon vectors to measure the archive-cardinality consequence of revising
-the campaign epsilons, without re-running any search. Complements the
-epsilon-calibration experiment (docs/notes/methods/
-epsilon_calibration_experiment.md): that experiment measured the signal /
-noise / granularity floors on random feasible policies; this diagnostic
-measures the same ε-box filter on a CONVERGED front, where box occupancy —
-and therefore reported-set cardinality — is far higher.
+Re-filters a completed MM-Borg run's seed archives and cross-seed union under
+candidate epsilon vectors (numpy, Borg box convention:
+`src.sensitivity_common.epsilon_nondominated`) to measure the
+archive-cardinality consequence of an epsilon revision without re-running any
+search (docs/notes/methods/epsilon_calibration_experiment.md).
 
 Parts:
-  1. Per-axis structure of the current archives (natural units): range,
-     distinct values, value lattice (reliability axes are quantized at
-     1/n_units on the historic trace), occupied 1-D ε-boxes under the
-     current vector, and members per occupied box (the density a parallel-
-     axes plot shows).
-  2. Archive-size sweep: one-at-a-time grids on the axes under revision plus
-     combined candidate vectors, applied to each seed's final .set archive
-     and the cross-seed merged set (`src.sensitivity_common.
-     epsilon_nondominated`, Borg box convention). Re-filtering approximates
-     the archive the search WOULD have kept — ε also steers Borg's selection
-     and restarts, so a confirmatory search under the adopted vector is
-     still required (disclosed).
-  3. MOEAFramework comparison: ResultFileMerger re-merges the per-seed
-     merged sets under one candidate vector. MEASURED: v5's
-     merger applies PLAIN Pareto dominance regardless of --epsilon
-     (identical 7,544-row output under the current and C1 vectors), so the
-     step-07 {slug}_merged.set is a plain nondominated union, NOT an ε-box
-     archive (2,678 of 7,544 rows survive the current-ε box filter). The
-     Python filter's validation is stronger and internal: under the current
-     vector it reproduces the Borg C archive membership of every seed's
-     final .set EXACTLY (100.0% retained; part-2 'current' row).
-     Consequence for step 08/09: ε-box-filter (or screen) the merged set
-     before re-evaluation — its raw cardinality overstates the front.
+  1. Per-axis structure of the current archives (range, distinct values,
+     lattice, occupied 1-D epsilon boxes, members per box).
+  2. Archive-size sweep: OAT grids and combined candidates on each seed's
+     final .set and the cross-seed set.
+  3. MOEAFramework cross-check: ResultFileMerger re-merge under one candidate
+     vector (its merger applies plain dominance regardless of --epsilon, so
+     the Python filter is the epsilon-box reference).
   4. Figure: parallel axes of the cross-seed set with the preferred
-     candidate's retained members highlighted (thins without collapsing any
-     axis span — the same acceptance view as calibration figure F4).
+     candidate's retained members highlighted.
 
 Usage (from repo root, venv; submit via
 workflow/supplemental/epsilon_refilter_sweep.sh):
     python3 scripts/supplemental/epsilon_refilter_sweep.py \
-        --slug ffmp_obj8_mm_full --scenario historic
+        --slug ffmp_obj8 --scenario historic
 """
 
 import argparse
@@ -60,13 +40,8 @@ from src.load.reference_set import load_reference_set
 from src.sensitivity_common import epsilon_nondominated
 from config import get_epsilons
 
-# Candidate grids, keyed by objective name (active-set order preserved).
-# Axes not listed keep the current adopted value. Grid choices: the flagged
-# axes (deficit-P99 pair, flood exceedance, storage-P01
-# too fine; Trenton reliability possibly too coarse), spanning current ->
-# the calibration experiment's measured per-design recommendations
-# (epsilon_recommendation_ffmp_combined: NYC-def measured 10.0 hazfill /
-# 5.0 historic; Mont-def 5.0 historic; storage 10.0 historic).
+# Candidate grids per axis, keyed by objective name (active-set order
+# preserved); unlisted axes keep the adopted value.
 OAT_GRIDS: dict[str, list[float]] = {
     "nyc_delivery_deficit_p99_pct":      [3.0, 5.0, 10.0],
     "montague_flow_deficit_p99_pct":     [3.0, 4.0, 5.0],

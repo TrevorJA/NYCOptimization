@@ -1,73 +1,24 @@
 """
-scenario_designs.py - Registry of scenario designs for the MOEA evaluation ensemble.
+scenario_designs.py - Registry of scenario designs for the MOEA search ensemble.
 
-A *scenario design* is the construction recipe for the streamflow ensemble used
-during many-objective search. Comparing scenario designs is the methodological
-contribution of the study (see ``docs/notes/methods/experimental_design.md`` and
-``docs/notes/methods/scenario_design_methods.md``). This module maps a design
-name (e.g. ``"historic"``, ``"hazard_filling_du"``) to an immutable
-``ScenarioDesign`` describing how its search ensemble is built. The design name
-is the top level of the output tree: ``outputs/{design}/{moea_slug}/...``.
+A scenario design is the construction recipe for the streamflow ensemble used
+during search (``docs/notes/methods/scenario_design_methods.md``). This module
+maps a design name (e.g. ``"historic"``, ``"hazard_filling_stationary"``) to an
+immutable ``ScenarioDesign``; the design name is the top level of the output
+tree, ``outputs/{design}/{moea_slug}/...``.
 
-Each design is constructed by its OWN published recipe, from its OWN seed
-stream. No design is subsampled from a shared pool -- no published study builds
-its search ensemble that way, and doing so would misdescribe every method the
-comparison claims to represent.
+The campaign is the three designs flagged ``campaign=True``: ``historic``,
+``fixed_probabilistic`` and ``hazard_filling_stationary`` (``campaign_designs()``).
+The other registered designs are wired but non-campaign. Every design generates
+its own realizations from its own seed domain; only the hazard-filling designs
+select from a candidate pool, because hazard coordinates are emergent properties
+of a realized sequence and cannot be prescribed at generation.
 
-The campaign vs the registry
-----------------------------
-The manuscript campaign is THREE designs, all in the stationary population,
-flagged ``campaign=True``: ``historic`` (prevailing-practice reference),
-``fixed_probabilistic`` (the i.i.d. random-sampling control), and
-``hazard_filling_stationary`` (the proposed coverage-designed selection, in
-ABSOLUTE hazard space). The single controlled contrast is:
-
-* ``fixed_probabilistic`` -> ``hazard_filling_stationary``: same generator, same
-  population law, same N, same L. Only the SELECTION RULE differs. The i.i.d.
-  pool (below) makes ``fixed_probabilistic`` the EXACT statistical control.
-
-Deep uncertainty enters ONLY in the held-out test ensemble ``src/etest.py``,
-not as a search population, so the re-evaluation is a generalization test.
-
-The registry ALSO retains other, non-campaign designs (``campaign=False``): the
-DU-forced input-stratified and hazard-filling designs, the resampled
-probabilistic design, the rank-space stationary hazard variant, and the scaling
-stand-in. These are modular, fully wired, and available for sensitivities and
-future work; they are simply not part of the main campaign. Campaign membership
-is the config-level switch -- ``campaign_designs()`` and the ``campaign`` flag
-select what the main comparison runs, without deleting any construction code.
-
-Two populations
----------------
-A *population* is the law a design's realizations are drawn from. ``stationary``
-(Kirsch-Nowak fitted to the historic record, no climate perturbation) is the
-campaign's search population. ``du_forced`` (forcing parameters theta sampled
-from the CMIP6 harmonic hypercube) is used to build the test ensemble and by the
-retained non-campaign DU designs.
-
-Why only hazard-filling needs a pool
-------------------------------------
-Hazard coordinates are EMERGENT properties of a realized flow sequence -- no
-generator can be asked to produce a realization at a prescribed drought
-severity. Forcing parameters theta, by contrast, ARE a knob. So input-space
-designs GENERATE TO their design points (LHS alone, nothing to snap to), while
-hazard-space designs must SELECT FROM a finite candidate pool (LHS anchors +
-nearest-neighbor snap). The snap is intrinsic to hazard-space design, not an
-approximation of something better.
-
-The i.i.d. condition (load-bearing)
------------------------------------
-Candidate pools are sampled i.i.d., never by LHS. A uniform random size-N subset
-of an i.i.d. pool has exactly the joint law of N fresh i.i.d. draws -- which is
-what makes ``fixed_probabilistic`` the EXACT statistical control for
-``hazard_filling_stationary``. A random subset of an LHS design is NOT i.i.d.,
-so an LHS-sampled pool would silently void the control. ``input_stratified`` is
-the only design that uses LHS, and it uses it to GENERATE, never to build a
-pool. Enforced by ``assert_iid_pools()`` (called at import) and by
-``tests/test_design_registries.py``.
-
-For the same reason a DU candidate pool must carry ``realizations_per_profile ==
-1``: realizations sharing a theta are not independent.
+Candidate pools are sampled i.i.d., never by LHS: a uniform random size-N subset
+of an i.i.d. pool has exactly the law of N fresh i.i.d. draws, which is what
+makes ``fixed_probabilistic`` the exact control for ``hazard_filling_stationary``.
+A DU candidate pool must also carry ``realizations_per_profile == 1``. Both
+conditions are enforced by ``assert_iid_pools()`` at import.
 """
 
 from __future__ import annotations
@@ -84,49 +35,32 @@ from src.ensembles import (
     kirsch_nowak_slug,
 )
 
-# Scenario length L (years) of each realization in the matched comparison -- the
-# SINGLE project-wide source of truth. Re-exported as ``config.SCENARIO_YEARS``.
-# L = 10 exceeds the 1960s DRB drought of record (~4-5 yr) plus onset and
-# recovery, so a design-basis event fits inside a window, and it keeps N large
-# enough to fill an m-dimensional hazard space at a fixed per-evaluation budget
-# (methods §6). Changing L invalidates every staged L-conditional artifact.
+# Scenario length L (years) of each realization; the single source of truth,
+# re-exported as ``config.SCENARIO_YEARS``. Changing L invalidates every staged
+# L-conditional artifact.
 SCENARIO_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
 
-# Ensemble size N, common to every matched design (methods §6). N = 300 is the
-# smallest ladder rung at which the i.i.d. control meets the pre-registered
-# paired-precision criterion (SE of a paired difference <= epsilon/2) on every
-# objective (ensemble_size_diagnostics.md §7.3; campaign_design.md). N x L =
-# 3,000 scenario-years per evaluation, at equal NFE, so per-evaluation cost
-# and wall-clock are identical across designs. A common (N, L) is REQUIRED:
-# if L differed across designs the selection rule would be confounded with
-# record length. Changing N invalidates every staged search ensemble and the
-# step-05 baselines (steps 02-05 re-run per draw).
+# Ensemble size N common to every matched design (campaign_design.md;
+# ensemble_size_diagnostics.md). A common (N, L) keeps per-evaluation cost
+# identical across designs. Changing N invalidates every staged search
+# ensemble and the step-05 baselines.
 SEARCH_ENSEMBLE_N: int = int(os.environ.get("NYCOPT_SEARCH_N", "300"))
 
-# Candidate-pool cardinality P for the hazard-filling designs, and the
-# resampling-pool cardinality for ``resampled_probabilistic``. P >> N so that
-# LHS anchors snap to near neighbours; the snap-distance distribution is a
-# reported build diagnostic. The default is the laptop test scale; the decided
-# production pool size is P = 1e6 (2026-07-30, methods §6), supplied at
-# generation time via NYCOPT_CANDIDATE_POOL_N (workflow/supplemental/gen_pool_*.sh).
+# Candidate-pool cardinality P for the hazard-filling designs and the
+# resampling-pool cardinality for ``resampled_probabilistic``. The default is
+# the laptop scale; production P = 1e6 via NYCOPT_CANDIDATE_POOL_N at
+# generation time.
 CANDIDATE_POOL_SIZE: int = int(os.environ.get("NYCOPT_CANDIDATE_POOL_N", "2000"))
 RESAMPLE_POOL_SIZE: int = int(os.environ.get("NYCOPT_RESAMPLE_POOL_N", "1000"))
 
-# input_stratified allocates N = N_theta x R. R = 1 is the literal published
-# construction (Quinn et al. 2020; Bartholomew & Kwakkel 2020); R > 1 separates
-# forcing uncertainty from natural variability within a forcing (Quinn et al.
-# 2018), at the cost of input coverage at fixed N. The split is an open
-# parameter to set before generation (methods §6).
+# input_stratified allocates N = N_theta x R; set before generation.
 INPUT_STRAT_N_THETA: int = int(os.environ.get("NYCOPT_INPUT_STRAT_N_THETA", "20"))
 INPUT_STRAT_R: int = int(os.environ.get("NYCOPT_INPUT_STRAT_R", "5"))
 
-# Independent ensemble draws STAGED per design. Draws are independent
-# GENERATIONS, not re-indexings of shared data, so the count must be fixed
-# before workflow step 02 runs. Three are staged: draw 0 is the search
-# ensemble (the campaign searches ONE draw per design, so the seed is the unit
-# of analysis; experimental_design.md, Replication), and draws 1-2 exist for
-# the SI draw-sensitivity re-evaluation of the final Pareto sets on the
-# design's own other draws (campaign_design.md §5). No search runs on them.
+# Independent ensemble draws staged per design (independent generations, fixed
+# before step 02 runs). Draw 0 is the searched ensemble; draws 1-2 serve the
+# SI draw-sensitivity re-evaluation of the final Pareto sets and are never
+# searched.
 N_ENSEMBLE_DRAWS: int = int(os.environ.get("NYCOPT_N_ENSEMBLE_DRAWS", "3"))
 
 # Root seed for the whole campaign. Every generated artifact derives its seed as
@@ -186,14 +120,11 @@ class ScenarioDesign:
         n_ensemble_draws: Independent constructions staged for the design.
             The campaign searches draw 0 only; the others serve the SI
             draw-sensitivity re-evaluation (see ``N_ENSEMBLE_DRAWS``).
-        seed_domain: Namespace for this design's generator seed. Disjointness
-            across domains is what keeps designs from sharing realizations now
-            that each one generates rather than selecting indices from shared
-            data.
+        seed_domain: Namespace for this design's generator seed; disjoint
+            domains keep designs from sharing realizations.
         selector: For ``hazard_fill``: the selector name. The wired selector is
-            LHS + nearest-neighbor (``"lhs_nn"``). Deterministic given its anchor
-            seed; K draws vary the anchor plan and therefore measure
-            anchor-placement variance. There is no simulated annealing.
+            LHS + nearest-neighbor (``"lhs_nn"``), deterministic given its
+            anchor seed; draws vary the anchor plan.
         selector_space: For ``hazard_fill``: the space the anchors fill.
             ``"abs"`` = absolute, range-scaled magnitude space -- the CAMPAIGN
             selector, which deliberately over-represents the severe hazard
@@ -232,24 +163,13 @@ class ScenarioDesign:
     # -- slugs ---------------------------------------------------------------
 
     def pool_slug(self, draw: int = 0) -> str | None:
-        """Return the slug of the design's OWN pool for ``draw``, or ``None``.
+        """Return the slug of the design's own pool for ``draw``, or ``None``.
 
-        Only ``pool_resample`` and ``hazard_fill`` own a pool. This is never
-        called a "master" -- it belongs to the design.
-
-        **The pool is re-drawn per draw, and that is load-bearing.** A draw is
-        the design's construction re-run from scratch with a fresh seed, and
-        generating the pool IS part of a hazard-filling design's construction.
-        If the pool were pinned across draws, a hazard-filling draw would vary
-        only the LHS anchor plan while a ``fixed_probabilistic`` draw re-rolls
-        its entire sample -- so the two between-draw variances would not be
-        commensurable, and hazard-filling would look more stable *by
-        construction* rather than as a finding. The K draws must re-roll
-        everything that is random about building the ensemble.
-
-        The two DU hazard-filling designs share a pool *at the same draw* (same
-        population, same axes, same N; they differ only in selector space), so
-        it is generated once per draw.
+        Only ``pool_resample`` and ``hazard_fill`` own a pool. The pool is
+        regenerated per draw so a hazard-filling draw re-rolls everything that
+        is random about its construction and its between-draw variance is
+        commensurable with ``fixed_probabilistic``. Hazard-filling designs of
+        the same population share the pool at the same draw.
 
         Args:
             draw: Independent ensemble-draw index.
@@ -297,10 +217,9 @@ class ScenarioDesign:
     def selector_seed(self, draw: int = 0) -> int:
         """Seed for the hazard-filling LHS anchor plan of ``draw``.
 
-        Deliberately NOT split by ``selector_space``: both hazard arms get the
-        same anchor plan, so the only difference between the CDF and absolute
-        designs is the normalization geometry the anchors snap into -- the
-        cleanest possible paired comparison.
+        Deliberately not split by ``selector_space``: the CDF and absolute
+        designs share one anchor plan and differ only in the normalization
+        geometry the anchors snap into.
         """
         domain = (
             "hazard_select_stat"
@@ -481,8 +400,8 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "dedupe at |rho_S| >= 0.95; all other non-degenerate descriptors "
               "retained). The selector is deterministic LHS + "
               "nearest-neighbor; the snap is intrinsic because hazard coordinates "
-              "cannot be prescribed at generation. No simulated annealing. The "
-              "rank-space (empirical-CDF) variant is the non-campaign "
+              "cannot be prescribed at generation. The rank-space "
+              "(empirical-CDF) variant is the non-campaign "
               "hazard_filling_stationary_cdf sensitivity.",
     ),
     "hazard_filling_stationary_cdf": ScenarioDesign(
@@ -541,7 +460,7 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "vector, which is a deterministic function of them. R>1 separates "
               "forcing uncertainty from natural variability within a forcing (Quinn "
               "et al. 2018); R=1 maximizes input coverage at fixed N. The "
-              "N_theta/R split is PROVISIONAL and set before generation.",
+              "N_theta/R split is set before generation.",
     ),
     "hazard_filling_du": ScenarioDesign(
         name="hazard_filling_du",
@@ -629,30 +548,16 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
 def assert_iid_pools() -> None:
     """Assert the two conditions the cross-design control depends on.
 
-    1. Every design except ``lhs_theta`` samples theta i.i.d. A random subset of
-       an LHS design is not i.i.d., so an LHS-sampled pool would silently void
-       the distributional-equivalence control that makes ``fixed_probabilistic``
-       the exact reference for ``hazard_filling_stationary``. Nothing else in the
-       pipeline would fail if this were broken -- hence the assertion.
-    2. A DU candidate pool carries ``realizations_per_profile == 1``.
-       Realizations sharing a theta are not independent, so R > 1 would break the
-       same argument from the other side.
+    1. Every design except ``lhs_theta`` samples theta i.i.d.; a random subset
+       of an LHS design is not i.i.d., which would void the control that makes
+       ``fixed_probabilistic`` the exact reference for the hazard-filling
+       designs. Nothing else in the pipeline would fail if this were broken.
+    2. A DU candidate pool carries ``realizations_per_profile == 1``, since
+       realizations sharing a theta are not independent.
 
-    **E_test is deliberately EXEMPT from both, and must stay exempt.** It iterates
-    ``SCENARIO_DESIGNS`` only, and the held-out test ensemble (``src/etest.py``) is an
-    ``EnsembleSpec``, never a ``ScenarioDesign`` -- so it is out of scope here by
-    construction. That is not an oversight to be "fixed". Both conditions above exist
-    for ONE reason: a design's candidate pool is later SUBSAMPLED, and the control
-    argument (a uniform random size-N subset of an i.i.d. pool has exactly the law of
-    N i.i.d. draws) holds only for an i.i.d. pool with one realization per theta.
-    E_test is never a control -- it is the measuring stick, and the campaign's 500-SOW
-    prefix subset of it is a subsample of the stick, not a control construction --
-    so neither condition applies to it. It is sampled by LHS over the full DU range,
-    with R >> 1 realizations per theta, and that is CORRECT: space-filling is what a
-    measuring stick wants, and the within-theta replication is what makes the SOW-unit
-    robustness metric (Herman 2014; Trindade 2017; Gold 2022) computable at all.
-    Applying this assertion to E_test would forbid exactly the construction the
-    literature standardizes on.
+    E_test (``src/etest.py``) is an ``EnsembleSpec``, never a ``ScenarioDesign``,
+    and is out of scope by construction: it is never a control, so LHS with
+    R > 1 is correct there.
 
     Raises:
         AssertionError: If either condition is violated.
@@ -682,10 +587,7 @@ def assert_iid_pools() -> None:
 def assert_seed_domains_disjoint(max_draws: int = 64) -> None:
     """Assert no two (design, draw) pairs collide on a generator seed.
 
-    Before per-design generation this did not matter -- designs merely selected
-    indices from shared data. Now that every design *generates*, two designs
-    sharing a seed would produce correlated realizations, reintroducing exactly
-    the confound the architecture removes.
+    Two designs sharing a seed would produce correlated realizations.
 
     Args:
         max_draws: Number of draws to check per seed domain.

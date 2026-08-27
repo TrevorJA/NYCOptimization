@@ -1,34 +1,29 @@
 #!/bin/bash
-# Step 2: Generate the active scenario design's realizations.
+# Step 2: Generate the active scenario design's realizations, one draw per
+# array task.
 #
-# Every design GENERATES its own realizations from its own namespaced seed
-# stream — no design is subsampled from a shared master. The array index is the
-# independent ensemble-draw index k (0..K-1, K = design.n_ensemble_draws), which
-# is now the natural parallel axis: draws are independent GENERATIONS. Three
-# draws are staged per matched design: d0 is the searched draw; d1-d2 exist for
-# the SI draw-sensitivity re-evaluation (docs/notes/methods/campaign_design.md).
+# Every design generates from its own namespaced seed stream; the array index
+# is the ensemble-draw index k (0..K-1, K = design.n_ensemble_draws). The
+# pool-owning designs (`resampled_probabilistic`, `hazard_filling_*`) generate
+# their candidate pool (+ hazard_image.npz) here, and the pool is regenerated
+# per draw (src/scenario_designs.py::pool_slug(draw)), so the array index
+# applies to pools too; the two DU hazard-filling designs share the pool of a
+# given draw. Three draws are staged per matched design: d0 is searched, d1-d2
+# serve the SI draw-sensitivity re-evaluation (campaign_design.md).
 #
-# COST DISCLOSURE: per-design construction is not free. For `fixed_probabilistic`
-# and `input_stratified` each draw is a fresh N x L generation (not a re-index of
-# shared data), so step-02 cost scales with K — K x the single-draw generation
-# cost, per design. The pool-owning designs (`resampled_probabilistic`,
-# `hazard_filling_*`) instead build ONE draw-invariant pool: array tasks k>0 are
-# no-ops there, and the two DU hazard designs share a single candidate pool.
+# Env inputs: NYCOPT_ENV_FILE (optional; the design via NYCOPT_SCENARIO_DESIGN),
+# NYCOPT_CANDIDATE_POOL_N (hazard-filling pool size; campaign 1000000, see
+# workflow/supplemental/gen_pool_shards.sh for the sharded build),
+# NYCOPT_ENSEMBLE_FORCE=1 to overwrite an already-staged slug.
 #
-# Configuration is entirely env-driven; the design comes from the run's env file
-# (or --export). No value flags.
+# Submit (from repo root):
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env \
+#          --array=0-2 workflow/02_generate_ensemble.sh
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env \
+#          --array=0-2 workflow/02_generate_ensemble.sh
 #
-#   # 10 independent draws of the fixed-probabilistic design:
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixprob.env \
-#          --array=0-9 workflow/02_generate_ensemble.sh
-#
-#   # A pool-owning design: one draw is enough.
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_pilot.env \
-#          workflow/02_generate_ensemble.sh
-#
-# Output: outputs/synthetic_ensembles/{slug}/ — the per-draw search ensemble, or
-# the design's candidate/resampling pool (+ hazard_image.npz for hazard-filling).
-# Set NYCOPT_ENSEMBLE_FORCE=1 to overwrite an already-staged slug.
+# Output: outputs/synthetic_ensembles/{slug}/ per draw (search ensemble, or
+# the design's candidate/resampling pool).
 #
 #SBATCH --job-name=gen_ensemble
 #SBATCH --account=ees260021

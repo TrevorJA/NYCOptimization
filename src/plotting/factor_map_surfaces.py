@@ -1,33 +1,28 @@
 """
-factor_map_surfaces.py - Manuscript Figures 8 and 9: DU-space outcome surfaces.
+factor_map_surfaces.py - Manuscript Figure 8 and the slot-9 candidates: DU-space
+outcome surfaces.
 
-Two figures in the Hadjimichael et al. (2020) / Lau et al. (2023) factor-map
-idiom, drawn by ONE routine so they are read panel-for-panel:
+Boosted-tree probability surfaces over the DU forcing space in the Hadjimichael
+et al. (2020) / Lau et al. (2023) factor-map idiom, drawn by one routine so the
+panels read alike:
 
-* **Figure 8, success/failure** -- for each design's focal-criterion
-  compromise policy (plus the FFMP incumbent), the predicted probability that
-  a state of the world MEETS the focal satisficing set.
-* **Figure 9, regret** -- the same policies, relabelled by whether the policy
-  harms the FFMP incumbent beyond tolerance on the focal set's member axes.
-  This is the per-SOW decomposition of the ``no_harm_freq_tau__{key}``
-  scorecard column: where in the DU space does reoptimizing actually cost the
-  Decree parties something relative to current operations?
+* success/failure: for each design's focal-criterion analysis policy (plus the
+  FFMP incumbent), the probability that a SOW meets the focal satisficing set;
+* regret: the same policies, relabelled by whether the policy harms the FFMP
+  incumbent beyond tolerance on the set's member axes (the per-SOW
+  decomposition of ``no_harm_freq_tau__{key}``). No incumbent panel, since its
+  own regret is zero by construction.
 
-Both draw the boosted-tree probability as a diverging field with the same
-orientation -- **blue = the good outcome** (meets the set / low regret), red =
-the bad one, neutral at the P = 0.5 contour, which is also drawn -- under the
-raw E_test SOW labels (white circles = good, dark X = bad). A reader who has
-parsed Figure 8 can read Figure 9 without re-learning the grammar; only the
-LABEL changes.
-
-Figure 9 has no incumbent panel: regret is measured against the incumbent, so
-its own regret is zero in every SOW by construction and the panel would carry
-no information.
+Figure 8 (:func:`fig_robustness_regret_surfaces`) stacks both rows;
+:func:`fig_regret_surfaces`, :func:`fig_regret_surfaces_worst` and
+:func:`fig_regret_exposure` are the slot-9 candidates (see TODO.md). Every
+field uses the same orientation, blue = the good outcome, red = the bad one,
+neutral at the drawn P = 0.5 contour, under the raw E_test SOW labels (white
+circles = good, dark X = bad).
 
 Data: the ``factor_mapping/{criterion}/`` artifacts written by
-``scripts/main/factor_mapping_run.py`` (surfaces NPZ + labels/fits CSVs) --
-figures render anywhere, no cubes needed. CV skill per fit goes to the
-companion CSV, never into the panels.
+``scripts/main/factor_mapping_run.py``; no cubes needed. CV skill per fit goes
+to the companion CSV, never into the panels.
 """
 
 from __future__ import annotations
@@ -83,16 +78,6 @@ class _MapSpec:
     #: Extra sentence for the footer describing how the policy was chosen.
     selection: str = ""
 
-
-SUCCESS_MAP = _MapSpec(
-    prefix="factor_map",
-    cbar_label="P(SOW meets focal set)",
-    pos_legend="SOW meets the focal set",
-    neg_legend="SOW fails at least one criterion",
-    count_word="pass",
-    table_stem="success_failure_surfaces",
-    include_incumbent=True,
-)
 
 _REGRET_LEGEND = dict(
     pos_legend="Low regret: no focal axis harmed beyond tolerance",
@@ -348,11 +333,6 @@ def _footer(fig, meta: dict, focal, spec: _MapSpec) -> None:
     if spec.selection:
         lines += ["", spec.selection]
     add_figure_footer(fig, _wrap(lines), y=-0.16)
-
-
-def fig_success_failure_surfaces(ctx, out_stub: Path, table_dir: Path) -> dict:
-    """Theta-space GBM success surfaces per design policy + incumbent."""
-    return _draw_surface_grid(ctx, out_stub, table_dir, SUCCESS_MAP)
 
 
 def fig_regret_surfaces(ctx, out_stub: Path, table_dir: Path) -> dict:

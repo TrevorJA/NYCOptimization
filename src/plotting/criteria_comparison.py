@@ -1,6 +1,5 @@
 """
-criteria_comparison.py - Phase-2 results figures: robustness under the named
-satisficing criterion sets.
+criteria_comparison.py - Robustness under the named satisficing criterion sets.
 
 Recomputes joint/decomposed satisficing under the criterion sets of
 ``src.satisficing_criteria`` (pure post-processing on the per-SOW cubes):
@@ -251,7 +250,7 @@ def fig_drought_flood_split(results: dict, out_stub: Path,
     x: joint SOW fraction over the SET'S non-flood member criteria
     (deliveries, Decree flows, storage -- non-member axes are non-binding);
     y: SOW fraction meeting the flood criterion alone. For a set with no
-    flood member axis, y is scored at the ADOPTED flood threshold instead --
+    flood member axis, y is scored at the adopted flood threshold instead --
     a diagnostic overlay, not a member criterion, flagged on the panel. The
     empty upper-right corner IS the structural wet-dry pincer: policies can
     buy low-flow robustness or flood robustness, and the frontier shows the

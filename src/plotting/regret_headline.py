@@ -10,10 +10,7 @@ the per-design non-dominated frontier drawn on top, and the marginal
 distribution of each axis as a KDE per design (seaborn) along the top and
 right edges, each curve scaled to unit peak (shape, not mass).
 
-Two builders share the panel: :func:`fig_regret_vs_incumbent` (the
-registered figure -- the All-Parties set of figure 6 panel (d) alone) and
-:func:`fig_regret_vs_incumbent_all_criteria` (a 2x2 variant, one panel per
-figure-6 criterion set).
+Builder: :func:`fig_regret_vs_incumbent` (the All-Parties criterion set).
 
 Data: the per-design ``robustness_scorecard_criteria.csv`` companions -- no
 raw cubes needed.
@@ -45,7 +42,6 @@ FONTSIZE = 14
 FIG_SIZE = (10.5, 8.5)
 
 #: Canvas size in inches for the 2x2 all-criteria variant.
-FIG_SIZE_GRID = (13.5, 11.5)
 
 #: Marginal KDE strip height/width relative to the joint panel.
 MARGINAL_RATIO = 0.22
@@ -235,59 +231,3 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
     return {"criterion": cset.key, "designs": list(clouds)}
 
 
-def fig_regret_vs_incumbent_all_criteria(ctx, out_stub: Path,
-                                         table_dir: Path) -> dict:
-    """The 2x2 variant: one robustness-vs-regret panel per criterion set.
-
-    Panels (a)-(d) are the figure-6 criterion sets in the same order, each
-    drawn exactly like :func:`fig_regret_vs_incumbent` with IDENTICAL axis
-    limits across panels; robustness and regret are both computed under that
-    panel's own set.
-    """
-    per_set = []   # (cset, clouds) pairs; CriterionSet is unhashable
-    rows = []
-    for cset in NAMED_SETS:
-        clouds, set_rows = _load_clouds(ctx, cset)
-        if clouds:
-            per_set.append((cset, clouds))
-            rows += set_rows
-    if not per_set:
-        raise FileNotFoundError(
-            f"no robustness_scorecard_criteria.csv with per-set columns "
-            f"found for tag '{ctx.tag}' -- score the cubes first (Anvil, "
-            f"`python -m src.robustness`)."
-        )
-    xmax = _shared_xmax(rows)
-
-    fig = plt.figure(figsize=FIG_SIZE_GRID)
-    gs = fig.add_gridspec(2, 2, wspace=0.16, hspace=0.22)
-    axes = []
-    for i, (cset, clouds) in enumerate(per_set):
-        ax, ax_top = _draw_regret_panel(fig, gs[divmod(i, 2)], cset, clouds,
-                                        xmax=xmax)
-        ax_top.set_title(f"({chr(ord('a') + i)}) {cset.label}", loc="left",
-                         fontsize=FONTSIZE)
-        # Every panel keeps its tick labels (the nested marginals make
-        # dropped labels error-prone); only the outer edges carry axis names.
-        if i // 2 == 1:
-            ax.set_xlabel(XLABEL, fontsize=FONTSIZE)
-        if i % 2 == 0:
-            ax.set_ylabel(YLABEL.replace(" Relative to", "\nRelative to"),
-                          fontsize=FONTSIZE)
-        axes.append(ax)
-
-    clouds0 = per_set[0][1]
-    y0 = min(a.get_position().y0 for a in axes)
-    shared_legend(fig, _design_handles(clouds0), ncol=3, y=y0 - 0.065,
-                  fontsize=FONTSIZE)
-    save_manuscript_figure(fig, out_stub)
-    plt.close(fig)
-
-    pd.DataFrame(rows).to_csv(
-        table_dir / "regret_vs_incumbent_all_criteria.csv", index=False)
-    pd.DataFrame([{"criterion": c.key, "objective": n, "threshold": t}
-                  for c, _ in per_set for n, t in c.criteria.items()]).to_csv(
-        table_dir / "regret_vs_incumbent_all_criteria_thresholds.csv",
-        index=False)
-    return {"criteria": [c.key for c, _ in per_set],
-            "designs": list(clouds0)}

@@ -17,7 +17,7 @@ Figures (under outputs/supplemental/flood_objective/figures/):
                                    NWS flood stage, the worst-gauge envelope,
                                    and the daily exceedance increments, for the
                                    two largest simulated historic events.
-  S_flood_exceedance_annual_series   water-year exceedance across the full
+  S_flood_exceedance_annual_series   FFMP-year exceedance across the full
                                    historic trace and the five KN
                                    realizations, with the objective value
                                    (mean-annual exceedance) marked.
@@ -140,7 +140,7 @@ def daily_exceedance(stage: np.ndarray, minor: np.ndarray) -> np.ndarray:
 
 
 def wy_totals(dates: np.ndarray, sev: np.ndarray) -> pd.Series:
-    """Complete-water-year exceedance totals (ft·days) of a daily series."""
+    """Complete-FFMP-year exceedance totals (ft·days) of a daily series."""
     from src.objectives_ensemble import ffmp_year_unit_slices
 
     idx = pd.DatetimeIndex(dates)

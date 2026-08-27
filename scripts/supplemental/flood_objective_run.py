@@ -5,15 +5,14 @@ count (``downstream_flood_days_minor``) vs magnitude-weighted exceedance
 candidates. This script produces every measured input the figures script
 (``flood_objective_figures.py``) reduces:
 
-  1. Staleness audit + targeted re-stage: verifies (by CONTENT, not mtime) that
-     every flood-augmented inflow file consumed here postdates the 2026-07-31
-     flood-node inflow fix, re-staging the KN fixture's file with ``force=True``
-     when stale. Fails loudly if the historic CSV in the sibling Pywr-DRB data
-     tree is stale (regenerating it belongs to that repo's own preprocessor).
+  1. Content-based staleness audit + targeted re-stage of every flood-augmented
+     inflow file consumed here (the KN fixture's file is re-staged with
+     ``force=True`` when stale; a stale historic CSV in the sibling Pywr-DRB
+     data tree fails loudly, since regenerating it belongs to that repo).
   2. Policy evaluation: the FFMP baseline + FLOODOBJ_N_POLICIES feasible-uniform
      policies + a FLOODOBJ_SWEEP_POINTS-point flood-release-scale ladder, each
      simulated (trimmed model) on the historic trace AND the KN stationary
-     fixture. Persists a cube of per-policy x realization x water-year-unit
+     fixture. Persists a cube of per-policy x realization x FFMP-year-unit
      values for six candidate metrics, plus per-gauge flood-day records and
      per-realization flow/stage maxima (rating-curve exposure).
   3. Sim-vs-obs scoring (zero simulation): computes all six candidates on the
@@ -70,7 +69,7 @@ from src.objectives import (  # noqa: E402
     _metric_window,
     build_objective_set,
 )
-from src.objectives_ensemble import water_year_unit_slices  # noqa: E402
+from src.objectives_ensemble import ffmp_year_unit_slices  # noqa: E402
 from src.sensitivity_common import sample_feasible_dvs  # noqa: E402
 from src.simulation import (  # noqa: E402
     compute_constraint_violations,
@@ -155,8 +154,8 @@ def window_values(daily: pd.DataFrame) -> np.ndarray:
 
 
 def unit_values(daily: pd.DataFrame) -> np.ndarray:
-    """(n_units, n_candidates) un-normalized within-water-year-unit sums."""
-    slices = water_year_unit_slices(daily.index)
+    """(n_units, n_candidates) un-normalized within-FFMP-year-unit sums."""
+    slices = ffmp_year_unit_slices(daily.index)
     return np.asarray(
         [daily[CANDIDATES].iloc[sl].sum(axis=0).to_numpy() for sl in slices],
         dtype=float,

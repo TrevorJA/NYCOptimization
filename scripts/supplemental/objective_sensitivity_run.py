@@ -16,11 +16,9 @@ formulation, objective-set selection, simulation window, output paths) — there
 are **no CLI value flags**. ``supplemental_config`` is imported first so its
 ``NYCOPT_SALINITY_ON`` env knob is in place before ``config`` is imported.
 
-MPI mechanics mirror the prior ``random_sample_mpi.py`` harness: each rank takes
-a ``numpy.array_split`` slice of (baseline + N samples), simulates each
-in-memory, writes a partial CSV + a ``.done`` marker, and rank 0 concatenates
-once all markers appear (filesystem barrier — avoids ``comm.bcast/gather``,
-which are flaky on this OpenMPI build).
+MPI: each rank takes a ``numpy.array_split`` slice of (baseline + N samples),
+simulates each in-memory, writes a partial CSV + a ``.done`` marker, and rank 0
+concatenates once all markers appear (filesystem barrier).
 
 Usage (interactive, single rank — local smoke):
     python scripts/supplemental/objective_sensitivity_run.py
@@ -88,7 +86,7 @@ def _run_one(sample_id: int, dv: np.ndarray, formulation: str,
         # Annual-unit objectives on the single trace as N=1: the historic design
         # now searches under the SAME §2 objective as the ensembles
         # (objective_definitions.md §2/§3), so wrap the one data dict as [data]
-        # and aggregate over its water-year units.
+        # and aggregate over its FFMP-year units.
         objs = objective_set.compute([data])
         out["elapsed_s"] = time.perf_counter() - t0
         for name, val in zip(objective_set.names, objs):
@@ -107,7 +105,7 @@ def main():
     formulation = scfg.FORMULATION
 
     # Calibrate the ANNUAL-UNIT (§2) objectives — the ones the historic
-    # single-trace design now searches under — over the trace's water-year
+    # single-trace design searches under — over the trace's FFMP-year
     # units (N=1). Use the DEFAULT active objective set (config.ACTIVE_OBJECTIVES,
     # resolved to their annual counterparts), not the full registry.
     objective_set = build_ensemble_objective_set(config.ACTIVE_OBJECTIVES)

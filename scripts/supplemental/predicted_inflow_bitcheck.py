@@ -7,8 +7,7 @@ like step 04) into a SCRATCH file, then compares every dataset against the
 already-staged production artifact (which the scalar path produced). The staged
 chunk is never opened for writing.
 
-Pass criteria (the presim precedent, job 19660330, came back bit-identical
-cross-job): exact equality expected. Cross-era comparisons on Anvil formally
+Pass criteria: exact equality expected. Cross-era comparisons formally
 tolerate <= 1% of each column's robust range (p99-p1) per the
 verify_shard_boundaries convention; ANY nonzero diff is reported per column for
 manual review before the vectorized path is accepted. The scratch file is

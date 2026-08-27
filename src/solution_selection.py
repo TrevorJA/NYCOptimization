@@ -20,8 +20,8 @@ Determinism
 -----------
 Every selector breaks ties by the LOWEST row index. Rankings use a stable sort,
 so two solutions with identical scores always resolve the same way across runs
-and machines. This matters here: on the historic trace the weekly reliabilities
-live on a 1/76 lattice, so exact ties are common and real, not float noise.
+and machines. On the historic trace the annual reliabilities live on a 1/77
+lattice, so exact ties are common and real, not float noise.
 """
 from __future__ import annotations
 
@@ -138,10 +138,9 @@ def dominates(a, b, directions, tol: float = 0.0) -> bool:
         tol: Comparison slack in oriented units. ``a_i`` counts as no-worse
             when ``a_i >= b_i - tol`` and as strictly better when
             ``a_j > b_j + tol``. Default 0.0 — exact comparison. Objectives on
-            the historic trace sit on a 1/76 weekly lattice, so exact ties are
-            genuine outcomes rather than float noise and inflating ``tol``
-            would erase real distinctions; raise it only for values carried
-            through a lossy round trip.
+            the historic trace sit on a 1/77 annual-unit lattice, so exact
+            ties are genuine outcomes rather than float noise; raise ``tol``
+            only for values carried through a lossy round trip.
 
     Returns:
         True iff ``a`` dominates ``b``.

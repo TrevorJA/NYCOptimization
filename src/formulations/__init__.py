@@ -172,22 +172,6 @@ def get_objective_set(items=None):
         from config import ACTIVE_OBJECTIVES
         items = ACTIVE_OBJECTIVES
 
-    # All wired scenario designs — the single-trace historic design
-    # (is_ensemble=False) and the multi-realization ensembles alike — now search
-    # under the SAME annual-unit (§2) objective function
-    # (objective_definitions.md §2/§3: the objective is held fixed across
-    # designs so the only factor that varies is the scenario set). The
-    # single-trace case is evaluated as N=1 over its FFMP-year units; the
-    # dispatch in src.simulation.evaluate wraps the one data dict as [data].
-    # The §1 single-trace registry is returned ONLY when no design is wired
-    # (a pure diagnostic / non-optimization context). No pipeline script may
-    # build the §1 set for a wired design: a §1 vector is a DIFFERENT objective
-    # function from the one Borg optimizes, so mixing the two silently makes
-    # baseline / Pareto / re-eval vectors non-comparable. The two §1 consumers
-    # that remain are correct by construction — src.reeval_core takes the §1
-    # base metrics PER REALIZATION before its own annual/satisficing layer, and
-    # the supplemental diagnostics in scripts/supplemental deliberately report
-    # the whole-trace timescale.
     from config import SEARCH_ENSEMBLE_SPEC
     if SEARCH_ENSEMBLE_SPEC is not None:
         from src.objectives_ensemble import build_ensemble_objective_set
@@ -239,11 +223,10 @@ DV_CONSTRAINT_NAMES = [
 #: POST-SIMULATION formal Borg constraints: computed from the objective vector
 #: AFTER simulation, so they can only be evaluated inside the MM Borg objective
 #: wrapper (src/mmborg.py), never by `make_constraint_function` (DV-only).
-#: `nyc_reliability_floor` enforces the stakeholder floor on NYC weekly
-#: delivery reliability (`config.NYC_RELIABILITY_FLOOR`, env
+#: `nyc_reliability_floor` enforces the stakeholder floor on NYC delivery
+#: reliability (`config.NYC_RELIABILITY_FLOOR`, env
 #: NYCOPT_NYC_RELIABILITY_FLOOR, default 0.5) directly in the search:
-#: constraint-dominance excludes below-floor policies from search and archive,
-#: replacing the post-hoc Pareto screen in src/pareto_filter.py for new runs.
+#: constraint-dominance excludes below-floor policies from search and archive.
 POST_SIM_CONSTRAINT_NAMES = [
     "nyc_reliability_floor",
 ]
@@ -378,20 +361,13 @@ def make_post_sim_constraint_function(items=None):
     objectives negated by ``compute_for_borg``) and returns the
     ``POST_SIM_CONSTRAINT_NAMES`` violations. Currently one constraint:
 
-    ``nyc_reliability_floor`` — violation = max(0, floor - reliability) with
-    the reliability recovered on the NATURAL 0-1 scale (the stored Borg value
+    ``nyc_reliability_floor``: violation = max(0, floor - reliability) with
+    the reliability recovered on the natural 0-1 scale (the stored Borg value
     is un-negated using the objective's direction). The floor comes from
-    ``config.NYC_RELIABILITY_FLOOR`` (env ``NYCOPT_NYC_RELIABILITY_FLOOR``),
-    read at factory-call time so per-run env files take effect.
-
-    Failed-simulation convention: penalty objective vectors (1e6/1e10
-    sentinels from the eval wrappers) put the recovered "reliability" far
-    outside [0, 1]. For such vectors the violation is reported as 0.0 —
-    nothing was measured, and fabricating a violation magnitude would distort
-    constraint-dominance ordering among genuinely infeasible solutions. The
-    penalty objectives already guarantee the failed eval is Pareto-dominated
-    by every real solution, so it is feasible-but-maximally-unattractive,
-    matching the wrapper's exception path (see src/mmborg.py).
+    ``config.NYC_RELIABILITY_FLOOR``, read at factory-call time so per-run env
+    files take effect. A penalty (failed-simulation) objective vector puts the
+    recovered reliability outside [0, 1] and reports violation 0.0, following
+    the failed-simulation convention of ``src.mmborg.make_borg_objective``.
 
     Args:
         items: Objective names defining the active set; None reads

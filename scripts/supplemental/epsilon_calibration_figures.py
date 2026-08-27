@@ -19,10 +19,10 @@ found at the current sample settings it derives, per annual-unit objective:
   4. **Recommendation** — ``eps_rec = ceil_to_clean_step(max(1, 2, 3))`` in
      native units, plus a plain-language interpretation.
   5. **Archive-size sweep** — ε-box nondominated archive size of the evaluated
-     policies for the ADOPTED CAMPAIGN vector scaled by ``EPS_SCALE_GRID`` and
-     for the previous (pre-calibration, provisional) registry vector recorded
-     in the cube. Random policies under-fill a converged front, so the SWEEP
-     TREND is the signal, not the absolute sizes — disclosed in the table.
+     policies for the adopted campaign vector scaled by ``EPS_SCALE_GRID`` and
+     for the registry vector recorded in the cube. Random policies under-fill
+     a converged front, so the sweep trend is the signal, not the absolute
+     sizes — disclosed in the table.
 
 The final campaign vector is the clean-rounded per-objective maximum of the
 raw requirement across the CAMPAIGN designs (``EPS_CAMPAIGN_DESIGNS``; the
@@ -41,12 +41,9 @@ Outputs (all under ``outputs/supplemental/epsilon_calibration/``):
              on the active objectives with the adopted-epsilon archive
              highlighted)  [PNG]
 
-Figure conventions (manuscript SI): Okabe-Ito colors keyed to the DESIGN
-(never to plot order) — fixed_probabilistic #0072B2, hazard_filling_stationary
-#D55E00, historic reference #B0B0B0 — with the adopted campaign epsilon in
-#009E73 and the previous provisional epsilon in black; the palette was
-validated for normal-vision and protan/deutan separation (OKLab), and every
-color distinction is doubled by marker shape.
+Figure conventions (manuscript SI): colors keyed to the design (never to plot
+order) per ``src.plotting.style``; every color distinction is doubled by
+marker shape.
 
 Configuration and paths come from ``supplemental_config.py`` — no CLI flags.
 

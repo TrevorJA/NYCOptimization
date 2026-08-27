@@ -47,18 +47,19 @@ A. **Retained-set report**: the axis screen (degenerate drop + near-duplicate de
 3. **Sub-pool draw stability**: the pool is randomly partitioned into disjoint halves — independent i.i.d. pools, since the pool is i.i.d. — and block 1 re-runs per half. Between-half spread is a zero-generation-cost stand-in for pool-re-roll (construction) variance.
 B. **Per-axis marginal coverage + tail enrichment** at the full retained set, `lhs_nn` seeds vs the random null band.
 C. **Snap behavior vs dimension** at the two diagnostic axis sets — the campaign selection set (`config.HAZARD_SELECTION_AXES`, m = 6) and the full retained set — including `lhs_nn` vs `lhs_assign` order-dependence at full m.
-D. **N-sweep**: N ∈ {100, 150, 200, 300} × the block-C axis sets — per-axis tail enrichment and stratification + joint L2-star vs the matched random null. The reported statistic: the minimum over **every** selection axis of the per-axis tail share above the pool P90 (within-seed minimum, averaged over seeds), against the 0.10 share of an i.i.d. selection; no threshold is applied to it.
+D. **N-sweep**: an N ladder from 50 to 500 (`NYCOPT_SELDIAG_N_SWEEP`) × the block-C axis sets — per-axis tail enrichment and stratification + joint L2-star vs the matched random null. The reported statistic: the minimum over **every** selection axis of the per-axis tail share above the pool P90 (within-seed minimum, averaged over seeds), against the 0.10 share of an i.i.d. selection; no threshold is applied to it.
 E. **Selection invariance**: leave-one-axis-out and add-one-axis-back (campaign base) Jaccard overlaps vs the full-set selection; per-axis and dry/wet-group snap-distance contributions.
 
 **Figures** (SI): F1 selected members on the (dry, wet) magnitude plane per rule; F2 coverage vs the random null in both geometries; F3 tail enrichment + atom treatment; F4 snap distances + minimum separation; F5 the bounds sweep; F6 Spearman heatmap + cluster tree; F7 per-axis coverage and tail enrichment vs the null; F8 snap behavior vs dimension; F9 the (N × axis set) sizing surface; F10 selection invariance + implicit weighting.
 
 ## 5. Findings
 
-Laptop battery: P = 2,000, L = 10, N = 100; 10 seeds + 50-seed null
+Pilot battery: P = 2,000, L = 10, N = 100; 10 seeds + 50-seed null
 (`outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n2000_d0/`).
-Production axis-set decision: nested-P saturation rungs {2k, 5k, 20k, 10⁵,
-3×10⁵, 10⁶} of ONE stream-only P = 10⁶ pool
-(`nested_P_saturation.md` + `m6_axis_set_assessment.json`; prefixes are
+Production axis-set evidence: nested-P saturation rungs {2k, 5k, 20k, 10⁵,
+3×10⁵, 10⁶} of one stream-only P = 10⁶ pool (`workflow/supplemental/nestedp_ladder.sh`,
+`scripts/supplemental/nestedp_saturation_analysis.py`, which writes
+`nested_P_saturation.md` under the diagnostics output root; prefixes are
 honest i.i.d. pools by the global-index seeding).
 
 - **Axis screen: all 8 candidates retained (m = 8).** No degenerate axes; no
@@ -79,20 +80,16 @@ honest i.i.d. pools by the global-index seeding).
   better stratified than the null and tail-enriched above it. Snap distance
   dilutes with dimension at fixed P (the expected anchor-to-nearest-member
   distance scales as P^(−1/m)).
-- **Enrichment is flat in N on the production pool; the laptop N-sweep does
-  not set N.** At P = 2,000, across N = 100 → 300 per-axis tail shares are
-  flat-to-declining at every axis set (the pool holds only ~P/10 members
-  above P90 per axis) and joint L2-star degrades mildly, so N = 100 is the
-  best value in that small-pool sweep. The decline is a small-pool effect
-  (`ensemble_size_diagnostics.md` §7.1, block D extended to N = 50…500 on
-  the production P = 10⁶ pools, `NYCOPT_SELDIAG_N_SWEEP`): at P = 10⁶ the
+- **Enrichment is flat in N at the production pool size.** At P = 10⁶ the
   campaign-set minimum tail share is flat in N (0.27–0.29 from N = 50 to
-  500), joint L2-star improves with N (0.019 → 0.011), and the decline
-  appears only on prefixes P′ ≤ 2·10⁴. The campaign N = 300
-  (`campaign_design.md`) is set by the ensemble-size diagnostics. The
-  same run measured the regenerated pool d0 at 0.283 (drought_magnitude
-  0.284 binding; per-axis 0.284–0.513, mean 0.385; §7.1a of
-  `ensemble_size_diagnostics.md`).
+  500) and joint L2-star improves with N (0.019 → 0.011); a decline of
+  tail share with N appears only on small prefixes P′ ≤ 2·10⁴, where the
+  pool holds only ~P′/10 members above P90 per axis, and does not apply at
+  the production scale. Pool size therefore does not bound N from above, and
+  the campaign N = 300 is set by the ensemble-size diagnostics
+  (`ensemble_size_diagnostics.md`, `campaign_design.md`). On the production
+  pool d0 the minimum share is 0.283 (drought_magnitude binding; per-axis
+  0.284–0.513, mean 0.385).
 - **Robust bounds confirmed (p1/p99).** Full-range (0, 100) bounds degrade
   realized coverage ~2.5–3× (outlier fixation); tail enrichment moves
   smoothly across (2, 98)–(0.5, 99.5) with no cliff at the campaign default.
@@ -103,7 +100,7 @@ honest i.i.d. pools by the global-index seeding).
   geometry-limited, not supply-limited: ~0.22 at P = 10⁶, with the nested-P
   rungs showing an improvement exponent ~0.04, far below the P^(−1/8)
   bound, so no affordable pool lifts it. The m = 6 set sits at 0.27–0.29 on
-  the regenerated P = 10⁶ pools (≈ 3× the 0.10 i.i.d. share; recorded per
+  the production P = 10⁶ pools (≈ 3× the 0.10 i.i.d. share; recorded per
   production draw), saturated in pool size and flat in N; the measured
   alternatives (duration for severity; duration + rise rate both in)
   enriched less on the same pools. The dropped descriptors stay computed in every hazard

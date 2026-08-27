@@ -1,20 +1,11 @@
 """
-reevaluate_mpi.py - MPI-based re-simulation of Pareto-optimal solutions.
+reevaluate_mpi.py - MPI re-evaluation of Pareto solutions.
 
-Each MPI rank gets a slice of solutions (via numpy.array_split), runs each
-to a per-solution HDF5 file, and computes objectives. Rank 0 gathers the
-per-rank results into a single objectives_summary.csv.
-
-Why a separate module from src.reevaluate:
-    src.reevaluate uses multiprocessing.Pool, which is single-node only.
-    This module uses mpi4py for multi-node scaling on Anvil/Hopper. The
-    single-node module is preserved as the fallback path so the simpler
-    code path stays maintainable for interactive use.
-
-Realization scaffolding:
-    `realization_ids` is accepted but ignored in Phase 1 (deterministic
-    single-trace re-eval). Phase 3 will scatter (solution_id, realization_id)
-    pairs and combine per-realization HDF5s per solution.
+Each rank scores an ``numpy.array_split`` slice of solutions via
+``reeval_core.evaluate_solution_raw``; rank 0 gathers the per-SOW matrices
+and persists ``reeval_raw`` + ``objectives_summary`` via
+``reeval_core.persist_reeval_raw``. Multi-node counterpart of
+``src.reevaluate`` (multiprocessing, single-node).
 
 Example
 -------
@@ -33,7 +24,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -104,7 +95,6 @@ def reevaluate_mpi(
     formulation: str,
     seed: Optional[int] = None,
     max_solutions: int = 0,
-    realization_ids: Optional[List[int]] = None,
 ) -> Optional[Path]:
     """Re-simulate Pareto solutions across MPI ranks.
 
@@ -113,19 +103,12 @@ def reevaluate_mpi(
         seed: Optional seed number. If provided, outputs land under a
             seed_NN subdir to avoid collision across multi-seed reruns.
         max_solutions: Cap on number of solutions (0 = all).
-        realization_ids: Phase 3 scaffold; ignored in Phase 1. When set,
-            each (solution_id, realization_id) pair becomes a unit of work.
 
     Returns:
         Path to objectives_summary.csv on rank 0; None on other ranks.
     """
     comm, rank, size = _get_mpi_context()
     is_root = rank == 0
-
-    # Phase 1 ignores realizations; warn if caller passed non-trivial input.
-    if realization_ids is not None and is_root:
-        print("[reevaluate_mpi] WARN: realization_ids ignored in Phase 1 "
-              f"(received {len(realization_ids)} ids).")
 
     scenario = active_scenario_name()
     slug = derive_slug(formulation)
@@ -171,7 +154,7 @@ def reevaluate_mpi(
             print("[reevaluate_mpi] reference set is empty; nothing to do.")
         return None
 
-    # Each rank computes its slice via array_split (matches MOEA-FIND).
+    # Each rank computes its slice via array_split.
     all_ids = np.arange(n_solutions, dtype=int)
     rank_ids = list(np.array_split(all_ids, size)[rank])
 

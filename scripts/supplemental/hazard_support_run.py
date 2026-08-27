@@ -28,11 +28,8 @@ images exist):
 Stage B (consumes the stage-A labels unchanged): re-scores each (design, draw,
 seed) run's Starr satisficing fraction and no-harm frequency per support
 stratum and per forcing tercile of ``m``, with a SOW-level paired bootstrap CI
-on the HF - PS difference. This is a PRE-CAMPAIGN decision instrument: it runs
-on whatever re-evaluated cubes exist before the campaign (the go/no-go sets on
-the interim ``first10ch`` E_test subset, ``HSD_REEVAL_TAG``) so the
-stationary-vs-climate-augmented pool question is settled before search SUs are
-spent, never after. Skipped with a message when no matched-design cube exists
+on the HF - PS difference, from the campaign re-eval cubes on
+``HSD_REEVAL_TAG``. Skipped with a message when no matched-design cube exists
 on the tag.
 
 All settings live in ``supplemental_config.py`` (``HSD_*``); no CLI value

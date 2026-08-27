@@ -1,14 +1,11 @@
 #!/bin/bash
 # Sharded E_test generation: one array task per chunk-aligned slice of the LHS
-# forcing profiles. The serial step-12 build measured ~1.65 h per 500-realization
-# chunk (~84 h for all 50), so E_test parallelizes across the array exactly like
-# the candidate pools: rows are keyed to the GLOBAL realization index (methods
-# §3.4), so the shard union equals a serial generation. Each shard writes its
-# daily chunk dir(s) plus a hazard-image shard npz (the per-shard completion
-# marker: rerunning a finished shard is a no-op; delete the npz to force).
-# Shard boundaries must align to chunk boundaries — with the campaign sizing
-# (N_theta=1000, R=25, chunk=500 -> 50 chunks) any shard count that divides 50
-# works; 50 shards (1 chunk each, default) maximizes parallelism.
+# forcing profiles. Rows are keyed to the GLOBAL realization index, so the
+# shard union equals a serial step-12 generation. Each shard writes its daily
+# chunk dir(s) plus a hazard-image shard npz (the completion marker: rerunning
+# a finished shard is a no-op; delete the npz to force). Shard boundaries must
+# align to chunk boundaries (campaign sizing: 50 chunks, so any shard count
+# dividing 50 works; the default 50 shards is one chunk each).
 #
 # Submit (defaults: kn variant, 50 shards), then chain gen_etest_merge.sh:
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_ETEST_VARIANT=kn \

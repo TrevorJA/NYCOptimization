@@ -6,9 +6,11 @@ The one entrypoint for every figure tier (``src/figures/registry.py``):
     python -m scripts.main.figures --tier manuscript
     python -m scripts.main.figures --figure regret_vs_incumbent
 
-Tiers route themselves: manuscript -> ``figures/manuscript/`` (PNG + PDF,
-manuscript style, tracked), si -> ``figures/si/`` (same), exploratory ->
-``outputs/figures/_exploratory/`` (PNG, dense style). A figure whose data
+Tiers route themselves: manuscript -> ``figures/manuscript/`` (manuscript
+style, tracked), si -> ``figures/si/`` (manuscript style, machine-local),
+exploratory -> ``outputs/figures/_exploratory/`` (dense style). Every tier
+renders PNG only during iteration; vector formats come from
+``style.MANUSCRIPT_FIGURE_FORMATS`` at the manuscript-final pass. A figure whose data
 needs are not present on this machine is SKIPPED with a message naming the
 missing need (raw cubes are Anvil-side; scored CSVs and figure tables are
 synced), so a local render pass completes with whatever is renderable.

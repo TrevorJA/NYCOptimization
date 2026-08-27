@@ -1,23 +1,14 @@
 """pareto_filter.py - Stakeholder-acceptability screening of a Pareto set.
 
-Reusable postprocessing: drop Pareto-approximate solutions that violate a hard
-stakeholder floor/ceiling on one or more objectives, in NATURAL units. The
-canonical use is the NYC delivery-reliability floor -- a policy whose NYC
-delivery reliability falls below 0.5 (the annual non-failure frequency in
-ensemble archives) is unacceptable to stakeholders no matter how well it trades
-off other objectives, so it is removed before any figure or robustness summary
-is produced.
+Post-hoc screen in NATURAL units: drop Pareto-approximate solutions that
+violate a hard stakeholder floor/ceiling on one or more objectives. It never
+changes an objective value, only which solutions are carried forward.
 
-This is a *screening* filter applied AFTER search, not a new optimization: it
-never changes an objective value, only which solutions are carried forward.
-
-NOTE: new searches enforce the reliability floor FORMALLY — the
-post-simulation Borg constraint ``nyc_reliability_floor``
-(``src.formulations.make_post_sim_constraint_function``, floor from
-``config.NYC_RELIABILITY_FLOOR`` / env ``NYCOPT_NYC_RELIABILITY_FLOOR``)
-excludes below-floor policies from search and archive via constraint
-dominance. This module is retained for archives produced BEFORE that change;
-keep ``DEFAULT_STAKEHOLDER_FLOORS`` in agreement with the config default.
+The search enforces the same NYC reliability floor as the formal
+post-simulation constraint ``nyc_reliability_floor``
+(``src.formulations.make_post_sim_constraint_function``), so this screen is a
+no-op on campaign archives. Keep ``DEFAULT_STAKEHOLDER_FLOORS`` equal to
+``config.NYC_RELIABILITY_FLOOR``.
 
 Orientation
 -----------
@@ -34,12 +25,10 @@ from pathlib import Path
 import numpy as np
 
 #: Hard stakeholder floors (minimum acceptable NATURAL value), by objective name.
-#: A solution is dropped if any listed objective falls BELOW its floor. NYC
-#: delivery reliability < 0.5 is unacceptable to DRB stakeholders regardless of
-#: the rest of the trade-off, so 0.5 is the default screen. The same floor is
-#: keyed under BOTH registry spellings because absent names are silently
+#: A solution is dropped if any listed objective falls BELOW its floor. The
+#: floor is keyed under BOTH registry spellings because absent names are
 #: ignored: ensemble archives carry the annual objective, single-trace (§1)
-#: archives the weekly one — one dict serves both without a dead screen.
+#: archives the weekly one.
 DEFAULT_STAKEHOLDER_FLOORS: dict[str, float] = {
     "nyc_delivery_reliability_annual": 0.5,
     "nyc_delivery_reliability_weekly": 0.5,
@@ -182,38 +171,3 @@ def filter_reference_set(set_file, formulation: str = "ffmp",
     )
 
 
-def write_filtered_set(set_file, out_file, mask: np.ndarray) -> int:
-    """Write a new ``.set`` keeping only accepted rows, preserving the header.
-
-    Comment/header lines (``#``/``//``) are copied verbatim and data rows are
-    emitted in original order for the rows where ``mask`` is True, so the result
-    is a valid MOEAFramework set that a downstream re-eval can consume unchanged.
-
-    Args:
-        set_file: Source ``.set``.
-        out_file: Destination ``.set`` (parent dirs created).
-        mask: Boolean keep-mask aligned to the source's DATA rows.
-
-    Returns:
-        Number of data rows written.
-    """
-    set_file, out_file = Path(set_file), Path(out_file)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    kept = 0
-    data_row = 0
-    with open(set_file) as fin, open(out_file, "w") as fout:
-        for line in fin:
-            s = line.strip()
-            if not s or s.startswith("#") or s.startswith("//"):
-                fout.write(line)
-                continue
-            try:
-                float(s.split()[0])
-            except (ValueError, IndexError):
-                fout.write(line)
-                continue
-            if data_row < mask.size and mask[data_row]:
-                fout.write(line)
-                kept += 1
-            data_row += 1
-    return kept

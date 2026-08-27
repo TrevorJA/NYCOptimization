@@ -13,7 +13,7 @@ record's disjoint 10-yr windows as tick markers rather than a distribution
 The scatter panels have two geometries. The default 3-D one plots each
 ensemble in a drought-drought-flood triple, with the pool projected as
 highest-density bands on the three cube walls instead of drawn as a point
-cloud, so the ~100 sampled members stay the subject of the panel. The 2-D one
+cloud, so the N sampled members stay the subject of the panel. The 2-D one
 is the original severity-magnitude plane over the pool's density field, which
 the 3-D cube keeps intact as its back wall.
 
@@ -86,9 +86,8 @@ DEFAULT_SCATTER_MODE = "3d"
 #: Pool mass enclosed by each shaded band of the 3-D wall projections
 #: (highest-density regions), with their fills in the same ascending-density
 #: order that ``contourf`` consumes: outermost band lightest, core darkest.
-#: Bands rather than a continuous field keep the pool legible as a backdrop --
-#: a point cloud or a full density image at P=1e6 buries the 100 sampled
-#: members the panel is about.
+#: Bands rather than a continuous field keep the pool legible as a backdrop;
+#: a point cloud or a full density image at P=1e6 buries the N sampled members.
 POOL_BAND_QUANTILES: tuple[float, ...] = (0.5, 0.9, 0.99)
 POOL_BAND_FILLS: tuple[str, ...] = ("0.945", "0.875", "0.78")
 POOL_BAND_EDGE = "0.62"
@@ -385,7 +384,7 @@ def draw_scatter_panel_3d(
 
     The pool appears as highest-density bands on the three cube walls (the
     three pairwise marginals of ``(ax_x, ax_y, ax_z)``) rather than as a point
-    cloud inside the cube: at P=1e6 an in-cube pool hides the ~100 members the
+    cloud inside the cube: at P=1e6 an in-cube pool hides the N members the
     panel exists to show. Members carry a marker-size depth cue and a faint
     shadow on each of the three walls -- their own 2-D marginals, read directly
     against the pool bands they sit on -- which together fix their position in

@@ -56,5 +56,5 @@ The SalinityLSTM database
 et al. (2026) reconstructed inflow record, so the LSTM runs over the full
 simulation window. The trained weights are date-agnostic (no retraining;
 only the inference-time `dates_all` array extends back). NYCOpt's
-`LSTM_START_DATE` defaults to `START_DATE` (`"1945-10-01"`); the override
+`LSTM_START_DATE` defaults to `START_DATE` (`"1945-12-01"`); the override
 knob remains for clipped-window experiments.

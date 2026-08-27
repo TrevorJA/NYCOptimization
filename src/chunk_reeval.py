@@ -1,46 +1,28 @@
 """chunk_reeval.py - Simulate a large chunked test ensemble and score it, metrics-only.
 
-Re-evaluates a set of policies (decision-variable vectors) against **every chunk** of a chunked
-test ensemble (``src.ensemble_generation.generate_forcing_ensemble`` with ``chunk_size > 0``),
-computing objectives/robustness from **in-memory reduced metrics** — full simulation-output
-timeseries are never persisted. Memory is bounded three ways: (1) each chunk is a small standalone
-ensemble; (2) ``run_simulation_ensemble_batched`` (``SEARCH_REALIZATION_BATCH``) batches realizations
-within a chunk, freeing timeseries per batch; (3) work is distributed across MPI ranks.
+Re-evaluates policies against every chunk of a chunked test ensemble
+(``src.ensemble_generation.generate_forcing_ensemble`` with ``chunk_size > 0``)
+from in-memory reduced metrics; simulation timeseries are never persisted.
 
-Design (reusing the re-evaluation stack):
-- Work units are ``(solution, chunk)`` pairs. Ranks coordinate through marker/claim files, not
-  flaky MPI collectives.
-- Each unit reduces to the chunk's per-SOW annual-unit objective rows: the chunk's realizations
-  are reduced to their stage-(i) annual metrics via :func:`src.simulation.evaluate_annual_units`
-  (recorder -> ``/dev/null``) and each SOW's unit-years are pooled through the §2 unit operators
-  (:func:`src.reeval_core.sow_objective_matrix`). A chunk holds WHOLE SOWs by construction
-  (``chunk_size`` is a multiple of ``realizations_per_profile``; asserted in ``src.etest``), so
-  rows are keyed by the ensemble's **global** SOW ids and persistence layout, scheduling, and
-  merge placement provably cannot change the merged cube (``tests/test_chunk_reeval.py`` asserts
-  equality across all of them).
-- **Incremental mode** (``NYCOPT_CHUNK_INCREMENTAL=1``, default): each completed unit is flushed
-  atomically to ``partial/units/chunk{j:03d}/sol{sid:05d}.parquet``; a failed unit leaves a
-  ``.failed`` sidecar (its rows stay NaN, exactly like the one-shot no-rows semantics). Restarting
-  the same submission resumes — done units are skipped regardless of rank count. A wall guard
-  (``NYCOPT_CHUNK_STOP_EPOCH``/``NYCOPT_CHUNK_UNIT_SECONDS``) stops cleanly before the limit.
-  Scheduling (``NYCOPT_CHUNK_SCHEDULE``): ``claim`` (default) = dynamic pull via O_CREAT|O_EXCL
-  claim files over a chunk-major list (each node's ranks share 1-2 chunks' HDF5 working set);
-  ``interleave`` = static strided; ``contiguous`` = static s-major ``np.array_split``.
-- **One-shot mode** (``NYCOPT_CHUNK_INCREMENTAL=0``): each rank accumulates its rows and writes one
-  long-format parquet partial at the end (the original path, kept as the reference).
-- Merge: rank 0 reassembles per-solution ``(n_sow, M)`` matrices and reuses
-  :func:`src.reeval_core.persist_reeval_raw` (so ``reeval_raw.parquet`` / ``reeval_raw_meta.json`` /
-  ``objectives_summary.csv`` are byte-compatible with the normal re-eval path) then
-  :func:`src.robustness.run`. With ``NYCOPT_CHUNK_MERGE=off`` the simulate job skips the merge
-  (and the ``await_all_done`` barrier entirely); run it afterwards via
-  ``workflow/09b_merge_test_chunks.sh`` -> :func:`merge_test_chunks`, which is resumable and
-  refuses on missing units unless ``NYCOPT_CHUNK_MERGE_ALLOW_PARTIAL=1``.
+- Work units are ``(solution, chunk)`` pairs, distributed across MPI ranks.
+- Each unit reduces to the chunk's per-SOW annual-unit objective rows via
+  :func:`src.simulation.evaluate_annual_units` and
+  :func:`src.reeval_core.sow_objective_matrix`, keyed by the ensemble's GLOBAL
+  SOW ids (a chunk holds whole SOWs: ``chunk_size`` is a multiple of
+  ``realizations_per_profile``), so persistence layout, scheduling, and merge
+  placement cannot change the merged cube (``tests/test_chunk_reeval.py``).
+- Incremental mode writes each unit atomically to
+  ``partial/units/chunk{j:03d}/sol{sid:05d}.parquet`` (``.failed`` sidecar on
+  error) and resumes on resubmission; one-shot mode writes one partial per rank.
+- Merge (rank 0, or ``workflow/09b_merge_test_chunks.sh`` ->
+  :func:`merge_test_chunks`) reassembles per-solution ``(n_sow, M)`` matrices
+  and reuses :func:`src.reeval_core.persist_reeval_raw` then
+  :func:`src.robustness.run`.
 
-The re-eval ensemble (``config.REEVAL_ENSEMBLE_SPEC``, via ``NYCOPT_REEVAL_ENSEMBLE_PRESET``) must be
-the test-ensemble slug: its ``realization_indices == range(N_M)`` are exactly the global ids, so the reused
-persistence keys every row to its true global realization.
+Knobs (``NYCOPT_CHUNK_*``) are documented once in config.py. The re-eval
+ensemble (``NYCOPT_REEVAL_ENSEMBLE_PRESET``) must be the test-ensemble slug so
+``realization_indices`` are the global ids.
 """
-
 from __future__ import annotations
 
 import os

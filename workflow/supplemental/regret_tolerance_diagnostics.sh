@@ -10,38 +10,18 @@
 #SBATCH --output=logs/regret_tolerance_diagnostics_%j.out
 #SBATCH --error=logs/regret_tolerance_diagnostics_%j.err
 
-# Regret-tolerance diagnostics
-# (docs/notes/methods/regret_tolerance_diagnostics.md)
+# Regret-tolerance diagnostics (docs/notes/methods/regret_tolerance_diagnostics.md;
+# scripts/supplemental/regret_tolerance_diagnostics.py). Zero simulation.
+# Pass A needs only the step-05 incumbent cube (RTOL_REEVAL_BASELINE_DIR);
+# pass B needs the re-evaluated policy sets with their baseline/ subdirs on the
+# same preset and is skipped with a printed reason when they are absent.
+# Settings: supplemental_config.py (RTOL_ section), no CLI value flags.
 #
-# Fixes the two free parameters of the incumbent-relative regret comparison --
-# the no-harm tolerance tau_i = k * eps_i and the non-inferiority margin delta --
-# from anchors that cannot bias the answer. Zero simulation.
+# Submit: sbatch workflow/supplemental/regret_tolerance_diagnostics.sh
 #
-# TWO PASSES, and the order matters.
-#
-#   Pass A needs ONLY the step-05 incumbent cube, so run it as soon as that
-#   lands and BEFORE any search finishes. It measures the estimator noise floor
-#   and picks the headline tolerance rung. Running it early is the point: a
-#   tolerance chosen after seeing the campaign contrast is not a pre-registered
-#   tolerance, whatever it is set to.
-#
-#   Pass B needs the re-evaluated policy sets and reports the discrimination
-#   band, the empirical nulls, and the assay-sensitivity check. It computes the
-#   margin only once RTOL_ADOPTED_K is filled in from pass A.
-#
-# Prerequisites:
-#   pass A   outputs/historic/ffmp_obj8_mm_full/reeval/etest_kn_50yr_n25000/baseline/
-#            (step 05 run_baseline.py --reeval on the test ensemble)
-#   pass B   step 08 re-evaluation + `python -m src.robustness` per design,
-#            each with its own baseline/ subdir staged from the SAME preset
-#
-# All settings live in supplemental_config.py (RTOL_ section) -- no CLI value
-# flags. Pass B is skipped with a printed reason when its inputs are absent, so
-# this wrapper is safe to run at either stage.
-#
-# Sizing: pandas/numpy over a 200k-row parquet plus RTOL_SPLIT_HALF_REPS
-# partitions of the incumbent cube (~1-2 min); the paired bootstrap over
-# RTOL_BOOTSTRAP_N resamples dominates pass B when RTOL_ADOPTED_K is set.
+# Outputs: outputs/supplemental/regret_tolerance_diagnostics/{tables,figures}.
+# Sizing: pandas/numpy over the incumbent cube (~1-2 min); the paired bootstrap
+# (RTOL_BOOTSTRAP_N resamples) dominates pass B.
 
 set -euo pipefail
 

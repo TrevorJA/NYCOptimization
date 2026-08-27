@@ -8,12 +8,11 @@ provides the satisficing-criterion helpers the figures share: joint/univariate
 satisficing under ANY threshold vector (pure post-processing on the persisted
 cube -- no simulation), conjunction-collapse curves, and threshold-response
 curves. Thresholds default to the ``reeval_raw_meta.json`` snapshot so figures
-can never drift from the adopted criteria (the moving-measuring-stick guard);
-phase-2 alternative criterion sets pass explicit vectors instead.
+cannot drift from the adopted criteria; alternative criterion sets pass
+explicit vectors instead.
 
 Satisficing here is always the SOW-counting Starr domain criterion of
-``src.robustness`` (see that module's docstring for the literature anchoring);
-this module only re-expresses it under varied threshold vectors and axis
+``src.robustness``, re-expressed under varied threshold vectors and axis
 subsets, using ``math.inf`` bounds to make an axis non-binding.
 """
 
@@ -228,7 +227,7 @@ def collapse_curve(sat: np.ndarray, obj_names: Sequence[str],
 
 #: Fixed global conjunction order for collapse figures: pooled difficulty
 #: across designs, easiest first, so the three designs' curves are directly
-#: comparable at every depth (verified ordering, 2026-08-13 diagnostics).
+#: comparable at every depth.
 COLLAPSE_ORDER: tuple[str, ...] = (
     "nyc_delivery_reliability_annual",
     "nyc_delivery_deficit_p99_pct",

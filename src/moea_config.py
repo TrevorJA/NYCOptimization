@@ -1,33 +1,15 @@
 """
 moea_config.py - Registry of MOEA algorithm configurations (Borg settings only).
 
-A *MOEA config* is a named bundle of Multi-Master Borg **algorithm settings** —
-island count, worker count, evaluation budget, runtime-snapshot frequency, seed
-count, and wall-time. It is one of two orthogonal axes that specify an
-optimization run; the other is the scenario design (see
-``src/scenario_designs.py``).
+A MOEA config bundles the Multi-Master Borg algorithm settings (islands,
+workers, NFE, runtime-snapshot frequency, seeds, wall-time) and is selected by
+``NYCOPT_MOEA_CONFIG``; the scenario design (``src/scenario_designs.py``) is the
+other run axis. Formulation, objectives, physics toggles and epsilons live on
+the problem-definition axis (the moea slug), not here.
 
-This module centralizes what is otherwise split between the former
-``config.BORG_SETTINGS`` / ``config.MMBORG_SETTINGS`` dicts and value-carrying
-CLI flags (``--nfe``, ``--islands``, ``--runtime-freq``, ``--time``). Moving
-these into a versioned, named registry makes runs reproducible from config alone
-rather than from shell history.
-
-Deliberately **excluded** from a MOEA config (they live on the
-problem-definition axis and are encoded in the moea slug, not here):
-formulation, objectives, physics toggles (LSTM, salt-front mode), and epsilons.
-Epsilons come from the active objective set via ``config.get_epsilons()``.
-
-Status: ``smoke`` is a concrete, intentionally tiny dev-only config so the full
-pipeline is runnable end-to-end. ``production`` is the campaign config, sized
-on the measured production cost basis against the remaining Anvil balance
-(``docs/notes/methods/campaign_design.md``).
-
-There is NO resume. Runtime files are diagnostic archive dumps and the Borg
-checkpoint is disabled (islands share one checkpoint file; race-prone, never
-run), so every search must finish inside a single SLURM job. The safety net is
-the wall-time margin, plus the fact that the equal-NFE result of a long seed is
-its runtime snapshot at the shorter seed's NFE (see ``production``).
+``smoke`` is dev-only; ``production`` is the campaign config
+(``docs/notes/methods/campaign_design.md``). There is no resume: the Borg
+checkpoint is disabled, so every search must finish inside one SLURM job.
 """
 
 from __future__ import annotations
@@ -43,40 +25,24 @@ from dataclasses import dataclass
 class MOEAConfig:
     """Immutable bundle of Multi-Master Borg algorithm settings.
 
-    Attributes
-    ----------
-    name
-        Single-string key used to select this config (via ``NYCOPT_MOEA_CONFIG``)
-        and appended to the moea slug when it is not the default.
-    n_islands
-        Number of MM Borg islands. ``None`` until set.
-    n_workers_per_island
-        Worker ranks per island, used to size the MPI allocation. ``None`` until
-        set (then the SLURM allocation is used as a fallback).
-    max_evaluations
-        Max NFE **per island** (total NFE = islands * max_evaluations). ``None``
-        until set. Mutually informative with ``budget_scenario_years``. The
-        default for every seed without an entry in ``max_evaluations_by_seed``.
-    max_evaluations_by_seed
-        Per-island NFE for specific seeds: entry ``i`` applies to seed ``i + 1``
-        (seeds are 1-indexed, the ``sbatch --array`` index). Seeds beyond the
-        tuple use ``max_evaluations``. Lets one config (and therefore one slug
-        and one output directory) hold seeds run to different budgets, e.g. a
-        long first seed whose runtime snapshot at the short seeds' NFE is the
-        equal-NFE result. Resolve with :meth:`max_evaluations_for_seed`.
-    budget_scenario_years
-        Alternative budget control expressed as total simulated scenario-years
-        (function evaluations * ensemble size * realization length), per the
-        budget-controlled comparison in ``experimental_design.md`` §Controls.
-        ``None`` until the budget discussion fixes it.
-    runtime_frequency
-        NFE interval between Borg runtime-archive snapshots. ``None`` until set.
-    n_seeds
-        Number of random seeds (independent search replicates). ``None`` until set.
-    max_time_hours
-        Wall-time cap in hours, or ``None`` for NFE-bounded runs.
-    notes
-        Free-form notes.
+    Attributes:
+        name: Key used to select this config (``NYCOPT_MOEA_CONFIG``); appended
+            to the moea slug when it is not the production default.
+        n_islands: Number of MM Borg islands.
+        n_workers_per_island: Worker ranks per island, used to size the MPI
+            allocation (``None`` falls back to the SLURM allocation).
+        max_evaluations: NFE per island (total NFE = islands x this) for every
+            seed without an entry in ``max_evaluations_by_seed``.
+        max_evaluations_by_seed: Per-island NFE for specific seeds; entry ``i``
+            applies to seed ``i + 1`` (the 1-indexed ``sbatch --array`` index).
+            Lets one config hold seeds run to different budgets; resolve with
+            :meth:`max_evaluations_for_seed`.
+        budget_scenario_years: Alternative budget control in total simulated
+            scenario-years; unused by every registered config.
+        runtime_frequency: NFE interval between Borg runtime-archive snapshots.
+        n_seeds: Number of random seeds (independent search replicates).
+        max_time_hours: Wall-time cap in hours, or ``None`` for NFE-bounded runs.
+        notes: Free-form notes.
     """
 
     name: str
@@ -146,38 +112,9 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         max_time_hours=None,
         notes="Dev/smoke config. Plumbing exercise only — not a method choice.",
     ),
-    # Multi-Master Borg on Hopper, historic single-trace baseline. Sized to the
-    # 5-node x 33-task = 165-rank budget: 4 islands x 40 workers + 4 island-
-    # masters + 1 controller = 1 + 4*(40+1) = 165 ranks (160 parallel
-    # evaluators). NFE is per-island, so total NFE = n_islands * max_evaluations.
-    #
-    #   mm_pilot:  4 * 1250  =   5,000 total NFE  (launch-verification pilot)
-    #   mm_full:   4 * 12500 =  50,000 total NFE  (production run)
-    #
-    # NFE-bounded (max_time_hours=None); the SLURM --time wall cap is sized from
-    # the pilot's measured per-eval cost. Single seed (n_seeds=1); the array
-    # index supplies the Borg RNG seed.
-    "mm_pilot": MOEAConfig(
-        name="mm_pilot",
-        n_islands=4,
-        n_workers_per_island=40,
-        max_evaluations=1250,     # per island -> 5,000 total NFE
-        runtime_frequency=250,
-        n_seeds=1,
-        max_time_hours=None,
-        notes="Hopper MM-Borg launch pilot: 5k NFE, 165 ranks (4x40+5). "
-              "Verifies balance, per-eval cost, and output writing before the "
-              "full 50k run.",
-    ),
-    # Scenario-design go/no-go pilot. Identical rank layout to mm_pilot (165
-    # ranks, 5,000 total NFE). NFE is the SOLE binding constraint so all arms
-    # execute the identical 5,000 NFE — the validity condition for the cross-
-    # design Pareto comparison. Calibrated empirically: the slowest arm (N=64
-    # hazard ensemble) measured ~153 s/warm-eval, so 5,000 NFE ≈ 1.7 h of eval
-    # time on 160 workers — comfortably under the 3 h SLURM wall. No Borg
-    # maxTime cap (it would risk truncating NFE unequally near the budget);
-    # the SLURM --time=03:00:00 wall is the safety net (a killed run is NOT
-    # resumable; it is relaunched from scratch).
+    # Hopper-era 165-rank configs (4 islands x 40 workers + 4 island masters +
+    # 1 controller): pilot = 5k NFE, mm_full = the pre-campaign 50k-NFE config.
+    # NFE-bounded; the sbatch array index supplies the Borg RNG seed.
     "pilot": MOEAConfig(
         name="pilot",
         n_islands=4,
@@ -186,8 +123,7 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         runtime_frequency=250,
         n_seeds=1,
         max_time_hours=None,      # NFE-bounded; SLURM --time is the wall safety
-        notes="Go/no-go scenario-design pilot: 5k NFE, 165 ranks (4x40+5). "
-              "NFE-binding (calibrated: N=64 arm ~153s/eval -> ~1.7h < 3h wall).",
+        notes="Pilot: 5k NFE, 165 ranks (4x40+5), NFE-bounded.",
     ),
     "mm_full": MOEAConfig(
         name="mm_full",
@@ -195,27 +131,12 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         n_workers_per_island=40,
         max_evaluations=12500,    # per island -> 50,000 total NFE
         runtime_frequency=1000,
-        n_seeds=10,               # recorded replicate count; submitted as
-                                  # `sbatch --array=1-10 workflow/06_run_mmborg.sh`
+        n_seeds=10,               # submitted as `sbatch --array=1-10`
         max_time_hours=None,
-        notes="MM-Borg production run: 50k NFE, 165 ranks (4x40+5). Scenario "
-              "design and objective set are the other run axes and are not fixed "
-              "by this config.",
+        notes="Pre-campaign Hopper config: 50k NFE, 165 ranks (4x40+5).",
     ),
-    # Moderate first full-workflow run, Anvil-shaped: 4 wholenode nodes = 512
-    # cores, 2 islands x 254 workers + 2 island-masters + 1 controller =
-    # 1 + 2*(254+1) = 511 ranks (1 idle core). Dense 128/node packing is the
-    # measured Anvil choice (SI §S8.2 packing sweep: ~17-21% eval-time penalty
-    # at full packing, already priced into the 173.8 s/eval cost surface, which
-    # was measured AT 128 ranks/node; ~1.2 GB/rank << 256 GB node memory) —
-    # the old 33/node rule was a Hopper measurement and does not transfer.
-    # Island partitioning is throughput-free at fixed slot count (SI §S8.4),
-    # so 2 islands is a search-reliability choice: the smallest multi-master
-    # count, keeping per-island trajectories long (25k NFE/island, ~98
-    # turnovers of the 254-worker pipeline) at the moderate budget. 50k total
-    # NFE is 1/10 of the production budget; <=6.5 h / ~3,340 SU per seed at
-    # the measured cost (upper bound — early DV-infeasible NFE return in
-    # <0.1 s). Single seed (the array index supplies the Borg seed).
+    # 2 islands x 254 workers = 511 ranks on 4 x 128; 25k NFE/island (50k
+    # total); single seed.
     "mm_moderate": MOEAConfig(
         name="mm_moderate",
         n_islands=2,
@@ -224,20 +145,15 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         runtime_frequency=500,    # 50 runtime snapshots/island (diagnostics)
         n_seeds=1,
         max_time_hours=None,      # NFE-bounded; SLURM --time is the wall safety
-        notes="Moderate first full-workflow run: 50k NFE, 511 ranks (2x254+3) "
-              "on 4 Anvil wholenode nodes. 1/10 of the production budget; "
-              "<=6.5h/seed at the measured cost surface.",
+        notes="Moderate run: 50k NFE, 511 ranks (2x254+3) on 4 Anvil nodes.",
     ),
-    # Anvil scaling supplement (Stage B strong scaling; see
-    # workflow/supplemental/anvil_scaling_borg.sh and supplemental_config.py).
-    # Fixed TOTAL NFE = 1280 across all scale_* geometries so wall time is
-    # directly comparable (max_evaluations is per island -> 1280/islands).
-    # runtime_frequency scales with per-island NFE so every geometry logs the
-    # same ~8 snapshots per island. Run ONLY with the historic design +
-    # DEBUG_SIM=true (~13 s/eval short window) — these measure Borg
-    # coordination overhead, not search quality, and are NOT for production.
-    # scale_1x64 / scale_2x32 / scale_4x16 share 64 evaluation slots, giving
-    # the island-decomposition comparison at fixed parallelism.
+    # Anvil scaling supplement (Stage B strong scaling;
+    # workflow/supplemental/anvil_scaling_borg.sh, supplemental_config.py).
+    # Fixed total NFE = 1280 across all scale_* geometries (max_evaluations is
+    # per island); runtime_frequency scales so every geometry logs ~8
+    # snapshots per island. Run only with the historic design + DEBUG_SIM=true;
+    # these measure coordination overhead, not search quality. scale_1x64 /
+    # scale_2x32 / scale_4x16 share 64 evaluation slots.
     "scale_smoke": MOEAConfig(
         name="scale_smoke",
         n_islands=1,
@@ -287,8 +203,8 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         runtime_frequency=160,
         n_seeds=2,
         max_time_hours=None,
-        notes="Anvil scaling supplement: 66 ranks; 64-slot single-island arm "
-              "of the island-decomposition comparison.",
+        notes="Anvil scaling supplement: 66 ranks; 64-slot single-island "
+              "geometry of the island-decomposition comparison.",
     ),
     "scale_2x32": MOEAConfig(
         name="scale_2x32",
@@ -298,7 +214,7 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         runtime_frequency=80,
         n_seeds=2,
         max_time_hours=None,
-        notes="Anvil scaling supplement: 67 ranks; 64-slot two-island arm.",
+        notes="Anvil scaling supplement: 67 ranks; 64-slot two-island geometry.",
     ),
     "scale_4x16": MOEAConfig(
         name="scale_4x16",
@@ -308,44 +224,19 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         runtime_frequency=40,
         n_seeds=2,
         max_time_hours=None,
-        notes="Anvil scaling supplement: 69 ranks; 64-slot four-island arm "
-              "(320 NFE/island is a short Borg trajectory — overhead "
+        notes="Anvil scaling supplement: 69 ranks; 64-slot four-island "
+              "geometry (320 NFE/island is a short Borg trajectory; overhead "
               "measurement only).",
     ),
-    # Campaign production config (docs/notes/methods/campaign_design.md is the
-    # full specification and budget; the numbers here are its single source).
-    #
-    # Geometry: 12 Anvil wholenode nodes = 1,536 cores. 4 islands x 382 workers
-    # + 4 island-masters + 1 controller = 1 + 4*(382+1) = 1,533 ranks (3 idle
-    # cores), 128 ranks/node with NYCOPT_SEARCH_REALIZATION_BATCH=150 in the
-    # matched env files (N=300 x L=10 does not fit 128 ranks/node unbatched;
-    # config.search_node_rss_gb). Island partitioning is throughput-free at
-    # fixed slot count (measured), so 4 islands is a search-reliability choice
-    # that keeps per-island trajectories long. Twelve nodes rather than eight
-    # because a 750k-NFE search at N=300 projects to ~99 h on eight, above the
-    # 96 h cap, and there is no resume.
-    #
-    # NFE per seed: seed 1 runs 187,500/island (750k total); every later seed
-    # runs 125,000/island (500k). Seed 1's runtime snapshot at 125,000/island
-    # (snapshot 50 of 75 at the 2,500 cadence) is its equal-NFE result, so the
-    # campaign reports every seed at 500k and keeps the 750k tail as SI
-    # convergence evidence (scripts/main/extract_runtime_archive.py). To extend
-    # seed 2 to 750k, set max_evaluations_by_seed=(187_500, 187_500) before
-    # submitting it.
-    #
-    # Cost (measured basis, 21,850 SU per N=100/500k search on 8x128, scaled by
-    # (N/100)^0.951, x1.09 batch penalty, node scaling unmeasured beyond 8
-    # nodes): ~102-118k SU / 66-77 h for seed 1 and ~68-79k SU / 44-51 h for
-    # seed 2 per matched design; historic ~6.3k / ~4.2k SU. The model basis
-    # (173.8 s/eval / 0.729 efficiency) is 1.53x higher and is the stress case.
-    #
-    # NFE-bounded (max_time_hours=None): a Borg maxTime cap could truncate NFE
-    # unequally across designs, breaking the equal-NFE validity condition. The
-    # SLURM --time wall (96 h for seed 1, 72 h for seed 2 on the matched
-    # designs) is the only cap; a killed run is not resumable, but the
-    # 125,000/island snapshot of seed 1 lands at ~2/3 of its wall and survives
-    # a kill. n_seeds=2 (S=2), submitted one seed per `sbatch --array` index;
-    # the array index supplies the Borg RNG seed.
+    # Campaign production config (campaign_design.md is the specification and
+    # budget). 4 islands x 382 workers + 4 island masters + 1 controller =
+    # 1,533 ranks on 12 x 128 cores, with NYCOPT_SEARCH_REALIZATION_BATCH=150
+    # in the matched env files. Seed 1 runs 187,500/island (750k total), later
+    # seeds 125,000/island (500k); every seed is reported at 500k from seed 1's
+    # 125,000/island runtime snapshot (scripts/main/extract_runtime_archive.py).
+    # NFE-bounded (a Borg maxTime cap could truncate NFE unequally across
+    # designs); the SLURM --time wall is the only cap and there is no resume.
+    # S=2 seeds, one per `sbatch --array` index (the Borg RNG seed).
     "production": MOEAConfig(
         name="production",
         n_islands=4,

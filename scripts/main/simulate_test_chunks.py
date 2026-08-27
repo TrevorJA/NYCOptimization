@@ -1,6 +1,6 @@
 """simulate_test_chunks.py - Simulate + score a chunked test ensemble (metrics-only).
 
-Re-evaluates a policy set against every chunk of the chunked forcing master that
+Re-evaluates a policy set against every chunk of the chunked test ensemble (E_test) that
 ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` resolves to, writing objectives + robustness from in-memory reduced
 metrics (no simulation-output timeseries persisted). MPI chunk-and-aggregate; degrades to serial when
 MPI is unavailable. All configuration is env/registry-driven (no CLI value flags); ``--formulation``
@@ -12,7 +12,7 @@ Policies (env ``NYCOPT_CHUNK_POLICIES``):
 
 Launch (env-driven; via workflow/09_simulate_test_chunks.sh):
 
-    NYCOPT_REEVAL_ENSEMBLE_PRESET=master_5yr_n128000 \\
+    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \\
     mpirun -np 64 python3 -m scripts.main.simulate_test_chunks --formulation ffmp
 """
 

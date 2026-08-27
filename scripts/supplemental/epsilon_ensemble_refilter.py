@@ -1,43 +1,23 @@
 """
-epsilon_ensemble_refilter.py - Grouped-epsilon re-assessment on ensemble fronts.
+epsilon_ensemble_refilter.py - Grouped-epsilon re-filter of production reference sets.
 
-The 2026-08-05 campaign epsilon vector was calibrated on single-trace historic
-archives. Ensemble-averaged objectives are far smoother: the 500k-NFE
-production fixed_probabilistic archive (6,353 solutions, draw 0 / seed 1) is
-already 100% epsilon-consistent under that vector, so it under-resolves
-ensemble fronts and overloads the step 08/09 re-evaluation budget (SI sizing:
-~1,000-1,200 merged policies). This diagnostic re-filters the production
-Pareto-approximate sets under COARSER candidate vectors — no re-simulation —
-to measure the front-size vs objective-coverage trade-off and inform the
-vector adopted before the campaign fan-out (TODO.md section 1).
-
-Candidates are GROUPED 4-tuples (eps_rel, eps_def, eps_flood, eps_storage):
-one epsilon shared by all four *_reliability_annual axes, one by both
-*_deficit_p99_pct axes, flood exceedance and storage-P01 each their own. A
-shared epsilon per objective family is interpretable and defensible (the
-epsilon encodes the decision maker's significance threshold for that quantity
-— Kollat & Reed 2007; resolution/cardinality trade-off — Laumanns et al.
-2002), and mirrors the 2026-08-05 site-symmetry pairing of the deficit axes.
-Note the grouping raises Trenton (0.015) and NJ (0.025) reliability to the
-group value.
+Re-filters the production Pareto-approximate sets under grouped candidate
+epsilon 4-tuples (eps_rel shared by the four *_reliability_annual axes,
+eps_def by both *_deficit_p99_pct axes, flood exceedance and storage-P01 each
+their own) with no re-simulation, and reports front size vs objective coverage
+(epsilon_calibration_experiment.md).
 
 Substrates per scenario, from outputs/{scenario}/{slug}/sets/:
-  - seed_NN_{slug}.set        Borg's own final archive (validation: the
-                              'adopted' row must reproduce its membership
-                              exactly, the established part-2 check of
-                              scripts/supplemental/epsilon_refilter_sweep.py)
-  - {slug}_merged_raw.set     the plain-dominance cross-seed union — the
-                              canonical filtering substrate. NOTE: since
-                              2026-08-05, step 07 epsilon-box-filters
-                              {slug}_merged.set in place, so that file is NOT
-                              the raw union; the 'adopted' union row must
-                              instead reproduce its row count (second check).
+  - seed_NN_{slug}.set        Borg's own final archive (the 'adopted' row must
+                              reproduce its membership)
+  - {slug}_merged_raw.set     the plain-dominance cross-seed union, the
+                              filtering substrate (step 07 writes the
+                              epsilon-box-filtered {slug}_merged.set alongside;
+                              the 'adopted' union row must reproduce its count)
 
 A static re-filter under-prices live-search cardinality (epsilon also steers
-Borg's selection and restarts): measured +33%/seed and +10% cross-seed on the
-2026-08-05 confirmatory search (epsilon_calibration_experiment.md). The
-recommendation table therefore carries x1.10 / x1.35 inflation-adjusted sizes
-and the in-band test uses the x1.10 cross-seed adjustment.
+Borg's selection and restarts), so the recommendation table carries
+inflation-adjusted sizes (INFLATE_MERGED / INFLATE_SEED).
 
 Usage (from repo root, venv; submit via
 workflow/supplemental/epsilon_ensemble_refilter.sh):
@@ -75,14 +55,10 @@ GROUPS = {
 #: Trenton and NJ raised to the paired NYC/Montague reliability value.
 G_BASE = (0.02, 5.0, 0.3, 5.0)
 
-# Candidate grid (label -> 4-tuple; None = the adopted ungrouped 8-vector).
-# Reliability ladder: TODO's 2x-5x coarsenings; 0.10 is the calibration
-# experiment's measured historic eps_rec and stays below the ~0.12-0.14
-# per-SOW noise floors (rtol_floors.json). Deficit/flood/storage OATs are
-# bounded by the measured per-design eps_rec (deficit 10.0 hazfill, storage
-# 10.0 historic; flood extends the 2026-08-05 OAT grid). The joint ladder
-# scales all four groups together — OAT alone understates joint thinning
-# because box occupancy multiplies across axes.
+# Candidate grid (label -> 4-tuple; None = the adopted ungrouped 8-vector):
+# a reliability ladder, per-group OATs, a joint ladder (box occupancy
+# multiplies across axes, so OAT alone understates joint thinning), and mixed
+# shapes at intermediate reliability resolution.
 CANDIDATES: dict[str, tuple | None] = {
     "adopted":      None,
     "grouped_base": G_BASE,
@@ -99,29 +75,15 @@ CANDIDATES: dict[str, tuple | None] = {
     "joint_x1.5":   (0.03, 7.5, 0.45, 7.5),
     "joint_x2":     (0.04, 10.0, 0.6, 10.0),
     "joint_x3":     (0.06, 15.0, 1.0, 15.0),
-    # Band-gap intermediates (2026-08-12, after the first sweep): the
-    # fixed_probabilistic union jumps 1,755 (rel_x3) -> 1,205 (rel_x4) -> 948
-    # (rel_x5) around the target band, and joint_x1.5 lands just under it —
-    # mixed shapes with a moderate deficit/flood/storage coarsening fill the
-    # gap at finer reliability resolution.
+    # Mixed shapes at intermediate reliability resolution.
     "rel_x2.5":     (0.05, 5.0, 0.3, 5.0),
     "mixed_r2":     (0.04, 7.5, 0.3, 5.0),
     "mixed_r2.5":   (0.05, 7.5, 0.5, 7.5),
     "mixed_r3":     (0.06, 7.5, 0.5, 7.5),
-    # Fine-tune round (2026-08-12, second sweep): the band gap on the
-    # fixed_probabilistic union sits between mixed_r2 (1,615) and joint_x1.5
-    # (901) — clean-valued mixed shapes at rel 0.04-0.05 that keep the
-    # reliability axes better resolved than rel_x5's in-band 948.
     "mixed_r2f":    (0.04, 7.5, 0.5, 5.0),
     "mixed_r2fs":   (0.04, 7.5, 0.5, 7.5),
     "mixed_r2.5f":  (0.05, 7.5, 0.5, 5.0),
-    # Flood-0.3-preserving round (2026-08-12, third sweep): the flood-0.5
-    # cardinality cut is a box-boundary placement artifact (epsilon 0.6
-    # changes NOTHING on the fixedprob union while 0.5 cuts 34% — the front
-    # spans only 2-4 flood boxes in every design), so it is fragile across
-    # draws/seeds and hard to defend. These shapes keep flood at the adopted
-    # 0.3 and take the size cut from the deficit group instead (10.0 is the
-    # measured hazfill eps_rec).
+    # Shapes that keep flood at 0.3 and take the size cut from the deficit group.
     "keepf_a":      (0.05, 10.0, 0.3, 5.0),
     "keepf_b":      (0.06, 7.5, 0.3, 5.0),
     "keepf_c":      (0.05, 7.5, 0.3, 5.0),
@@ -131,8 +93,8 @@ CANDIDATES: dict[str, tuple | None] = {
 #: Re-eval sizing band (per design, cross-seed-adjusted retained count).
 TARGET_BAND = (1000, 1200)
 
-#: Live-search inflation factors measured on the 2026-08-05 confirmatory
-#: search: cross-seed epsilon-front +10%, per-seed archives +33%.
+#: Live-search inflation factors (measured on a confirmatory search;
+#: epsilon_calibration_experiment.md): cross-seed epsilon-front, per-seed archives.
 INFLATE_MERGED, INFLATE_SEED = 1.10, 1.35
 
 #: An axis is over-coarsened when its occupied 1-D box count falls below
@@ -159,10 +121,9 @@ def fast_epsilon_nondominated(objs: np.ndarray,
     against the kept archive: a dominating box has every coordinate <= and one
     < , hence a strictly smaller sum, so it precedes its victims in the sweep;
     by transitivity a dominated box is always dominated by a KEPT one. The
-    reference implementation compares all boxes pairwise — quadratic in
-    occupied boxes, ~40 min for the 15-candidate sweep on the 40k-row
-    fixed_probabilistic union (job 19838538 TIMEOUT). Cross-checked against
-    the reference at runtime (see _self_check).
+    reference implementation compares all boxes pairwise (quadratic in
+    occupied boxes). Cross-checked against the reference at runtime (see
+    _self_check).
     """
     F = np.asarray(objs, dtype=float)
     eps = np.asarray(epsilons, dtype=float)

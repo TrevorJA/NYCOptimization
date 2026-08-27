@@ -1,16 +1,15 @@
-"""ensemble_generation.py - Build a Kirsch-Nowak synthetic streamflow ensemble.
+"""ensemble_generation.py - Forcing-ensemble generation.
 
-Single-node, serial port of
-``../StochasticExploratoryExperiment/methods/generate.py::generate_ensemble_set``,
-stripped of MPI plumbing, per-set/per-batch abstractions, and climate-adjustment
-branches. Produces two HDF5 files in pywrdrb's ``FlowEnsemble`` format:
+Kirsch-Nowak or HMM generators, stationary or ``du_forced`` populations,
+optional streamed hazard image, and chunked / sharded persistence. Writes
+pywrdrb ``FlowEnsemble`` HDF5s plus provenance:
 
     {output_dir}/gage_flow_mgd.hdf5         - cumulative gage flows per node
     {output_dir}/catchment_inflow_mgd.hdf5  - marginal per-catchment inflows
     {output_dir}/_meta.json                 - provenance (seed, n_years, etc.)
 
-The two HDF5s are auto-loadable by pywrdrb once ``inflow_type`` (== the slug)
-is registered with the path navigator (see ``src.ensembles.register_ensemble_path``).
+The HDF5s load once ``inflow_type`` (== the slug) is registered with pywrdrb's
+path navigator (``src.ensembles.register_ensemble_path``).
 """
 
 from __future__ import annotations
@@ -266,10 +265,8 @@ def _disaggregate_fill_inflow(
     (re-keying would change the daily output — the SynHydro determinism caveat), and both frames are
     cast to float32.
 
-    The daily index is Nowak's own — derived from the monthly ensemble's calendar, whose epoch the
-    generation call anchored at ``start_date`` — and is never re-stamped here; this function only
-    verifies the anchor. (A free-standing re-stamp both rotated the statistical season against the
-    labels and drifted month boundaries across mismatched leap years.)
+    The daily index is Nowak's own, derived from the monthly ensemble's calendar; this function
+    only verifies the ``start_date`` anchor and never re-stamps it.
 
     Args:
         monthly_ensemble: Monthly ``Ensemble`` keyed by global realization index, carrying the
@@ -435,8 +432,7 @@ def _sample_forcing(
         if config.mean_abs_csv is None or config.std_csv is None:
             raise ValueError("variance_axis=True requires mean_abs_csv and std_csv on the config")
         cv_env = fs.derive_variance_envelope(config.mean_abs_csv, config.std_csv)
-        # The CV axis is an INDEPENDENT stream: namespace it rather than using the old `root+1`
-        # adjacency, which the namespaced seed scheme (scengen.seeds) exists to retire.
+        # The CV axis is an independent, namespaced seed stream (scengen.seeds).
         v_wy, v_params, v_names = fs.sample_harmonic_forcing(
             config.n_forcing_profiles, cv_env,
             seed=design_seed(config.root_seed, "cv_axis", 0),
@@ -612,19 +608,13 @@ def _generate_profile_monthly_hmm(
 ) -> tuple[dict[int, pd.DataFrame], object]:
     """Generate profile ``profile_idx``'s realizations with the annual HMM + annual->monthly Nowak.
 
-    The forcing enters as a **monthly delta-change**: the disaggregated monthly totals are multiplied
-    by the profile's calendar-ordered change factors ``a_j``, so theta shifts both the annual level
-    and the seasonal shape exactly as it prescribes. This is a DIFFERENT (and equally published)
-    mechanism from the Kirsch path's log-moment adjustment (Kirsch et al. 2013 eqs. 10-11), which
-    perturbs fitted log-space moments and has no analogue for state-conditional HMM emissions. That
-    is acceptable — indeed useful — HERE and ONLY here: the test ensemble is a measuring stick, never
-    a control, so its two constructions are meant to differ structurally. The search-side designs are
-    all ``generator="kn"`` and are therefore still exactly controlled against each other.
+    The forcing enters as a monthly delta-change: the disaggregated monthly totals are multiplied
+    by the profile's calendar-ordered change factors ``a_j`` (state-conditional HMM emissions have
+    no analogue of the Kirsch log-moment adjustment).
 
     The whole profile block is generated even when ``indices`` requests a subset: the HMM draws its R
-    realizations from one RNG in sequence, so realization ``j`` is only reproducible as part of its
-    block. Regeneration is therefore block-exact rather than realization-exact, at R x the cost of a
-    single realization.
+    realizations from one RNG in sequence, so regeneration is block-exact rather than
+    realization-exact.
 
     Args:
         setup: Fitted setup carrying ``hmm`` and ``ann2mon``.

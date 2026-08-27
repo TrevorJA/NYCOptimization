@@ -26,7 +26,7 @@
 # from this file's location (workflow/_common.sh -> parent dir).
 NYCOPT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-# Centralized cluster constants (previously copy-pasted across scripts).
+# Cluster constants.
 # The python module exists on Hopper; on Anvil there is no such module and the
 # conda env's PATH (propagated by sbatch --export=ALL) supplies python3, so the
 # module load below is a no-op there. Override via NYCOPT_PYTHON_MODULE.
@@ -43,17 +43,10 @@ NYCOPT_CONDA_ENV="${NYCOPT_CONDA_ENV:-venv}"
 # route MPI over IPoIB. Resolved in _nycopt_set_mpi_flags() once
 # NYCOPT_CLUSTER is known (i.e. after the env file is sourced).
 NYCOPT_MPI_MCA_FLAGS="${NYCOPT_MPI_MCA_FLAGS:-}"
-# MPI ranks packed per node for MM-Borg jobs. 128/node is the measured Anvil
-# wholenode packing: the node-packing sweep (SI §S8.2) bounds the eval-time
-# penalty at full packing to ~17-21% (priced into the 173.8 s/eval cost
-# surface, measured at this density), and wholenode bills all 128 cores
-# regardless. Memory is the binding constraint at this density for large
-# ensembles (N=300 x L=10 needs NYCOPT_SEARCH_REALIZATION_BATCH=150;
-# nycopt_check_memory below refuses to launch past the safety line). It is
-# the single source for the suggested --nodes/--ntasks-per-node geometry
-# printed by nycopt_check_allocation when an allocation doesn't fit the MOEA
-# config. Override via env for other machines (e.g. 33/node was the
-# Hopper-safe packing).
+# MPI ranks packed per node for MM-Borg jobs: 128/node on Anvil wholenode
+# (measured packing; memory-bound at large N, see nycopt_check_memory). Single
+# source of the --nodes/--ntasks-per-node geometry nycopt_check_allocation
+# suggests. Override via env on other machines.
 NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-128}"
 
 _nycopt_set_mpi_flags() {
@@ -237,20 +230,12 @@ nycopt_check_allocation() {
     echo "[_common] allocation OK: ${need} MPI ranks in ${have} allocated tasks"
 }
 
-# Verify the node memory the active scenario design needs at this packing
-# density fits under the safety line (config.NODE_MEMORY_SAFETY_FRACTION x
-# config.NODE_MEMORY_GB). The estimate is config.search_node_rss_gb: a
-# conservative linear envelope in scenario-years per rank that reproduces
-# the measured N=100 production steady state (139-140 GB/node at 128 ranks).
-# N=300 x L=10 unbatched projects to ~259 GB/node and is refused; with
-# NYCOPT_SEARCH_REALIZATION_BATCH=150 it projects to ~167 GB and passes.
-# NYCOPT_MEMORY_OVERRIDE=1 turns the abort into a warning (for a deliberate
-# measurement run). NYCOPT_MEM_SAMPLE_S=<s> additionally starts a background
-# sampler of this node's used memory (free -m) every <s> seconds into
-# logs/mem_<jobid>_<host>.log — first node only; for multi-node jobs read
-# `sstat -j <jobid> --format=MaxRSS,AveRSS,Nodelist` from the login node.
-# Skipped outside SLURM.
-# Requires: nycopt_read_run_identity ran first (SEED/FORMULATION exported).
+# Abort when the active design's projected node RSS at this packing
+# (config.search_node_rss_gb) exceeds config.NODE_MEMORY_SAFETY_FRACTION x
+# config.NODE_MEMORY_GB. NYCOPT_MEMORY_OVERRIDE=1 warns instead;
+# NYCOPT_MEM_SAMPLE_S=<s> starts a background sampler of this node's used
+# memory into logs/mem_<jobid>_<host>.log (first node only). Skipped outside
+# SLURM. Requires: nycopt_read_run_identity ran first.
 nycopt_check_memory() {
     [[ -z "${SLURM_NTASKS:-}" ]] && return 0   # not under SLURM (local run)
     local per_node="${SLURM_NTASKS_PER_NODE:-}"

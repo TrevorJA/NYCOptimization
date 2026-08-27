@@ -1,23 +1,14 @@
 #!/bin/bash
-# Supplemental: simulate the selected policies + the FFMP baseline on the
-# historic trace and render the timeseries figures.
+# Supplemental: simulate the selected policies (scripts/main/explore_results.py
+# picks them) plus the FFMP baseline on the historic trace in one job and one
+# model mode, and cache the traces under outputs/{scenario}/{slug}/timeseries/
+# so explore_results can re-render the timeseries figures on a login node.
 #
-# scripts/main/explore_results.py picks the representatives, so this job
-# simulates whatever the current selection rules choose (baseline first, then
-# each highlighted policy) in ONE process and ONE model mode — the persisted
-# outputs/baseline/ffmp_baseline.hdf5 was written with the FULL model while
-# search uses the TRIMMED model, so a mixed-mode comparison would attribute a
-# model difference to policy. Traces are cached under
-# outputs/{scenario}/{slug}/timeseries/ so the figures can be re-rendered on a
-# login node afterwards with a plain `python3 -m scripts.main.explore_results`.
+# Env inputs: NYCOPT_ENV_FILE (optional); extra args pass through to
+# explore_results (e.g. --slug, --n-diverse).
 #
-# ~31 s per historic simulation on Anvil; a handful of policies fits easily in
-# the wall time below.
-#
-# Usage (from repo root):
-#   sbatch workflow/supplemental/sim_selected_policies.sh
-#   sbatch workflow/supplemental/sim_selected_policies.sh --slug ffmp_obj8_mm_full --n-diverse 4
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \
+# Submit (from repo root):
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
 #          workflow/supplemental/sim_selected_policies.sh
 #
 #SBATCH --job-name=sim_selected

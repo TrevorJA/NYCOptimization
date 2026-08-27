@@ -1,42 +1,32 @@
 #!/bin/bash
-# Step 11: Scenario discovery on E_test failures, IN HAZARD SPACE — the
-# MECHANISM TEST for the study's central claim.
+# Step 11: Scenario discovery on E_test failures in hazard space. For each
+# scenario design it (a) fits a gradient-boosted classifier of E_test failure on
+# the realization's hazard coordinates and (b) tests whether failure probability
+# rises with the design's coverage deficit (hazard-space distance from each
+# E_test realization to the nearest member of the design's search ensemble).
+# No re-simulation; it scores persisted artifacts.
 #
-# Runs after step 08 (re-evaluation of every design's Pareto set on the common
-# held-out ensemble E_test). For each scenario design it (a) fits a
-# gradient-boosted classifier of E_test failure on the realization's HAZARD
-# coordinates, and (b) tests whether failure probability is positively
-# associated with that design's COVERAGE DEFICIT — the hazard-space distance
-# from each E_test realization to the nearest member of the design's SEARCH
-# ensemble. Cheap: no re-simulation, it scores persisted artifacts.
+# Requires: the step 08/09 re-eval cubes (reeval_raw.parquet) of the designs
+# compared, and E_test's staged hazard_image.npz (workflow step 12; no
+# forcing-parameter fallback).
 #
-# Requires:
-#   * step 08 has written reeval_raw.parquet for the designs being compared
-#   * E_test carries a staged hazard_image.npz (generate it with
-#     compute_hazard_image=True — workflow step 02). There is no forcing-parameter
-#     fallback: the coverage hypothesis is stated in hazard space.
-#
-# Everything comes from the env file — no positional args, no value flags:
+# Env inputs (no positional args, no value flags):
 #   NYCOPT_ENV_FILE                required — pins objectives/MOEA config (the slug)
-#   NYCOPT_REEVAL_ENSEMBLE_PRESET  required — E_test, the SAME ensemble step 08 used
+#   NYCOPT_REEVAL_ENSEMBLE_PRESET  required — E_test, the SAME preset steps 08/09 used
 #   FORMULATION                    identifier, default ffmp
 #   SEED                           optional, selects a per-seed re-eval subdir
-#   ENSEMBLE_DRAW                  optional, default 0 — which draw's search ensembles
+#   DRAW                           optional, default 0 — which draw's search ensembles
 #   DESIGNS                        optional, comma-separated design ids
 #                                  (default: the campaign designs)
-#
-# Analysis settings (compromise rule, classifier hyperparameters, redundancy
-# threshold) are module constants in scripts/main/scenario_discovery.py, env-
-# overridable via NYCOPT_SD_* — never CLI value flags.
+# Analysis settings are module constants in scripts/main/scenario_discovery.py,
+# env-overridable via NYCOPT_SD_*.
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_du.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_10yr_n200 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
 #          workflow/11_scenario_discovery.sh
 #
-# Local (no allocation needed — this is a single-core scoring job):
-#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_du.env \
-#   NYCOPT_REEVAL_ENSEMBLE_PRESET=kn_10yr_n200 \
-#   bash workflow/11_scenario_discovery.sh
+# Output: outputs/comparison/{slug}/{tag}/scenario_discovery/ tables + the
+# scenario_discovery figure tree.
 #
 #SBATCH --job-name=scenario_discovery
 #SBATCH --account=ees260021

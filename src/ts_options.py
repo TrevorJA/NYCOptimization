@@ -1,31 +1,13 @@
 """
-ts_options.py - Build the temperature/salinity LSTM options dicts for
+ts_options.py - Build the temperature/salinity LSTM option dicts for
 pywrdrb.ModelBuilder.
 
-The ModelBuilder accepts an `options` dict with `temperature_model` and/or
-`salinity_model` sub-dicts. Each sub-dict points the corresponding pywrdrb
-Parameter at YAML/JSON artifacts on disk; the parameter does its own loading.
-
-Design choices for NYCOptimization:
-
-- **Salinity is the active manuscript path.** It depends only on simulated
-  Q_Trenton_bc and Q_Schuylkill_bc, which are available in any pywrdrb run
-  (including stochastic re-eval ensembles).
-
-- **Temperature is deferred** because the TempLSTM consumes multivariate
-  meteorology (tmmn, tmmx, pr, srad) which we cannot supply for synthetic
-  / climate-perturbed scenarios. The options builder remains here so a
-  future re-enable is one config flag away.
-
-- **Salinity defaults to async-update mode** (`asycronized_update=True`),
-  which keeps the LSTM observe-only — the LSTM still updates per-timestep
-  and publishes `salt_front_location_mu`, but the salt-front-driven rewrite
-  of `mrf_target_{Montague,Trenton}` is skipped. This preserves the meaning
-  of the existing flow-target objectives.
-
-- All paths and toggles come from `config.py`, which honors `NYCOPT_*` env
-  overrides. The functions below take the active config as their single
-  source of truth.
+Both LSTMs are dormant: off by default and not used in the manuscript
+(config.INCLUDE_SALINITY_MODEL / INCLUDE_TEMPERATURE_MODEL). Each sub-dict
+points the corresponding pywrdrb Parameter at YAML/JSON artifacts on disk.
+Salinity defaults to sync mode per config.SALINITY_ASYNC_UPDATE; temperature
+needs multivariate meteorology that synthetic scenarios cannot supply. All
+paths and toggles come from config.py.
 """
 
 from __future__ import annotations
@@ -50,23 +32,11 @@ from config import (
 
 
 ###############################################################################
-# Namespace bootstrap (works around upstream PywrDRB-ML / NYCOpt src/ collision)
+# Namespace bootstrap (PywrDRB-ML / NYCOpt src/ collision)
 ###############################################################################
-# PywrDRB-ML uses absolute `from src.lstm_model import X` style imports inside
-# its flat src/ directory. NYCOptimization also has a src/ package. After
-# NYCOpt's modules are imported, sys.modules['src'] is NYCOpt's package, so
-# `from src.lstm_model import X` (which Pywr-DRB's salinity parameter does at
-# load time) raises ImportError.
-#
-# Workaround: temporarily swap sys.modules['src'] for a fresh PywrDRB-ML view,
-# import its lstm_model + torch_bmi chain, then restore NYCOpt's src while
-# keeping `src.lstm_model`, `src.torch_bmi`, etc. cached. Python's `from X.Y
-# import Z` consults sys.modules['X.Y'] first, so the cached modules win
-# without affecting NYCOpt's own `from src.X import Y` lookups (none of the
-# PywrDRB-ML leaf names collide with NYCOpt's src/* layout).
-#
-# A long-term fix is for PywrDRB-ML to rename `src/` to a proper package name
-# (e.g. `pywrdrb_ml/`); see docs/notes/code_implementation/pywrdrb_ml_setup.md.
+# Temporarily swap sys.modules["src"] so PywrDRB-ML's absolute `src.*` imports
+# resolve, cache its leaf modules, then restore NYCOpt's src; see
+# docs/notes/code_implementation/pywrdrb_ml_setup.md.
 
 _ML_LEAF_MODULES = (
     "src.lstm_model",
@@ -174,18 +144,10 @@ def _resolve_lstm_end_date() -> str:
 def build_salinity_options() -> dict[str, Any]:
     """Return the `salinity_model` options dict for `pywrdrb.ModelBuilder`.
 
-    Inputs to the salinity LSTM are pywrdrb-simulated flows
-    (`Q_Trenton_bc`, `Q_Schuylkill_bc`) which are always available, so this
-    LSTM is robust to scenario sources (deterministic, stochastic, climate-
-    perturbed). The published parameter is `salt_front_location_mu` (river
-    mile, 7-day average).
-
-    `debug=True` is hardcoded — in PywrDRB-ML the `debug` flag toggles
-    whether `ml_model.records` (per-timestep `sf_mu`/`sf_sd` series) is
-    populated, NOT verbose logging. The async-update post-process in
-    `simulation.py::_postprocess_async_salinity()` relies on those records
-    to extract a time-series objective. The memory cost is ~5×T floats
-    (trivial).
+    Inputs are the simulated flows `Q_Trenton_bc` and `Q_Schuylkill_bc`; the
+    published parameter is `salt_front_location_mu` (river mile, 7-day
+    average). `debug=True` populates `ml_model.records` (per-timestep
+    `sf_mu`/`sf_sd`), which `simulation._extract_salinity_records` reads.
 
     Returns:
         Dict suitable for `options={"salinity_model": <this>, ...}`. The
@@ -207,9 +169,8 @@ def build_salinity_options() -> dict[str, Any]:
 def build_temperature_options() -> dict[str, Any]:
     """Return the `temperature_model` options dict for `pywrdrb.ModelBuilder`.
 
-    NOT WIRED IN BY DEFAULT. The TempLSTM requires multivariate meteorology
-    (`tmmn`, `tmmx`, `pr`, `srad`) that is not available for synthetic /
-    climate-perturbed re-eval scenarios. Kept here for future re-enable.
+    Dormant: the TempLSTM requires multivariate meteorology (`tmmn`, `tmmx`,
+    `pr`, `srad`) that synthetic scenarios cannot supply.
     """
     return {
         "ml_model_type": "lstm",

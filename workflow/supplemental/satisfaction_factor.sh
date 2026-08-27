@@ -1,26 +1,18 @@
 #!/bin/bash
-# satisfaction_factor.sh — MPI-parallel weekly satisfaction-factor sweep for
-# ONE scenario design, then the serial cross-design analysis. Re-evaluates the
-# epsilon-calibration feasible-policy population (identical seed/count, so
-# cube rows align across the two experiments) on the design's search ensemble,
-# storing per-unit failing-week counts + §1 weekly reliability for the NYC/NJ
-# delivery objectives at each factor in SF_FACTOR_GRID
-# (docs/notes/methods/framing_convention_diagnostics.md diagnostic 2).
+# satisfaction_factor.sh — MPI weekly satisfaction-factor sweep for ONE design
+# (scripts/supplemental/satisfaction_factor_run.py; framing_convention_diagnostics.md
+# diagnostic 2), then the serial cross-design analysis. Requires NYCOPT_ENV_FILE
+# (the design is the run identity); prerequisites and settings as for the
+# epsilon calibration (supplemental_config.py SF_* section, no CLI value flags).
 #
-# REQUIRES NYCOPT_ENV_FILE (the design is the run identity — same contract as
-# the epsilon calibration). Submit once per ensemble campaign design:
+# Submit (from repo root), once per ensemble campaign design:
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_fixed_probabilistic.env \
 #       workflow/supplemental/satisfaction_factor.sh
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_hazard_filling_stationary.env \
 #       workflow/supplemental/satisfaction_factor.sh
 #
-# PREREQUISITES: steps 01-04 staged for the design (same as epsilon
-# calibration). All settings live in `supplemental_config.py` (SF_* section) —
-# this script carries NO value flags.
-#
-# Sizing: identical evaluation cost to the epsilon calibration (513 policies x
-# ~174 s/eval on 128 ranks ~= 15-20 min per design); the factor axis is
-# computed from each realization's weekly sums at no extra simulation cost.
+# Outputs: outputs/supplemental/satisfaction_factor/{cubes,tables,figures}.
+# Sizing: the same evaluation cost as the epsilon calibration.
 #
 #SBATCH --job-name=sf_sweep
 #SBATCH --account=ees260021

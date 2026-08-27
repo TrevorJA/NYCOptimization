@@ -13,7 +13,7 @@ the historic objective-sensitivity diagnostic:
 
 Outputs (all under ``outputs/supplemental/objective_sensitivity/``):
   correlations/ : discrimination_summary, spearman_matrix, flagged_pairs (CSV)
-  figures/      : discrimination (F1), redundancy_heatmap (F2)  [PNG + PDF]
+  figures/      : discrimination (F1), redundancy_heatmap (F2)  [PNG]
 
 Configuration and paths come from ``supplemental_config.py`` — no CLI flags.
 

@@ -1,45 +1,28 @@
-"""regret_tolerance_passb_candidates.py - pass B + ROUND candidate tolerance vectors.
+"""regret_tolerance_passb_candidates.py - pass B scoring of round candidate tau vectors.
 
-MEASUREMENT ONLY. Adopts nothing, edits no config. Companion to
-``regret_tolerance_diagnostics.py`` (pass A/B) and
-``docs/notes/methods/regret_tolerance_diagnostics.md``.
+MEASUREMENT ONLY (adopts nothing, edits no config); companion to
+``regret_tolerance_diagnostics.py`` and
+``docs/notes/methods/regret_tolerance_diagnostics.md``. Everything reduces the
+persisted campaign re-eval cubes (``REEVAL_TAG``); zero simulation:
 
-Why it exists. The adopted tau vector is the note's ``max`` shape at k = 1, whose
-six floor-bound entries come from the pass-A UNPAIRED bound (within-bin SD along
-the forcing axis m, x sqrt(2), x 1.645). The note itself labels that bound "a
-bound to be tightened, not a safe default". At those magnitudes (0.12-0.14 on a
-reliability, ~44% of the incumbent's own q10-q90 spread) ``no_harm_freq_tau``
-saturates: every compromise policy is 200/200 no-harm, and the non-inferiority
-claim becomes trivially true - exactly the insensitivity failure mode section 0
-of the note exists to prevent.
+  1. Pass B on both ladder shapes (eps-only and ``max(eps, floor)``).
+  2. The per-objective magnitude of the incumbent-relative signed difference
+     D_i over all policies x SOWs.
+  3. A grid of round candidate tau vectors scored for an informative rung
+     (neither saturated nor starved) and assay sensitivity (``historic``
+     separates from the two matched designs), on the 8-axis conjunction and
+     the ``compromise`` 3-axis subset.
+  4. A paired near-tie floor: the spread of D_i among policies that are
+     near-ties with the incumbent on that axis.
 
-What it measures, all off persisted cubes, zero simulation:
-
-  1. Pass B (note section 4) on BOTH ladder shapes - the eps-only ladder the
-     shipped ``compare_designs.regret_tolerance_sweep`` actually builds when the
-     ``NYCOPT_REGRET_TAU`` override is unset, and the ``max(eps, floor)`` ladder
-     that is the adopted basis. The two disagree; reporting one without the
-     other is what hid the disagreement.
-  2. The magnitude of the incumbent-relative signed difference D_i actually in
-     play, per objective, over all policies x SOWs - so a tolerance can be read
-     against real degradations rather than against a noise bound.
-  3. A grid of ROUND candidate tau vectors, scored for whether the rung is
-     INFORMATIVE (neither saturated nor starved) and whether ASSAY SENSITIVITY
-     holds (``historic``, the unmatched prevailing-practice reference, separates
-     from the two matched designs). Global 8-axis conjunction and the
-     ``compromise`` 3-axis subset, both.
-  4. A paired sanity check on the pass-A floor: the spread of D_i among policies
-     that are near-ties with the incumbent on that axis, which is a PAIRED
-     quantity and therefore a tighter (still conservative) bound than the
-     unpaired floor.
-
-Run under an allocation, with NYCOPT_REGRET_TAU UNSET (the whole-vector override
+Run under an allocation with NYCOPT_REGRET_TAU unset (the whole-vector override
 would pin every rung of the sweep to the single adopted vector).
 """
 from __future__ import annotations
 
 import itertools
 import json
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -52,11 +35,13 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 import src.robustness as rob                                        # noqa: E402
 import supplemental_config as sc                                    # noqa: E402
+from src.etest import campaign_reeval_preset                        # noqa: E402
 
 DESIGNS = ("historic", "fixed_probabilistic", "hazard_filling_stationary")
 MATCHED = ("fixed_probabilistic", "hazard_filling_stationary")
 CONTROL = "historic"
-REEVAL_TAG = "etest_kn_50yr_n25000_first10ch"
+#: Re-eval tag of the cubes scored: the campaign preset unless overridden.
+REEVAL_TAG = os.environ.get("NYCOPT_REEVAL_ENSEMBLE_PRESET") or campaign_reeval_preset()
 FORMULATION_SLUG = "ffmp_obj8"
 
 OUT = sc.RTOL_TABLES_DIR

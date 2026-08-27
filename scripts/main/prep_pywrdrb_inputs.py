@@ -1,4 +1,4 @@
-"""prep_pywrdrb_inputs.py - Workflow Step 3: format a generated streamflow
+"""prep_pywrdrb_inputs.py - Workflow step 04: format a generated streamflow
 ensemble into the pywrdrb HDF5 inputs the trimmed optimization model reads.
 
 For the active scenario design's search ensemble (``config.SEARCH_ENSEMBLE_SPEC``)
@@ -10,12 +10,11 @@ this stages, under ``STAGED_ENSEMBLE_DIR/{inflow_type}/``:
 
 so pywrdrb's path navigator resolves them at simulation start (see
 ``src/ensembles.py::register_ensemble_path``). The base
-``catchment_inflow_mgd.hdf5`` must already exist (Step 1 generator).
+``catchment_inflow_mgd.hdf5`` must already exist (steps 02-03).
 
 All settings come from ``config`` (scenario design, ensemble preset, demand
-source, initial volume) — there are no CLI value flags. The actual staging is
-delegated to the shared ``src.ensemble_prep.stage_pywrdrb_ensemble_inputs``,
-which the supplemental ensemble experiment also uses. MPI is used automatically
+source, initial volume); there are no CLI value flags. Staging is delegated to
+``src.ensemble_prep.stage_pywrdrb_ensemble_inputs``. MPI is used automatically
 when launched under more than one rank.
 
 Usage (serial):
@@ -50,9 +49,8 @@ def _get_mpi_context():
 
 
 def main() -> None:
-    # --preset stages an ARBITRARY ensemble (e.g. a held-out common re-eval
-    # ensemble) instead of the active scenario design's search ensemble. Use
-    # parse_known_args so MPI launchers can pass through extra args harmlessly.
+    # --preset stages an arbitrary ensemble (e.g. E_test) instead of the active
+    # design's search ensemble; parse_known_args lets MPI launchers pass extra args.
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--preset", default=None,
@@ -90,9 +88,8 @@ def main() -> None:
               f"n_realizations={spec.n_realizations} "
               f"ranks={size}", flush=True)
 
-    # Always rebuild: staged inputs must reflect the current pywrdrb code and
-    # data, and a silent skip-on-exists has already reused stale files once
-    # (2026-08-03). Regeneration is cheap relative to a poisoned search.
+    # Always rebuild (force=True): staged inputs must reflect the current pywrdrb
+    # code and data.
     manifest = stage_pywrdrb_ensemble_inputs(
         spec, use_mpi=use_mpi, comm=comm, force=True)
 

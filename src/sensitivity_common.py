@@ -1,40 +1,16 @@
-"""sensitivity_common.py - Shared helpers for the objective-sensitivity experiments.
+"""sensitivity_common.py - Shared helpers for the supplemental experiments.
 
-The supplemental experiments live in ``scripts/supplemental/``:
+MPI plumbing (``get_mpi_context``, ``assign_rank_slots``, and the
+filesystem-barrier primitives ``prepare_partial_dir`` / ``mark_rank_done`` /
+``await_all_done``, used instead of MPI collectives), DV sampling
+(``sample_lhs_dvs``, ``sample_feasible_dvs``), rank-correlation diagnostics
+(``kendall_tau_b``, ``spearman_and_flagged``), unit-operator vectorization
+(``apply_operator_rows``), and epsilon utilities (``epsilon_nondominated``,
+``ceil_to_clean_step``).
 
-* the **historic** (single-trace) random-DV diagnostic
-  (``objective_sensitivity_{run,figures}.py``),
-* the **epsilon-calibration** experiment
-  (``epsilon_calibration_{run,figures}.py``),
-* the **satisfaction-factor** sweep
-  (``satisfaction_factor_{run,figures}.py``), and
-* the **framing-convention** cube analysis
-  (``framing_convention_analysis.py``).
-
-They share six kinds of logic, factored here so no script copies another
-(per the no-duplication / refactor-all-callers project convention):
-
-1. **MPI plumbing** — ``get_mpi_context``, ``assign_rank_slots``, and the
-   filesystem-barrier primitives (``prepare_partial_dir`` / ``mark_rank_done``
-   / ``await_all_done``). The barrier avoids ``comm.bcast``/``comm.gather``,
-   which are flaky on the cluster's OpenMPI build; ranks coordinate through
-   ``.done`` marker files instead. The combine step itself stays in each script
-   because the shard payload differs (flat CSV rows vs. a 3-D HDF5 matrix).
-2. **DV sampling** — ``sample_lhs_dvs`` (Latin-hypercube within ``get_bounds``)
-   and ``sample_feasible_dvs`` (uniform on the feasible region via rejection
-   against the DV-space formal Borg constraints).
-3. **Objective-set resolution** — ``resolve_objective_names``.
-4. **Rank-correlation diagnostics** — ``kendall_tau_b`` and
-   ``spearman_and_flagged`` (the Olden & Poff redundancy screen).
-5. **Unit-operator vectorization** — ``apply_operator_rows`` (row-wise annual-
-   unit operators for the bootstrap noise estimate).
-6. **Epsilon-dominance utilities** — ``epsilon_nondominated`` (Borg-convention
-   ε-box archive filter) and ``ceil_to_clean_step`` (epsilon rounding).
-
-To preserve the import-order contract (``supplemental_config`` must set the
-``NYCOPT_*`` env knobs before ``config`` is imported), this module imports
-``config`` / ``src.formulations`` / ``src.objectives`` **lazily inside
-functions**, never at module load.
+Imports ``config`` / ``src.formulations`` / ``src.objectives`` lazily inside
+functions to honour the ``supplemental_config`` import-order contract (the
+``NYCOPT_*`` env knobs must be set before ``config`` is imported).
 """
 
 from __future__ import annotations
@@ -157,20 +133,11 @@ def sample_feasible_dvs(formulation: str, seed: int, n_samples: int, *,
     """Uniform sample of the constraint-feasible DV region, via rejection.
 
     Draws i.i.d. uniform vectors within ``get_bounds(formulation)`` and keeps
-    only those with zero violation on both DV-space formal Borg constraints
-    (``src.simulation.compute_constraint_violations`` — pure DV arithmetic, no
-    simulation; the post-simulation ``nyc_reliability_floor`` constraint
-    cannot be checked without simulating and is not applied here). Rejection
-    from i.i.d. uniform draws yields an *exactly* uniform distribution on the
-    DV-feasible region, which is the population the Borg archive lives in
-    (constraint-dominance keeps infeasible vectors out
-    of the archive). Random 36-DV vectors are ~1% feasible (the flood-ordering
-    constraint dominates), so expect ~100x oversampling; the constraint check
-    costs microseconds per vector after the one-time defaults load.
-
-    A plain LHS is deliberately NOT used here: conditioning an LHS on
-    feasibility destroys its stratification guarantee while leaving an
-    ill-characterized measure, whereas uniform + rejection has a clean one.
+    those with zero violation on the DV-space formal Borg constraints
+    (``src.simulation.compute_constraint_violations``; the post-simulation
+    ``nyc_reliability_floor`` is not applied). Rejection from uniform draws
+    is exactly uniform on the feasible region. Random 36-DV vectors are ~1%
+    feasible, so expect ~100x oversampling.
 
     Args:
         formulation: Formulation name whose bounds define the sampling box.
@@ -215,41 +182,6 @@ def sample_feasible_dvs(formulation: str, seed: int, n_samples: int, *,
     info = {"n_draws": int(n_draws),
             "acceptance_rate": float(n_samples) / float(n_draws)}
     return np.asarray(accepted, dtype=float), info
-
-
-###############################################################################
-# Objective-set resolution
-###############################################################################
-
-def resolve_objective_names(mode) -> list:
-    """Resolve an objective-set selector to an ordered list of registry names.
-
-    Args:
-        mode: Either ``"full_registry"`` (every objective in
-            ``src.objectives.OBJECTIVES``), ``"active"``
-            (``config.ACTIVE_OBJECTIVES``), or an explicit list of registry
-            names used verbatim.
-
-    Returns:
-        Ordered objective names.
-
-    Raises:
-        ValueError: If ``mode`` is an unrecognized string.
-    """
-    if isinstance(mode, str):
-        from src.objectives import OBJECTIVES
-
-        if mode == "full_registry":
-            return list(OBJECTIVES.keys())
-        if mode == "active":
-            from config import ACTIVE_OBJECTIVES
-
-            return list(ACTIVE_OBJECTIVES)
-        raise ValueError(
-            f"Unknown objective-set mode '{mode}'. "
-            "Use 'full_registry', 'active', or a list of registry names."
-        )
-    return list(mode)
 
 
 ###############################################################################

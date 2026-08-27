@@ -2,29 +2,23 @@
 registry.py - The single figure registry: every figure, tiered and ordered.
 
 One registry drives all figure rendering (``scripts/main/figures.py``). Each
-:class:`FigureSpec` names its tier, manuscript/SI number, manuscript section,
-data needs, and builder; tuple order IS render order (no more alphabetical
-accidents). The tiers:
+:class:`FigureSpec` names its tier, figure number, manuscript section, data
+needs, and builder; tuple order is render order. Tiers:
 
 - ``manuscript``: the numbered main-text sequence (``figures/manuscript/``,
-  manuscript style, git-tracked). The sequence builds §4's narrative
-  (figures/manuscript/figure_sequence.md): ensemble composition -> each
-  design's Pareto set on parallel axes -> robustness rankings (RQ2) ->
-  regret vs the incumbent (RQ1) -> success/failure surfaces (the
-  mechanism). Every cross-design ROBUSTNESS panel shows E_test re-evaluated
-  quantities ONLY -- search-time objectives are computed under each
-  design's own ensemble and are shown per design (fig 5), never compared
-  across designs.
-- ``si``: supporting-information candidates (``figures/si/``,
-  manuscript style, git-tracked).
-- ``exploratory``: internal diagnostics
-  (``outputs/figures/_exploratory/...``, PNG, dense style, gitignored).
+  manuscript style, git-tracked). Every cross-design robustness panel shows
+  E_test re-evaluated quantities only; search-time objectives are shown per
+  design and never compared across designs.
+- ``si``: supporting-information figures (``figures/si/``, manuscript style,
+  machine-local and not tracked).
+- ``exploratory``: internal diagnostics (``outputs/figures/_exploratory/...``,
+  dense style, gitignored).
 
 Builders receive ``(ctx, out_stub, table_dir)`` where ``ctx`` is a
-:class:`FigureContext`; legacy results builders taking
-``(results, out_dir, table_dir)`` are adapted by :func:`legacy`. Every
-builder keeps the companion-CSV contract: exact numbers go to ``table_dir``,
-never into panel annotations.
+:class:`FigureContext`; cube-backed builders taking
+``(results, out_stub, table_dir)`` are adapted by :func:`legacy`. Exact
+numbers go to companion CSVs under ``table_dir``, never into panel
+annotations.
 """
 
 from __future__ import annotations
@@ -164,13 +158,11 @@ class FigureSpec:
 
 
 def legacy(builder: Callable) -> Callable:
-    """Adapt a cube-backed builder ``(results, out_stub, table_dir)``.
+    """Adapt a cube-backed builder ``(results, out_stub, table_dir)`` to the
+    ``(ctx, out_stub, table_dir)`` signature.
 
-    Only the first argument is adapted: ``out_stub`` passes through untouched
-    so the builder saves under the spec's stem. (It used to pass
-    ``out_stub.parent``, which handed the builder a directory and let it pick
-    its own filename -- the stem the driver printed was then not the file
-    written.)
+    Only the first argument is adapted; ``out_stub`` passes through unchanged
+    so the builder saves under the spec's stem.
     """
     def _run(ctx: FigureContext, out_stub: Path, table_dir: Path):
         return builder(ctx.results(), out_stub, table_dir)
@@ -223,9 +215,6 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "colored by one search objective (objective results only; "
                 "no robustness).",
     ),
-    # Slot 6 replaces the retired criteria_robustness (src.plotting.
-    # criteria_rank_curves) and robust_tradeoffs renders, parked in
-    # figures/manuscript/outdated_unused/ on 2026-08-21.
     FigureSpec(
         name="criteria_robustness",
         builder=_lazy("src.plotting.criteria_robustness",
@@ -246,10 +235,6 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "FFMP incumbent (RQ1 headline); per-design non-dominated "
                 "frontier and the incumbent's own robustness as reference.",
     ),
-    # Slot 8 replaces the retired success_failure_surfaces render (single-row
-    # success maps), parked in figures/manuscript/outdated_unused/ on
-    # 2026-08-21: the combined figure adds the per-SOW regret classification
-    # for the same policies as a second row.
     FigureSpec(
         name="robustness_regret_surfaces",
         builder=_lazy("src.plotting.factor_map_surfaces",
@@ -261,11 +246,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "success/failure probability (top, + incumbent) and "
                 "high/low regret vs the incumbent (bottom).",
     ),
-    # Three CANDIDATES for manuscript slot 9, all carrying number 9 so the
-    # numbering does not churn while one is chosen (their names differ, so
-    # their stems do). They answer the same RQ1 question -- where in the DU
-    # space does reoptimization cost the Decree parties something? -- under
-    # three different policy selections. See TODO.md; two of these get cut.
+    # Three candidates for manuscript slot 9 (distinct stems); see TODO.md.
     FigureSpec(
         name="regret_surfaces",
         builder=_lazy("src.plotting.factor_map_surfaces",

@@ -24,7 +24,7 @@ via the filesystem barrier and deletes them.
 Usage (local smoke, historic design, serial):
     NYCOPT_SF_SMOKE=1 python scripts/supplemental/satisfaction_factor_run.py
 Usage (SLURM, one job per design):
-    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_fixprob.env \\
+    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_fixed_probabilistic.env \\
         workflow/supplemental/satisfaction_factor.sh
 """
 
@@ -78,7 +78,7 @@ _CAPS: dict = {
 
 
 def _expected_n_units(spec) -> int:
-    """Metric-bearing water-year units per realization (cube's last axis)."""
+    """Metric-bearing FFMP-year units per realization (cube's last axis)."""
     if spec.is_ensemble:
         return int(spec.realization_years) - 1
     idx = pd.date_range(config.START_DATE, config.END_DATE, freq="D")

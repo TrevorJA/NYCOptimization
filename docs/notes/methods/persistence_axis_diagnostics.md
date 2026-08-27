@@ -9,8 +9,8 @@ a manuscript disclosure with the affected claims scoped accordingly
 **The disclosed gap.** The Kirsch hybrid bootstrap draws its bootstrap index
 matrix i.i.d. per (synthetic year, month) cell, so synthetic interannual
 wet/dry sequencing carries no memory beyond the cross-year-boundary Cholesky
-correlation. On the water-year frame (the study's annual unit) the operative
-gap is **ρ₁ = 0.26 (fitted record) vs 0.10 (generator)**. The record value is
+correlation. On the water-year frame used for the persistence statistic the
+operative gap is **ρ₁ = 0.26 (fitted record) vs 0.10 (generator)**. The record value is
 epochal, not stationary: **ρ₁ = +0.51 over WY1946–1980** but **+0.06 over
 WY1981–2019** (the CMIP6 baseline window), and the record itself sits in an
 unprecedented ~43-yr pluvial (Pederson et al. 2013), so the full-record 0.26

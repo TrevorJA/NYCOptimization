@@ -1,68 +1,38 @@
 """diagnose_hazard_selectors.py - Selector + axis-set + sizing diagnostics for hazard filling.
 
-Supplemental (SI) experiment: characterizes the hazard-filling selection machinery on a
-real staged candidate pool, entirely at the selection level (no simulation), so the
-campaign selector, its normalization bounds, the retained axis set, and the ensemble
-size N are chosen from measured diagnostics rather than asserted. See
-``docs/notes/methods/hazard_selector_diagnostics.md`` for the design and findings.
+Supplemental (SI) experiment characterizing the hazard-filling selection
+machinery on a staged candidate pool at the selection level (no simulation);
+design and findings in ``docs/notes/methods/hazard_selector_diagnostics.md``.
 
 Analysis blocks:
 
-  A. Retained-set report — the axis screen (degenerate drop + near-duplicate dedupe at
-     |rho_S| >= 0.95) on the pool image, with the Spearman matrix + cluster tree as a
-     redundancy diagnostic.
-  1. Selector comparison at the campaign bounds — random / lhs_nn / lhs_assign /
-     maximin / eps_cell on the full retained axis set, S seeds each, with a many-seed
-     random null band.
-  2. Normalization-bounds sweep — the designed selectors re-run under each
-     (lo_pct, hi_pct) pair, isolating how the bounds choice moves tail enrichment and
-     coverage.
-  3. Sub-pool draw stability — block 1 re-run on disjoint random halves of the pool;
-     between-half spread approximates construction variance.
-  B. Per-axis marginal coverage + tail enrichment at the full retained set — the
-     mechanism metric (LHS stratifies every axis regardless of dimension), vs the null.
-  C. Snap behavior vs dimension — the campaign selection set (config.
-     HAZARD_SELECTION_AXES) vs the full retained set: snap distances, minimum
-     separation, distance-concentration ratio, and lhs_nn vs lhs_assign
-     order-dependence at full m.
-  D. N-sweep — N × axis-set decision surface (campaign vs full): per-axis tail
-     enrichment and stratification + joint L2-star vs the matched random null.
-  E. Selection invariance / implicit weighting — leave-one-axis-out and
-     add-one-axis-back (campaign base) Jaccard overlaps vs the full-set selection,
-     plus per-axis (and dry/wet group) contributions to the snap distance.
+  A. Retained-set report (axis screen + Spearman redundancy diagnostic).
+  1. Selector comparison at the campaign bounds vs a many-seed random null.
+  2. Normalization-bounds sweep.
+  3. Sub-pool draw stability (disjoint random halves of the pool).
+  B. Per-axis marginal coverage + tail enrichment vs the null.
+  C. Snap behavior vs dimension, campaign axis set (config.HAZARD_SELECTION_AXES)
+     vs the full retained set, incl. lhs_nn vs lhs_assign order-dependence.
+  D. N-sweep: N x axis-set surface (campaign vs full) vs the matched random null.
+  E. Selection invariance / implicit weighting (leave-one-axis-out,
+     add-one-axis-back, per-axis snap-distance contributions).
 
-All configuration is via environment variables (no CLI value flags):
+Configuration via environment variables (no CLI value flags). Defaults are
+the dev scale; the campaign values (P=1e6 pools, N=300) come from the env.
 
-    NYCOPT_SELDIAG_POOL_SLUG   staged pool slug   (default statpool_10yr_n4000_d0)
-    NYCOPT_SELDIAG_N           ensemble size N    (default 100)
-    NYCOPT_SELDIAG_SEEDS       selector seeds     (default 10)
-    NYCOPT_SELDIAG_NULL_SEEDS  random-null seeds  (default 50)
-    NYCOPT_SELDIAG_PREFIX_P    truncate the loaded image to its first P' rows
-                               (default 0 = full image). Because realizations are
-                               keyed to a GLOBAL index with per-realization child
-                               streams, the first P' rows of a staged pool image
-                               are bit-identical to a standalone i.i.d. pool of
-                               size P' from the same seed domain — so each prefix
-                               is an honest pool of its size. Used by the
-                               nested-P saturation diagnostic; outputs go to
-                               ``{pool_slug}_prefix{P'}`` so rungs don't clobber.
-    NYCOPT_SELDIAG_SATURATION  1 = lean saturation mode: run only the axis
-                               screen, per-axis coverage (lhs_nn + random null),
-                               and the snap/concentration block (lhs_nn only —
-                               the comparator selectors get memory-heavy at
-                               large P), each at the campaign and full axis
-                               sets. Skips blocks 1-3, D, E and all figures.
-                               Default off.
-    NYCOPT_SELDIAG_N_SWEEP     space-separated N ladder for block D (default
-                               "100 150 200 300"). The ensemble-size diagnostic
-                               (docs/notes/methods/ensemble_size_diagnostics.md)
-                               runs the wider "50 75 100 150 200 300 400 500".
-    NYCOPT_SELDIAG_SATURATION_NSWEEP
-                               1 = also run block D (lhs_nn + random null on
-                               NYCOPT_SELDIAG_N_SWEEP) inside saturation mode,
-                               so a nested-prefix rung carries an N sweep — the
-                               joint (N, P) ladder of the ensemble-size
-                               diagnostic. Default off.
+    NYCOPT_SELDIAG_POOL_SLUG          staged pool slug (default statpool_10yr_n4000_d0)
+    NYCOPT_SELDIAG_N                  ensemble size N (default 100)
+    NYCOPT_SELDIAG_SEEDS              selector seeds (default 10)
+    NYCOPT_SELDIAG_NULL_SEEDS         random-null seeds (default 50)
+    NYCOPT_SELDIAG_PREFIX_P           truncate the image to its first P' rows
+                                      (0 = full); a prefix is an exact i.i.d.
+                                      pool of its size (global-index child
+                                      streams); outputs go to {pool_slug}_prefix{P'}
+    NYCOPT_SELDIAG_SATURATION         1 = lean mode: axis screen, per-axis
+                                      coverage and snap block only (lhs_nn), at
+                                      the campaign and full axis sets; no figures
+    NYCOPT_SELDIAG_N_SWEEP            N ladder for block D (default "100 150 200 300")
+    NYCOPT_SELDIAG_SATURATION_NSWEEP  1 = also run block D inside saturation mode
 
 Run after staging the pool hazard image (workflow step 02 with
 ``NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary``; locally use
@@ -275,7 +245,7 @@ def _dimension_sweep(
     H_full: np.ndarray, candidate_axes: list[str], axis_sets: dict[str, list[str]],
     *, include_assign: bool = True,
 ) -> pd.DataFrame:
-    """Block C: snap behavior at nested axis sets, incl. order-dependence at full m.
+    """Block C: snap behavior for the campaign vs the full retained axis set, incl. order-dependence at full m.
 
     ``include_assign=False`` (saturation mode) skips the Hungarian comparator,
     whose anchor-by-pool cost matrix is memory-heavy at large P and contributes
@@ -631,7 +601,7 @@ def _fig_per_axis_coverage(per_axis, axes, out) -> None:
 
 
 def _fig_dimension_sweep(dim, out) -> None:
-    """F8: snap behavior vs dimension (nested axis sets)."""
+    """F8: snap behavior vs dimension (campaign vs full retained axis set)."""
     fig, ax = plt.subplots(1, 3, figsize=(11.4, 3.6))
     msets = list(dict.fromkeys(dim["m_set"]))
     for p, (metric, label) in enumerate((

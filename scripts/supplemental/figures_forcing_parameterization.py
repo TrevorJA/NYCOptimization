@@ -21,9 +21,8 @@ figure, so the two can never disagree about what was built.
 
 TWO BOXES, NOT ONE. The search-side candidate pool samples a trimmed 5th-95th
 percentile box with no widening, while E_test samples the FULL empirical CMIP6
-range widened by 25% so it strictly contains every search box. An earlier
-version of these figures drew the search box while describing E_test; each
-panel here names the box it draws.
+range widened by 25% so it strictly contains every search box. Each panel
+names the box it draws.
 
 Run through the SI figure driver::
 

@@ -6,10 +6,11 @@ flow, NYC storage, downstream flooding), but scored the way the optimizer scores
 them during an ensemble search — the **two-layer annual-unit scheme**
 (``objective_definitions.md`` §2, implemented in ``src.objectives_ensemble``):
 
-  Stage (i)  one annual metric per (realization x water-year) unit;
-  Stage (ii) a single operator over the ensemble water years (every
-             realization's water-year units) POOLED across all realizations
-             (failure frequency, pooled P99 / P01, or pooled mean).
+  Stage (i)  one annual metric per (realization x FFMP-year) unit (Jun 1 -
+             May 31, ``objectives_ensemble.ffmp_year_unit_slices``);
+  Stage (ii) a single operator over every realization's FFMP-year units
+             POOLED across all realizations (failure frequency, pooled
+             P99 / P01, or pooled mean).
 
 Each figure has two rows that mirror the two layers:
 

@@ -1,6 +1,6 @@
 """
-satisficing_diagnostics.py - Phase-1 results figures: satisficing effects and
-decomposition on the held-out E_test re-evaluation.
+satisficing_diagnostics.py - Satisficing effects and decomposition on the
+held-out E_test re-evaluation.
 
 Four figures that make the joint (Starr) satisficing criterion's behavior
 legible -- which thresholds bind, how satisficing decomposes by objective and

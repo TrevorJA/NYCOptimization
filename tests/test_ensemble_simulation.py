@@ -1,5 +1,5 @@
 """
-tests/test_ensemble_simulation.py - Tests for the ensemble simulation path (M2a).
+tests/test_ensemble_simulation.py - Tests for the ensemble simulation path.
 
 Covers:
 
@@ -7,9 +7,10 @@ Covers:
      cache entries in ``_get_cached_model_dict`` and the resulting model
      dicts carry the expected ``inflow_type``.
 
-  2. Legacy path regression: with the default ``historic_single`` preset,
-     ``run_simulation_inmemory`` is the unchanged call path. We verify the
-     dispatch in ``evaluate()`` routes through the legacy function.
+  2. Single-trace dispatch: with the default ``historic_single`` preset,
+     ``evaluate()`` routes through ``run_simulation_inmemory``; with an
+     ensemble spec it routes through the ensemble path, and the batched
+     path reproduces the unbatched objectives.
 
   3. Ensemble correctness (slow): with ``wcu_kirsch_n5``,
      ``run_simulation_ensemble_inmemory`` returns a list of length 5,
@@ -121,7 +122,7 @@ def test_evaluate_uses_search_ensemble_spec_default(monkeypatch):
     """evaluate() should default to config.SEARCH_ENSEMBLE_SPEC when not given.
 
     We monkeypatch run_simulation_inmemory to avoid running pywrdrb and
-    just confirm the dispatch routes through the legacy path under the
+    just confirm the dispatch routes through the single-trace path under the
     default historic_single preset.
     """
     sentinel_data = {"res_storage": pd.DataFrame()}
@@ -199,7 +200,7 @@ def test_evaluate_dispatches_to_ensemble_when_spec_is_ensemble(monkeypatch,
 
 
 def test_evaluate_raises_when_ensemble_objset_missing(monkeypatch, wcu5_spec):
-    """When the legacy ObjectiveSet has no compute_for_borg_ensemble, the
+    """When a single-trace ObjectiveSet has no compute_for_borg_ensemble, the
     ensemble dispatch must surface a clear NotImplementedError instead of
     silently calling the wrong method."""
     monkeypatch.setattr(
@@ -279,8 +280,8 @@ def test_batched_skips_failed_batch(monkeypatch, wcu5_spec):
         )
 
 
-def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
-    """Batched evaluate() must give identical objectives to the legacy path.
+def test_evaluate_batched_matches_unbatched(monkeypatch, wcu5_spec):
+    """Batched evaluate() must give identical objectives to the unbatched path.
 
     The batched path stores per-UNIT-YEAR annual metrics between batches (the
     two-layer §2 scheme), so pooling across batch boundaries must reproduce
@@ -319,7 +320,7 @@ def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
         sim, "dvs_to_config", lambda dv, formulation_name="ffmp": object(),
     )
 
-    legacy = sim.evaluate(
+    unbatched = sim.evaluate(
         np.zeros(1), objective_set=objset, ensemble_spec=wcu5_spec,
         realization_batch=0,
     )
@@ -327,7 +328,7 @@ def test_evaluate_batched_matches_legacy(monkeypatch, wcu5_spec):
         np.zeros(1), objective_set=objset, ensemble_spec=wcu5_spec,
         realization_batch=2,
     )
-    assert legacy == batched
+    assert unbatched == batched
     # Pooled counts [0,0,1,1,2,2,3,3,4,4]; k=2 -> 4 of 10 unit-years without
     # failure -> 0.4, negated for Borg.
     assert batched == pytest.approx([-0.4])
@@ -432,11 +433,8 @@ def test_ensemble_returns_list_of_n_distinct_data_dicts(wcu5_spec):
             f"flood-augmented HDF5 may not be reaching FlowEnsemble."
         )
 
-    # Salinity LSTM is now scenario-aware (PywrDRB-ML + Pywr-DRB
-    # salt_front_location refactor 2026-05-06). The forward pass takes
-    # per-scenario flow as input, so the salt-front trajectories must
-    # diverge across realizations — otherwise we're seeing a single shared
-    # series and the scenario-aware refactor regressed.
+    # The salinity LSTM takes per-scenario flow as input, so the salt-front
+    # trajectories must diverge across realizations.
     if INCLUDE_SALINITY_MODEL:
         sf0 = data_per_real[0]["salinity"]["salt_front_location_mu"]
         for j in range(1, len(data_per_real)):
@@ -461,8 +459,8 @@ def test_cache_isolation_across_presets(historic_spec, wcu5_spec):
 
     nyc_config = sim._get_cached_defaults()
 
-    # Force builds with each spec. The historic build uses the legacy
-    # single-trace inflow_type; the wcu5 build uses the staged ensemble dir.
+    # Force builds with each spec. The historic build uses the single-trace
+    # inflow_type; the wcu5 build uses the staged ensemble dir.
     base_legacy = _get_cached_model_dict(
         use_trimmed=False, nyc_config=nyc_config, ensemble_spec=historic_spec,
     )

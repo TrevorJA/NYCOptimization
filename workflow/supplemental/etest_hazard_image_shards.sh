@@ -1,12 +1,10 @@
 #!/bin/bash
-# Sharded E_test sub-window hazard image: one array task per staged chunk.
-# The serial compute_etest_hazard_image.py loop measured 193 s per 500-realization
-# chunk (~2h42m for all 50, job 19660004); one chunk per array task collapses the
-# wall to minutes at unchanged SU. Each task writes the chunk's existing
-# hazard_image_subwindows_shard_{i:03d}.npz (the per-chunk resume marker the
-# serial path already uses — rerunning a finished task is a no-op). The merge is
-# a pure function of the shard contents (rows lexsorted by (rid, window), unique
-# keys), so shard-then-merge is byte-identical to the serial loop.
+# Sharded E_test sub-window hazard image: one array task per staged chunk
+# (scripts/main/compute_etest_hazard_image.py). Each task writes the chunk's
+# hazard_image_subwindows_shard_{i:03d}.npz, which is also the resume marker
+# (rerunning a finished task is a no-op). The merge is a pure function of the
+# shard contents (rows lexsorted by (rid, window), unique keys), so
+# shard-then-merge is byte-identical to the serial loop.
 #
 # Submit, then chain etest_hazard_image_merge.sh:
 #   sbatch --export=ALL,NYCOPT_ETEST_VARIANT=kn \

@@ -1,50 +1,28 @@
 """
 satisficing_criteria.py - Named satisficing criterion sets (explicit subsets).
 
-Each criterion set thresholds only a small subset (1-3) of the eight annual-unit
-objectives and leaves every other axis unconstrained, following the satisficing
-pattern of Quinn et al. (2017): one robustness metric (the Starr domain
-criterion, ``src.robustness.satisficing_multivariate_sow``) evaluated under
-several alternative stakeholder framings of "acceptable performance". Reporting
-robustness under multiple criterion sets -- and whether the design ranking is
-invariant across them -- is itself a result, not a sensitivity afterthought.
+Quinn et al. (2017)-style subset criteria: each named set thresholds only its
+member axes of the eight annual-unit objectives and leaves every other axis
+non-binding, so one robustness metric (the Starr domain criterion,
+``src.robustness.satisficing_multivariate_sow``) is evaluated under several
+stakeholder framings. ``reference_all8`` is the all-axes reference only
+(reported, never used for selection).
 
-The previous all-8-axis conjunction is retained ONLY as ``reference_all8``:
-on the interim 200-SOW E_test subset it measured degenerate (joint Starr = 0.0
-for every design and for the FFMP incumbent; see
-``outputs/comparison/{slug}/{tag}/default_thresholds.csv`` and the incumbent
-pass fractions recorded in ``src.objectives_ensemble``), which is reported as
-a finding, never used for selection.
-
-Axes deliberately excluded from every named set (visible in the univariate
-decomposition and the reference set, but never conjoined) — pass fractions
-below are interim-tag measurements:
-
-- ``nyc_delivery_deficit_p99_pct`` (incumbent pass 0.980) and
-  ``nj_delivery_reliability_annual`` (> 0.98): saturated non-discriminators
-  (Bonham-style saturation flags fire for every design).
-- ``montague_flow_deficit_p99_pct`` (incumbent pass 0.965): likewise.
-
-Threshold placements follow the pre-declared rules of
-``docs/notes/methods/robustness_threshold_diagnostics.md`` (rule 1: re-anchor
-any criterion the status quo itself fails, rounding to the stricter side;
-rule 2: external goalposts beat round numbers). Placements are finalized from
-the Anvil-side audit table
-``outputs/comparison/{slug}/{tag}/criteria_reanchoring.csv``
+Threshold placements follow the rules of
+``docs/notes/methods/robustness_threshold_diagnostics.md`` (external goalposts
+where one exists, otherwise the stricter side of the incumbent's attainment,
+with any criterion the status quo itself fails re-anchored at
+maintain-status-quo performance) and the ``criteria_reanchoring.csv`` audit
 (``scripts/supplemental/criteria_reanchoring.py``).
 
-PENDING PRODUCTION RESULTS: every numeric placement, pass fraction, and the
-``reference_all8`` degeneracy verdict above and in the set rationales below
-was measured on the interim 200-SOW, pre-regeneration substrate. The
-re-anchoring audit and the degeneracy verdict must be re-confirmed on the
-regenerated production full cube before any placement is treated as final
-(TODO section 1).
+Variants are selected by ``NYCOPT_CRITERIA_VARIANT``; scoring and every
+criteria figure read the same selection, so rescore each design after
+changing it.
 
 These are POST-PROCESSING criteria only: they re-count the persisted per-SOW
-cube and never touch the search-time registry (``src.objectives_ensemble``) or
-its ``NYCOPT_SAT_THRESHOLDS`` env override. The adopted vector always comes
-from the run's own ``reeval_raw_meta.json`` snapshot (the
-moving-measuring-stick guard).
+cube and never touch the search-time registry (``src.objectives_ensemble``)
+or its ``NYCOPT_SAT_THRESHOLDS`` override. The adopted vector always comes
+from the run's own ``reeval_raw_meta.json`` snapshot.
 """
 
 from __future__ import annotations
@@ -77,9 +55,9 @@ class CriterionSet:
         key: Stable identifier used in file names and tables.
         label: Display name for legends/titles.
         rationale: Evidence anchor for each thresholded axis.
-        criteria: ``{objective: threshold}`` for ONLY the thresholded axes
-            (1-3 of them); every other axis is unconstrained. Kinds (ge/le)
-            always come from the run's meta snapshot and are never changed.
+        criteria: ``{objective: threshold}`` for ONLY the thresholded axes;
+            every other axis is unconstrained. Kinds (ge/le) always come from
+            the run's meta snapshot and are never changed.
         reference: True only for the all-axes reference set, whose
             ``thresholds`` are the adopted snapshot itself.
     """
@@ -117,20 +95,16 @@ class CriterionSet:
         return out
 
 
-#: VARIANT ``adopted``: the re-anchored placements, in display order,
-#: followed by the all-axes reference. Placements per the pre-declared rules (module docstring);
-#: incumbent statistics cited from the interim-tag re-evaluation
-#: (criteria_reanchoring.csv is the audit trail).
+#: VARIANT ``adopted``: the re-anchored placements, in display order, followed
+#: by the all-axes reference (criteria_reanchoring.csv is the audit trail).
 _ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="nyc_supply",
         label="NYC supply security",
-        rationale=("NYC delivery reliability at the adopted historic anchor "
-                   "(0.65, discriminating: pooled stringency 0.32); storage "
-                   "re-anchored per rule 1 from the aspirational FFMP L5 "
-                   "goalpost (26%, incumbent pass 0.014) to the incumbent's "
-                   "median year (12.9 -> 13.0, stricter side). The 26% "
-                   "goalpost stays reported in the univariate decomposition."),
+        rationale=("NYC delivery reliability at the historic anchor (0.65); "
+                   "storage re-anchored per rule 1 from the FFMP L5 goalpost "
+                   "(26%) to the incumbent's median year (13.0, stricter "
+                   "side)."),
         criteria={
             "nyc_delivery_reliability_annual": 0.65,
             "nyc_storage_min_p01_pct": 13.0,
@@ -139,13 +113,9 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="downstream_flows",
         label="Downstream flow targets",
-        rationale=("Montague re-anchored per rule 1: the adopted 0.79 lies "
-                   "outside the incumbent's E_test support (pass 0.000); "
-                   "placed at the incumbent's median year rounded stricter at "
-                   "epsilon granularity (0.482 -> 0.50; pooled stringency "
-                   "0.53), transcribed from criteria_reanchoring.csv. Trenton "
-                   "moved from 0.87 (excludes 90% of pooled cells) to the "
-                   "incumbent's median year (0.73 -> 0.75, stricter side)."),
+        rationale=("Montague and Trenton re-anchored per rule 1 to the "
+                   "incumbent's median year, rounded to the stricter side "
+                   "(0.50 and 0.75)."),
         criteria={
             "montague_flow_reliability_annual": 0.50,
             "trenton_flow_reliability_annual": 0.75,
@@ -155,8 +125,7 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
         key="flood",
         label="Flood exposure",
         rationale=("Rule-2 external goalpost: the observed WY2001-2023 minor "
-                   "flood exceedance (1.17 ft-d/yr); incumbent pass 0.443 -- "
-                   "discriminating, unchanged."),
+                   "flood exceedance (1.17 ft-d/yr)."),
         criteria={
             "downstream_flood_exceedance_annual": 1.17,
         },
@@ -164,10 +133,9 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="compromise",
         label="All-parties compromise",
-        rationale=("One axis per Decree-party interest (Quinn et al. 2017 "
-                   "small-conjunction pattern): NYC delivery at the adopted "
-                   "anchor, Trenton at the incumbent median-year placement, "
-                   "flood at the rule-2 external goalpost."),
+        rationale=("One axis per Decree-party interest: NYC delivery at the "
+                   "historic anchor, Trenton at the incumbent median-year "
+                   "placement, flood at the rule-2 external goalpost."),
         criteria={
             "nyc_delivery_reliability_annual": 0.65,
             "trenton_flow_reliability_annual": 0.75,
@@ -177,11 +145,8 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="reference_all8",
         label="Reference: all axes (adopted)",
-        rationale=("The adopted search-time snapshot conjoined over every "
-                   "axis. Measured degenerate on the interim 200-SOW E_test "
-                   "subset (joint Starr = 0.0 for every design and the "
-                   "incumbent; re-confirm on the production cube) -- "
-                   "reported as a finding, never used for selection."),
+        rationale=("The search-time threshold snapshot conjoined over every "
+                   "axis; reported as a finding, never used for selection."),
         reference=True,
     ),
 )
@@ -190,20 +155,16 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
 #: The all-axes reference set, shared by every variant.
 _REFERENCE_SET = next(c for c in _ADOPTED_SETS if c.reference)
 
-#: VARIANT ``v2_20260821``: experimental placements (Trevor, 2026-08-21) for
-#: a broader reading of each stakeholder framing -- the deficit axes enter
-#: the NYC and downstream sets, storage tightens, and the compromise set
-#: carries one axis per party plus storage. Placements are NOT yet justified
-#: by the re-anchoring audit; they exist to explore how the robustness
-#: rankings respond and are expected to change.
+#: VARIANT ``v2_20260821``: a broader reading of each stakeholder framing.
+#: The deficit axes enter the NYC and downstream sets, storage tightens, and
+#: the compromise set carries one axis per party plus storage.
 _V2_20260821_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="nyc_supply",
         label="NYC supply security",
-        rationale=("Experimental (2026-08-21): delivery reliability at the "
-                   "adopted anchor, P99 deficit capped at half the Decree "
-                   "allocation, storage between the incumbent median (13%) "
-                   "and the FFMP L5 goalpost (26%)."),
+        rationale=("Delivery reliability at the historic anchor, P99 deficit "
+                   "capped at half the Decree allocation, storage between the "
+                   "incumbent median (13%) and the FFMP L5 goalpost (26%)."),
         criteria={
             "nyc_delivery_reliability_annual": 0.65,
             "nyc_delivery_deficit_p99_pct": 50.0,
@@ -213,9 +174,8 @@ _V2_20260821_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="downstream_flows",
         label="Downstream flow targets",
-        rationale=("Experimental (2026-08-21): Montague reliability raised "
-                   "from the incumbent-median 0.50 to 0.65 with a P99 deficit "
-                   "cap at 50%; Trenton unchanged at 0.75."),
+        rationale=("Montague reliability at 0.65 with a P99 deficit cap at "
+                   "50%; Trenton at 0.75."),
         criteria={
             "montague_flow_reliability_annual": 0.65,
             "montague_flow_deficit_p99_pct": 50.0,
@@ -225,9 +185,8 @@ _V2_20260821_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="flood",
         label="Flood exposure",
-        rationale=("Experimental (2026-08-21): minor-flood exceedance relaxed "
-                   "slightly from the observed WY2001-2023 value (1.17) to "
-                   "1.25 ft-d/yr."),
+        rationale=("Minor-flood exceedance at 1.25 ft-d/yr, slightly above "
+                   "the observed WY2001-2023 value (1.17)."),
         criteria={
             "downstream_flood_exceedance_annual": 1.25,
         },
@@ -235,9 +194,8 @@ _V2_20260821_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="compromise",
         label="All-parties compromise",
-        rationale=("Experimental (2026-08-21): one reliability axis for NYC "
-                   "and Montague at 0.65 each, flood relaxed to 1.5 ft-d/yr, "
-                   "and a 15% storage floor."),
+        rationale=("One reliability axis each for NYC and Montague at 0.65, "
+                   "flood at 1.5 ft-d/yr, and a 15% storage floor."),
         criteria={
             "nyc_delivery_reliability_annual": 0.65,
             "montague_flow_reliability_annual": 0.65,
@@ -248,8 +206,7 @@ _V2_20260821_SETS: tuple[CriterionSet, ...] = (
     _REFERENCE_SET,
 )
 
-#: Every saved criteria variant, keyed by name. Add a new tuple above and
-#: register it here to keep it selectable; never edit a saved variant in
+#: Every saved criteria variant, keyed by name. Never edit a saved variant in
 #: place once figures have been rendered from it.
 CRITERION_VARIANTS: dict[str, tuple[CriterionSet, ...]] = {
     "adopted": _ADOPTED_SETS,
@@ -257,10 +214,7 @@ CRITERION_VARIANTS: dict[str, tuple[CriterionSet, ...]] = {
 }
 
 #: Env var selecting the active criteria variant (a key of
-#: :data:`CRITERION_VARIANTS`). Scoring (``src.robustness``) and every
-#: criteria figure read the same selection, so the scorecards on disk and the
-#: figures rendered from them always describe the same thresholds -- rescore
-#: each design after changing it.
+#: :data:`CRITERION_VARIANTS`); rescore each design after changing it.
 CRITERIA_VARIANT_ENV = "NYCOPT_CRITERIA_VARIANT"
 
 #: The default variant when the env var is unset.
