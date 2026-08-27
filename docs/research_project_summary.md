@@ -152,9 +152,12 @@ See `notes/methods/experimental_design.md`.
 ## The test ensemble (E_test)
 
 E_test is the **only carrier of deep uncertainty** in the study and the **largest
-ensemble by a wide margin**: N_θ = 1,000 LHS points over the full range of the
-deeply-uncertain climate-forcing factors (the CMIP6 harmonic hypercube) × R = 25
-realizations × L_test = 50 yr — 25,000 realizations, 1.25M scenario-years. Each LHS
+ensemble by a wide margin**: generated as N_θ = 1,000 LHS points over the full range of
+the deeply-uncertain climate-forcing factors (the CMIP6 harmonic hypercube) × R = 25
+realizations × L_test = 50 yr (25,000 realizations), of which the campaign re-evaluates
+the leading 500 SOWs (12,500 realizations, 625k scenario-years; a chunk-prefix subset of
+the randomly ordered design, sized from the literature for a 3-axis forcing space:
+`notes/methods/campaign_design.md` §5). Each LHS
 point is a state of the world, and its realizations sample natural variability within
 it; the 50-yr records (vs L = 10 in search) test sustained operation — storage
 carryover across consecutive droughts and matured entitlement banking. Re-evaluation
@@ -169,8 +172,9 @@ emphasizes is measured by the composition-sensitivity re-scoring (hazard-restric
 envelope-restricted subsets of the persisted matrix), not assumed.
 
 E_test is sampled by **LHS, not i.i.d.**: the i.i.d. rule applies only to the candidate
-pool, where it underwrites the exact control. E_test is never subsampled and is never a
-control, so it should *cover* the deeply-uncertain space rather than sample it in
+pool, where it underwrites the exact control. E_test is never a control (its 500-SOW campaign
+prefix is a subsample of the measuring stick, not a control construction), so it should
+*cover* the deeply-uncertain space rather than sample it in
 proportion to a measure. It follows that **no robustness number is an expectation** —
 under deep uncertainty there is no probability measure over the forcing space, so a
 satisficing fraction over E_test is a coverage-weighted count over a designed
@@ -190,7 +194,7 @@ Two families, both transformations of the same per-SOW annual-unit objective val
 (the search objectives recomputed per state of the world — Herman et al. 2014, 2015;
 Trindade et al. 2017; McPhail et al. 2018). The RQ2 endpoint is the re-evaluated
 **multivariate Starr satisficing fraction**: the all-criteria conjunction counted
-over the 1,000 states. This keeps the designed DU box and the fitted stochastic
+over the 500 re-evaluated states. This keeps the designed DU box and the fitted stochastic
 generator from being integrated into one number, matches the precision the SOW count
 supports, and puts RQ2 on the same unit as the regret family below. The run-level
 scalar is the maximum satisficing fraction attained in the run's re-evaluated set,
@@ -242,7 +246,8 @@ budgets); the production MM Borg geometry (12 Anvil nodes, 4 islands × 382 work
 1,533 ranks, 128 per node with a 150-realization batch); one searched draw × S = 2 seeds;
 absolute
 range-scaled hazard-space selection on the six campaign selection axes from a P = 10⁶
-candidate pool; E_test at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr (trimmed-model
+candidate pool; E_test generated at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr and re-evaluated on its
+leading 500 SOWs (trimmed-model
 re-evaluation); the calibrated annual-unit epsilon vector; comparison
 metrics = multivariate Starr satisficing (primary) with Laplace, maximin, and signed
 improvement-over-status-quo as anchors; search aggregation = two-layer annual-unit
@@ -254,9 +259,9 @@ historical persistence (claims scoped accordingly).
 **Budget.** The campaign is priced on the measured production basis (21,850 SU per
 N = 100 / 500k search, scaled by (N/100)^0.951) against the remaining Anvil balance of
 about 600,000 SU: ~340k SU for the four matched searches, ~10k for the `historic`
-reference, ~5k staging, and ~132k for the E_test re-evaluation at the 2,000-policy cap,
-about 489k in total with a reserve of ~110k (56k if the unmeasured 8 → 12 node scaling
-costs the full 17 % carried as its upper bound). The model basis, 1.53× higher, does not
+reference, ~5k staging, and ~66k for the 500-SOW E_test re-evaluation at the 2,000-policy
+cap, about 423k in total with a reserve of ~177k (122k if the unmeasured 8 → 12 node
+scaling costs the full 17 % carried as its upper bound). The model basis, 1.53× higher, does not
 fit and is the stress case; the first seed-1 runs price the campaign before seed 2 is
 submitted. A third seed does not fit; the RQ3 variable-resolution sweep runs only on
 whatever SU remains at the end of the campaign. Table: `notes/methods/campaign_design.md` §6.

@@ -941,7 +941,8 @@ SIM_PHASE_TIMING = _parse_int_env("NYCOPT_SIM_PHASE_TIMING", 0)
 # GLOBAL realization id, objective), so persistence layout, scheduling, and
 # merge placement provably cannot alter the merged re-evaluation cube
 # (tests/test_chunk_reeval.py proves equality). They exist because the campaign
-# re-eval (~55k units of ~1 h each) must survive wall-clock kills and rank
+# re-eval (~50k units of ~1 h each at the 2,000-policy cap x 25 chunks) must
+# survive wall-clock kills and rank
 # imbalance that the one-shot path cannot.
 #
 # CHUNK_INCREMENTAL  1 (default): flush each completed (solution, chunk) unit

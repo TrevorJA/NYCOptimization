@@ -785,7 +785,8 @@ ENSEMBLE_COST_PROJ_EFFICIENCY: float = 0.729
 #: test ensemble E_test (N_theta forcing draws x R realizations each, L_test yr)
 #: on the TRIMMED model. 1,200 = ~400 policies per design
 #: at the calibrated epsilons, merged across seeds. The adopted E_test cell is
-#: (N_theta, R, L_test) = (1000, 25, 50); the grid brackets it.
+#: (N_theta, R, L_test) = (500 re-evaluated of 1000 generated, 25, 50); the grid
+#: brackets it.
 ENSEMBLE_COST_REEVAL_POLICIES: int = 1200
 ENSEMBLE_COST_ETEST_NTHETA: "tuple[int, ...]" = (500, 1000, 1500)
 ENSEMBLE_COST_ETEST_R: "tuple[int, ...]" = (10, 25)
@@ -1566,7 +1567,8 @@ def configure_hsd_env() -> None:
 # ---------------------------------------------------------------------------
 #: HSD_SMOKE=1 proves the code path on the P=2,000 smoke pools and the first
 #: HSD_SMOKE_N_SOW SOWs of the E_test sub-window image (login-scale, seconds).
-#: The full run uses the P=1e6 pools and all 1,000 SOWs.
+#: The full run uses the P=1e6 pools and all 1,000 generated SOWs (the campaign
+#: re-evaluation's 500 SOWs are the leading half, so its strata are nested).
 HSD_SMOKE: bool = os.environ.get("NYCOPT_HSD_SMOKE", "0") == "1"
 
 #: SOW count for the smoke pass (prefix of the theta index; the LHS rows are

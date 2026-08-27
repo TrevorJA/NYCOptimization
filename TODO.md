@@ -510,6 +510,26 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
      record for each hazfill draw at N = 300. Step 05 baselines for both matched
      designs scenario-matched to the new d0 ensembles (`--search-ensemble`;
      reliabilities exact n/2700). ~1-2k SU.
+  1b. E_TEST 500-SOW SUBSET (login node, metadata only, minutes, 0 SU; no
+     regeneration — reuse the staged `etest_kn_50yr_n25000` and its presim):
+     `python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000`
+     (`--n-chunks` defaults to 25 = the campaign's 500 SOWs from
+     `src.etest.E_TEST_REEVAL_N_THETA`; writes only `_meta.json`,
+     `chunk_index.json`, sliced `forcing_profiles.npz` / `hazard_image*.npz`
+     under `etest_kn_50yr_n25000_first25ch`, pointing at the existing chunk
+     dirs). Check the printed prefix summary (500 SOWs, 12,500 realizations,
+     `assert_staged_etest_contract` passes) and compare the 500-SOW axis
+     means/ranges against the full 1,000 (the 2026-08-12 check on
+     `first10ch` is the template). Then, per design env (historic, fixedprob,
+     hazfill), plant the incumbent-cube symlink under the subset tag:
+     `set -a; source workflow/envs/<design>_production.env; set +a;
+     NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch
+     python3 -m scripts.supplemental.stage_etest_subset_baseline` (the
+     1,000-SOW incumbent cube is a superset joined by SOW label; nothing is
+     re-simulated). Every step-05/08/09/09b/10 submission from here on passes
+     `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch`; the
+     `first10ch` interim tag stays nested inside it and is never mixed with
+     it in a manuscript number.
   2. EPSILON RE-VERIFICATION at N = 300: `epsilon_calibration.sh` per design
      (`EPS_REALIZATION_BATCH=150` now; ~1 h per wholenode node each). Go if
      every adopted entry [0.05, 10, 0.05, 10, 0.05, 0.3, 5.0, 0.05] lies above
@@ -543,10 +563,36 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
      the step-08/09 first-choice reference; step 07's own merge includes the
      750k tail and is diagnostics-only). Step 07 diagnostics per seed.
   7. E_TEST RE-EVALUATION (steps 09 + 09b on `shared`, 16 ranks x 8 cpus,
-     batch 50) of the installed merged sets: ~66 SU per policy, ~132k at the
-     2,000-policy cap. Then steps 10-13 and the re-anchoring audit on the full
-     cube (the interim first10ch placements must be re-confirmed).
+     batch 50, `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch`)
+     of the installed merged sets: ~33 SU per policy (1.33 SU per policy-chunk
+     unit x 25 chunks), ~66k at the 2,000-policy cap, ~50k units. Then steps
+     10-13 and the re-anchoring audit on the 500-SOW cube (the interim
+     first10ch placements must be re-confirmed); the theta-subsample stability
+     check is 250 vs 500 SOWs, scored offline.
   8. Re-render the ESD figures with `ESD_N_CAMPAIGN = 300` (analysis wrapper).
+  NOTES FOR THE SESSION THAT RUNS THIS (2026-08-26 state):
+  * DECIDED, do not reopen: N = 300 / L = 10 (L = 11 was priced and declined:
+    +10 % search SU, pool + E_test sub-window restaging, no statistical gain
+    over spending the same SU on N); one searched draw, S = 2; 500 re-evaluated
+    SOWs from the 1,000 generated (literature basis in `campaign_design.md` §5;
+    a two-tier 500/1,000 scheme was rejected as reader-confusing).
+  * `scripts/main/extract_runtime_archive.py` and `src/runtime_archive.py`
+    have been unit-tested on SYNTHETIC runtime text only. Before item 5, run
+    `--seed 1` once against an existing go/no-go runtime set on Anvil (e.g.
+    outputs/fixed_probabilistic/ffmp_obj8/runtime/, NFE 125000 exists there)
+    and confirm the row count matches `seed_01_ffmp_obj8.set` within the
+    ε-filter; the Borg block format (`//NFE=` ... rows ... `#`) is assumed.
+  * `NYCOPT_REEVAL_ENSEMBLE_PRESET` is deliberately NOT in the env files
+    (config resolves it at import and would fail wherever the subset is not
+    staged); it is passed on every 05/08/09/09b/10 sbatch line.
+  * The step-06 pre-flight now includes `nycopt_check_memory`; a design that
+    fails it exits 5 with the fix printed. `NYCOPT_MEMORY_OVERRIDE=1` only for
+    a deliberate measurement run.
+  * `scripts/temporary/ensemble_size_reanalysis_2026-08-26/cost_tables.py`
+    still prices the re-eval at the old 132k basis (dated sandbox); do not
+    quote it.
+  * Manuscript: Section 3.4.3 cites a Text S12 (tolerance rules) that does
+    not exist in the SI yet; the SI beyond S8 is outline-only (§3 item).
   Runs are NFE-bounded (`max_time_hours=None`); `--time` must cover the NFE or
   the search is silently truncated (no resume exists). Memory: the step-06
   pre-flight (`nycopt_check_memory`) refuses N = 300 at 128 ranks/node without

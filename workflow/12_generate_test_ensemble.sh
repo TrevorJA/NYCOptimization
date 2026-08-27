@@ -3,8 +3,9 @@
 #
 # E_test is the MEASURING STICK — every design's Pareto policies are re-simulated
 # on it (step 08/09) and the cross-design comparison is made there and nowhere
-# else. It is NOT a scenario design: it never enters search, is never subsampled,
-# and is never a control, so (unlike the search-side candidate pools) it is
+# else. It is NOT a scenario design: it never enters search and is never a
+# control (the campaign re-evaluates on its leading 500 SOWs, a chunk-prefix
+# subset, make_etest_subset.py), so (unlike the search-side candidate pools) it is
 # sampled by LHS, over a DELIBERATELY WIDER DU box than any design searched in.
 #
 #   LHS over the full (widened) harmonic DU box  ->  N_theta_test SOWs
@@ -24,7 +25,9 @@
 #                   a multi-site Gaussian-mixture HMM on annual flows, as a
 #                   generator-structure sensitivity.           (seed domain etest:hmm)
 #
-# Sizing (N_theta_test=1000, R_test=25, L_test=50, chunk=500; decided
+# Sizing (N_theta_test=1000 generated, of which the campaign re-evaluates the leading
+# 500 = 25 chunks (src.etest.E_TEST_REEVAL_N_THETA; make_etest_subset.py); R_test=25,
+# L_test=50, chunk=500; decided
 # 2026-07-30) lives in src/etest.py — env-overridable (NYCOPT_ETEST_*),
 # hardcoded nowhere else. No value flags here; --variant is an identifier.
 #

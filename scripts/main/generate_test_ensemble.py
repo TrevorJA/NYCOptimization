@@ -2,7 +2,8 @@
 
 E_test is the measuring stick: every design's Pareto policies are re-simulated on it, and the
 cross-design comparison happens there and nowhere else. It is NOT a scenario design — it never
-enters search, is never subsampled, and is never a control (see ``src/etest.py``).
+enters search and is never a control; the campaign re-evaluates on the leading 500 of its
+1,000 generated SOWs, a chunk-prefix subset staged by ``make_etest_subset.py`` (see ``src/etest.py``).
 
 Construction, per variant in ``src.etest.E_TEST_VARIANTS``:
 

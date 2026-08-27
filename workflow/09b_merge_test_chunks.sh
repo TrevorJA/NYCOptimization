@@ -13,7 +13,7 @@
 #
 # Submit (from repo root, after the last simulate job):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<arm>.env,\
-# NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_CHUNK_POLICIES=<merged.ref> \
+# NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=<merged.ref> \
 #          workflow/09b_merge_test_chunks.sh
 #
 #SBATCH --job-name=merge_test_chunks
@@ -35,7 +35,7 @@ nycopt_source_env_file required
 export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 
-: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the chunked master slug explicitly, e.g. etest_kn_50yr_n25000}"
+: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the chunked master slug explicitly, e.g. etest_kn_50yr_n25000_first25ch}"
 FORMULATION="${FORMULATION:-ffmp}"
 SEED="${SEED:-}"
 

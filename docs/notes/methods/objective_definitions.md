@@ -308,7 +308,8 @@ persisted matrix, never a second simulation.
 
 **The fraction of E_test STATES OF THE WORLD in which the policy's per-SOW
 objective vector `J_i(x,θ)` meets ALL criteria jointly** — Starr's (1962)
-domain criterion across the N_θ = 1,000 states, the standard measure of the
+domain criterion across the N_θ = 500 re-evaluated states (the leading half of
+the 1,000 generated; `campaign_design.md` §5), the standard measure of the
 Herman (2014/2015) / Trindade (2017, 2019) / Gold (2023) lineage, and Herman
 et al. (2015)'s own recommendation ("a carefully elicited multivariate
 satisficing measure of robustness allows stakeholders to achieve their
@@ -333,7 +334,8 @@ Bartholomew & Kwakkel 2020). Three reasons make it right here too:
   states applies a coverage-weighted count to the design and leaves natural
   variability inside the per-state statistic.
 - **Precision.** Realizations sharing a θ are not independent. The reported
-  ±1.6 pp is `0.5/√1000`, a SOW-unit standard error. Bonham et al. (2024)'s
+  ±2.2 pp is `0.5/√500`, a SOW-unit standard error on the 500 re-evaluated
+  SOWs. Bonham et al. (2024)'s
   50–300 convergence result is measured on a FLAT ensemble and so bounds N_θ,
   not R.
 - **One unit everywhere.** The incumbent-regret family (§3.2b), scenario
@@ -394,7 +396,9 @@ metric — but a statistic computed on the sign-selected subset does not.
 
 **No max regret.** Bonham et al. (2024): regret families need 400+ scenarios and
 never converge on extreme-of-extremes operators. McPhail et al. document the
-tie-degeneracy directly. The 90th percentile over 1,000 SOWs is well resolved.
+tie-degeneracy directly. The 90th percentile over the 500 re-evaluated SOWs
+rests on the ~50 worst states, a fixed-quantile operator that stays far from
+the extreme-of-extremes degeneracy those authors document.
 
 **Natural units, and no cross-objective magnitude scalar.** Dividing by the
 incumbent's own per-state value is degenerate for this objective set: flood

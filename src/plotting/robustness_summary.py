@@ -99,7 +99,7 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
     axA.axvline(float(np.median(a_multi)), color="0.35", lw=1.4, ls=":",
                 label=f"median = {np.median(a_multi):.2f}")
     # Counts come from the cube, never hardcoded: they were both stale (7
-    # objectives, 50 SOWs) against the campaign's 8 objectives and 1,000 SOWs.
+    # objectives, 50 SOWs) against the campaign's 8 objectives and 500 SOWs.
     axA.set_xlabel(f"Multivariate satisficing (SOW unit)\n"
                    f"fraction of {raw.n_sow} SOWs meeting ALL {len(names)} thresholds")
     axA.set_ylabel("number of Pareto policies")

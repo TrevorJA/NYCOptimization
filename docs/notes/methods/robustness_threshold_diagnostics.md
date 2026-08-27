@@ -30,7 +30,10 @@ lineage's thresholds once and every later value drifted by convention
 literature's diagnosis: anchor on an external goalpost wherever one exists
 and treat everything else as a swept, reported choice, because robustness
 rankings degrade in agreement as criteria tighten (Quinn et al. 2020;
-Hadjimichael et al. 2020).
+Hadjimichael et al. 2020). The campaign re-evaluates the leading 500 of these
+SOWs (`etest_kn_50yr_n25000_first25ch`; `campaign_design.md` §5), whose per-SOW
+values are a strict subset of this same cube, so the anchors transfer without
+recomputation.
 
 **Substrate.** The cube carries the per-SOW ANNUAL-UNIT objective values —
 each θ-SOW's 25 realizations' unit-years pooled through the objective's own
@@ -54,7 +57,8 @@ is the only counting unit: pooling each θ's 25 realizations' unit-years
 through the unit operator IS the per-SOW value, so there is no separate
 within-SOW collapse step and no realization-unit co-report. Worst-case
 Monte-Carlo standard error of a SOW fraction is $0.5/\sqrt{1000}$ ≈ ±1.6 pp
-(`scenario_design_methods.md` §5.4); every reported SOW fraction additionally
+here and $0.5/\sqrt{500}$ ≈ ±2.2 pp on the campaign's 500 re-evaluated SOWs
+(`campaign_design.md` §5); every reported SOW fraction additionally
 carries a Wilson 95% score interval (n = 1,000 independent LHS draws), which
 reduces to that convention at $p = 0.5$ and stays honest at the degenerate
 edges. Because $E_{\text{test}}$ is an LHS-designed DU box, a satisficing
@@ -158,7 +162,8 @@ sweep speak the same coordinate.
 
 ## 3. θ-attribution (`S_rtd_theta_spearman`, `S_rtd_factor_maps`)
 
-Spearman rank correlations over the 1,000 SOWs between the 8 per-SOW
+Spearman rank correlations over the 1,000 SOWs (the full generated cube; the
+campaign's 500 re-evaluated SOWs are its leading prefix) between the 8 per-SOW
 objectives and the DU factors (theta joined on the SOW label, never
 positional). The figure shows only the 8-objective × 3-θ block — the question
 is which factors order performance, and the full (8+3)×(8+3) matrix

@@ -27,11 +27,11 @@
 #   SEED                           optional — restrict to one MOEA seed
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
+#   sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
 #          workflow/10_compare_designs.sh
 #
 # Local:
-#   NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 bash workflow/10_compare_designs.sh
+#   NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch bash workflow/10_compare_designs.sh
 #
 #SBATCH --job-name=compare_designs
 #SBATCH --account=ees260021

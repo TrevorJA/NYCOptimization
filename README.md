@@ -127,12 +127,13 @@ held-out ensemble so step `08` can compute the improvement over the
 status-quo baseline:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
        workflow/05_run_baseline.sh
 ```
 
 The second (re-eval) pass of this job requires the held-out ensemble
-(`etest_kn_50yr_n25000`) to be staged first — see §2.1. To run the baseline before
+(`etest_kn_50yr_n25000`, plus its campaign prefix subset `etest_kn_50yr_n25000_first25ch`
+staged by `scripts/supplemental/make_etest_subset.py`) to be staged first — see §2.1. To run the baseline before
 staging it, add `NYCOPT_BASELINE_SKIP_REEVAL=1` to the `--export` list and
 rerun step `05` later.
 
@@ -198,7 +199,7 @@ staged. A full reproducibility manifest is written to
 bash workflow/07_run_diagnostics.sh
 
 # Re-evaluate the Pareto policies on the common held-out ensemble + robustness scoring
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_REEVAL_SCORE=1 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_REEVAL_SCORE=1 \
        workflow/08_reevaluate.sh
 ```
 

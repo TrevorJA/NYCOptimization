@@ -1,11 +1,13 @@
 """
 make_etest_subset.py - Stage a metadata-only chunk-PREFIX subset of a staged, chunked E_test.
 
-Purpose: an INTERIM, cost-bounded re-evaluation of the first-round production Pareto sets on
-fewer deeply-uncertain states of the world (SOWs), while the fronts are still converging. The
-subset keeps R (realizations per SOW) untouched, so every per-SOW objective value is computed
-in exactly the final metric currency — only the cross-SOW Monte Carlo error widens (worst-case
-SE of a satisficing fraction is 0.5/sqrt(N_theta): +/-3.5 pp at 200 SOWs vs +/-1.6 pp at 1,000).
+Purpose: the campaign re-evaluates every Pareto set on the leading ``E_TEST_REEVAL_N_THETA``
+SOWs of the generated 1,000-point E_test design (``src.etest``; 500 SOWs = the first 25 chunks,
+``etest_kn_50yr_n25000_first25ch``), and interim, cost-bounded re-evaluations used shorter
+prefixes (``first10ch``, 200 SOWs). This tool stages either. The subset keeps R (realizations per
+SOW) untouched, so every per-SOW objective value is computed in exactly the final metric currency —
+only the cross-SOW Monte Carlo error depends on the prefix length (worst-case SE of a satisficing
+fraction is 0.5/sqrt(N_theta): +/-3.5 pp at 200 SOWs, +/-2.2 pp at 500, +/-1.6 pp at 1,000).
 
 NOTHING is regenerated, copied, or re-prepped. The subset directory holds only three metadata
 files — ``_meta.json``, ``chunk_index.json``, ``forcing_profiles.npz`` — and its chunk entries
@@ -30,12 +32,12 @@ for re-evaluation. The subset still passes ``assert_staged_etest_contract`` (LHS
 Manuscript numbers must come from ONE cube per claim — never mix subset-cube and full-cube
 values; the separate re-eval tag enforces the separation on disk.
 
-Usage (login node is fine — pure metadata I/O):
-    python3 -m scripts.supplemental.make_etest_subset \
-        --pool etest_kn_50yr_n25000 --n-chunks 10
+Usage (login node is fine — pure metadata I/O). The campaign subset (``--n-chunks`` defaults to
+the campaign value, 25):
+    python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000
 
-Then point the re-eval at it:
-    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first10ch \
+Then point every re-eval step at it (steps 05, 08, 09, 09b, 10):
+    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
         sbatch ... workflow/09_simulate_test_chunks.sh
 """
 
@@ -115,13 +117,18 @@ def main() -> None:
         description="Stage a metadata-only chunk-prefix subset of a chunked E_test.")
     parser.add_argument("--pool", required=True,
                         help="Staged chunked pool slug, e.g. etest_kn_50yr_n25000.")
-    parser.add_argument("--n-chunks", type=int, required=True,
-                        help="Number of LEADING chunks to include.")
+    parser.add_argument("--n-chunks", type=int, default=None,
+                        help="Number of LEADING chunks to include (default: the campaign "
+                             "re-evaluation subset, src.etest.campaign_etest_variant()"
+                             ".reeval_n_chunks).")
     parser.add_argument("--out-slug", default=None,
                         help="Subset slug (default: {pool}_first{K}ch).")
     parser.add_argument("--force", action="store_true",
                         help="Overwrite an existing subset directory.")
     args = parser.parse_args()
+    if args.n_chunks is None:
+        from src.etest import campaign_etest_variant
+        args.n_chunks = campaign_etest_variant().reeval_n_chunks
 
     from src.ensembles import staged_ensemble_dir, staged_ensemble_missing
 
@@ -172,7 +179,7 @@ def main() -> None:
     sub_meta["subset_of"] = args.pool
     sub_meta["subset_n_chunks"] = args.n_chunks
     sub_meta["subset_note"] = (
-        "Metadata-only chunk-prefix subset for interim re-evaluation; chunk entries "
+        "Metadata-only chunk-prefix subset for re-evaluation; chunk entries "
         "reference the parent pool's staged chunk directories (no data copied). "
         "Prefix-only: rows are keyed by global SOW id. LHS rows are randomly ordered, "
         "so the prefix is an unbiased theta subsample."

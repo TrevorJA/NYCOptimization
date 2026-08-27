@@ -645,7 +645,8 @@ def assert_iid_pools() -> None:
     for ONE reason: a design's candidate pool is later SUBSAMPLED, and the control
     argument (a uniform random size-N subset of an i.i.d. pool has exactly the law of
     N i.i.d. draws) holds only for an i.i.d. pool with one realization per theta.
-    E_test is never subsampled and is never a control -- it is the measuring stick --
+    E_test is never a control -- it is the measuring stick, and the campaign's 500-SOW
+    prefix subset of it is a subsample of the stick, not a control construction --
     so neither condition applies to it. It is sampled by LHS over the full DU range,
     with R >> 1 realizations per theta, and that is CORRECT: space-filling is what a
     measuring stick wants, and the within-theta replication is what makes the SOW-unit

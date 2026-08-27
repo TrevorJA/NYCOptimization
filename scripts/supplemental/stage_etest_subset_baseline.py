@@ -17,8 +17,11 @@ Run it with the SAME env the step-09 submission will use, so the target director
 identically (scenario, slug, re-eval tag, optional seed):
 
     set -a; source workflow/envs/ffmp_obj8_historic_production.env; set +a
-    export NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first10ch
+    export NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch   # the campaign subset
     python3 -m scripts.supplemental.stage_etest_subset_baseline
+
+Run it once per scenario design env (the target dir is design-specific) before that
+design's step-09 re-evaluation on the subset.
 
 Pass ``--seed N`` iff the step-09 run will pass ``--seed N`` (SEED env in the launcher).
 """

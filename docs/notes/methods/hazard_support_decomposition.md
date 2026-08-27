@@ -233,7 +233,11 @@ Tables mirror every figure (`hsd_*.csv`); figures follow `src/plotting/style.py`
 ## 6. Stage-A result (measured 2026-08-25; job 20142248, 30 s)
 
 Recorded AFTER the pre-registered definitions above were fixed; no cut point,
-quantile, or rule was changed in response to these numbers.
+quantile, or rule was changed in response to these numbers. Stage A labels all
+1,000 generated SOWs; the campaign re-evaluates the leading 500
+(`etest_kn_50yr_n25000_first25ch`; `campaign_design.md` §5), whose strata are
+the nested prefix of these labels, and step-11 scenario discovery runs on
+those 500.
 
 - **Strata (pool d0, primary): in_support 611 / boundary 389 /
   out_of_support 0.** No SOW has a majority of its sub-windows beyond the

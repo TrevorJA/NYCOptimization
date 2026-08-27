@@ -5,7 +5,7 @@
 # SI draw-sensitivity re-evaluation (docs/notes/methods/campaign_design.md).
 #
 # Usage (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
 #          workflow/05_run_baseline.sh
 #   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env bash workflow/05_run_baseline.sh
 #

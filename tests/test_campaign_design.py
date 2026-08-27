@@ -159,3 +159,31 @@ def test_variance_components_fall_back_to_seed_unit_at_one_draw():
     assert np.isfinite(design["f_stat"]) and design["f_stat"] > 1
     assert "SEED is the unit of analysis" in design["note"]
     assert draw["df"] == 0 and "not identified" in draw["note"]
+
+
+# ---------------------------------------------------------------------------
+# E_test: 500 re-evaluated SOWs as a chunk-prefix of the 1,000-point design
+# ---------------------------------------------------------------------------
+
+def test_campaign_reeval_subset_is_a_whole_chunk_prefix():
+    from src.etest import (
+        E_TEST_CHUNK_SIZE,
+        E_TEST_N_THETA,
+        E_TEST_R,
+        E_TEST_REEVAL_N_THETA,
+        campaign_etest_variant,
+        campaign_reeval_preset,
+    )
+    v = campaign_etest_variant()
+    assert E_TEST_N_THETA == 1000 and E_TEST_REEVAL_N_THETA == 500
+    assert (E_TEST_REEVAL_N_THETA * E_TEST_R) % E_TEST_CHUNK_SIZE == 0
+    assert v.reeval_n_chunks == 25
+    assert campaign_reeval_preset() == "etest_kn_50yr_n25000_first25ch"
+    assert campaign_reeval_preset().startswith(v.slug)
+
+
+def test_reeval_slug_collapses_to_the_full_design_when_nothing_is_dropped(monkeypatch):
+    import src.etest as et
+    monkeypatch.setattr(et, "E_TEST_REEVAL_N_THETA", et.E_TEST_N_THETA)
+    v = et.campaign_etest_variant()
+    assert v.reeval_slug == v.slug

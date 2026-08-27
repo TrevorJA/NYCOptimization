@@ -46,7 +46,7 @@
 # §6 — e.g. 8 wholenode x 128 ranks x 24 h, NYCOPT_CHUNK_MERGE=off, and chain
 # 2-3 identical resubmissions (each resumes) + one 09b merge:
 #   sbatch --nodes=8 --ntasks-per-node=128 --time=24:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=...,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,\
+#          --export=ALL,NYCOPT_ENV_FILE=...,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,\
 # NYCOPT_CHUNK_POLICIES=<merged.ref>,NYCOPT_CHUNK_MERGE=off,\
 # NYCOPT_SEARCH_REALIZATION_BATCH=<B*>,NYCOPT_CHUNK_UNIT_SECONDS=<T_unit> \
 #          workflow/09_simulate_test_chunks.sh

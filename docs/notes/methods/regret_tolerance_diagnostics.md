@@ -244,7 +244,7 @@ $$
 $$
 
 evaluated at $k_{\text{headline}}$. The first term is the Monte Carlo resolution
-of the endpoint on 1,000 SOWs; the second is the within-design seed-level noise
+of the endpoint on the 500 re-evaluated SOWs; the second is the within-design seed-level noise
 the design contrast must beat. Both are nuisance quantities. Neither can determine
 the direction of the answer, which is what makes the rule pre-registerable even
 though the number it returns cannot be computed until the campaign exists.
@@ -303,7 +303,8 @@ the production step-08 artifacts.
 
 1. ~~Adopt the ladder **shape** (§2b) and then $k_{\text{headline}}$ (§3) from
    pass A.~~ **ADOPTED 2026-08-08**, from pass A on the regenerated step-05
-   incumbent cube (1,000 SOWs × R = 25, per-SOW annual-unit substrate), before
+   incumbent cube (1,000 SOWs × R = 25, per-SOW annual-unit substrate, of
+   which the campaign re-evaluates the leading 500; `campaign_design.md` §5), before
    any re-evaluated policy set existed on the new substrate. Shape = **`max`**:
    6 of 8 epsilons sit below their measured noise floors (reliability axes
    5.5–8.1×, flood 3.1×, storage 1.2×; `rtol_ladder_shapes.csv`), confirming
@@ -368,7 +369,9 @@ the production step-08 artifacts.
 
 4. **Not estimable at S = 1 seed:** the §4.2 seed-level null.
    δ therefore reduces to `2 × paired bootstrap SE` (0.102 all-8, 0.065
-   compromise-3), which is a LOWER BOUND on δ and must be labelled as one.
+   compromise-3, measured on the 200-SOW interim cubes; at the campaign's 500
+   re-evaluated SOWs the same term scales by √(200/500) to ≈ 0.065 / 0.041),
+   which is a LOWER BOUND on δ and must be labelled as one.
    `run_pass_b()` currently raises `KeyError: 'level'` in this situation
    instead of degrading to "not estimable" — fix before the production pass.
 
