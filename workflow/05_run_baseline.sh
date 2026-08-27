@@ -1,6 +1,8 @@
 #!/bin/bash
 # Step 5: Evaluate the default FFMP policy (no optimization) and save
 # baseline objective values — the comparison anchor for optimized Pareto sets.
+# Runs once per design on its searched draw (d0); d1-d2 are staged only for the
+# SI draw-sensitivity re-evaluation (docs/notes/methods/campaign_design.md).
 #
 # Usage (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000 \

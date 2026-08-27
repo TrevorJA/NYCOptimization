@@ -10,6 +10,7 @@
 #                                         02/03, which want full BLAS threads)
 #   nycopt_read_run_identity              MM-Borg only; needs FORMULATION, SEED
 #   nycopt_check_allocation               MM-Borg only; SLURM_NTASKS vs config
+#   nycopt_check_memory                   MM-Borg only; node RSS vs safety line
 #   nycopt_write_manifest                 MM-Borg only
 #   nycopt_preflight_mmborg               MM-Borg only
 #
@@ -45,12 +46,14 @@ NYCOPT_MPI_MCA_FLAGS="${NYCOPT_MPI_MCA_FLAGS:-}"
 # MPI ranks packed per node for MM-Borg jobs. 128/node is the measured Anvil
 # wholenode packing: the node-packing sweep (SI §S8.2) bounds the eval-time
 # penalty at full packing to ~17-21% (priced into the 173.8 s/eval cost
-# surface, measured at this density) with ~1.2 GB/rank << node memory, and
-# wholenode bills all 128 cores regardless. It is the single source for the
-# suggested --nodes/--ntasks-per-node geometry printed by
-# nycopt_check_allocation when an allocation doesn't fit the MOEA config.
-# Override via env for other machines (e.g. 33/node was the Hopper-safe
-# packing).
+# surface, measured at this density), and wholenode bills all 128 cores
+# regardless. Memory is the binding constraint at this density for large
+# ensembles (N=300 x L=10 needs NYCOPT_SEARCH_REALIZATION_BATCH=150;
+# nycopt_check_memory below refuses to launch past the safety line). It is
+# the single source for the suggested --nodes/--ntasks-per-node geometry
+# printed by nycopt_check_allocation when an allocation doesn't fit the MOEA
+# config. Override via env for other machines (e.g. 33/node was the
+# Hopper-safe packing).
 NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-128}"
 
 _nycopt_set_mpi_flags() {
@@ -142,7 +145,9 @@ nycopt_pin_threads() {
 
 # Read the run identity back from config.py (single source of truth) so the
 # shell and the Python driver agree without value-carrying flags.
-# Requires: FORMULATION (exported). Honors: RUN_SLUG, NTASKS_MPI, DEBUG_SIM.
+# Requires: FORMULATION (exported); SEED (exported; defaults to 1) selects
+# the per-seed NFE budget (MOEAConfig.max_evaluations_for_seed). Honors:
+# RUN_SLUG, NTASKS_MPI, DEBUG_SIM.
 # Sets: SCENARIO, RUN_SLUG, MOEA_CONFIG_NAME, N_ISLANDS, NFE, RUNTIME_FREQ,
 # NTASKS_MPI (precedence: caller override > config's total_ntasks_mpi >
 # SLURM allocation minus 1).
@@ -162,7 +167,7 @@ nycopt_read_run_identity() {
     # config may print import-time notes (e.g. an unstaged search ensemble);
     # divert them to stderr so only the identity lines reach the mapfile.
     mapfile -t _cfg < <(python3 -c "
-import contextlib, io, sys
+import contextlib, io, os, sys
 _buf = io.StringIO()
 with contextlib.redirect_stdout(_buf):
     import config
@@ -173,7 +178,8 @@ print(config.derive_slug('${FORMULATION}'))
 print(mc.name)
 print(mc.total_ntasks_mpi if mc.total_ntasks_mpi is not None else '')
 print(mc.n_islands if mc.n_islands is not None else '')
-print(mc.max_evaluations if mc.max_evaluations is not None else '')
+_nfe = mc.max_evaluations_for_seed(int(os.environ.get('SEED', '1')))
+print(_nfe if _nfe is not None else '')
 print(mc.runtime_frequency if mc.runtime_frequency is not None else '')
 print(config.SCENARIO_ENSEMBLE_DRAW)
 ")
@@ -231,6 +237,73 @@ nycopt_check_allocation() {
     echo "[_common] allocation OK: ${need} MPI ranks in ${have} allocated tasks"
 }
 
+# Verify the node memory the active scenario design needs at this packing
+# density fits under the safety line (config.NODE_MEMORY_SAFETY_FRACTION x
+# config.NODE_MEMORY_GB). The estimate is config.search_node_rss_gb: a
+# conservative linear envelope in scenario-years per rank that reproduces
+# the measured N=100 production steady state (139-140 GB/node at 128 ranks).
+# N=300 x L=10 unbatched projects to ~259 GB/node and is refused; with
+# NYCOPT_SEARCH_REALIZATION_BATCH=150 it projects to ~167 GB and passes.
+# NYCOPT_MEMORY_OVERRIDE=1 turns the abort into a warning (for a deliberate
+# measurement run). NYCOPT_MEM_SAMPLE_S=<s> additionally starts a background
+# sampler of this node's used memory (free -m) every <s> seconds into
+# logs/mem_<jobid>_<host>.log — first node only; for multi-node jobs read
+# `sstat -j <jobid> --format=MaxRSS,AveRSS,Nodelist` from the login node.
+# Skipped outside SLURM.
+# Requires: nycopt_read_run_identity ran first (SEED/FORMULATION exported).
+nycopt_check_memory() {
+    [[ -z "${SLURM_NTASKS:-}" ]] && return 0   # not under SLURM (local run)
+    local per_node="${SLURM_NTASKS_PER_NODE:-}"
+    per_node="${per_node%%(*}"   # SLURM may report e.g. "128(x12)"
+    if [[ -z "${per_node}" ]]; then
+        per_node=$(( (SLURM_NTASKS + ${SLURM_JOB_NUM_NODES:-1} - 1) / ${SLURM_JOB_NUM_NODES:-1} ))
+    fi
+    local verdict
+    verdict="$(NYCOPT_RANKS_PER_NODE_CHECK="${per_node}" python3 -c "
+import contextlib, io, os, sys
+_buf = io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    import config
+sys.stderr.write(_buf.getvalue())
+d = config.ACTIVE_SCENARIO_DESIGN
+spec = config.SEARCH_ENSEMBLE_SPEC
+n = d.n_realizations or 1
+years = d.realization_years or config.SCENARIO_YEARS
+if spec is not None and not spec.is_ensemble:
+    n, years = 1, 78          # single observed trace (historic)
+batch = config.SEARCH_REALIZATION_BATCH
+per_node = int(os.environ['NYCOPT_RANKS_PER_NODE_CHECK'])
+gb = config.search_node_rss_gb(per_node, n, years, batch)
+line = config.NODE_MEMORY_GB * config.NODE_MEMORY_SAFETY_FRACTION
+print(f'{gb:.0f} {line:.0f} {n} {years} {batch}')
+")"
+    # shellcheck disable=SC2086
+    set -- ${verdict}
+    local gb="$1" line="$2" n="$3" years="$4" batch="$5"
+    echo "[_common] memory estimate: ~${gb} GB/node at ${per_node} ranks/node" \
+         "(N=${n}, L=${years}, batch=${batch}; safety line ${line} GB)"
+    if [[ -n "${NYCOPT_MEM_SAMPLE_S:-}" && "${NYCOPT_MEM_SAMPLE_S}" != "0" ]]; then
+        local mem_log="logs/mem_${SLURM_JOB_ID:-local}_$(hostname).log"
+        ( while :; do
+              echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) used_MB=$(free -m | awk '/Mem:/{print $3}')"
+              sleep "${NYCOPT_MEM_SAMPLE_S}"
+          done ) > "${mem_log}" 2>/dev/null &
+        echo "[_common] node-memory sampler started (every ${NYCOPT_MEM_SAMPLE_S}s) -> ${mem_log}"
+    fi
+    if (( gb > line )); then
+        if [[ "${NYCOPT_MEMORY_OVERRIDE:-0}" == "1" ]]; then
+            echo "[_common] WARNING: above the memory safety line; continuing (NYCOPT_MEMORY_OVERRIDE=1)" >&2
+            return 0
+        fi
+        {
+            echo "ERROR: projected node memory ${gb} GB exceeds the ${line} GB safety line."
+            echo "  Set NYCOPT_SEARCH_REALIZATION_BATCH (e.g. 150 at N=300) in the env file,"
+            echo "  or lower --ntasks-per-node. NYCOPT_MEMORY_OVERRIDE=1 forces the launch."
+        } >&2
+        exit 5
+    fi
+}
+
 # Write a full reproducibility manifest (run identity, allocation, git state,
 # config + env-file snapshots) to outputs/run_manifests/.
 # Requires: nycopt_read_run_identity ran first; FORMULATION, SEED set.
@@ -256,7 +329,8 @@ nycopt_write_manifest() {
         echo "Seed:            ${SEED}"
         echo "Ensemble draw:   ${ENSEMBLE_DRAW:-0}"
         echo "N islands:       ${N_ISLANDS}"
-        echo "NFE/island:      ${NFE}"
+        echo "NFE/island:      ${NFE} (seed ${SEED})"
+        echo "Realiz. batch:   ${NYCOPT_SEARCH_REALIZATION_BATCH:-0}"
         echo "Runtime freq:    ${RUNTIME_FREQ}"
         echo "Debug sim:       ${DEBUG_SIM:-false}"
         echo "Checkpoint:      ${CHECKPOINT:-false}"
@@ -308,8 +382,9 @@ print('Ensemble draw   :', draw, f'| design K = {design.n_ensemble_draws}')
 print('Search ensemble :', None if spec is None else spec.preset_name,
       '| is_ensemble =', None if spec is None else spec.is_ensemble)
 print('MOEA config     :', mc.name, '| islands =', mc.n_islands,
-      '| NFE/island =', mc.max_evaluations, '| ranks =', mc.total_ntasks_mpi,
-      '| seeds =', mc.n_seeds)
+      '| NFE/island (this seed) =', mc.max_evaluations_for_seed(seed),
+      '| ranks =', mc.total_ntasks_mpi, '| seeds =', mc.n_seeds)
+print('Realization batch:', config.SEARCH_REALIZATION_BATCH or 'off (one scenario block)')
 print('Salinity LSTM   :', config.INCLUDE_SALINITY_MODEL)
 print('Temperature LSTM:', config.INCLUDE_TEMPERATURE_MODEL)
 print('Formulation     :', f, '| n_vars =', get_n_vars(f))
@@ -324,7 +399,8 @@ assert spec is not None, (
     'SEARCH_ENSEMBLE_SPEC is None: the scenario design '
     f'{config.active_scenario_name()!r} could not resolve its search ensemble. '
     'Stage it first (workflow steps 02-04) or pick a staged design in the env file.')
-assert None not in (mc.n_islands, mc.n_workers_per_island, mc.max_evaluations), (
+assert None not in (mc.n_islands, mc.n_workers_per_island,
+                    mc.max_evaluations_for_seed(seed)), (
     f'MOEA config {mc.name!r} is schema-only (unset numbers) and cannot launch; '
     'set NYCOPT_MOEA_CONFIG to a concrete config (see src/moea_config.py).')
 

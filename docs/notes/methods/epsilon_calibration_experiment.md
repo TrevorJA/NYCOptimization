@@ -23,8 +23,12 @@ settings in `supplemental_config.py` (`EPS_*`). Outputs under
 - **Designs**: each campaign design is calibrated on its own search ensemble —
   `historic` (N = 1 over the trace's consecutive FFMP-year units),
   `fixed_probabilistic` and `hazard_filling_stationary` (N = 100 × L = 10,
-  draw 0) — because the search objectives are computed under different
-  measures across designs and the archive lives inside each search.
+  draw 0, the calibration's measured substrate) — because the search
+  objectives are computed under different measures across designs and the
+  archive lives inside each search. The campaign runs at N = 300: the floors
+  are re-measured on the N = 300 ensembles before the searches
+  (`EPS_REALIZATION_BATCH` = 150), and the adopted vector is kept unless an
+  entry falls below its N = 300 floor (`campaign_design.md` §4).
 - **Policies**: `EPS_N_POLICIES` = 512 random policies drawn **uniform on the
   constraint-feasible region** (rejection against the two DV-space formal Borg
   constraints — pure DV arithmetic; realized acceptance rate persisted as QC),

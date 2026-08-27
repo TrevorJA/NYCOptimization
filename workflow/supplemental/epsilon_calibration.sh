@@ -25,9 +25,11 @@
 # `supplemental_config.py` (EPS_* section) — this script carries NO value
 # flags. Set EPS_SMOKE=False there for the full run.
 #
-# Sizing: 513 policies x ~174 s/eval (N=100 x 10-yr trimmed, batch 0) on 128
-# ranks = ~5 eval waves ~= 15-20 min; the feasible-DV rejection sample and the
-# analysis stage add minutes. historic evaluations are cheaper (single trace).
+# Sizing: 513 policies x ~540 s/eval (N=300 x 10-yr trimmed, batched at 150
+# realizations per model run via supplemental_config.EPS_REALIZATION_BATCH) on
+# 128 ranks = ~5 eval waves ~= 1 h on one wholenode node; the feasible-DV
+# rejection sample and the analysis stage add minutes. historic evaluations are
+# cheaper (single trace).
 #
 #SBATCH --job-name=eps_calib
 #SBATCH --account=ees260021

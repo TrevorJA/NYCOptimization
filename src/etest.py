@@ -53,10 +53,15 @@ allocation ledger (``scenario_design_methods.md`` §5.4/§6):
 * **N_theta governs cross-SOW precision** (worst-case Monte Carlo SE of a satisficing fraction
   is 0.5/sqrt(N_theta) = +/-1.6 pp at 1,000), and lands E_test in the 10^3-10^4-SOW class of the
   MORDM precedents (Kasprzyk et al. 2013; Herman et al. 2014; Bartholomew & Kwakkel 2020).
-* **R x (L-1) = 1,225 annual units per SOW** meets the same ~900-1,000 unit-year sample the
-  search side argues stabilizes this lineage's tail operators — the within-SOW (stage-1)
-  estimate is resolved as well as an entire search evaluation. Closest structural precedent:
-  Quinn et al. (2020), ~1,050 realization-years per parameterization.
+* **R x (L-1) = 1,225 pooled annual units per SOW** resolve each state's objective value at
+  the archive's precision on their own terms: on the annual-unit library every objective's
+  level standard error is below its epsilon from 675 pooled units (N = 75 x 9) for an i.i.d.
+  sample, and the per-SOW noise measured directly on E_test (paired near-tie floors of
+  0.017-0.024 on the reliabilities, 1.2 pp on the deficit operators, 0.04 ft-d/yr on flood,
+  3.0 pp on storage; regret_tolerance_diagnostics.md pass B) is below epsilon on every axis.
+  R only has to be large enough for that; it plays no role in cross-SOW precision, which
+  N_theta sets. Closest structural precedent: Quinn et al. (2020), ~1,050 realization-years
+  per parameterization.
 * **L_test = 50 >> L = 10** tests sustained operation — storage carryover across consecutive
   droughts and matured entitlement banking, which terminating 10-yr search windows reset away.
   It adds system-state continuity, NOT hydrologic persistence (the generator's interannual

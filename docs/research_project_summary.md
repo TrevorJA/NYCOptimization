@@ -1,6 +1,6 @@
 # NYC Reservoir Re-Optimization: Project Summary
 
-*Entry point for new readers. Last updated 2026-08-05. Details live in `docs/notes/`;
+*Entry point for new readers. Last updated 2026-08-26. Details live in `docs/notes/`;
 this page states what the study is, what is decided, and what is still open. The
 manuscript at `docs/manuscript/Amestoy_NYC_reoptimization_manuscript_draft.md` is the
 authoritative description of the method. Where a note and the code disagree, the code
@@ -125,7 +125,7 @@ the regenerated production substrate before any placement is treated as final
 
 ## Comparison controls
 
-- **Budget**: both matched designs run at N = 100, L = 10 yr — 1,000 scenario-years per
+- **Budget**: both matched designs run at N = 300, L = 10 yr — 3,000 scenario-years per
   evaluation — at equal NFE, so per-evaluation cost, scenario-years, and
   wall-clock are identical and equal-NFE coincides with equal-scenario-years. The common
   (N, L) is required: if L differed, the selection rule would be confounded with record
@@ -136,10 +136,14 @@ the regenerated production substrate before any placement is treated as final
   control. Enforced by an invariant test.
 - **Seed-stream disjointness**: the candidate pool and the test ensemble generate from
   namespaced seed domains, so no design and the test ensemble ever share realizations.
-- **Replication**: K = 3 ensemble draws × S = 2 MOEA seeds per matched design, set
-  against the compute allocation. A draw is the design's construction re-run from scratch
-  with a fresh seed, and is the unit of analysis; draw- and seed-level results are
-  reported transparently. `historic` has K = 1.
+- **Replication**: one searched ensemble draw × S = 2 MOEA seeds per matched design, set
+  against the compute balance. A draw is the design's construction re-run from scratch
+  with a fresh seed; three are staged, the search runs on draw 0, and the seed is the
+  unit of analysis. The comparison is conditional on that draw, and draw-dependence is
+  measured by re-evaluating each design's final Pareto set on its own two other draws
+  (SI). Seed 1 of every design is continued to 750k NFE and reported from its runtime
+  archive at 500k. `historic` runs the same two seeds. Full specification and budget:
+  `notes/methods/campaign_design.md`.
 - **Single comparison point**: cross-design metrics computed only on held-out
   re-evaluation.
 
@@ -217,22 +221,26 @@ at strength, never as a comparison result.
 ## Status
 
 **In place:** the end-to-end pipeline (smoke-verified) and measured campaign costs
-(173.8 s/eval trimmed, full model 1.16×, ~33,400 SU per 500k-NFE search). The
-previously staged production inputs (candidate pools, both matched designs' search
-ensembles, E_test with its presim pass, the baseline-on-E_test matrix) and the
-first-round go/no-go searches were INVALIDATED by the 2026-08-18 seasonal-rotation
-fix and hazard-axis rename; all must be regenerated before the fan-out (`TODO.md`
-§1). The per-draw tail-share threshold formerly applied to the hazard-filling
+(173.8 s per N = 100 evaluation trimmed, full model 1.16×, and 21,850 SU per N = 100 /
+500k-NFE production search on 8 × 128, the measured basis every campaign number scales
+from). The production inputs (candidate pools, both matched designs' search ensembles,
+E_test with its presim pass, the baseline-on-E_test matrix) were regenerated on the
+December-epoch convention on 2026-08-20 at N = 100; the search ensembles and step-05
+baselines are re-staged at the adopted N = 300 before the campaign (pools and E_test are
+unchanged; `TODO.md` §2). The per-draw tail-share threshold formerly applied to the hazard-filling
 selection is retired; the minimum per-axis share above the pool P90 is reported as
 an emergent property of the selector on the pool's joint geometry (0.27–0.29 on the
 regenerated pools, about three times the 0.10 i.i.d. share, saturated in pool size
 and flat in N).
 
 **Decided:** the three designs above; a single stationary search population with deep
-uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE per search
-(attained budget justified post hoc from the runtime archive, and the comparison
-recomputable at earlier budgets); the production MM Borg geometry (8 Anvil nodes,
-4 islands × 254 workers, 1,021 ranks, ~32.6 h/search); K = 3 draws × S = 2 seeds; absolute
+uncertainty carried only in E_test; N = 300, L = 10 yr at equal NFE (the smallest ladder
+size at which the i.i.d. control resolves every objective's paired difference within
+ε/2); 500k NFE per search as the reporting budget, with seed 1 continued to 750k and
+reported from its runtime archive at 500k (the comparison is recomputable at earlier
+budgets); the production MM Borg geometry (12 Anvil nodes, 4 islands × 382 workers,
+1,533 ranks, 128 per node with a 150-realization batch); one searched draw × S = 2 seeds;
+absolute
 range-scaled hazard-space selection on the six campaign selection axes from a P = 10⁶
 candidate pool; E_test at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr (trimmed-model
 re-evaluation); the calibrated annual-unit epsilon vector; comparison
@@ -243,19 +251,24 @@ scheme; the framing conventions (failure-week counts, flood unit operator = mean
 substrate; forcing space retains
 historical persistence (claims scoped accordingly).
 
-**Total Anvil allocation = 750,000 SU.** The full campaign (two matched designs × K = 3 ×
-S = 2 at 500k NFE, plus the cheap `historic` reference, generation, and the E_test
-re-evaluation at ~80,000 SU) is approximately 503,000 SU (67%), leaving a ~247,000-SU
-reserve. First call on the reserve is an additional draw for both matched designs
-(~134k); the RQ3 variable-resolution sweep (~200k) is deprioritized and runs only on
-whatever SU remains at the end of the campaign.
+**Budget.** The campaign is priced on the measured production basis (21,850 SU per
+N = 100 / 500k search, scaled by (N/100)^0.951) against the remaining Anvil balance of
+about 600,000 SU: ~340k SU for the four matched searches, ~10k for the `historic`
+reference, ~5k staging, and ~132k for the E_test re-evaluation at the 2,000-policy cap,
+about 489k in total with a reserve of ~110k (56k if the unmeasured 8 → 12 node scaling
+costs the full 17 % carried as its upper bound). The model basis, 1.53× higher, does not
+fit and is the stress case; the first seed-1 runs price the campaign before seed 2 is
+submitted. A third seed does not fit; the RQ3 variable-resolution sweep runs only on
+whatever SU remains at the end of the campaign. Table: `notes/methods/campaign_design.md` §6.
 
-**Remaining before campaign launch:** the full regeneration in step order (steps 01,
-02–03, 12, 04, 05, then fresh searches; `TODO.md` §1) with `validate_staged_seasonality`
-build QC per ensemble; re-run the satisficing-threshold diagnostic and the criteria
-re-anchoring audit on the regenerated incumbent/production cubes and adopt final
-placements; re-run the regret-tolerance pass A on the regenerated incumbent cube
-(and pass B after step 08). Tracked in `TODO.md`.
+**Remaining before campaign launch:** re-stage the search ensembles at N = 300 (steps
+02–04 for draws 0–2 of both matched designs, step 05 baselines) with
+`validate_staged_seasonality` build QC; re-verify the ε floors on the N = 300 ensembles;
+run the one-node batched-search memory smoke; then seed 1 of every design, which prices
+the campaign. Re-run the satisficing-threshold diagnostic and the criteria re-anchoring
+audit on the production cubes and adopt final placements; re-run the regret-tolerance
+pass A on the regenerated incumbent cube (and pass B after step 08). Tracked in
+`TODO.md`.
 
 **Open decisions:** the satisficing criterion values and sweep-grid centre; the
 scenario design under which the RQ3 variable-resolution sweep is run, if the leftover
@@ -268,6 +281,7 @@ SU permits it. See `notes/methods/experimental_design.md` for the open-questions
 | Manuscript (authoritative method) | `manuscript/Amestoy_NYC_reoptimization_manuscript_draft.md` |
 | Research questions / contributions | `notes/research_questions.md`, `notes/research_contributions.md` |
 | Experimental design (controls, replication) | `notes/methods/experimental_design.md` |
+| Campaign at scale (N, draws, seeds, NFE, geometry, budget) | `notes/methods/campaign_design.md` |
 | Ensemble construction recipe | `notes/methods/scenario_design_methods.md` |
 | Forcing-space parameterization (E_test) | `notes/methods/forcing_parameterization.md` |
 | Objective definitions | `notes/methods/objective_definitions.md` |

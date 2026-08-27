@@ -8,8 +8,8 @@ per-step details: `workflow/README.md`.
 ## Experimental Replication
 
 > **Note:** This experiment was run on the [Anvil HPC at Purdue](https://docs.rcac.purdue.edu/userguides/anvil/)
-> (128-core nodes; search jobs use 5 nodes × 33 tasks on the `wholenode`
-> partition). The instructions below correspond to this HPC, but may be adapted
+> (128-core nodes; production search jobs use 12 nodes × 128 tasks on the
+> `wholenode` partition). The instructions below correspond to this HPC, but may be adapted
 > for other computing infrastructure. Submit all jobs **from the repo root** —
 > the scripts resolve paths from the submission directory.
 
@@ -24,9 +24,10 @@ here so you know what to expect):
   `wholenode` (node-exclusive billing); the smoke test uses `debug` (2 nodes,
   2 h max). These are set in each script's `#SBATCH --partition` line.
 - **96-hour wall-time cap.** Anvil's `wholenode` maximum is 96 h per job, and
-  the MM-Borg launcher requests exactly that. A search that needs longer must
-  restart from its periodic runtime snapshots
-  (`outputs/{scenario}/{slug}/runtime/`) rather than request more time.
+  the MM-Borg launcher requests exactly that. There is no resume: the runtime
+  files (`outputs/{scenario}/{slug}/runtime/`) are diagnostic dumps and the
+  Borg checkpoint is disabled, so every search is sized to finish inside one
+  job (`docs/notes/methods/campaign_design.md`).
 
 Everything submittable lives in `workflow/` (numbered steps `00`–`09`). A run's
 identity — scenario design, MOEA config, objectives, physics toggles — comes
@@ -144,8 +145,9 @@ section**. Every other design **generates its own realizations** (step `02`),
 the hazard-filling designs then select their search ensemble from their own
 candidate pool (step `03`), and each draw is formatted into pywrdrb HDF5 inputs
 (step `04`). The array index in `02`/`04` is the ensemble-draw index *k*
-(`K = design.n_ensemble_draws`); sizing and seeds come from the design registry,
-never from the command line:
+(`K = design.n_ensemble_draws` = 3 staged draws: d0 is searched, d1–d2 serve
+the SI draw-sensitivity re-evaluation); sizing and seeds come from the design
+registry, never from the command line:
 
 ```bash
 # Generate the design's own realizations (or its candidate pool), one array task per draw
@@ -153,12 +155,12 @@ sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
        workflow/02_generate_ensemble.sh
 
 # Hazard-filling designs only: select N members from the design's own pool (all K draws in one job)
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=1000000 \
        workflow/03_subsample_ensemble.sh
 
 # Format each draw's search ensemble into pywrdrb inputs
 sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
-       --array=0-9 workflow/04_prep_pywrdrb_inputs.sh
+       --array=0-2 workflow/04_prep_pywrdrb_inputs.sh
 ```
 
 The held-out re-evaluation ensemble is staged the same way (steps `02` + `04`
@@ -167,10 +169,11 @@ with `--preset`); see `workflow/README.md`.
 #### 2.2 BorgMOEA optimization of NYC FFMP rules
 
 Each optimization is **one independent sbatch job**: one submission per
-(env file × formulation), with `--array=1-10` spawning the 10 seed replicates
-as independent array tasks. These are multi-day jobs requesting Anvil's
-96-hour `wholenode` maximum; submit whichever experiments you are replicating —
-they do not depend on each other:
+(env file × formulation), with `--array` spawning the seed replicates as
+independent array tasks (the production campaign runs S = 2 seeds per design
+on draw 0; `docs/notes/methods/campaign_design.md`). These are multi-day jobs
+requesting Anvil's 96-hour `wholenode` maximum; submit whichever experiments
+you are replicating — they do not depend on each other:
 
 ```bash
 # Base FFMP (36 DVs)

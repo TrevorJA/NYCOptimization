@@ -18,10 +18,14 @@
 #          --array=1-10 workflow/06_run_mmborg.sh
 #
 # --array index = Borg seed; array tasks are independent seed replicates.
-# DRAW=k (default 0) selects the staged ensemble draw, so one submission is
-# one (env file x formulation x draw x seed-array) cell of the K x S
-# replication grid. The recommended first full-scale run is a single cell —
-# verify it before committing the remaining draws and seeds:
+# The per-island NFE may depend on the seed (MOEAConfig.max_evaluations_by_seed;
+# `production` runs seed 1 to 750k total NFE and later seeds to 500k, and
+# reports every seed at 500k from seed 1's runtime snapshot), so submit ONE
+# seed per sbatch with its own --time (see the env-file headers). DRAW=k
+# (default 0) selects the staged ensemble draw; the campaign searches draw 0
+# only (K = 1; draws 1-2 are staged for the SI draw-sensitivity re-evaluation
+# and are never searched). The first full-scale run is seed 1 of each design —
+# it prices the campaign; verify it before submitting seed 2:
 #
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<file>.env,DRAW=0 \
 #          --array=1 workflow/06_run_mmborg.sh
@@ -42,15 +46,21 @@
 # the packing sweep (SI §S8.2) bounds the eval-time penalty at ~17-21%,
 # already priced into the cost surface. A MOEA config with different
 # island/worker counts only needs matching --nodes/--ntasks-per-node at
-# submission (e.g. `production` at 1,021 ranks: --nodes=8) —
+# submission (`production` at 1,533 ranks: --nodes=12) —
 # nycopt_check_allocation aborts before the search starts if the allocation
-# is too small and prints the geometry to use.
+# is too small and prints the geometry to use, and nycopt_check_memory
+# aborts if the design's projected node RSS at this packing exceeds the
+# safety line (N=300 needs NYCOPT_SEARCH_REALIZATION_BATCH=150, set in the
+# matched production env files).
 #
 # Anvil: multi-node jobs must use the node-exclusive `wholenode` partition
 # (the default `shared` partition is capped at 1 node), and 96 h is Anvil's
-# hard per-job wall-time maximum — a run that needs more must restart from
-# the periodic runtime snapshots. The allocation account is set in the
-# #SBATCH header below. Pilots may pass a shorter `sbatch --time=...`.
+# hard per-job wall-time maximum. There is NO resume: the runtime files are
+# diagnostic archive dumps and the Borg checkpoint (CHECKPOINT=true) is
+# disabled because the islands share one checkpoint file and race on it, so
+# every search must be sized to finish inside one job (campaign_design.md
+# §3). The allocation account is set in the #SBATCH header below. Pilots
+# may pass a shorter `sbatch --time=...`.
 #
 #SBATCH --job-name=mmborg
 #SBATCH --account=ees260021
@@ -83,6 +93,7 @@ export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 nycopt_read_run_identity
 nycopt_check_allocation
+nycopt_check_memory
 nycopt_write_manifest
 nycopt_preflight_mmborg
 

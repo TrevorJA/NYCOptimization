@@ -159,6 +159,39 @@ RETIRED_TERMS: dict[str, str] = {
     "TAIL_CRITERION":
         "deleted (ESD_TAIL_QUANTILES keeps the quantiles; TAIL_NULL_SHARE is "
         "the 0.10 i.i.d. reference; no threshold constant exists)",
+    # 2026-08-26 campaign design adopted at N = 300 (campaign_design.md): one
+    # search draw per design, the seed as the unit of analysis, seed-indexed
+    # NFE, 12-node geometry, the measured cost basis, and no resume. The old
+    # campaign's numbers and the false snapshot-resume claim are retired.
+    "K = 3":
+        "K = 1 search draw per design (d0); draws d1-d2 are staged only for "
+        "the SI draw-sensitivity re-evaluation (campaign_design.md §1)",
+    "K=3":
+        "K = 1 search draw per design (campaign_design.md §1)",
+    "33,400":
+        "the measured basis: 21,850 SU per N = 100 / 500k search, ~68k at "
+        "N = 300 (campaign_design.md §6); 33,400 was the refuted model basis",
+    "32.6 h":
+        "the measured 21.3 h per N = 100 / 500k search on 8 x 128 "
+        "(campaign_design.md §6)",
+    "1,021 ranks":
+        "1,533 ranks (4 x 382 + 5) on 12 nodes (moea_config.production)",
+    "750,000-SU allocation":
+        "the ~600k SU remaining balance the campaign is budgeted against "
+        "(campaign_design.md §6)",
+    "resumes from the last snapshot":
+        "nothing: there is no resume; every search is sized to finish in one "
+        "job and seed 1's equal-NFE result is its runtime snapshot "
+        "(campaign_design.md §3)",
+    "restart from runtime snapshots":
+        "nothing: there is no resume (campaign_design.md §3)",
+    "restart from the periodic runtime snapshots":
+        "nothing: there is no resume (campaign_design.md §3)",
+    "one search evaluation":
+        "the per-SOW precision argument in its own terms (src/etest.py "
+        "SIZING; campaign_design.md §5)",
+    "entire search evaluation":
+        "the per-SOW precision argument in its own terms (src/etest.py SIZING)",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

@@ -44,9 +44,11 @@ Measured verdicts that support the definition:
   observed flood years in its own top 5. Whole-window sim/obs ratio 0.82.
 - **Ensemble noise (disclosed, not disqualifying).** The exceedance integral
   is ~1.6× noisier and more tail-concentrated than the count
-  (bootstrap CV 0.29–0.31 vs 0.19 at the N=5 fixture); both shrink at the
-  campaign composition (900 pooled unit-years), and the K=3 draws bound
-  draw-to-draw spread.
+  (bootstrap CV 0.29–0.31 vs 0.19 at the N=5 fixture); both shrink with the
+  pooled unit-year count (measured at 900, the N = 100 policy populations;
+  the campaign pools 2,700 at N = 300), and draw-to-draw spread is bounded
+  by the SI draw-sensitivity re-evaluation of each design's final set on its
+  own other draws, not by search replication.
 - **The FFMP cautionary ("action") stage is not used as the threshold**: it
   is the FFMP control trigger, not a flood definition — an objective there
   sits on the switching boundary of `NYCFloodRelease` /

@@ -79,16 +79,17 @@ honest i.i.d. pools by the global-index seeding).
   better stratified than the null and tail-enriched above it. Snap distance
   dilutes with dimension at fixed P (the expected anchor-to-nearest-member
   distance scales as P^(−1/m)).
-- **N = 100 confirmed at P = 2,000; raising N does not buy enrichment at
-  fixed P.** Across N = 100 → 300 per-axis tail shares are flat-to-declining
-  at every axis set (the pool holds only ~P/10 members above P90 per axis),
-  and joint L2-star degrades mildly. N = 100 is the best value in the sweep,
-  and larger N costs linearly in every search. CORRECTION 2026-08-25
+- **Enrichment is flat in N on the production pool; the laptop N-sweep does
+  not set N.** At P = 2,000, across N = 100 → 300 per-axis tail shares are
+  flat-to-declining at every axis set (the pool holds only ~P/10 members
+  above P90 per axis) and joint L2-star degrades mildly, so N = 100 is the
+  best value in that small-pool sweep. The decline is a small-pool effect
   (`ensemble_size_diagnostics.md` §7.1, block D extended to N = 50…500 on
-  the production P = 10⁶ pools, `NYCOPT_SELDIAG_N_SWEEP`): the decline is a
-  small-pool effect. At P = 10⁶ the campaign-set minimum tail share is flat
-  in N (0.27–0.29 from N = 50 to 500) and joint L2-star improves with N
-  (0.019 → 0.011); the decline appears only on prefixes P′ ≤ 2·10⁴. The
+  the production P = 10⁶ pools, `NYCOPT_SELDIAG_N_SWEEP`): at P = 10⁶ the
+  campaign-set minimum tail share is flat in N (0.27–0.29 from N = 50 to
+  500), joint L2-star improves with N (0.019 → 0.011), and the decline
+  appears only on prefixes P′ ≤ 2·10⁴. The campaign N = 300
+  (`campaign_design.md`) is set by the ensemble-size diagnostics. The
   same run measured the regenerated pool d0 at 0.283 (drought_magnitude
   0.284 binding; per-axis 0.284–0.513, mean 0.385; §7.1a of
   `ensemble_size_diagnostics.md`).
@@ -127,6 +128,6 @@ selection scatter) is the fair visual comparison.
 | Scale | Pool | Use |
 |---|---|---|
 | Laptop (test) | P ≈ 2,000–5,000, L = 10, stream-only (hazard image only) | Selector + bounds + N evidence; SI draft figures |
-| HPC (production) | The production candidate pool (P = 10⁶; §5) | Final SI figures on the campaign pool; records the per-axis tail share at the campaign selection set (m = 6, N = 100) on every draw |
+| HPC (production) | The production candidate pool (P = 10⁶; §5) | Final SI figures on the campaign pool; records the per-axis tail share at the campaign selection set (m = 6, N = 300) on every draw |
 
 The experiment reads only `hazard_image.npz` (never pool timeseries), so production-scale cost is minutes. N, seed counts, and the pool slug are environment-configured in the driver.

@@ -17,7 +17,8 @@ Tables: ``layer_b_stats`` (long), ``decision_table``, ``n_min``, ``n_eff``,
 ``epscube_crosscheck``, ``nfe_asymptote``, ``cost_pricing``, ``np_tail_share``.
 
 Every figure follows ``src/plotting/style.py``, is PNG only, and carries the
-epsilon line (where an epsilon applies) and the N = 100 campaign point.
+epsilon line (where an epsilon applies) and the campaign point
+(``ESD_N_CAMPAIGN``, N = 300).
 Settings in ``supplemental_config.py`` (``ESD_*``); no CLI value flags.
 Wrapper: ``workflow/supplemental/ensemble_size_analysis.sh``.
 """
@@ -78,7 +79,7 @@ def _axis_label(name: str) -> str:
 
 def _mark_campaign(ax, eps: float | None = None, eps_frac: float = 1.0,
                    eps_label: str | None = None, campaign_label: bool = False) -> None:
-    """The N = 100 campaign point and (optionally) the epsilon line."""
+    """The campaign point (``ESD_N_CAMPAIGN``) and (optionally) the epsilon line."""
     ax.axvline(scfg.ESD_N_CAMPAIGN, color=CAMPAIGN_COLOR, lw=1.0, ls=":",
                label=f"campaign N = {scfg.ESD_N_CAMPAIGN}" if campaign_label else None)
     if eps is not None:
@@ -851,14 +852,17 @@ def cost_pricing(n_common: int | None) -> pd.DataFrame:
     ns = sorted(set(scfg.ESD_N_LADDER) | {scfg.ESD_N_CAMPAIGN} | ({n_common} if n_common else set()))
     rows = []
     for n in ns:
-        scale = (n / scfg.ESD_N_CAMPAIGN) ** scfg.ESD_COST_N_EXPONENT
+        # ESD_SU_PER_SEARCH_N100 is priced at N = 100 (measured basis, 8 x 128,
+        # 21.3 h per 500k-NFE search); the campaign is two matched designs at
+        # 750k + 500k NFE = 5 search-equivalents (campaign_design.md §6).
+        scale = (n / 100.0) ** scfg.ESD_COST_N_EXPONENT
         gb_rank = (a_mb + b_mb * n * L) / 1024.0
         node_gb = gb_rank * scfg.ESD_RANKS_PER_NODE
         max_ranks = int((scfg.ESD_NODE_MEM_GB * scfg.ESD_MEM_SAFETY) // gb_rank)
         rows.append({
             "n": n, "su_per_search": scfg.ESD_SU_PER_SEARCH_N100 * scale,
-            "wall_hours_8nodes": 32.6 * scale,
-            "campaign_12_searches_su": 12 * scfg.ESD_SU_PER_SEARCH_N100 * scale,
+            "wall_hours_8nodes": 21.3 * scale,
+            "matched_campaign_search_su": 5 * scfg.ESD_SU_PER_SEARCH_N100 * scale,
             "gb_per_rank": gb_rank, "node_gb_at_128_ranks": node_gb,
             "fits_128_ranks_at_safety": node_gb <= scfg.ESD_NODE_MEM_GB * scfg.ESD_MEM_SAFETY,
             "max_ranks_per_node_at_safety": min(scfg.ESD_RANKS_PER_NODE, max_ranks),
@@ -871,7 +875,7 @@ def cost_pricing(n_common: int | None) -> pd.DataFrame:
 def fig_b9_cost(cost: pd.DataFrame, n_common: int | None) -> None:
     fig, ax = plt.subplots(1, 2, figsize=(10.5, 3.9))
     ax[0].plot(cost.n, cost.su_per_search / 1000.0, "o-", color="black",
-               label="33,400 SU × (N/100)^0.951 (measured trimmed-model N exponent)")
+               label=f"{scfg.ESD_SU_PER_SEARCH_N100:,.0f} SU × (N/100)^0.951 (measured basis, 8 nodes × 128)")
     ax[0].set_xlabel(N_LABEL)
     ax[0].set_ylabel("thousand SU per 500,000-evaluation search")
     ax[0].set_ylim(bottom=0)

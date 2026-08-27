@@ -22,12 +22,12 @@ is reported without a threshold. §7 records what was measured.
 
 ## 1. The decision and what "representative" means
 
-The campaign search ensemble is N = 100 realizations × L = 10 yr for both
-matched designs. That value was set by compute budget and by a selection-level
-argument (hazard-filling tail enrichment falls as N rises at fixed pool size P;
-`hazard_selector_diagnostics.md` §5). It was never derived from the statistical
-adequacy of the ensemble as the *sample the optimizer scores every policy on*.
-This diagnostic derives a minimum N from that adequacy. L = 10 is fixed (the
+The campaign search ensemble is N = 300 realizations × L = 10 yr for both
+matched designs (`campaign_design.md`), set by this diagnostic from the
+statistical adequacy of the ensemble as the *sample the optimizer scores every
+policy on*. Neither compute budget nor the selection level sets it: hazard-filling
+tail enrichment is flat in N at the production pool size (§7.1), and budget is a
+constraint on the campaign, not a criterion for N. L = 10 is fixed (the
 selection contrast needs a common L; `scenario_design_methods.md` §6); only N
 moves; N stays common to both designs, so the recommendation is
 N_common = max over designs of N_min(design).
@@ -150,7 +150,8 @@ population and nothing here ranks it.
   ensemble exactly); plus, at N = 100 only, the production constructions on
   pools d1 and d2 (fresh pool AND fresh anchors — the draw-level replicate).
 - **PS fresh draws:** the staged `fixprob_10yr_n100_d{0,1,2}` ensembles at
-  N = 100 (the design as staged; cross-checks the prefix-subset law).
+  N = 100 (the draws as staged when the library was built; cross-checks the
+  prefix-subset law).
 - **Library:** every policy × every unique realization in the union of the
   above. The pool members are regenerated from their global indices into
   chunked staged ensembles (`esd_lib_10yr_d0__chunkJJJ`, ≤ 1,000 realizations
@@ -170,7 +171,7 @@ population and nothing here ranks it.
   pool; the n4000 pool named in the kickoff is not staged): P_ref = 200,
   N ∈ {25, 50}, two policies, one chunk, a few ranks on `shared`.
 
-### 4.3 Statistics (per objective and N; every figure carries ε and the N = 100 point)
+### 4.3 Statistics (per objective and N; every figure carries ε and the campaign N)
 
 Let J_p(S) be policy p's objective composed from member set S. Replicates
 r = 1..R per (design, N). Signs are oriented so that "better" is positive
@@ -183,7 +184,7 @@ where a sign matters.
 | 3 | Flip rate | fraction of pairs whose ε-dominance relation ({a ≻ b, b ≻ a, incomparable}, Borg box convention) at replicate r differs from the reference relation — PS: the 5,000-member reference; HF: the across-replicate majority at that N — averaged over replicates | ≤ 0.05 | Zatarain Salazar et al. 2017 §5.3 (inconsistent trade-off portrayal) |
 | 4a | Optimism (PS) | mean over replicates of sign × (J_p(S_r) − J_p(S_ref)), per policy; max |·| over policies. For fixed policies this is estimator bias (order-statistic operators), NOT selection optimism — that part belongs to Layer C | |·| ≤ ε/2 | Kaut & Wallace 2007 §4 (in-sample vs out-of-sample) |
 | 4b | Construction SD and shift (HF) | SD over constructions of J_p(S_r) − J_p(S_ref^PS) (the noise) and its mean (the intended design effect; reported, not gated) | SD ≤ ε (identical in form to #1 for HF, kept as its own row so the shift is read beside it) | Kaut & Wallace 2007 (out-of-sample stability); Bonham et al. 2024 (replicate ensembles per size are mandatory) |
-| 5 | Effective sample size | per operator at the campaign point: n_eff/(N(L−1)) = (SD_unit-bootstrap / SD_realization-bootstrap)², the naive i.i.d.-unit bootstrap against the realization-level block bootstrap | report only (SI Text S5) | Quinn et al. 2017 §3.1.2 (1,000-unit convention); Hamilton et al. 2022 |
+| 5 | Effective sample size | per operator at the campaign N (`ESD_N_CAMPAIGN`): n_eff/(N(L−1)) = (SD_unit-bootstrap / SD_realization-bootstrap)², the naive i.i.d.-unit bootstrap against the realization-level block bootstrap | report only (SI Text S5) | Quinn et al. 2017 §3.1.2 (1,000-unit convention); Hamilton et al. 2022 |
 
 **Decision table.** Per design and objective: ε, level SE(N), paired SE(N),
 flip rate(N), optimism or construction SD(N), n_eff. **N_min(design)** is the
@@ -197,7 +198,7 @@ memory model (601 + 0.394·N·L MB per rank), and the per-node memory at full
 **Free cross-check.** The epsilon-calibration cubes (513 policies × N = 100 per
 design; pre-regeneration substrate, disclosed) are subsampled on the
 realization axis at N ∈ {25, 50, 75} (20 random subsets each) and their
-level-SE decay is overlaid on the library's at the campaign point; agreement
+level-SE decay is overlaid on the library's at the campaign N; agreement
 in shape confirms the library's ten policies are not atypical.
 
 ## 5. Layer C — search-level confirmation (design and cost only; NOT run)
@@ -206,20 +207,20 @@ Only searches show that the optimizer's output changes with N. The confirmatory
 design, to be run only if a larger N is adopted, follows Zatarain Salazar et al.
 (2017) and Quinn et al. (2017) §3.4:
 
-- Arms: N = 100 (campaign) and N = N_common, both designs, K = 3 draws × S = 2
-  seeds; two budget variants — equal NFE (500k, so cost scales with N) and
-  equal SU (NFE scaled by 100/N_common, so N × NFE is constant).
+- Arms: the N = 100 go/no-go cells (draw 0, seed 1, 500k NFE) and the N = 300
+  campaign (one draw, two seeds, reported at 500k NFE), both designs — the
+  equal-NFE variant (cost scales with N). An equal-SU variant (NFE scaled by
+  100/N, so N × NFE is constant) was designed and is not run.
 - Compared solely on E_test: per-N-level reference sets (hypervolume is never
   compared across N levels — Zatarain Salazar et al. normalize within level);
   search-value vs test-value 1:1 plots per solution with the attribution rule
   (all solutions shift on an objective → the operator is unstable; only the
   solutions optimized under it shift → overfitting); ordering preservation
   under re-evaluation (Kendall τ_b between search and test ranks per
-  objective); seed attainment probability; draw-versus-seed variance
-  components. Reuses `src/diagnostics.py`, `src/plotting/hypervolume_convergence.py`,
+  objective); seed attainment probability; seed variance components. Reuses `src/diagnostics.py`, `src/plotting/hypervolume_convergence.py`,
   `src/plotting/seed_reliability.py`, `src/results_data.py`, `src/robustness.py`.
-- If N_common > 100 is adopted, the production campaign at N_common *is* the
-  confirmation and only the N = 100 go/no-go cells are the comparison arm.
+- The production campaign at N = 300 *is* the confirmation; the N = 100 go/no-go
+  cells are the comparison arm.
 
 sbatch plan and SU: §7.5.
 
@@ -382,7 +383,7 @@ The whole decision is carried by the three pooled-percentile operators.
 
 **N_min(PS) = 300**, binding statistic the worst-pair paired SE, binding
 objectives the two deficit-P99 operators and storage P01 in that order
-(N_noise = 300). At the campaign point the worst pair differs by 0.7–0.8 ε
+(N_noise = 300). At N = 100 the worst pair differs by 0.7–0.8 ε
 per replicate on those axes, i.e. two policies one ε-box apart on a deficit
 axis are re-ordered by the sample about one time in five; at N = 300 the
 paired SE is 0.4–0.45 ε. The pair-median paired SE is far smaller (0.11–0.41 ε
@@ -493,104 +494,78 @@ within a factor of ~2 of the early-run rate. The searches are budget-limited,
 not converged; the archive is still growing (3.3k–4.3k members at the end).
 **Reading 2 (the trade):** because there is no NFE slack, N × NFE cannot be
 held constant by shortening the search without giving up hypervolume the
-current budget still buys, so raising N is a pure cost increase at
-33,400 × (N/100)^0.951 SU per search (Table `cost_pricing.csv`; figure B9):
-≈ 49k SU at N = 150, 65k at N = 200, 95k at N = 300 — i.e. the 12-search
-matched campaign moves from 401k SU to 589k / 775k / 1,139k SU, against a
-750k-SU allocation of which ~247k is reserve. Wall time at 8 nodes scales the
-same way (48 h at N = 150, 63 h at N = 200; the 96 h queue cap binds at
-N ≈ 300). Memory at full packing (601 + 0.394·N·L MB per rank) leaves
-128-rank packing feasible at 85 % of node memory only up to N ≈ 280; N = 300
-needs 124 ranks per node or an explicit realization batch, N = 500 needs 86.
+current budget still buys, so raising N is a pure cost increase of
+(N/100)^0.951 per search: on the measured production basis (21,850 SU per
+N = 100 / 500k search) ≈ 32k SU at N = 150, 42k at N = 200, 62k at N = 300
+before the batching penalty (Table `cost_pricing.csv` and figure B9 price the
+same curve on the model basis, 1.53× higher; `campaign_design.md` §6). Wall
+time at 8 nodes scales the same way, and the 96 h queue cap binds at N ≈ 300
+for a 750k-NFE search, which is why the campaign runs on 12 nodes. Memory at
+full packing (601 + 0.394·N·L MB per rank on the K = 1 probe fit; the step-06
+pre-flight uses the more conservative 600 + 0.49·N·L envelope) leaves 128-rank
+packing feasible at 85 % of node memory only up to N ≈ 280; N = 300 runs with
+a 150-realization batch, N = 500 would need 86 ranks per node or a smaller
+batch.
 
-### 7.5 Layer C plan and cost (design only; not run)
+### 7.5 Layer C: the campaign as the confirmation
 
-The confirmation follows Zatarain Salazar et al. (2017) at two N levels,
-compared solely on E_test. Let s = (N_common/100)^0.951 be the measured cost
-scale.
-
-| arm | geometry | searches | SU (searches) | SU (E_test re-eval of the new fronts) |
-|---|---|---|---|---|
-| N = 100 (campaign) | `production` env files as they stand | the K = 3 × S = 2 campaign cells (already budgeted) | 0 extra | 0 extra |
-| N_common, equal NFE (500k) | new env files `ffmp_obj8_{fixedprob,hazfill_stat}_production_n{N}.env` with `NYCOPT_SEARCH_N=N_common`; `--time` scaled by s; `NYCOPT_SEARCH_REALIZATION_BATCH=100` (or ≤ 124 ranks/node) when N_common ≥ 300 | 2 designs × K = 3 × S = 2 = 12 | 12 × 33,400 × s | ≈ 80k (≈ 73 SU per merged policy; the re-filter keeps the merged sets near 1,100) |
-| N_common, equal SU | as above with `max_evaluations` = 125,000 / s per island (a new `production_equal_su_n{N}` MOEA config) | 12 | 12 × 33,400 = 401k | ≈ 80k |
-| minimum confirmatory subset | HF only (the arm whose enrichment falls with N), draw 0, S = 2, equal NFE | 2 | 2 × 33,400 × s | ≈ 15k |
-
-Staging before any search: steps 02 (PS draws at N_common), 03 (HF selections at
-N_common — the per-axis tail share recorded per draw at the new N; §7.1 shows
-it flat in N at P = 10⁶), 04, and the epsilon re-calibration at N_common
-(§7.6). Analysis, reusing step 07/08 machinery (`src/diagnostics.py`,
+The production campaign at N = 300 (`campaign_design.md`: one draw and two seeds
+per matched design, 500k NFE reported from seed 1's runtime snapshot) is the
+larger-N arm; the N = 100 go/no-go cells (draw 0, seed 1, 500k NFE, both
+matched designs) are the comparison arm. Both are compared solely on E_test,
+reusing the step 07/08 machinery (`src/diagnostics.py`,
 `src/plotting/hypervolume_convergence.py`, `src/plotting/seed_reliability.py`,
-`src/results_data.py`, `src/robustness.py`) plus one new supplemental script:
+`src/results_data.py`, `src/robustness.py`) plus one supplemental script:
 (i) per-N-level ε-filtered reference sets and runtime hypervolume normalized
 within level (never across levels); (ii) search-value vs E_test-value 1:1
 plots per solution and objective with the attribution rule — every solution
 shifts on an objective → the operator is unstable at that N; only the
 solutions optimized under one N shift → overfitting; (iii) Kendall τ_b between
-search and re-evaluated ranks per objective (ordering preservation);
-(iv) seed attainment probability of the joint-Starr endpoint and (v) draw-vs-
-seed variance components of the endpoint at each N. Decision rule, stated
-now: the larger N is confirmed if its solutions' re-evaluated joint Starr
-fraction is not lower than N = 100's at equal NFE AND the search-vs-test 1:1
-shift on the tail operators shrinks; otherwise the N = 100 campaign stands and
-N_common is reported as the precision-only recommendation. If N_common > 100
-is adopted for the campaign outright, the production campaign at N_common is
-the confirmation and only the existing N = 100 go/no-go cells are the
-comparison arm (cost: the campaign delta of §7.4 alone).
-### 7.6 Consequences of adopting N_common (everything that must change if N_common > 100)
+search and re-evaluated ranks per objective (ordering preservation); (iv) seed
+attainment probability of the joint-Starr endpoint and (v) seed variance of the
+endpoint at each N. Reported, not gating: whether the N = 300 solutions'
+re-evaluated joint Starr fraction is at least the N = 100 cells' at equal NFE,
+and whether the search-vs-test 1:1 shift on the tail operators shrinks. Staging
+before the campaign: steps 02–04 at N = 300 (the per-axis tail share recorded
+per hazard-filling draw at the new N; §7.1 shows it flat in N at P = 10⁶), step
+05, and the ε re-verification of §7.6.
 
-For the measured N_min(PS) = 300: 12 matched searches cost 12 × 94,949 =
-1,139k SU (2.8× the 401k campaign, 1.5× the whole allocation), 93 h wall at 8
-nodes (the 96-h cap), 124 ranks per node or an explicit realization batch,
-and E_test's 1,225-unit SOW resolution falls below one search evaluation's
-2,700 units. N = 150 (589k SU, 48 h) buys the paired SE on the tail operators
-down from 0.7–0.8 ε to 0.5–0.6 ε — not yet ε/2 — and N = 200 (775k SU, 63 h)
-to 0.5–0.6 ε. The K = 3 × S = 2 replication is what the reserve buys at
-N = 100; every N ≥ 150 spends it.
+### 7.6 Consequences of N_common = 300 (adopted; `campaign_design.md` states the campaign)
 
-1. **Epsilon calibration is re-run at N_common before any search.** The
-   adopted vector [0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05] was calibrated
-   on N = 100 ensembles (`epsilon_calibration_experiment.md`); the bootstrap
-   noise floors fall as N rises, so the floor-bound entries (reliabilities,
-   flood, storage) may loosen and the archive-cardinality re-filter must be
-   repeated on the first N_common archives. Re-run
-   `workflow/supplemental/epsilon_calibration.sh` per design on the
-   N_common ensembles (no JAR rebuild for ε-only changes), then the regret
-   tolerance τ = k·max(ε, floor) re-pin in every env file.
+1. **Epsilon floors re-verified at N = 300 before any search.** The adopted
+   vector [0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05] was calibrated on
+   N = 100 ensembles (`epsilon_calibration_experiment.md`); bootstrap noise
+   floors fall as N rises, so the vector stands unless an entry falls below its
+   N = 300 floor. `workflow/supplemental/epsilon_calibration.sh` per design on
+   the N = 300 ensembles (`EPS_REALIZATION_BATCH = 150`; no JAR rebuild for
+   ε-only changes), the regret tolerance τ = k·max(ε, floor) re-pinned in every
+   env file only if ε changes, and the archive-cardinality re-filter repeated
+   on the first N = 300 archives after seed 1.
 2. **HF enrichment at fixed P = 10⁶:** §7.1's (N, P′) ladder shows the min
    per-axis tail share flat in N (0.27–0.29 from N = 50 to 500) and saturated
-   in P′ at the production pool size, so N_common needs no larger pool; the
-   per-axis shares are recorded per draw at N_common as build QC.
-3. **E_test resolution sentence.** E_test resolves each SOW on
-   R × (L_test − 1) = 1,225 units, claimed to be at least one search evaluation
-   (900 units). The claim inverts once 9 × N_common > 1,225 (N_common > 136):
-   either R_test rises to ⌈9·N_common/49⌉ (e.g. R = 28 at N = 150, 37 at
-   N = 200 — re-generation of E_test, ~80k SU of re-evaluation per full pass)
-   or the manuscript sentence (Section 3.4.1; `src/etest.py` SIZING) is
-   rewritten to state the per-SOW unit count as its own precision argument.
-4. **Search geometry and memory.** `src/moea_config.py::production` (1,021
-   ranks, 8 nodes), `workflow/_common.sh::NYCOPT_RANKS_PER_NODE=128`, and the
-   `--time` requests in the production env files assume N = 100. Per-rank RSS
-   is 601 + 0.394·N·L MB: full 128-rank packing stays under 85 % of node
-   memory to N ≈ 280; beyond that set `NYCOPT_SEARCH_REALIZATION_BATCH=100` or
-   drop to ≤ 124 ranks/node (N = 300) / 86 (N = 500). Wall time scales as
-   (N/100)^0.951: 48 h at N = 150, 63 h at 200, 93 h at 300 (the 96-h cap).
-5. **Sizing constants.** `NYCOPT_SEARCH_N` / `src/scenario_designs.SEARCH_ENSEMBLE_N`
-   (the single source; every design's `n_realizations`), the staged slugs
-   (`fixprob_10yr_n{N}_d{k}`, `hazfill_stat_abs_10yr_n{N}_d{k}` — steps 02–04
-   re-run per draw), the smoke/moderate env files, and every figure or table
-   that prints "N = 100" or "900 annual units": `scenario_design_methods.md` §6
-   budget table (33,400 SU/search, 503k campaign total, 247k reserve),
-   SI Text S8.5, main-text Sections 3.1.1 and 3.2.2, `TODO.md` §2 sizing,
-   `supplemental_config.ENSEMBLE_COST_DESIGN_POINT`, the epsilon-calibration
-   and framing-convention SI numbers quoted at 900 units.
-6. **Budget.** The 12-search matched campaign costs 401k × (N_common/100)^0.951
-   SU (589k at 150, 775k at 200); the 750k allocation holds N_common = 150
-   only by consuming the reserve (no additional draw, no RQ3 sweep) and
-   cannot hold N_common ≥ 200 at K = 3 × S = 2. The exchange rate is
-   explicit: at equal SU, N = 150 buys back K = 2 draws per design.
-7. **Layer C** (§7.5) becomes the campaign itself if N_common is adopted
-   outright; otherwise the minimum confirmatory subset runs first.
+   in P′ at the production pool size, so N = 300 needs no larger pool; the
+   per-axis shares are recorded per draw at N = 300 as build QC.
+3. **E_test resolution sentence.** E_test's per-SOW precision is stated in its
+   own terms (`src/etest.py` SIZING; `scenario_design_methods.md` §5.4): 1,225
+   pooled units per SOW against the 675-unit level-SE crossing of the i.i.d.
+   library and the per-SOW noise measured directly on E_test. R = 25 is
+   unchanged.
+4. **Search geometry and memory.** `src/moea_config.py::production` is 4 × 382
+   workers = 1,533 ranks on 12 nodes at 128 per node with
+   `NYCOPT_SEARCH_REALIZATION_BATCH=150` in the matched env files
+   (`config.search_node_rss_gb`: ~259 GB/node unbatched, ~167 GB batched,
+   against a 217 GB line; the step-06 pre-flight enforces it). Wall time
+   scales as (N/100)^0.951: ~66–77 h for the 750k seed on 12 nodes.
+5. **Sizing constants.** `src/scenario_designs.SEARCH_ENSEMBLE_N = 300` (the
+   single source; every design's `n_realizations`), the staged slugs
+   (`fixprob_10yr_n300_d{k}`, `hazfill_stat_abs_10yr_n300_d{k}` — steps 02–04
+   per draw), `supplemental_config.ESD_N_CAMPAIGN = 300` (the figures' campaign
+   marker; re-render), and every note and manuscript passage that states the
+   campaign N, unit count (2,700 annual units per evaluation), geometry, or
+   budget (`campaign_design.md` is the reference).
+6. **Budget.** One searched draw and two seeds per matched design, seed 1 at
+   750k NFE and seed 2 at 500k, on the measured cost basis: ~489k SU against
+   the ~600k remaining balance (`campaign_design.md` §6).
 
 ## 8. Run sequence
 
@@ -636,7 +611,7 @@ settings are in `supplemental_config.py` (`ESD_*`); no CLI value flags.
 - **B8 `nfe_asymptote`** — where hypervolume and ε-progress flatten in the
   existing 500k-NFE runs, i.e. whether NFE can be traded for N.
 - **B9 `cost_pricing`** — SU per search and per-node memory versus N with the
-  ladder, N = 100, and N_common marked.
+  ladder and the campaign N marked.
 
 ## Citations
 

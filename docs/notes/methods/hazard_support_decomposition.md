@@ -169,8 +169,9 @@ cube's own `reeval_raw_meta.json` — the moving-measuring-stick guard). Both ar
 labelled in every table; thresholds are never re-chosen.
 
 **Headline figure and statistic.** HF − PS difference of endpoint 1 per
-stratum: per-(draw, seed) points, design summarized by the draw-level mean
-(seeds are pseudoreplicates), uncertainty by a SOW-level bootstrap (resample
+stratum: per-seed points on each design's searched draw, design summarized by
+the seed mean (the seed is the unit of analysis; one searched draw per
+design), uncertainty by a SOW-level bootstrap (resample
 SOWs with replacement WITHIN the stratum, recompute both design means, 2,000
 replicates, percentile 95% CI — the designs share the SOWs, so the difference is
 bootstrapped as a pair).
@@ -184,8 +185,8 @@ partitions of the same cubes are read together.
 **Decision rules (pre-registered).**
 
 - *Generalization supported:* the out-of-support HF − PS difference on endpoint
-  1 is positive, its SOW-bootstrap 95% CI excludes zero, and the per-draw
-  differences agree in sign in at least 2 of 3 draws.
+  1 is positive, its SOW-bootstrap 95% CI excludes zero, and the sign holds
+  at the seed level (both seeds of each design agree in sign).
 - *Claim bounded:* the in-support difference is positive by the same standard
   while the out-of-support CI includes zero or is negative — reported as "the
   advantage does not demonstrably extend beyond the stationary support",
@@ -205,7 +206,7 @@ partitions of the same cubes are read together.
 | `F2_support_score_distribution` | How E_test divides across the strata and that the division is stable across the three pool re-rolls (ECDF of `out_frac` per pool draw, cut points marked). |
 | `F3_axis_excursion` | Which hazard axes carry the excursion, by forcing tercile (expected: drought axes under dry forcing) — and that seasonal structure is not an axis. |
 | `F4_reach_by_tercile` | Per selection axis, where E_test's sub-window quantiles sit against the pool's p1/p99 band, by forcing tercile (the reach view of the `etest_hazard_overlay` contract). |
-| `F5_contrast_by_stratum` (stage B) | The headline: HF − PS satisficing and no-harm differences vs support stratum, draw-level points with SOW-bootstrap CIs. |
+| `F5_contrast_by_stratum` (stage B) | The headline: HF − PS satisficing and no-harm differences vs support stratum, seed-level points with SOW-bootstrap CIs. |
 | `F6_partition_agreement` (stage B) | Whether the hazard-support and forcing-tercile partitions tell the same story about where the difference lives. |
 | `F7_pool_vs_design_deficit` (stage B) | Failure rate vs pool-deficit decile beside the step-11 search-ensemble deficit: unreachable-by-any-stationary-design vs under-covered-by-this-design. |
 
@@ -277,9 +278,8 @@ sets (one draw, one seed per design) re-evaluated on the interim 200-SOW
 `etest_kn_50yr_n25000_first10ch` subset, scored against the archived
 pre-regeneration incumbent cube. These cubes predate the 2026-08-18
 seasonal-rotation fix (the searches used the retired water-year unit), so the
-absolute numbers are not manuscript results; the draw-level replication of
-§3's decision rule (sign agreement in ≥ 2 of 3 draws) is not estimable at
-K = 1; and 200 SOWs put the worst-case SE of a stratum fraction at ±5 pp
+absolute numbers are not manuscript results; the seed-level sign agreement of
+§3's decision rule is not estimable at S = 1; and 200 SOWs put the worst-case SE of a stratum fraction at ±5 pp
 (in-support, n = 117) to ±5.5 pp (beyond, n = 83). What the substrate CAN
 show is the sign and rough size of the HF − PS contrast inside vs beyond the
 stationary support, on the same cubes the go/no-go decision was already read
@@ -339,8 +339,8 @@ this on three independent grounds, in decreasing order of weight:
    B, interim, directional).** On the go/no-go cubes the HF − PS satisficing
    difference is positive inside the support and larger beyond it, with the
    wet tercile carrying the gain. Under the §3 rules this is the
-   "generalization supported" branch (CI excludes zero; draw agreement not
-   estimable at K = 1). There is no signal that the stationary HF pool leaves
+   "generalization supported" branch (CI excludes zero; seed-level sign
+   agreement not estimable at S = 1). There is no signal that the stationary HF pool leaves
    HF policies exposed in the region a climate-augmented pool would fill.
 3. **The design argument, independent of the data.** Adding climate forcing
    to one arm's pool confounds the selection-rule factor with search-population

@@ -54,11 +54,11 @@ nuisance variance only (§5).
 | **A** | Estimator noise and measurement resolution of the incumbent's own cube | ✅ | ✅ | A *floor*, not a preference. Below it the metric reports Monte Carlo noise as harm. Computable before any policy exists. |
 | **B** | External decision increments (Decree quantities, the observed record) | ✅ | ❌ | Legitimate for a magnitude; says nothing about how large a *difference between designs* must be to matter. |
 | **C** | The distribution of candidate-policy regret | ❌ | ❌ | **Circular.** This is the quantity under test. |
-| **D** | Within-design nuisance variance (seed pairs, draw pairs) | — | ✅ | Uses campaign data but only its *null* part; it fixes the scale of "no difference" without touching the direction of the answer. |
+| **D** | Within-design nuisance variance (seed pairs) | — | ✅ | Uses campaign data but only its *null* part; it fixes the scale of "no difference" without touching the direction of the answer. |
 
 Tier D is the one that needs stating carefully, because it is data-dependent and
-still admissible. A within-design difference — two seeds of one draw, or two
-draws of one design — carries **no design effect by construction**. Anchoring
+still admissible. A within-design difference — the two seeds of one design's
+searched draw — carries **no design effect by construction**. Anchoring
 $\delta$ on it is a Least-Significant-Difference construction: the pre-registered
 object is the *rule*, and the number it returns is a function of the nuisance
 variance alone. It cannot flip the sign of the comparison, only its resolution.
@@ -194,19 +194,20 @@ trivially true — and *starved* when every design falls below
 `RTOL_SATURATION_LO` (0.05). Only the informative band between them can support
 the claim, and the reported band is a property of the metric, not of any design.
 
-**4.2 Empirical nulls.** Two levels, both within a design and therefore free of
-design effect:
+**4.2 Empirical null.** One level, within a design and therefore free of design
+effect:
 
-- **seed**: two seeds of one draw — pure MOEA stochasticity;
-- **draw**: two draws of one design — search *and* ensemble construction.
+- **seed**: the two seeds of a design's searched draw — pure MOEA stochasticity.
 
-$\delta$ is anchored on the **draw** level. The draw is the declared unit of
-analysis (`experimental_design.md`), and `compare_designs.variance_components`
-already F-tests the primary metric against the draw mean-square; using the seed
-level would omit construction variance and make the comparison look more decisive
-than the replication scheme supports. With $K = 3$ draws and $S = 2$ seeds there
-are three within-draw seed pairs and three within-design draw pairs per design —
-few, and reported as such.
+$\delta$ is anchored on the **seed** level. The seed is the unit of analysis
+(`experimental_design.md`, `campaign_design.md`): each matched design is
+searched on one draw (K = 1), so no within-design draw pair exists and the
+design comparison is conditional on one draw per design. Ensemble-construction
+variance is not separable from the contrast; draw-dependence is measured
+separately, by re-evaluating each design's final set on its own other draws
+(the SI draw-sensitivity re-evaluation), and is reported beside the result
+rather than folded into $\delta$. With $S = 2$ seeds there is one within-design
+seed pair per design — few, and reported as such.
 
 **4.3 Paired bootstrap.** Both designs are scored on the *same* states of the
 world, so the between-design difference is paired. Resampling SOWs and
@@ -239,17 +240,18 @@ system and should not be conflated in the text.
 
 $$
 \delta \;=\; \max\Big(\, 2 \times \mathrm{SE}_{\text{paired bootstrap}}\big[\Delta \Pi_\tau\big],
-\;\; \operatorname{spread}_{\text{draw}}\big[\Pi_\tau\big] \,\Big)
+\;\; \operatorname{spread}_{\text{seed}}\big[\Pi_\tau\big] \,\Big)
 $$
 
 evaluated at $k_{\text{headline}}$. The first term is the Monte Carlo resolution
-of the endpoint on 1,000 SOWs; the second is the replication-level noise the
-design contrast must beat. Both are nuisance quantities. Neither can determine
+of the endpoint on 1,000 SOWs; the second is the within-design seed-level noise
+the design contrast must beat. Both are nuisance quantities. Neither can determine
 the direction of the answer, which is what makes the rule pre-registerable even
 though the number it returns cannot be computed until the campaign exists.
 
-Stated plainly in the manuscript: with $K = 3$ draws there is **no inferential
-test**, and none is claimed. $\delta$ is a practical-equivalence bound whose
+Stated plainly in the manuscript: with one searched draw per design and
+$S = 2$ seeds there is **no inferential test**, and none is claimed; the
+comparison is conditional on one draw per design. $\delta$ is a practical-equivalence bound whose
 credibility rests on being larger than both noise sources and on being derived by
 a rule fixed in advance — not on a $p$-value.
 
@@ -264,8 +266,8 @@ advance is legible after the fact.
 | Panel | Content | Answers |
 |---|---|---|
 | A | Per-objective $\tau^{\text{floor}}$ against $\epsilon_i$ and the ladder rungs, natural units, with the $\tau^{\text{floor}}/\epsilon$ ratio annotated | which rungs measure noise, and which axes need the `max` unit |
-| B | $\Pi_\tau(k)$ per design and draw, with the starved / informative / saturated bands shaded | over what range the comparison is informative, and whether the ordering holds across it |
-| C | The two empirical null distributions and the paired bootstrap CI at $k_{\text{headline}}$, with $\delta$ marked | how large a difference means nothing |
+| B | $\Pi_\tau(k)$ per design and seed, with the starved / informative / saturated bands shaded | over what range the comparison is informative, and whether the ordering holds across it |
+| C | The seed-level null distribution and the paired bootstrap CI at $k_{\text{headline}}$, with $\delta$ marked | how large a difference means nothing |
 
 The assay-sensitivity verdict is a sentence in the main text, not an SI panel: if
 it fails, the RQ1 result is not reportable as a null and the reader must be told
@@ -364,7 +366,7 @@ the production step-08 artifacts.
    0.25 and 0.30. Show the 0.10 and 0.50 variants alongside. On the
    compromise-3 framing the ordering is stable.
 
-4. **Not estimable at K = 1 draw / S = 1 seed:** both §4.2 empirical nulls.
+4. **Not estimable at S = 1 seed:** the §4.2 seed-level null.
    δ therefore reduces to `2 × paired bootstrap SE` (0.102 all-8, 0.065
    compromise-3), which is a LOWER BOUND on δ and must be labelled as one.
    `run_pass_b()` currently raises `KeyError: 'level'` in this situation

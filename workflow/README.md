@@ -31,11 +31,11 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 |------|--------|-----------|----------|--------------|
 | 00 | `00_setup_borg_jars.sh` | login node (`bash`) | optional | Build one MOEAFramework problem JAR per formulation; rerun after changing the objective set |
 | 01 | `01_generate_presim.sh` | `shared`, 1×1, 30 min | optional | Full Pywr-DRB run once; save non-NYC (STARFIT) releases for the trimmed model |
-| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its pool); array index = ensemble draw |
-| 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
+| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its pool); array index = ensemble draw (three draws staged, `--array=0-2`: d0 is searched, d1–d2 serve the SI draw-sensitivity re-evaluation) |
+| 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) + `NYCOPT_CANDIDATE_POOL_N=1000000` | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
 | 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs (MPI across realizations); `--preset NAME` stages an arbitrary ensemble (e.g. the held-out re-eval ensemble) |
 | 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy + persist its re-eval matrix for improvement-vs-baseline |
-| 06 | `06_run_mmborg.sh` | `wholenode`, 5×33, 96 h | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed replicates, `DRAW=k` = ensemble draw (default 0); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
+| 06 | `06_run_mmborg.sh` | `wholenode`, 12×128 (1,533 ranks), 96 h | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed replicates, `DRAW=k` = ensemble draw (default 0; the campaign searches d0 only); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
 | 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
 | 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Re-evaluate Pareto policies on the common held-out ensemble with the trimmed model (step-04 presim reused across all Pareto sets); opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
 | 09 | `09_simulate_test_chunks.sh` | `wholenode`, 4×16, 12 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Simulate + score a chunked test ensemble, metrics-only (MPI chunk-and-aggregate) |
@@ -43,7 +43,9 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 
 Anvil notes: the allocation account is hardcoded in every script's header
 (`#SBATCH --account=x-tamestoy`); override with `sbatch -A <alloc>` if needed. 96 h is Anvil's `wholenode`
-per-job maximum (searches needing longer restart from runtime snapshots).
+per-job maximum. There is no resume: the runtime files are diagnostic dumps, the
+Borg checkpoint is disabled, and every search is sized to finish inside one job
+(`docs/notes/methods/campaign_design.md`).
 `shared` bills per core; `wholenode` bills whole 128-core nodes.
 
 Step order: `01` before `05`/`06`; `02`→`04` before `06` for ensemble scenario
@@ -73,9 +75,11 @@ whether step 03 applies at all — follows from the design alone:
 | `stationary_kn` | `scaling_stationary` | direct Kirsch-Nowak stand-in (supplemental) | — | `0` |
 
 The array index in `02`/`04` is the ensemble-draw index *k*; set `--array=0-(K-1)`
-with K = `design.n_ensemble_draws`. **Cost:** per-design construction multiplies
-step-02 cost by K for `fixed_probabilistic` and `input_stratified` — each draw is a
-fresh N×L generation, not a re-index of shared data. Pool-owning designs pay it
+with K = `design.n_ensemble_draws` (= 3 for the matched designs). The campaign
+searches draw 0 only; draws 1–2 are staged for the SI draw-sensitivity
+re-evaluation of each design's final set. **Cost:** per-design construction
+multiplies step-02 cost by K for `fixed_probabilistic` and `input_stratified` —
+each draw is a fresh N×L generation, not a re-index of shared data. Pool-owning designs pay it
 once (array tasks k>0 are no-ops), and the two DU hazard designs share one pool.
 `NYCOPT_ENSEMBLE_FORCE=1` overwrites an already-staged slug.
 
@@ -84,14 +88,15 @@ once (array tasks k>0 are no-ops), and the two DU hazard designs share one pool.
 Each optimization is one self-contained multi-day sbatch job — one submission
 per (env file × formulation × ensemble draw), no campaign wrapper. `DRAW=k`
 selects the staged ensemble draw (default 0) and the `--array` index is the
-Borg seed, so the K draws × S seeds replication grid is submitted one cell (or
-one seed-array row) at a time:
+Borg seed. The campaign searches draw 0 with S = 2 seeds per design, submitted
+one seed at a time (seed 1 runs 750k NFE, seed 2 500k;
+`docs/notes/methods/campaign_design.md` §2):
 
 ```bash
-# Single go/no-go replicate (draw 0, seed 1) before committing the full grid:
+# Single go/no-go replicate (draw 0, seed 1) before committing the campaign:
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,DRAW=0          --array=1 workflow/06_run_mmborg.sh
-# Full seed row for one draw:
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,DRAW=1          --array=1-2 workflow/06_run_mmborg.sh
+# Second seed on the same draw:
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,DRAW=0          --array=2 workflow/06_run_mmborg.sh
 # Variable-resolution FFMP (same launcher, formulation from the identifier):
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12   --array=1-10 workflow/06_run_mmborg.sh
 ```
@@ -121,7 +126,12 @@ the container for it:
   construction; rescale with `sbatch --nodes=N --ntasks-per-node=M` and the
   launch follows.
 
-**To scale the search up**: register a larger MOEA config (more
+**Production geometry**: the `production` config is 1 controller + 4 islands ×
+(382 workers + 1 master) = 1,533 ranks on 12 nodes
+(`--nodes=12 --ntasks-per-node=128`), with
+`NYCOPT_SEARCH_REALIZATION_BATCH=150` set in the matched designs' env files so
+the N = 300 ensemble fits node memory (`docs/notes/methods/campaign_design.md` §3).
+**To scale the search further**: register a larger MOEA config (more
 islands/workers) in `src/moea_config.py`, point the env file's
 `NYCOPT_MOEA_CONFIG` at it, and submit with
 `--nodes=ceil(total_ntasks_mpi / 128) --ntasks-per-node=128` (128/node is the
@@ -140,6 +150,10 @@ independent jobs with no cross-job coordination. Shorter pilots can pass
 - `submit_smoke.sh` — one tiny-NFE end-to-end check per formulation
   (`bash workflow/submit_smoke.sh [--dry-run]`; Anvil `debug` queue, 2×40,
   2 h, `smoke` MOEA config + short 2018–2022 window via `envs/smoke.env`).
+- `submit_search_memory_smoke.sh` — one-node memory/timing smoke of the batched
+  search path (N = 300, realization batch 150, 128 ranks/node via
+  `envs/smoke_search_batch.env`); the go criterion is in
+  `docs/notes/methods/campaign_design.md` §4.
 - `supplemental/` — off-pipeline diagnostics: `anvil_scaling_packing.sh`
   (ranks-per-node packing sweep), `ensemble_cost_stage_submit.sh` +
   `ensemble_cost_sweep.sh` (the t_eval(N, L, model) cost surface that prices

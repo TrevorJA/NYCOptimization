@@ -12,10 +12,12 @@
 # No array: the pool is fixed and only the LHS anchor seed varies across draws, so
 # the script builds all K draws in one job off a single hazard-image load. Serial
 # (the selector is single-process); the daily pool is read only for the selected
-# realizations.
+# realizations. Three draws are staged (d0 searched; d1-d2 for the SI
+# draw-sensitivity re-evaluation); the production pool is selected by passing
+# NYCOPT_CANDIDATE_POOL_N=1000000.
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
+#   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=1000000 \
 #          workflow/03_subsample_ensemble.sh
 #
 #SBATCH --job-name=select_hazfill

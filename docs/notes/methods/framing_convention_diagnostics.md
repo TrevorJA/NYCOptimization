@@ -57,8 +57,8 @@ Run on the three epsilon cubes (tables + SI figures under
 - **Failure-week counts k — CONFIRMED as shipped.** No shipped k saturates in
   either ensemble composition (worst case 0.4% of the population inside the
   ±0.05 bands); rankings stable to k ± 1 (τ_b ≥ 0.94 for NYC/Montague/NJ).
-  Trenton k = 1 is binding: k = 3 ties 24–44% of policies at ≥ 0.95
-  reliability, k = 4 ties ~97%.
+  Trenton k = 1 is binding: a three-week count ties 24–44% of policies at
+  ≥ 0.95 reliability, k = 4 ties ~97%.
 - **Flood unit operator — MEAN adopted.** At NL = 900 pooled unit-years the
   P99 operator collapses onto 2–3 integer day counts (population IQR 0.0 in
   the hazard-filling composition), is 12–30× noisier under bootstrap
@@ -85,7 +85,7 @@ Diagnostic 3 waits on the persisted re-evaluation cube (post E_test).
 
 **Purpose.** Quantify how the frequency objectives' saturation and the policy
 rankings they induce depend on the annual failure criterion "≥ k failing weeks
-per unit-year", confirming or revising the shipped values (k = 3 for NYC
+per unit-year", confirming or revising the shipped values (three weeks for NYC
 delivery and Montague, k = 1 for Trenton and NJ;
 `objectives_ensemble.py::_DEFAULT_FAILURE_K`).
 

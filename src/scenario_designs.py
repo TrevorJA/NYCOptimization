@@ -92,12 +92,16 @@ from src.ensembles import (
 # (methods §6). Changing L invalidates every staged L-conditional artifact.
 SCENARIO_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
 
-# Ensemble size N, common to every matched design (methods §6). N x L = 1000
-# scenario-years per evaluation, at equal NFE, so per-evaluation cost and
-# wall-clock are identical across designs. A common (N, L) is REQUIRED: if L
-# differed across designs the selection rule would be confounded with record
-# length.
-SEARCH_ENSEMBLE_N: int = int(os.environ.get("NYCOPT_SEARCH_N", "100"))
+# Ensemble size N, common to every matched design (methods §6). N = 300 is the
+# smallest ladder rung at which the i.i.d. control meets the pre-registered
+# paired-precision criterion (SE of a paired difference <= epsilon/2) on every
+# objective (ensemble_size_diagnostics.md §7.3; campaign_design.md). N x L =
+# 3,000 scenario-years per evaluation, at equal NFE, so per-evaluation cost
+# and wall-clock are identical across designs. A common (N, L) is REQUIRED:
+# if L differed across designs the selection rule would be confounded with
+# record length. Changing N invalidates every staged search ensemble and the
+# step-05 baselines (steps 02-05 re-run per draw).
+SEARCH_ENSEMBLE_N: int = int(os.environ.get("NYCOPT_SEARCH_N", "300"))
 
 # Candidate-pool cardinality P for the hazard-filling designs, and the
 # resampling-pool cardinality for ``resampled_probabilistic``. P >> N so that
@@ -116,10 +120,13 @@ RESAMPLE_POOL_SIZE: int = int(os.environ.get("NYCOPT_RESAMPLE_POOL_N", "1000"))
 INPUT_STRAT_N_THETA: int = int(os.environ.get("NYCOPT_INPUT_STRAT_N_THETA", "20"))
 INPUT_STRAT_R: int = int(os.environ.get("NYCOPT_INPUT_STRAT_R", "5"))
 
-# Independent ensemble draws K per design (the unit of analysis). Draws are
-# independent GENERATIONS, not re-indexings of shared data, so K must be fixed
-# before workflow step 02 runs. Target K = 3 (experimental_design.md,
-# Replication), revisable from the pilot minimum-detectable-effect calculation.
+# Independent ensemble draws STAGED per design. Draws are independent
+# GENERATIONS, not re-indexings of shared data, so the count must be fixed
+# before workflow step 02 runs. Three are staged: draw 0 is the search
+# ensemble (the campaign searches ONE draw per design, so the seed is the unit
+# of analysis; experimental_design.md, Replication), and draws 1-2 exist for
+# the SI draw-sensitivity re-evaluation of the final Pareto sets on the
+# design's own other draws (campaign_design.md §5). No search runs on them.
 N_ENSEMBLE_DRAWS: int = int(os.environ.get("NYCOPT_N_ENSEMBLE_DRAWS", "3"))
 
 # Root seed for the whole campaign. Every generated artifact derives its seed as
@@ -176,7 +183,9 @@ class ScenarioDesign:
         n_theta_profiles: N_theta, for ``lhs_theta`` only.
         pool_size: P -- cardinality of the design's OWN pool. Only
             ``pool_resample`` and ``hazard_fill`` have one.
-        n_ensemble_draws: K independent constructions (the unit of analysis).
+        n_ensemble_draws: Independent constructions staged for the design.
+            The campaign searches draw 0 only; the others serve the SI
+            draw-sensitivity re-evaluation (see ``N_ENSEMBLE_DRAWS``).
         seed_domain: Namespace for this design's generator seed. Disjointness
             across domains is what keeps designs from sharing realizations now
             that each one generates rather than selecting indices from shared

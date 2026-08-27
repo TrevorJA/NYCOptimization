@@ -13,13 +13,14 @@
 # the held-out re-eval ensemble). Per-realization work is distributed across
 # MPI ranks automatically.
 #
-# Search ensembles are now staged PER DRAW, so this step runs once per draw:
-# the array index is the ensemble-draw index k (0..K-1), matching step 02.
-# (Pool-owning designs stage one draw-invariant pool, so a single task suffices.)
+# Search ensembles are staged PER DRAW, so this step runs once per draw: the
+# array index is the ensemble-draw index k (0..K-1), matching step 02. Three
+# draws are staged per matched design (d0 searched; d1-d2 for the SI
+# draw-sensitivity re-evaluation), so the production array is 0-2.
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_du \
-#          --array=0-9 workflow/04_prep_pywrdrb_inputs.sh
+#   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
+#          --array=0-2 workflow/04_prep_pywrdrb_inputs.sh
 #
 #SBATCH --job-name=prep_pywrdrb_inputs
 #SBATCH --account=ees260021

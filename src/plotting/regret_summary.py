@@ -169,8 +169,9 @@ def plot_regret_tolerance_sweep(sweep: pd.DataFrame, out_file,
              .groupby("tau_k")[statistic].mean().sort_index())
         ax.plot(g.index, g.to_numpy(), color=colors[d], lw=2.0, marker="o",
                 ms=5, label=labels[d])
-        # Individual runs behind the design mean: with K = 3 draws the spread IS
-        # the uncertainty, and averaging it away would overstate the result.
+        # Individual runs behind the design mean: one searched draw per design,
+        # so the per-seed spread IS the uncertainty, and averaging it away
+        # would overstate the result.
         for (_draw, _seed), h in sweep[sweep["design"] == d].groupby(
                 ["draw", "seed"]):
             h = h.sort_values("tau_k")

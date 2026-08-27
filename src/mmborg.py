@@ -131,14 +131,19 @@ def run_mmborg(
         moea_config: Algorithm-settings bundle (see src/moea_config.py).
         slug: The moea slug (inner output partition + filename prefix), from
             ``config.derive_slug(formulation)``.
-        checkpoint_base: Path base for new checkpoint files.
+        checkpoint_base: Path base for new checkpoint files. Plumbing only:
+            the campaign never sets it (MM Borg islands share one checkpoint
+            file, which races; disabled by default in workflow step 06), so
+            no production run is resumable.
         restore_checkpoint: Path to existing checkpoint file to restore from.
 
     Raises:
         ValueError: If ``moea_config`` leaves a required algorithm setting unset.
     """
     n_islands = moea_config.n_islands
-    max_evaluations = moea_config.max_evaluations
+    # Per-island NFE may differ by seed (production: seed 1 runs the long
+    # budget; its runtime snapshot at the short budget is the equal-NFE set).
+    max_evaluations = moea_config.max_evaluations_for_seed(seed)
     runtime_frequency = moea_config.runtime_frequency
     max_time = moea_config.max_time_seconds
 

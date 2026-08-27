@@ -45,9 +45,13 @@ MM-Borg run identities (consumed by steps 05, 06, 08, 09), by family:
 
 - **Production campaign** — `ffmp_obj8_historic_production.env`,
   `ffmp_obj8_fixedprob_production.env`, `ffmp_obj8_hazfill_stat_production.env`:
-  the three campaign designs under the `production` MOEA config (500k NFE,
-  1,021 ranks on 8 nodes). Byte-identical except for `NYCOPT_SCENARIO_DESIGN`
-  and header comments.
+  the three campaign designs under the `production` MOEA config (1,533 ranks
+  on 12 nodes; N = 300 for the matched designs; seed 1 at 750k NFE and seed 2
+  at 500k, every seed reported at equal NFE from the 125,000-per-island
+  runtime snapshot). The matched files set
+  `NYCOPT_SEARCH_REALIZATION_BATCH=150`; otherwise identical except for
+  `NYCOPT_SCENARIO_DESIGN` and header comments
+  (`docs/notes/methods/campaign_design.md`).
 - **Moderate-NFE dev** — `ffmp_obj8_historic_moderate.env`,
   `ffmp_obj8_fixedprob_moderate.env`, `ffmp_obj8_hazfill_stat_moderate.env`:
   the same designs under `mm_moderate` (50k NFE, 511 ranks).
@@ -57,8 +61,9 @@ MM-Borg run identities (consumed by steps 05, 06, 08, 09), by family:
   requires steps 02–04 staged first).
 - **Variable resolution** — `ffmp_vr_obj8.env` (N ∈ {8, 10, 12}); submit once
   per `FORMULATION=ffmp_N`.
-- **Smoke** — `smoke.env`, `smoke_hazfill.env`: dev-only tiny-NFE identities
-  (`workflow/submit_smoke.sh`). Not for replication.
+- **Smoke** — `smoke.env`, `smoke_hazfill.env`, `smoke_search_batch.env`:
+  dev-only tiny-NFE identities (`workflow/submit_smoke.sh`,
+  `workflow/submit_search_memory_smoke.sh`). Not for replication.
 - **Supplemental diagnostics** — `eps_calib_historic.env`,
   `eps_calib_fixed_probabilistic.env`, `eps_calib_hazard_filling_stationary.env`
   (epsilon calibration), `anvil_scaling_borg.env`, `anvil_scaling_packing.env`,

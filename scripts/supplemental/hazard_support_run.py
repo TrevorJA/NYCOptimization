@@ -187,8 +187,9 @@ def paired_design_delta(vec_by_run: dict, idx: np.ndarray) -> float:
     """HF - PS difference of design means on one SOW index set.
 
     A design's value is the mean over its draws of the mean over each draw's
-    seeds of the run's fixed-policy pass fraction on ``idx`` - seeds are
-    pseudoreplicates, the draw is the unit of analysis.
+    seeds of the run's fixed-policy pass fraction on ``idx``. The campaign
+    searches one draw per design, so this is the seed mean: the seed is the
+    unit of analysis and the contrast is conditional on one draw per design.
 
     Args:
         vec_by_run: ``{(design, draw, seed): (G,) boolean per-SOW vector}``.

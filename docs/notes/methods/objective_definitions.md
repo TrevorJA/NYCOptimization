@@ -602,9 +602,11 @@ independent verification ensemble.
   `fixed_probabilistic` → `hazard_filling` contrast **is** that
   benchmark. Our differentiators: their diversity is in *outcome* space on a
   benchmark problem (the Lake Problem) with little scenario→outcome leverage, ours
-  is in *hazard* space on a real system; and our comparison rests on replicated
-  ensemble draws with the draw as the unit of analysis, versus their counting of
-  solutions above a group median from a single draw.
+  is in *hazard* space on a real system; and our comparison rests on
+  seed-replicated searches with the seed as the unit of analysis (one searched
+  draw per design, draw-dependence measured by re-evaluating each design's
+  final set on its own other draws), versus their counting of solutions above
+  a group median.
 - **Search-measure mismatch is a systematic penalty, not a wash (Giuliani &
   Castelletti 2016, Fig. 4b–f).** Policies designed under across-scenario
   aggregation Φ_j and scored under Φ_k are **dominated** by policies correctly

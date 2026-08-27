@@ -66,9 +66,10 @@ means nothing?"
     difference (both designs are scored on the same SOWs, so the difference is
     paired and its error is smaller than either margin's)
   - two empirical nulls: seed-pairs within a draw (pure search stochasticity) and
-    draw-pairs within a design (search + ensemble construction). The draw is the
-    declared unit of analysis, so the draw-level null is the denominator the
-    design contrast must beat, and it is what ``delta`` is anchored on
+    draw-pairs within a design (search + ensemble construction). The campaign
+    searches one draw per design with the seed as the unit of analysis, so the
+    draw level is empty there, the seed level is the only within-design null,
+    and the design contrast is conditional on one draw per design
   - assay sensitivity against ``historic``, the unmatched reference expected to be
     worse
   - the binding objective, and how much of the joint no-harm frequency is
@@ -342,12 +343,14 @@ def null_differences(profile: pd.DataFrame) -> pd.DataFrame:
       - ``seed``: two seeds of the same draw. They share the ensemble, so they
         differ only by MOEA stochasticity.
       - ``draw``: two draws of the same design. They differ by search stochasticity
-        AND ensemble construction, which is exactly the variability a between-design
-        difference must exceed, because the draw is the declared unit of analysis.
+        AND ensemble construction. Populated only where a design has more than
+        one searched draw; the campaign searches one draw per design (the seed is
+        the unit of analysis), so this level is empty there and the seed level is
+        the only within-design null.
 
-    ``delta`` is anchored on the draw level. Using the seed level would understate
-    it by omitting construction variance and would make the comparison look more
-    decisive than the replication scheme supports.
+    ``delta`` uses the draw-level spread where draw pairs exist; at one searched
+    draw per design the comparison is conditional on that draw and
+    ensemble-construction variance is not separable from it.
 
     Returns:
         Tidy frame: level, design, tau_k, abs_diff. Empty — but with the schema

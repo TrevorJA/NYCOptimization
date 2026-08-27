@@ -44,10 +44,13 @@ What it produces, and why each piece exists
    among solution rankings -- ``robustness.ranking_stability`` already does those).
 
 3. **Variance components.** ``outcome ~ design (fixed) + draw(design) (random) +
-   seed(draw) (random)``. The unit of analysis for between-design tests is the
-   DRAW; seeds within a draw are pseudoreplicates, so effective n ~= K, not K*S
-   (experimental_design.md §"Replication"). The F-test for design accordingly
-   uses the draw mean-square as its denominator, never the seed residual.
+   seed(draw) (random)``. With draw replication the unit of analysis for
+   between-design tests is the DRAW (seeds within a draw are pseudoreplicates,
+   effective n ~= K, not K*S) and the design F-test uses the draw mean-square
+   as its denominator. The campaign searches ONE draw per design (K = 1;
+   experimental_design.md §"Replication"), so the draw stratum is not
+   identified, the SEED is the unit of analysis, and the F-test falls back to
+   the seed mean-square with the comparison stated as conditional on the draw.
 
 4. **Raw performance distributions (mandatory sanity check).** A robustness
    scalar can be stable, optimizable and still perverse: Huang et al. (2025) show
@@ -486,11 +489,15 @@ def variance_components(summary: pd.DataFrame, metric: str = PRIMARY_METRIC,
                         statistic: str = "best") -> pd.DataFrame:
     """Nested decomposition of ``outcome ~ design + draw(design) + seed(draw)``.
 
-    The unit of analysis for between-design inference is the DRAW: seeds within a
-    draw are pseudoreplicates, so the effective sample size is ~K (the number of
-    draws), never K*S (experimental_design.md §"Replication"). The design F-test
-    therefore uses MS_draw as its denominator -- using the seed residual would
-    silently pretend n = K*S and inflate significance.
+    With draw replication (K > 1 somewhere) the unit of analysis for
+    between-design inference is the DRAW: seeds within a draw are
+    pseudoreplicates, so the effective sample size is ~K, never K*S
+    (experimental_design.md §"Replication"), and the design F-test uses
+    MS_draw as its denominator -- the seed residual would silently pretend
+    n = K*S and inflate significance. When every design has exactly one draw
+    (the campaign: K = 1) the draw stratum has zero degrees of freedom, the
+    SEED is the unit of analysis, and the F-test uses MS_seed with a note that
+    the comparison is conditional on the one draw per design.
 
     A ``statsmodels`` MixedLM (``value ~ C(design)``, random intercept for draw
     nested in design) is fitted alongside when available; its variance estimates
@@ -548,24 +555,38 @@ def variance_components(summary: pd.DataFrame, metric: str = PRIMARY_METRIC,
                 if np.isfinite(ms_draw) and np.isfinite(ms_seed) and s_bar
                 else np.nan)
 
+    # One draw per design (K = 1): the draw stratum is not identified, so the
+    # seed is the unit of analysis and the comparison is conditional on the
+    # draw. Otherwise the draw mean-square is the denominator.
+    one_draw_per_design = df_draw == 0
+    ms_denom = ms_seed if one_draw_per_design else ms_draw
+    df_denom = df_seed if one_draw_per_design else df_draw
     f_design, p_design = np.nan, np.nan
-    if np.isfinite(ms_design) and np.isfinite(ms_draw) and ms_draw > 0:
-        f_design = ms_design / ms_draw
+    if np.isfinite(ms_design) and np.isfinite(ms_denom) and ms_denom > 0:
+        f_design = ms_design / ms_denom
         try:
             from scipy.stats import f as f_dist
-            p_design = float(f_dist.sf(f_design, df_design, df_draw))
+            p_design = float(f_dist.sf(f_design, df_design, df_denom))
         except Exception:  # noqa: BLE001 - scipy absent: report F without p
             p_design = np.nan
 
+    if one_draw_per_design:
+        design_note = ("F = MS_design / MS_seed; one draw per design, so the SEED "
+                       f"is the unit of analysis (n = {n_obs} seeds) and the "
+                       "comparison is conditional on that draw")
+    else:
+        design_note = ("F = MS_design / MS_draw; the DRAW is the unit of analysis, "
+                       f"so effective n = {n_draws} draws, NOT {n_obs} (design, "
+                       "draw, seed) observations")
     rows.append({
         "component": "design (fixed)", "method": "anova", "n": n_designs,
         "df": df_design, "ss": ss_design, "ms": ms_design,
         "var_component": np.nan, "f_stat": f_design, "p_value": p_design,
-        "note": ("F = MS_design / MS_draw; the DRAW is the unit of analysis, so "
-                 f"effective n = {n_draws} draws, NOT {n_obs} (design, draw, seed) "
-                 "observations"),
+        "note": design_note,
     })
     draw_note = f"mean draws per design K_bar = {k_bar:.2f}" if np.isfinite(k_bar) else ""
+    if one_draw_per_design:
+        draw_note += " | one draw per design: draw variance is not identified"
     if np.isfinite(var_draw) and var_draw < 0:
         # MS_draw < MS_seed. The method-of-moments estimator is unbiased, not
         # non-negative, so a negative estimate is the honest reading "no detectable

@@ -417,21 +417,22 @@ def test_smoke_is_fully_specified():
 
 
 def test_production_config_is_the_campaign_geometry():
-    """The campaign numbers derived in scenario_design_methods.md §6.
+    """The campaign numbers of docs/notes/methods/campaign_design.md.
 
-    500,000 total NFE (equal-NFE is the budget condition), on 1,021 ranks
-    fitting 8 Anvil wholenode nodes (1,024 cores). If any of these change,
-    the SU budget in §6 / SI §S8.5 must be re-derived, not just this test.
+    500,000 total NFE is the reporting budget (equal-NFE is the budget
+    condition; seed 1 runs 750,000 and is reported from its snapshot), on
+    1,533 ranks fitting 12 Anvil wholenode nodes (1,536 cores) at 128 per
+    node. If any of these change, the budget in campaign_design.md / SI
+    §S8.5 must be re-derived, not just this test.
     """
     c = get_moea_config("production")
     assert c.n_islands == 4
-    assert c.n_workers_per_island == 254
-    assert c.n_islands * c.max_evaluations == 500_000  # total NFE
-    assert c.total_ntasks_mpi == 1021
-    assert c.total_ntasks_mpi <= 8 * 128  # fits the 8-node allocation
-    assert c.n_seeds == 2  # S=2, seeds via sbatch --array
-    # Equal-scenario-years coincides with equal-NFE at N=100, L=10.
-    assert c.budget_scenario_years == 500_000 * SEARCH_ENSEMBLE_N * SCENARIO_YEARS
+    assert c.n_workers_per_island == 382
+    assert c.n_islands * c.max_evaluations == 500_000  # reporting NFE
+    assert c.total_ntasks_mpi == 1533
+    assert 11 * 128 < c.total_ntasks_mpi <= 12 * 128  # fills 12 nodes, no idle node
+    assert c.n_seeds == 2  # S=2, one seed per sbatch --array index
+    assert SEARCH_ENSEMBLE_N == 300 and SCENARIO_YEARS == 10
     # NFE-bounded: a Borg maxTime cap could truncate NFE unequally across
     # designs, so the wall cap lives in SLURM --time, not in the config.
     assert c.max_time_hours is None

@@ -4,7 +4,9 @@
 # Every design GENERATES its own realizations from its own namespaced seed
 # stream — no design is subsampled from a shared master. The array index is the
 # independent ensemble-draw index k (0..K-1, K = design.n_ensemble_draws), which
-# is now the natural parallel axis: draws are independent GENERATIONS.
+# is now the natural parallel axis: draws are independent GENERATIONS. Three
+# draws are staged per matched design: d0 is the searched draw; d1-d2 exist for
+# the SI draw-sensitivity re-evaluation (docs/notes/methods/campaign_design.md).
 #
 # COST DISCLOSURE: per-design construction is not free. For `fixed_probabilistic`
 # and `input_stratified` each draw is a fresh N x L generation (not a re-index of

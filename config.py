@@ -884,9 +884,51 @@ REEVAL_ENSEMBLE_SPEC = get_ensemble_spec(NYCOPT_REEVAL_ENSEMBLE_PRESET)
 # evaluation by simulating the ensemble in sequential batches of this size and
 # reducing each realization to its per-objective base metric before the next
 # batch (the same memory-batching the supplemental policy-sweep diagnostics
-# use, so search and diagnostics handle realizations identically). Recommended
-# for large search ensembles (e.g. N>=128) to avoid OOM on a Borg worker.
+# use, so search and diagnostics handle realizations identically; results are
+# identical to the unbatched path, tests/test_ensemble_simulation.py). The
+# campaign runs N=300 at 128 ranks/node, which does not fit unbatched (see
+# search_node_rss_gb), so the matched production env files set 150 (two model
+# runs per evaluation, <= 9 % time penalty measured at N=20).
 SEARCH_REALIZATION_BATCH = _parse_int_env("NYCOPT_SEARCH_REALIZATION_BATCH", 0)
+
+# --- Per-node memory model for the MM-Borg pre-flight (workflow/_common.sh
+# nycopt_check_memory). Resident set per evaluator rank, MB, as a linear
+# envelope in scenario-years held in one Pywr model (min(N, batch) x L):
+# intercept 600 MB, slope 0.49 MB per scenario-year. It reproduces the
+# measured production steady state at N=100 (139-140 GB/node at 128 ranks,
+# jobs 19782745 / 19770939) and over-predicts every cost-surface cell
+# (outputs/supplemental/ensemble_cost_experiment/tables/cost_surface.csv) by
+# 0-15 %, so it is conservative above N=200, where nothing is measured at
+# L=10. A single node's spike once OOM'd a run whose steady state was 139 GB,
+# so the line is 85 % of the 256 GB node, below the ~240 GB job cgroup.
+RANK_RSS_INTERCEPT_MB = 600.0
+RANK_RSS_MB_PER_SCENARIO_YEAR = 0.49
+NODE_MEMORY_GB = _parse_float_env("NYCOPT_NODE_MEMORY_GB", 256.0)
+NODE_MEMORY_SAFETY_FRACTION = 0.85
+
+
+def search_rank_rss_mb(n_realizations: int, realization_years: int,
+                       realization_batch: int = 0) -> float:
+    """Estimated resident set of one evaluator rank, in MB.
+
+    Args:
+        n_realizations: Search-ensemble size N (1 for a single trace).
+        realization_years: Realization length L in years.
+        realization_batch: Realizations per Pywr model build; ``<= 0`` means
+            the whole ensemble is one scenario block.
+
+    Returns:
+        ``RANK_RSS_INTERCEPT_MB + RANK_RSS_MB_PER_SCENARIO_YEAR * min(N, batch) * L``.
+    """
+    held = n_realizations if realization_batch <= 0 else min(n_realizations, realization_batch)
+    return RANK_RSS_INTERCEPT_MB + RANK_RSS_MB_PER_SCENARIO_YEAR * held * realization_years
+
+
+def search_node_rss_gb(ranks_per_node: int, n_realizations: int,
+                       realization_years: int, realization_batch: int = 0) -> float:
+    """Estimated resident set of one node, in GB, at ``ranks_per_node`` evaluators."""
+    return ranks_per_node * search_rank_rss_mb(
+        n_realizations, realization_years, realization_batch) / 1024.0
 
 # Print a one-line build/run/extract wall-time split per ensemble model run
 # (src/simulation.py::run_simulation_ensemble_inmemory). Logging only — never

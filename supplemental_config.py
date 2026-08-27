@@ -223,10 +223,11 @@ EPS_N_POLICIES: int = 8 if EPS_SMOKE else 512
 #: Hard cap on rejection draws (at ~1% acceptance, 512 feasible needs ~5e4).
 EPS_MAX_DRAWS: int = 200_000 if EPS_SMOKE else 20_000_000
 
-#: Realizations per simulation batch. 0 = all realizations as one pywr
-#: scenario block — the CAMPAIGN default (config.SEARCH_REALIZATION_BATCH),
-#: kept so the calibration measures exactly what Borg workers run.
-EPS_REALIZATION_BATCH: int = 0
+#: Realizations per simulation batch, mirroring the campaign env files
+#: (NYCOPT_SEARCH_REALIZATION_BATCH=150 at N=300; results are identical to
+#: the unbatched path) so the calibration measures exactly what Borg workers
+#: run and fits 128 ranks/node at the campaign N.
+EPS_REALIZATION_BATCH: int = 150
 
 # ---------------------------------------------------------------------------
 # Analysis grids (figures script only; no re-simulation)
@@ -753,15 +754,17 @@ def ensemble_cost_staging_cells() -> "list[tuple[int, int]]":
 # Campaign projection — what the measured surface is FOR
 # ---------------------------------------------------------------------------
 #: Search side: 6 scenario designs x K draws x S MOEA seeds independent Borg
-#: runs, each of NFE evaluations at the campaign design point (N=100, L=10) on
-#: the trimmed model. The grids are the open sizing decisions.
+#: runs, each of NFE evaluations at the cost-surface anchor cell (N=100, L=10;
+#: the campaign N=300 scales from it) on the trimmed model. The grids were the
+#: open sizing decisions at measurement time.
 ENSEMBLE_COST_PROJ_DESIGNS: int = 6
 ENSEMBLE_COST_PROJ_DRAWS: "tuple[int, ...]" = (5, 10)
 ENSEMBLE_COST_PROJ_SEEDS: "tuple[int, ...]" = (2, 3)
 ENSEMBLE_COST_PROJ_NFE: "tuple[int, ...]" = (25_000, 50_000, 100_000)
 
-#: The campaign design point itself: the (N, L) whose measured trimmed cost
-#: prices the search campaign.
+#: The cost-surface anchor cell: the (N, L) measured with the most warm
+#: evaluations, from which the campaign cost at N=300 is scaled by the fitted
+#: N exponent (campaign_design.md §6).
 ENSEMBLE_COST_DESIGN_POINT: "tuple[int, int]" = (100, 10)
 
 #: MM-Borg geometry the search projection assumes: nodes per Borg run and
@@ -1020,7 +1023,7 @@ SF_FACTOR_GRID: tuple = (0.95, 0.98, 0.99, 1.00)
 SF_N_POLICIES: int = 4 if SF_SMOKE else EPS_N_POLICIES
 
 #: Realizations per simulation batch (0 = one block, the campaign default).
-SF_REALIZATION_BATCH: int = 0
+SF_REALIZATION_BATCH: int = 150   # mirrors the campaign batch (memory at N=300)
 
 #: Delivery objectives swept: (annual objective name, demand key, delivery
 #: key, entitlement reset convention). Caps resolve from config at run time.
@@ -1120,7 +1123,7 @@ FLOODOBJ_FORMULATION: str = "ffmp"
 FLOODOBJ_ENSEMBLE_SLUG: str = "kn_50yr_n5"
 
 #: Realizations per simulation batch (0 = one block, the campaign default).
-FLOODOBJ_REALIZATION_BATCH: int = 0
+FLOODOBJ_REALIZATION_BATCH: int = 150   # mirrors the campaign batch (memory at N=300)
 
 # ---------------------------------------------------------------------------
 # Sim-vs-obs block (reuses the Pywr-DRB flood-gauge diagnostic experiment)
@@ -1460,9 +1463,10 @@ RTOL_TAU_RULE: str = (
 )
 RTOL_MARGIN_RULE: str = (
     "delta = max(2 x paired SOW-bootstrap SE of the between-design difference in "
-    "no_harm_freq_tau, the within-design between-DRAW spread of the same quantity). "
-    "The draw is the declared unit of analysis, so the draw-level term is the "
-    "denominator the design contrast must beat. delta is a function of the NUISANCE "
+    "no_harm_freq_tau, the within-design between-SEED spread of the same quantity). "
+    "The seed is the unit of analysis (one searched draw per design), so the "
+    "seed-level term is the denominator the design contrast must beat. delta is a "
+    "function of the NUISANCE "
     "variance only and never of the between-design contrast, so it cannot determine "
     "the direction of the answer; the pre-registration is of this rule, not of a "
     "number that could only be computed later."
@@ -1746,9 +1750,10 @@ ESD_STAGED_ENSEMBLES: "dict[str, tuple[tuple[int, str], ...]]" = {
 # ---------------------------------------------------------------------------
 # Ladders and replicate counts (Layer A)
 # ---------------------------------------------------------------------------
-#: The N ladder (common to every layer). The campaign point is 100.
+#: The N ladder (common to every layer). The adopted campaign N is 300
+#: (campaign_design.md); the figures mark it.
 ESD_N_LADDER: tuple = (25, 50) if ESD_SMOKE else (50, 75, 100, 150, 200, 300, 400, 500)
-ESD_N_CAMPAIGN: int = 100
+ESD_N_CAMPAIGN: int = 300
 
 #: Anchor plans per (pool, N) for Layer A: the design's own selector seed for
 #: these "draws" (draw 0 is the production plan; 101+ are extra plans on the
@@ -1865,11 +1870,12 @@ ESD_NFE_ARCHIVES: tuple = (
 #: Hypervolume fractions of the final value at which the attainment NFE is read.
 ESD_NFE_HV_FRACTIONS: tuple = (0.95, 0.99)
 
-#: Cost pricing: SU per 500k-NFE search at N = 100 (methods §6), the measured
-#: trimmed N exponent at L = 10 (`scaling_fits.csv`), the per-rank RSS model
-#: (MB = a + b * N * L; ENSEMBLE_COST_RSS_MB["trimmed"]), node memory and
-#: ranks per node.
-ESD_SU_PER_SEARCH_N100: float = 33_400.0
+#: Cost pricing: SU per 500k-NFE search at N = 100 on the MEASURED production
+#: basis (two completed go/no-go searches on 8 x 128; campaign_design.md §6),
+#: the measured trimmed N exponent at L = 10 (`scaling_fits.csv`), the
+#: per-rank RSS model (MB = a + b * N * L; ENSEMBLE_COST_RSS_MB["trimmed"]),
+#: node memory and ranks per node.
+ESD_SU_PER_SEARCH_N100: float = 21_850.0
 ESD_COST_N_EXPONENT: float = 0.951
 ESD_NODE_MEM_GB: int = 256
 ESD_RANKS_PER_NODE: int = 128

@@ -185,68 +185,11 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   0.30 tail-share threshold is RETIRED (reported property; code/docs/manuscript
   purged 2026-08-26, `test_terminology.py` enforces). HF ladder extension
   (>= 10 anchor plans per N, ~150 SU) PARKED — not needed for the sizing call.
-  DECIDED: N_common = 300 (next item). Note §7.6 lists everything that changes.
-
-- [ ] **[local→HPC]** ADOPT THE N = 300 CAMPAIGN DESIGN (decided 2026-08-26;
-  basis: REANALYSIS_2026-08-26.md §1-§8). Design: N_common = 300 for both
-  matched designs; K = 1 draw (d0) — dropping draw replication is the only
-  structural change that admits N >= 250 within the ~600k SU REMAINING
-  balance (600k is the balance after ~150k spent, not a new allocation; every
-  doc still budgets against 750k) and is field practice (no published
-  reservoir MOEA replicates the search over ensemble draws); S = 2 seeds.
-  NFE scheme (Trevor's call): seed 1 runs 750k NFE (187.5k/island); seed 2
-  runs 500k (125k/island). The seed-1 runtime archive at 125k/island (the
-  2,500-NFE snapshot cadence hits it exactly) IS the equal-NFE 500k result:
-  if seed 1's runtime HV has converged by 500k, the campaign reports both
-  seeds at 500k and the 750k tail is SI convergence evidence (Giuliani 2016
-  precedent); if not, extend seed 2 — decide after seed 1 lands. HV fit on
-  the go/no-go archives: 500k is at 82-96 % of the asymptote, 750k at
-  89-99 % (+5-6 %/island, about one island's spread). COST (measured basis
-  21.9k SU per N=100/500k search x (N/100)^0.951, the documented 33.4k model
-  is refuted 1.53x by the two production runs): seed 1 ~102k + seed 2 ~68k
-  per design -> ~340k searches + historic at matched NFE + staging + E_test
-  re-eval (~132k at ~2,000 merged policies, 66 SU/policy measured; cap or
-  let ε re-calibration shrink it) ≈ 490k (18 % reserve). Model basis ≈ 690k
-  does NOT fit — the first seed-1 run is the cost check; abort criteria
-  before submitting seed 2.
-  IMPLEMENTATION GATE — the implementing session MUST first run a thorough
-  secondary investigation that the new configuration is as strongly,
-  reliably and efficiently parallelized on Anvil as the N=100 production
-  geometry was, closing at least: (i) WALL TIME — 750k NFE at N=300 is
-  ~99 h measured on 8x128 (152 h model), above the 96 h cap, and there is NO
-  working resume (`.runtime` files are diagnostic dumps; Borg checkpoint is
-  disabled as race-prone across islands and has never run; the OOM'd
-  go/no-go run was relaunched from scratch; docs claiming snapshot resume
-  are wrong) -> either >= 12 nodes (node-scaling UNMEASURED beyond 8:
-  single-island curve -8.6 %/doubling, the only cross-node production pair
-  +30 % SU/NFE, `projection.csv` assumes 0.729 flat) or implement + test
-  checkpoint/restore across islands; measure before committing 100k SU.
-  (ii) MEMORY — 223-242 GB/node at 128 ranks (two RSS fits) vs the 217 GB
-  safety line / ~240 GB cgroup; nothing measured above N=200 at L=10; a
-  spike OOM'd a 139 GB-steady run -> `NYCOPT_SEARCH_REALIZATION_BATCH=150`
-  (batched path exists, used in step-09, NEVER inside a Borg search; batch
-  penalty measured only at N=20) + one `submit_smoke.sh` pass with the
-  batch set; add a memory check to `nycopt_check_allocation` (rank-only
-  today). (iii) ε RE-CALIBRATION on the N=300 ensembles before any search
-  (note §7.6 item 1) + τ re-pin in every env. (iv) MECHANICS —
-  `SEARCH_ENSEMBLE_N`=300 (`src/scenario_designs.py`), restage steps 02-05,
-  `production` MOEA config split into 750k/500k variants (or seed-indexed
-  NFE) with `--time` and node count sized per (i), env headers, E_test
-  unchanged (R=25; rewrite the "one search evaluation" sentence as its own
-  precision argument, §7.6 item 3).
-
-- [ ] **[local]** AFTER the design above is settled in that session (not
-  before): update every doc, note and manuscript passage to the adopted
-  configuration — `experimental_design.md` (K=3 -> 1, unit of analysis =
-  seed, design-comparison claim conditional on one draw per design with the
-  draw-sensitivity re-evaluation in §3 as the supporting check, seed-1/seed-2
-  NFE scheme), `research_project_summary.md` (replication paragraph, budget
-  re-based on the ~600k balance and measured costs), `scenario_design_methods.md`
-  §6 + SI S8.5 + `moea_config.py` notes (geometry, cost, REMOVE the
-  snapshot-resume claim), main text 3.1.1 / SI Text S4-S5 (N=300 and its
-  tail-content numbers), `ensemble_size_diagnostics.md` §7.6, env-file
-  headers. Purge every "N = 100", "K = 3", "33,400 SU", "32.6 h" that
-  describes the campaign; `test_terminology.py` is the place to enforce it.
+  ADOPTED 2026-08-26 as N_common = 300 across code, envs, notes and manuscript
+  (`docs/notes/methods/campaign_design.md` states the campaign at scale; the
+  run items it leaves are in §2). Remaining here: re-render the ESD figures
+  with the campaign marker at 300 (`ESD_N_CAMPAIGN`; analysis wrapper only,
+  minutes).
 
 - [x] **[local]** REGRET TOLERANCE tau RE-ADOPTED 2026-08-14 on ROUND values
   (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;
@@ -550,49 +493,65 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
 
 ## 2. Production gates
 
-- [ ] **[HPC]** Launch campaign searches. IN PROGRESS (2026-08-10): go/no-go
-  cell (draw 0 / seed 1, 500k NFE `production`, 8 nodes x 128, 1,021 ranks)
-  submitted for all three designs — jobs 19770937 (historic, 10 h wall),
-  19770938 (hazard_filling_stationary, 40 h wall), 19770939
-  (fixed_probabilistic, 40 h wall). All three started 2026-08-10 20:24.
-  STATUS: 19770938 (hazfill) FAILED OUT_OF_MEMORY at 56 min (~19 evals/worker;
-  rank 741 killed on node a466; typical per-node RSS ~139 GB of ~240 GB
-  limit, so the OOM was a spike on one node, not steady-state pressure).
-  No .set written, so the relaunch guard did not block the resubmit:
-  RESUBMITTED as-is (8x128) 2026-08-11 as job 19782745 per Trevor's call:
-  COMPLETED 2026-08-12 16:25 (21 h 37 m, ~22,100 SU, 5,761 solutions, RSS
-  flat ~140 GB throughout — the 08-10 OOM was a one-off spike). ALL THREE
-  go/no-go cells are now in; total spend ~48k SU incl. the OOM loss.
-  Step-07 diagnostics + full figure suites DONE for all three (2026-08-12);
-  hazfill ref set 5,544. Like fixedprob, ZERO hazfill solutions dominate
-  the scenario-matched incumbent on all 8 axes (historic: 188/2,604). historic COMPLETED 2026-08-11 00:29
-  (4 h 04 m, ~4,200 SU, 2,685 solutions in
-  outputs/historic/ffmp_obj8/sets/seed_01_ffmp_obj8.set; step-07
-  diagnostics + explore_results figures done, ref set 2,604 solutions).
-  fixedprob COMPLETED 2026-08-11 17:29 (21 h 04 m, ~21,600 SU, 6,353
-  solutions in outputs/fixed_probabilistic/ffmp_obj8/sets/); per-node RSS
-  flat at ~140 GB throughout — no memory creep at 128/node.
-  Verify surviving runs before fanning out to the remaining draws x seeds. Production inputs (pools d0–d2,
-  search ensembles, E_test + presim) are staged and verified (campaign 6-axis
-  min per-axis P90 tail share 0.27-0.29 across the regenerated draws, recorded
-  per draw). The
-  baseline-on-E_test matrix is regenerated on the unified substrate
-  (2026-08-08) and the threshold + regret-tolerance parameters are adopted —
-  no metric-side blockers remain. The Anvil shakeout is closed (see Done),
-  so nothing gates the scale-up. Remaining fan-out: the 2026-08-08 runs cover
-  draw 0 / seed 1 only, so the campaign still needs the draw (d0–d2) x seed
-  replication for both designs, at the scaled NFE.
-  SIZING for the scale-up (measured, not projected): 50k NFE = 3 h 17 m and
-  ~1,680 SU per seed at 511 ranks, i.e. ~0.034 SU per NFE per seed. So
-  2 designs x 3 draws x 2 seeds is ~20k SU at 50k NFE and ~81k SU at 200k
-  NFE, against 679k SU remaining (2026-08-10). Budget is not the binding
-  constraint; the SLURM `--time` wall is. Runs are NFE-bounded
-  (`max_time_hours=None`), so `--time` must scale with NFE or it silently
-  truncates the search: ~13 h at 200k NFE. Convergence evidence that the
-  scale-up is warranted, from the 25k NFE/island endpoint: hypervolume still
-  rising monotonically (island 0: 0.0642 -> 0.0673 -> 0.0705), archive still
-  growing (1003 -> 1029 over the last 1k NFE), Improvements still accruing
-  (3382 -> 3498), `Restarts=0`.
+- [ ] **[HPC]** CAMPAIGN AT N = 300 — run items, in order (design and budget:
+  `docs/notes/methods/campaign_design.md`; every step below is scripted, none has
+  run). The N = 100 go/no-go cells (jobs 19782745 / 19770939 / 19770938, ~48k
+  SU incl. one OOM loss) stay as the measured cost basis (21.3 h, ~21,850 SU per
+  500k search on 8x128) and as the N = 100 comparison arm of the sizing note's
+  Layer C reading; their sets are pre-N=300 and are NOT campaign results.
+  0. Verify the SU balance (`mybalance`); the notes assume ~590-600k remaining.
+     Pull all four repos on Anvil first.
+  1. RESTAGE at N = 300 (pools d0-d2 and E_test are unchanged): step 02 for
+     fixed_probabilistic (`--array=0-2`), step 03 for hazard_filling_stationary
+     with `NYCOPT_CANDIDATE_POOL_N=1000000` (check the log line
+     `pool='statpool_10yr_n1000000_d{k}' P=1000000`; the smoke pool is the
+     silent default), step 04 for both (`--array=0-2`), then
+     `validate_staged_seasonality.py` per ensemble and the per-axis tail-share
+     record for each hazfill draw at N = 300. Step 05 baselines for both matched
+     designs scenario-matched to the new d0 ensembles (`--search-ensemble`;
+     reliabilities exact n/2700). ~1-2k SU.
+  2. EPSILON RE-VERIFICATION at N = 300: `epsilon_calibration.sh` per design
+     (`EPS_REALIZATION_BATCH=150` now; ~1 h per wholenode node each). Go if
+     every adopted entry [0.05, 10, 0.05, 10, 0.05, 0.3, 5.0, 0.05] lies above
+     its N = 300 floor (expected: floors fall with N); otherwise raise the
+     entry, re-pin tau in every env file, and record it in
+     `epsilon_calibration_experiment.md`. The archive-cardinality re-filter is
+     repeated on the first N = 300 archives after seed 1 (item 5).
+  3. BATCHED-SEARCH MEMORY SMOKE: `bash workflow/submit_search_memory_smoke.sh`
+     (1 wholenode node, 127 ranks, N = 300, batch 150, ~400 NFE, ~256 SU). Go if
+     peak used memory in `logs/mem_<jobid>_*.log` <= ~217,000 MB and the warm
+     per-evaluation time in the runtime files is within +20 % of 540 s. A miss
+     on memory means batch 100 (3 model runs) in both matched env files; a
+     miss on time means re-pricing `campaign_design.md` §6 before seed 1.
+  4. SEED 1 (750k NFE, 12 nodes x 128, `--time=96:00:00` matched /
+     `12:00:00` historic): the three `*_production.env` headers carry the
+     exact sbatch lines. This is the cost check AND the 8 -> 12 node scaling
+     measurement (unmeasured; carried as x1.00-1.17). Read from the runtime
+     files after ~12 h: island NFE rate -> projected wall; the 125,000/island
+     snapshot must land inside 96 h (it does under every cost basis). Abort
+     criteria before seed 2: SU per NFE above the model basis (0.0669 SU/NFE at
+     N = 300) or runtime HV at 125k/island still rising > 5 %/25k on any island
+     (then extend seed 2 to 750k via `max_evaluations_by_seed=(187_500,
+     187_500)` only if the balance covers it).
+  5. `python scripts/main/extract_runtime_archive.py --seed 1` per design (the
+     equal-NFE set `seed_01_ffmp_obj8_nfe125000.set`), then the ε cardinality
+     re-filter on it (`epsilon_ensemble_refilter.py`); adopt the cap rule of
+     `campaign_design.md` §5 if the projected merged union exceeds ~2,000.
+  6. SEED 2 (500k NFE, `--time=72:00:00` matched / `08:00:00` historic), then
+     `extract_runtime_archive.py --merge --install` per design (writes
+     `ffmp_obj8_merged_nfe125000.set` and installs it as `ffmp_obj8_merged.set`,
+     the step-08/09 first-choice reference; step 07's own merge includes the
+     750k tail and is diagnostics-only). Step 07 diagnostics per seed.
+  7. E_TEST RE-EVALUATION (steps 09 + 09b on `shared`, 16 ranks x 8 cpus,
+     batch 50) of the installed merged sets: ~66 SU per policy, ~132k at the
+     2,000-policy cap. Then steps 10-13 and the re-anchoring audit on the full
+     cube (the interim first10ch placements must be re-confirmed).
+  8. Re-render the ESD figures with `ESD_N_CAMPAIGN = 300` (analysis wrapper).
+  Runs are NFE-bounded (`max_time_hours=None`); `--time` must cover the NFE or
+  the search is silently truncated (no resume exists). Memory: the step-06
+  pre-flight (`nycopt_check_memory`) refuses N = 300 at 128 ranks/node without
+  the batch; the sampler (`NYCOPT_MEM_SAMPLE_S`) logs the first node only; use
+  `sstat -j <jobid> --format=MaxRSS,AveRSS,Nodelist` for multi-node jobs.
 
 ## 3. Post-campaign deliverables
 
@@ -677,15 +636,17 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   the manuscript-final styling pass + full-E_test rerun reuse.
 - [ ] **[local]** Manuscript Results / Discussion / Conclusions; SI sections
   beyond S8 are outline-only.
-- [ ] **[HPC]** LOW PRIORITY, SI ONLY — DRAW-SENSITIVITY RE-EVALUATION of the
-  Pareto sets: after the searches, re-evaluate each design's final Pareto set
-  on the other two draws of its OWN search ensemble (d1, d2 at N = 300;
-  staging ~70 SU each, ~66 SU per 100 policies on a 300 x 10-yr trimmed run;
-  ~0.5-1k SU total) to quantify draw-dependence of the objective values
-  without re-running the search — the Zatarain Salazar et al. (2017) Fig. 12
-  analogue and the supporting check for K = 1 referenced in
-  `experimental_design.md`. Report paired per-policy shifts against ε and
-  against the E_test re-evaluation; SI material only.
+- [ ] **[HPC]** SI — DRAW-SENSITIVITY RE-EVALUATION of the Pareto sets: after
+  the searches, re-evaluate each matched design's equal-NFE merged set on the
+  other two draws of its OWN search ensemble (d1, d2 at N = 300, staged in §2
+  item 1; ~66 SU per 100 policies on a 300 x 10-yr trimmed run; ~1k SU total)
+  to quantify draw-dependence of the objective values without re-running the
+  search — the Zatarain Salazar et al. (2017) Fig. 12 analogue and the
+  supporting check for the one-draw-per-design comparison in
+  `experimental_design.md` (Replication) and `campaign_design.md` §5. Needs a
+  small driver (evaluate a .set on a staged search-ensemble slug via
+  `evaluate_annual_units`, persist per-realization units, paired shifts vs ε
+  and vs the E_test values); none exists yet. SI material only.
 
 ## Parked (scope decisions, not blockers)
 
