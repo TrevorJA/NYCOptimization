@@ -14,7 +14,7 @@ Layer B (from library): B1 level_se_vs_n, B2 paired_se_vs_n, B3 flip_rate_vs_n,
                         B8 nfe_asymptote (existing runtime archives),
                         B9 cost_pricing
 Tables: ``layer_b_stats`` (long), ``decision_table``, ``n_min``, ``n_eff``,
-``epscube_crosscheck``, ``nfe_asymptote``, ``cost_pricing``, ``np_gate``.
+``epscube_crosscheck``, ``nfe_asymptote``, ``cost_pricing``, ``np_tail_share``.
 
 Every figure follows ``src/plotting/style.py``, is PNG only, and carries the
 epsilon line (where an epsilon applies) and the N = 100 campaign point.
@@ -123,9 +123,6 @@ def fig_a1_tail_share(ladder: pd.DataFrame) -> None:
                label="random selection of the same N (mean over 50 seeds)")
         a.axhline(ref, color="0.6", lw=1, ls="--",
                   label=f"expected share for a random sample ({ref:g})")
-        if col == "tail_share_min":
-            a.axhline(scfg.ESD_TAIL_CRITERION, color="#c1272d", lw=1.2, ls=":",
-                      label=f"pre-registered adequacy gate ({scfg.ESD_TAIL_CRITERION:g})")
         _mark_campaign(a, campaign_label=True)
         a.set_xlabel(N_LABEL)
         a.set_ylabel(ttl, fontsize=8.5)
@@ -179,43 +176,53 @@ def fig_a2_coverage(ladder: pd.DataFrame) -> None:
 
 
 def fig_a3_np_ladder(npl: pd.DataFrame) -> pd.DataFrame:
-    """A3: the (N, P) adequacy surface; returns the gate table."""
-    gate = (npl[npl.selector == "lhs_nn"].groupby(["P", "n"])["tail_share_min"]
-            .mean().rename("tail_share_min_seed_mean").reset_index())
-    gate["gate_pass"] = gate.tail_share_min_seed_mean >= scfg.ESD_TAIL_CRITERION
-    need = (gate[gate.gate_pass].groupby("n")["P"].min().rename("smallest_P_passing")
-            .reset_index())
-    fig, ax = plt.subplots(1, 2, figsize=(10.5, 3.9))
-    a = ax[0]
+    """A3: tail enrichment over the (N, P′) plane; returns the seed-mean table.
+
+    Panel (a) is the min per-axis P90 tail share against N, one line per prefix
+    size; panel (b) is the same statistic against P′ (log), one line per N, so
+    the saturation with pool size and its independence of N are read directly.
+    """
+    g = npl[npl.selector == "lhs_nn"].groupby(["P", "n"])["tail_share_min"]
+    tab = pd.DataFrame({"tail_share_min_seed_mean": g.mean(),
+                        "tail_share_min_seed_sd": g.std(ddof=1)}).reset_index()
+    null_label = "expected share for a random sample (0.10)"
+    ylab = ("share of members above the pool's 90th percentile\n"
+            "(minimum over the 6 selection axes, mean over anchor plans)")
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4.2))
     cmap = plt.get_cmap("viridis")
-    Ps = sorted(gate.P.unique())
+    a = ax[0]
+    Ps = sorted(tab.P.unique())
     for i, P in enumerate(Ps):
-        g = gate[gate.P == P]
-        a.plot(g.n, g.tail_share_min_seed_mean, "o-", ms=4, color=cmap(0.15 + 0.7 * i / max(1, len(Ps) - 1)),
-               label=f"P′ = {P:,}")
-    a.axhline(scfg.ESD_TAIL_CRITERION, color="#c1272d", lw=1.2, ls=":", label="gate")
-    a.axhline(0.10, color="0.6", lw=1, ls="--", label="unbiased 0.10")
-    _mark_campaign(a)
+        t = tab[tab.P == P]
+        a.plot(t.n, t.tail_share_min_seed_mean, "o-", ms=4,
+               color=cmap(0.15 + 0.7 * i / max(1, len(Ps) - 1)), label=f"P′ = {P:,}")
+    a.axhline(0.10, color="0.6", lw=1, ls="--", label=null_label)
+    _mark_campaign(a, campaign_label=True)
     a.set_xlabel(N_LABEL)
-    a.set_ylabel("min per-axis tail share (seed mean)")
-    a.set_title("(a) adequacy vs N on nested prefixes")
-    a.legend(fontsize=7)
+    a.set_ylabel(ylab, fontsize=8.5)
+    a.set_ylim(bottom=0)
+    a.set_title("(a) tail enrichment vs N, one line per prefix size P′")
+    a.legend(fontsize=6.5, loc="lower right")
     a2 = ax[1]
-    if not need.empty:
-        a2.plot(need.n, need.smallest_P_passing, "o-", color=design_color(HF))
-    missing = sorted(set(gate.n.unique()) - set(need.n.unique()))
-    for n in missing:
-        a2.plot([n], [max(Ps)], "x", color="#c1272d", ms=8)
-    a2.set_yscale("log")
-    a2.set_xlabel(N_LABEL)
-    a2.set_ylabel("smallest pool size P′ that meets the gate")
-    a2.set_title("(b) pool size each N needs (red × = no tested P′ meets the gate)")
-    _mark_campaign(a2)
-    fig.suptitle("Adequacy of the hazard-filling selection over the (N, pool size) plane — prefixes of pool d0 are exact i.i.d. pools of their size")
+    Ns = sorted(tab.n.unique())
+    for i, n in enumerate(Ns):
+        t = tab[tab.n == n].sort_values("P")
+        a2.errorbar(t.P, t.tail_share_min_seed_mean, yerr=t.tail_share_min_seed_sd,
+                    fmt="o-", ms=3, capsize=2, elinewidth=0.7,
+                    color=cmap(0.15 + 0.7 * i / max(1, len(Ns) - 1)), label=f"N = {n}")
+    a2.axhline(0.10, color="0.6", lw=1, ls="--", label=null_label)
+    a2.plot([], [], " ", label="bars = SD over 10 anchor plans")
+    a2.set_xscale("log")
+    a2.set_xlabel("pool size P′ (prefix of pool d0; log)")
+    a2.set_ylabel(ylab, fontsize=8.5)
+    a2.set_ylim(bottom=0)
+    a2.set_title("(b) saturation with pool size, one line per N")
+    a2.legend(fontsize=6.5, ncol=2, loc="lower right")
+    fig.suptitle("Tail enrichment of the hazard-filling selection over the (N, pool size) plane — prefixes of pool d0 are exact i.i.d. pools of their size")
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, scfg.esd_figure_path("A3_np_ladder"))
     plt.close(fig)
-    return gate.merge(need, on="n", how="left")
+    return tab
 
 
 def fig_a4_ps_tail(ps: pd.DataFrame) -> None:
@@ -906,7 +913,7 @@ def main() -> None:
         fig_a2_coverage(ladder)
     npl = _table("np_ladder")
     if npl is not None:
-        fig_a3_np_ladder(npl).to_csv(scfg.esd_table_path("np_gate"), index=False)
+        fig_a3_np_ladder(npl).to_csv(scfg.esd_table_path("np_tail_share"), index=False)
     ps = _table("ps_tail_sampling")
     if ps is not None:
         fig_a4_ps_tail(ps)

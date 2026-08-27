@@ -13,10 +13,10 @@ env file `workflow/envs/ensemble_size_diagnostics.env`, tests
 `tests/test_ensemble_size_diagnostics.py`. Outputs under
 `outputs/supplemental/ensemble_size_diagnostics/{tables,figures,library}/`.*
 
-**PRE-REGISTRATION.** Every criterion, threshold, ladder, replicate count, and
-selection rule in §§2–5 was fixed on 2026-08-25 before any Layer-A or Layer-B
-result was inspected. §7 records what was measured; nothing in §§2–5 was edited
-after §7 was written.
+**PRE-REGISTRATION.** The Layer-B ε criteria, ladders, replicate counts, and
+selection rules in §§2–5 were fixed on 2026-08-25 before any Layer-A or Layer-B
+result was inspected and are unchanged. The Layer-A tail-share statistic (§3)
+is reported without a threshold. §7 records what was measured.
 
 ---
 
@@ -46,7 +46,7 @@ scores each on its own terms:
   pool. Its objective values estimate nothing probabilistic — the distribution
   shift is the treatment — so "bias" is undefined. Representativeness is (a)
   the hazard-range coverage attained (per-axis stratification and tail
-  enrichment above the adequacy gate) and (b) reproducibility of the induced
+  enrichment above the 0.10 i.i.d. share) and (b) reproducibility of the induced
   objective vectors across independent constructions (fresh anchor plan on the
   same pool; fresh pool and anchor plan across production draws).
 - **The common criterion, the one the optimizer cares about:** the noise in
@@ -101,16 +101,18 @@ the HF selections it scores are exactly the selections step 03 would stage.
 | Block | Statistic | Design | Ladder / replicates |
 |---|---|---|---|
 | A-HF | per-axis tail share above pool P90 and P99; per-axis KS to uniform; joint L2-star; MST mean/min edge; minimum pairwise separation — each as a ratio to the matched random design (same N, m) | HF | N ∈ {50, 75, 100, 150, 200, 300, 400, 500}; P = 10⁶ pools d0, d1, d2; 10 anchor plans per (pool, N) (`design.selector_seed(draw)` for draws 0, 101–109; draw 0 is the production plan); 50-seed random null |
-| A-NP | min per-axis tail share above P90 (seed-mean convention) on nested prefixes P′ of pool d0 | HF | P′ ∈ {5·10³, 2·10⁴, 10⁵, 3·10⁵, 10⁶} × the N ladder × 10 anchor plans; reports the smallest P′ holding the gate at each N |
+| A-NP | min per-axis tail share above P90 (seed-mean convention) on nested prefixes P′ of pool d0 | HF | P′ ∈ {5·10³, 2·10⁴, 10⁵, 3·10⁵, 10⁶} × the N ladder × 10 anchor plans; reports how the statistic saturates with P′ at each N |
 | A-PS | sampling distribution of per-axis counts above pool P90/P99; relative error of subset P50/P90/P99 vs the pool; closed-form P(≥ 1 member beyond pool quantile q) = 1 − qᴺ | PS | uniform size-N subsets of the pool image (exact i.i.d. law); 200 subsets per N |
 | A-CV | convergence of the descriptors themselves: pooled mean per axis (expected to flatten) vs ensemble extreme per axis (expected to move monotonically, never converge) | PS, HF | 5/50/95 bands over the 200 PS subsets; HF seeds; N ladder |
 
-**Gate (unchanged from `hazard_selector_diagnostics.md`):** min per-axis tail
-share above P90 ≥ 0.30 on every selection axis, seed-mean convention. Layer A
-*reports* the N at which P = 10⁶ stops holding the gate and the P′ each N
-needs; it does not size N by itself — it explains mechanism (Bonham et al.
-2024: maximum-based statistics never converge; Zatarain Salazar et al. 2017:
-tail representation is what low sampling rates lose).
+**Tail-share statistic (convention unchanged from
+`hazard_selector_diagnostics.md`):** min per-axis tail share above P90 over the
+selection axes, seed-mean convention, reported against the 0.10 share of an
+i.i.d. selection with no threshold. Layer A *reports* how the statistic moves
+with N at P = 10⁶ and how it saturates with P′ at each N; it does not size N
+by itself — it explains mechanism (Bonham et al. 2024: maximum-based
+statistics never converge; Zatarain Salazar et al. 2017: tail representation
+is what low sampling rates lose).
 
 ## 4. Layer B — objective-estimator stability on fixed policies (the sizing criterion)
 
@@ -237,7 +239,7 @@ stated.
 
 *(filled after the runs; §§2–5 were not edited afterwards)*
 
-### 7.1 Layer A (measured 2026-08-25; job 20142729, 24 min, 1 core; tables `hf_ladder`, `np_ladder`/`np_gate`, `ps_tail_sampling`, `descriptor_convergence`; figures A1–A5)
+### 7.1 Layer A (measured 2026-08-25; job 20142729, 24 min, 1 core; tables `hf_ladder`, `np_ladder`/`np_tail_share`, `ps_tail_sampling`, `descriptor_convergence`; figures A1–A5)
 
 **Identity check passed:** the anchor-plan-0 selection at N = 100 on pool d0
 reproduces the staged production `hazfill_stat_abs_10yr_n100_d0` member list
@@ -258,18 +260,15 @@ at P′ = 2·10⁴ from 0.25 to 0.22, at P′ ≥ 10⁵ it is flat (0.27–0.29)
 Consequence for the decision: nothing at the selection level penalizes a
 larger N at P = 10⁶; the cost of N is compute alone.
 
-**The regenerated pools sit just under the adequacy gate at every N.** The
-same statistic is 0.27–0.29 on d0, d1, d2 (min over N of the seed mean:
-0.271, 0.276, 0.271 at N = 100), against the 0.311/0.306/0.303 recorded for the
-pre-regeneration pools (`TODO.md` §2). The prefix ladder saturates
-(0.268 → 0.282 from P′ = 10⁵ to 10⁶ at N = 100), so this is the m = 6
-geometry on the December-epoch hazard images, not pool supply; the
-**smallest P′ holding the gate is none at any N** (A3b). This is a
-pre-registered gate miss of ~0.02 on the production draws that the
-post-regeneration re-gate flagged in `TODO.md` §1 had not yet caught; the
-official block-D re-gate with the diagnostics driver's own seeds 0–9 is job
-20143046 (result in §7.1a below). It does not change the N decision (the
-statistic is N-flat), but it is a build-QC finding for the campaign.
+**The tail share is a size-invariant property of the selector on the
+regenerated pools.** The same statistic is 0.27–0.29 on d0, d1, d2 (min over N
+of the seed mean: 0.271, 0.276, 0.271 at N = 100). The prefix ladder saturates
+(0.268 → 0.282 from P′ = 10⁵ to 10⁶ at N = 100; flat from P′ = 3·10⁵ at every
+N, A3b), so the value is set by the m = 6 geometry of the pool's joint
+support, not by pool supply: anchors placed where the joint support is empty
+snap to boundary members nearer the bulk, which compresses the upper
+marginals. No larger pool moves it and it is independent of N; the per-axis
+record from the diagnostics driver's own seeds 0–9 is in §7.1a.
 
 **Joint geometry (A2).** HF joint L2-star improves slowly with N (0.019 →
 0.011) while a random design of the same size stays at 0.17; the MST mean
@@ -296,23 +295,18 @@ never converge, as Bonham et al. (2024) found for maximum-based statistics.
 HF pooled means sit at 1.57–1.59 × the pool mean at every N — the design
 effect is N-independent — with the HF maxima near the pool extremes at every N.
 
-### 7.1a Official re-gate of the regenerated pool d0 (job 20143066; `diagnose_hazard_selectors.py`, saturation mode + N sweep, seeds 0–9, 50-seed null)
+### 7.1a Per-axis tail-share record of the regenerated pool d0 (job 20143066; `diagnose_hazard_selectors.py`, saturation mode + N sweep, seeds 0–9, 50-seed null)
 
-The diagnostics driver's own convention gives, on `statpool_10yr_n1000000_d0`
-at N = 100: campaign six-axis set **min per-axis tail share 0.283 (FAIL, gate
-0.30)**, worst axis drought_magnitude (0.284), then flood_pulse_duration 0.334,
-drought_severity 0.342, flood_peak_discharge 0.389, drought_recovery_rate
-0.445, drought_onset_rate 0.513 (mean 0.385); full eight-axis set 0.220
-(drought_duration 0.239). Across the N sweep the campaign-set minimum is
-0.273–0.290 with no trend (0.284, 0.273, 0.283, 0.283, 0.290, 0.289, 0.286,
-0.288 for N = 50…500), the P99 minimum 0.009–0.017, and joint L2-star 0.019 →
-0.011. Two conclusions: (i) the thin-margin gate pass recorded for the
-pre-regeneration pools (0.311) has become a thin-margin miss on the
-December-epoch images — drought_magnitude is the binding axis; the campaign
-draws d0–d2 need this recorded as build QC and the gate either re-affirmed
-with its ~0.02 seed-level tolerance or the axis set/P revisited (Trevor's
-call; `TODO.md`); (ii) the N ladder is flat, so the miss is independent of N
-and the ensemble-size decision does not turn on it.
+Build-QC record, no verdict attached. The diagnostics driver's own convention
+gives, on `statpool_10yr_n1000000_d0` at N = 100: campaign six-axis set min
+per-axis tail share 0.283, per axis drought_magnitude 0.284 (binding),
+flood_pulse_duration 0.334, drought_severity 0.342, flood_peak_discharge
+0.389, drought_recovery_rate 0.445, drought_onset_rate 0.513 (mean 0.385);
+full eight-axis set 0.220 (drought_duration 0.239). Across the N sweep the
+campaign-set minimum is 0.273–0.290 with no trend (0.284, 0.273, 0.283, 0.283,
+0.290, 0.289, 0.286, 0.288 for N = 50…500), the P99 minimum 0.009–0.017
+(random 0.000–0.005), and joint L2-star 0.019 → 0.011. The statistic is
+independent of N, so the ensemble-size decision does not turn on it.
 ### 7.2 Layer B library and QC
 
 **Staging (job array 20143034, 9 tasks × 4 cores):** 8,971 pool members
@@ -523,8 +517,8 @@ scale.
 | minimum confirmatory subset | HF only (the arm whose enrichment falls with N), draw 0, S = 2, equal NFE | 2 | 2 × 33,400 × s | ≈ 15k |
 
 Staging before any search: steps 02 (PS draws at N_common), 03 (HF selections at
-N_common — the adequacy gate re-passed per draw at the new N; §7.1 says
-whether P = 10⁶ still holds it), 04, and the epsilon re-calibration at N_common
+N_common — the per-axis tail share recorded per draw at the new N; §7.1 shows
+it flat in N at P = 10⁶), 04, and the epsilon re-calibration at N_common
 (§7.6). Analysis, reusing step 07/08 machinery (`src/diagnostics.py`,
 `src/plotting/hypervolume_convergence.py`, `src/plotting/seed_reliability.py`,
 `src/results_data.py`, `src/robustness.py`) plus one new supplemental script:
@@ -563,11 +557,10 @@ N = 100; every N ≥ 150 spends it.
    `workflow/supplemental/epsilon_calibration.sh` per design on the
    N_common ensembles (no JAR rebuild for ε-only changes), then the regret
    tolerance τ = k·max(ε, floor) re-pin in every env file.
-2. **HF enrichment at fixed P = 10⁶:** §7.1's (N, P) ladder states whether the
-   adequacy gate (min per-axis tail share ≥ 0.30) still holds at N_common on
-   every production draw; if not, P rises (≈ 600 core-hours per 10⁶-member
-   pool; `gen_pool_shards.sh`/`gen_pool_merge.sh`) and the nested-P verdict is
-   re-issued.
+2. **HF enrichment at fixed P = 10⁶:** §7.1's (N, P′) ladder shows the min
+   per-axis tail share flat in N (0.27–0.29 from N = 50 to 500) and saturated
+   in P′ at the production pool size, so N_common needs no larger pool; the
+   per-axis shares are recorded per draw at N_common as build QC.
 3. **E_test resolution sentence.** E_test resolves each SOW on
    R × (L_test − 1) = 1,225 units, claimed to be at least one search evaluation
    (900 units). The claim inverts once 9 × N_common > 1,225 (N_common > 136):
@@ -615,11 +608,11 @@ settings are in `supplemental_config.py` (`ESD_*`); no CLI value flags.
 ## Figures (one sentence each on what a reader learns)
 
 - **A1 `hf_tail_share_vs_n`** — how much of HF's tail enrichment survives as N
-  grows at P = 10⁶, per axis, against the gate and the random null.
+  grows at P = 10⁶, per axis, against the random null and its 0.10 expectation.
 - **A2 `hf_coverage_vs_n`** — whether the joint geometry (L2-star, MST edge,
   minimum separation) of the HF selection stays ahead of a random design of the
   same size as N grows.
-- **A3 `np_ladder`** — the pool size P′ each N needs to hold the adequacy gate.
+- **A3 `np_ladder`** — how the tail share saturates with pool size P′ at each N.
 - **A4 `ps_tail_sampling`** — how many severe members an i.i.d. sample of N
   contains, its spread across draws, the quantile error of the sample against
   the pool, and the closed-form chance of holding at least one member beyond

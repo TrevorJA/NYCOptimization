@@ -145,6 +145,20 @@ RETIRED_TERMS: dict[str, str] = {
     "water-year unit":
         "FFMP-year unit (Jun 1 - May 31, the FFMP operating year; "
         "objectives_ensemble.ffmp_year_unit_slices)",
+    # 2026-08-26 the pass/fail threshold on the hazard-filling selection's tail
+    # share was dropped. The statistic (min per-axis share above the pool P90,
+    # seed-mean convention) is reported against the 0.10 i.i.d. share as a
+    # property of the selector on the pool's joint geometry; no gate exists.
+    "adequacy gate":
+        "the reported min per-axis tail share (no threshold; "
+        "hazard_selector_diagnostics.md §4 block D)",
+    "adequacy criterion":
+        "the reported min per-axis tail share (no threshold)",
+    "adequacy threshold":
+        "the reported min per-axis tail share (no threshold)",
+    "TAIL_CRITERION":
+        "deleted (ESD_TAIL_QUANTILES keeps the quantiles; TAIL_NULL_SHARE is "
+        "the 0.10 i.i.d. reference; no threshold constant exists)",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

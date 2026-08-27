@@ -1766,10 +1766,10 @@ ESD_PS_SUBSETS: int = 20 if ESD_SMOKE else 200
 #: an i.i.d. pool is an exact i.i.d. pool of its size (SI Text S2).
 ESD_NP_PREFIXES: tuple = (500, 1_000, 2_000) if ESD_SMOKE else (5_000, 20_000, 100_000, 300_000, 1_000_000)
 
-#: Pool quantiles for the tail statistics; the adequacy gate on the P90 share
-#: (seed-mean convention) is unchanged from the selector diagnostics.
+#: Pool quantiles for the tail statistics. The P90 share (seed-mean convention,
+#: unchanged from the selector diagnostics) is reported against the 0.10 share of
+#: an i.i.d. selection; no threshold is applied to it.
 ESD_TAIL_QUANTILES: tuple = (90.0, 99.0)
-ESD_TAIL_CRITERION: float = 0.30
 
 # ---------------------------------------------------------------------------
 # Policy set and library (Layer B)

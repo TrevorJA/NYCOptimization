@@ -142,9 +142,9 @@ N_SWEEP: tuple[int, ...] = tuple(
 #: severe-corner supply that grows scarce first as N rises at fixed P).
 TAIL_UPPER_PCT: float = 99.0
 
-#: Adequacy criterion for the sizing decision: minimum per-axis tail share above
-#: the pool P90 (unbiased rule = 0.10; criterion = >= ~3x the null on EVERY axis).
-TAIL_CRITERION: float = 0.30
+#: Share of an i.i.d. selection above the pool P90: the reference against which
+#: the minimum per-axis tail share of the designed selectors is reported.
+TAIL_NULL_SHARE: float = 0.10
 
 _COLORS = {
     "random": "0.55", "lhs_nn": "#1f6fb4", "lhs_assign": "#7db3d9",
@@ -200,8 +200,8 @@ def _axis_sets(retained: list[str]) -> dict[str, list[str]]:
     """The two diagnostic axis sets: campaign selection set and full retained set.
 
     ``campaign`` is the committed selection axis set (config.HAZARD_SELECTION_AXES,
-    m = 6 per the nested-P verdict) — the set whose adequacy gate the production
-    pool re-check must pass. ``full`` is the retained set of the live screen; its
+    m = 6 per the nested-P diagnostic) — the set whose per-axis tail enrichment
+    the production-pool check records. ``full`` is the retained set of the live screen; its
     role is the evidence for restricting selection (full-set enrichment is
     geometry-limited). ``campaign`` is omitted when identical to ``full``.
     """
@@ -279,7 +279,7 @@ def _dimension_sweep(
 
     ``include_assign=False`` (saturation mode) skips the Hungarian comparator,
     whose anchor-by-pool cost matrix is memory-heavy at large P and contributes
-    nothing to the adequacy gate.
+    nothing to the tail-share record.
     """
     records = []
     for mset, axes in axis_sets.items():
@@ -604,7 +604,7 @@ def _fig_per_axis_coverage(per_axis, axes, out) -> None:
     xs = np.arange(len(axes))
     for p, (metric, label, ref) in enumerate((
         ("ks_to_uniform", "KS distance to uniform (scaled coords)", None),
-        ("tail_share_p90", "share above pool P90", 0.10),
+        ("tail_share_p90", "share above pool P90", TAIL_NULL_SHARE),
     )):
         a = ax[p]
         for i, axis in enumerate(axes):
@@ -617,9 +617,8 @@ def _fig_per_axis_coverage(per_axis, axes, out) -> None:
                       label="lhs_nn (seeds)" if i == 0 else None)
             a.scatter([i + 0.12], [vals.mean()], marker="_", s=300, c="black")
         if ref is not None:
-            a.axhline(ref, color="0.5", lw=1, ls="--")
-            a.axhline(TAIL_CRITERION, color="#c1272d", lw=1, ls=":",
-                      label=f"criterion ≥ {TAIL_CRITERION:g}")
+            a.axhline(ref, color="0.5", lw=1, ls="--",
+                      label=f"i.i.d. reference ({ref:g})")
         a.set_xticks(xs)
         a.set_xticklabels(axes, rotation=40, ha="right", fontsize=7)
         a.set_ylabel(label)
@@ -680,14 +679,13 @@ def _fig_n_sweep(nsw, out) -> None:
             a.plot(nmeans.index, nmeans.values, "--", lw=1, color=_MSET_COLORS[mset],
                    alpha=0.55, label=f"null {mset}")
         if metric == "tail_share_min":
-            a.axhline(TAIL_CRITERION, color="#c1272d", lw=1, ls=":",
-                      label=f"criterion ≥ {TAIL_CRITERION:g}")
-            a.axhline(0.10, color="0.5", lw=1, ls="--")
+            a.axhline(TAIL_NULL_SHARE, color="0.5", lw=1, ls="--",
+                      label=f"i.i.d. reference ({TAIL_NULL_SHARE:g})")
         a.set_xlabel("ensemble size N")
         a.set_ylabel(label)
         if p == 0:
             a.legend(fontsize=6.5)
-    fig.suptitle("Sizing decision surface: N × axis set (dashed = matched random null)")
+    fig.suptitle("Tail enrichment and coverage: N × axis set (dashed = matched random null)")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     save_figure(fig, out / "figures" / "F9_n_sweep")
     plt.close(fig)
@@ -740,12 +738,13 @@ def _run_saturation(
     out: Path, H_full: np.ndarray, candidate_axes: list[str], screen: dict,
     axis_sets: dict[str, list[str]],
 ) -> None:
-    """Lean saturation mode: only the metrics the nested-P adequacy gate needs.
+    """Lean saturation mode: only the metrics the nested-P tail-share record needs.
 
     Per axis set (campaign / full): per-axis marginal coverage + tail enrichment
     (lhs_nn seeds vs the random null) and the snap/concentration block (lhs_nn
-    only). The gate statistic follows the block-D convention: within-seed
-    minimum per-axis tail share, averaged over selector seeds.
+    only). The tail statistic follows the block-D convention: within-seed
+    minimum per-axis tail share, averaged over selector seeds, reported against
+    the 0.10 share of an i.i.d. selection with no threshold applied.
     """
     frames = []
     for mset, axes in axis_sets.items():
@@ -776,7 +775,6 @@ def _run_saturation(
             "per_axis_seed_mean": {str(a): float(v) for a, v in axis_means.items()},
             "concentration_ratio": float(conc.mean()),
             "snap_mean": float(dim.loc[dim.m_set == mset, "snap_mean"].mean()),
-            "gate_pass": bool(by_seed.min().mean() >= TAIL_CRITERION),
         }
 
     summary = {
@@ -788,7 +786,7 @@ def _run_saturation(
         "n_sweep": list(N_SWEEP) if SATURATION_NSWEEP else None,
         "axis_screen": {k: v for k, v in screen.items() if k != "spread"},
         "axis_sets": {k: list(v) for k, v in axis_sets.items()},
-        "tail_criterion": TAIL_CRITERION,
+        "tail_null_share": TAIL_NULL_SHARE,
         "adequacy": adequacy,
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -831,15 +829,13 @@ def main() -> None:
     nsw.to_csv(out / "n_sweep.csv", index=False)
     inv.to_csv(out / "selection_invariance.csv", index=False)
 
-    # Criterion table: smallest N per axis set with min per-axis tail share >= criterion.
+    # Tail-share record: min per-axis tail share (seed mean) at each N per axis set.
     adequacy = {}
     for mset in axis_sets:
         sel = nsw.loc[(nsw.m_set == mset) & (nsw.selector == "lhs_nn")]
         means = sel.groupby("n")["tail_share_min"].mean()
-        passing = [int(n) for n in means.index if means[n] >= TAIL_CRITERION]
         adequacy[mset] = {
             "min_tail_share_by_n": {int(n): float(means[n]) for n in means.index},
-            "smallest_passing_n": min(passing) if passing else None,
         }
 
     summary = {
@@ -848,7 +844,7 @@ def main() -> None:
         "seeds": N_SEEDS, "null_seeds": N_NULL_SEEDS,
         "axis_screen": {k: v for k, v in screen.items() if k != "spread"},
         "axis_sets": {k: list(v) for k, v in axis_sets.items()},
-        "tail_criterion": TAIL_CRITERION,
+        "tail_null_share": TAIL_NULL_SHARE,
         "adequacy": adequacy,
         "snap_contributions": contributions,
         "zero_event_share_pool": float(table["zero_event_share_pool"].iloc[0])

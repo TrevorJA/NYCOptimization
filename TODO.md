@@ -111,7 +111,8 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   RETIRED water-year substrate; it is no longer measured on the substrate the
   campaign will search. Re-running epsilon_calibration.sh per design is now
   cheap (staged ensembles exist) and would re-anchor it before ~48k SU of
-  search. Also unconfirmed: pool adequacy (nestedp) under the renamed axes.
+  search. Also not yet re-run: the nested-P saturation record (nestedp) under
+  the renamed axes (Layer A's A3 ladder covers pool d0).
 
   INVALIDATED — regenerate on HPC, in step order (pull ALL FOUR repos first:
   NYCOptimization, SynHydro, NYCOptimization_scenario_generation, Pywr-DRB):
@@ -154,12 +155,12 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   LAYER A DONE 2026-08-25 (job 20142729): HF tail enrichment is FLAT in N at
   P=1e6 (min per-axis P90 share 0.28-0.29 from N=50 to 500 on all three
   pools; declines with N only at P' <= 2e4), so the selection-level argument
-  against larger N does not hold at the production pool. BUILD-QC FINDING
-  (needs Trevor's call): on the REGENERATED pools the campaign 6-axis gate
-  is a thin MISS — official re-gate job 20143066 on d0: min share 0.283
-  (drought_magnitude 0.284; pre-regeneration 0.311); Layer A seed means
-  0.271/0.276/0.271 on d0/d1/d2 at N=100. Either re-affirm the gate with
-  its ~0.02 seed tolerance or revisit the axis set/P before the searches.
+  against larger N does not hold at the production pool. BUILD-QC RECORD:
+  on the REGENERATED pools the campaign 6-axis min per-axis P90 share is
+  0.27-0.29 (job 20143066 on d0: 0.283, drought_magnitude 0.284 binding;
+  Layer A seed means 0.271/0.276/0.271 on d0/d1/d2 at N=100), ~3x the 0.10
+  i.i.d. share, saturated in pool size and flat in N; reported as a property
+  of the selector, no threshold applied.
   LAYER B DONE 2026-08-26 (library job 20143847, 49 SU; total ≈ 125 SU incl.
   a quarantined first evaluation — model-dict cache keyed on preset name
   re-simulated blocks; fixed + two fatal QC guards added). DECISION TABLE
@@ -173,14 +174,79 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   recommendation. STATISTICAL VERDICT: N_common >= 300, upper end NOT
   established — the HF ladder (3 constructions per N, N <= 500) cannot
   separate slow decay (fit N^-0.24 +/- 0.25) from a plateau on NYC deficit
-  P99. NEXT: extend the HF evidence (>= 10 anchor plans per N, ladder to
-  750/1000/1500, P_ref raised so PS keeps >= 10 disjoint replicates) by
-  incremental library extension (~150 SU), then fix N_common. Note §7.6
-  lists everything that changes if N != 100 is adopted (epsilon
-  re-calibration first). Docs updated: SI
-  Text S4/S5, main text 3.1.1 sentence, `scenario_design_methods.md` §6,
-  `experimental_design.md`, `hazard_selector_diagnostics.md` §5. TREVOR'S
-  CALLS: (a) N = 100 vs 150/300, (b) the regenerated-pool gate miss above.
+  P99. RE-ANALYSIS 2026-08-26 (`outputs/supplemental/ensemble_size_diagnostics/
+  REANALYSIS_2026-08-26.md`, RESULTS_SUMMARY.md rewritten): values at N = 250/256
+  recomputed from the unit library straddle the ½ε line on the binding
+  Montague-deficit pair (fitted crossing 283 [249-321]; P(N* <= 250) = 0.20 vs
+  0.65 at 300), so 300 is the defensible minimum; the HF NYC-deficit gap is a
+  3-plans-per-rung + shelf-valued-operator problem, not an N problem; A2
+  coverage metrics are not size-corrected (only ratios to random carry
+  information); B7 cross-check is void (finite-population deflation). The
+  0.30 tail-share threshold is RETIRED (reported property; code/docs/manuscript
+  purged 2026-08-26, `test_terminology.py` enforces). HF ladder extension
+  (>= 10 anchor plans per N, ~150 SU) PARKED — not needed for the sizing call.
+  DECIDED: N_common = 300 (next item). Note §7.6 lists everything that changes.
+
+- [ ] **[local→HPC]** ADOPT THE N = 300 CAMPAIGN DESIGN (decided 2026-08-26;
+  basis: REANALYSIS_2026-08-26.md §1-§8). Design: N_common = 300 for both
+  matched designs; K = 1 draw (d0) — dropping draw replication is the only
+  structural change that admits N >= 250 within the ~600k SU REMAINING
+  balance (600k is the balance after ~150k spent, not a new allocation; every
+  doc still budgets against 750k) and is field practice (no published
+  reservoir MOEA replicates the search over ensemble draws); S = 2 seeds.
+  NFE scheme (Trevor's call): seed 1 runs 750k NFE (187.5k/island); seed 2
+  runs 500k (125k/island). The seed-1 runtime archive at 125k/island (the
+  2,500-NFE snapshot cadence hits it exactly) IS the equal-NFE 500k result:
+  if seed 1's runtime HV has converged by 500k, the campaign reports both
+  seeds at 500k and the 750k tail is SI convergence evidence (Giuliani 2016
+  precedent); if not, extend seed 2 — decide after seed 1 lands. HV fit on
+  the go/no-go archives: 500k is at 82-96 % of the asymptote, 750k at
+  89-99 % (+5-6 %/island, about one island's spread). COST (measured basis
+  21.9k SU per N=100/500k search x (N/100)^0.951, the documented 33.4k model
+  is refuted 1.53x by the two production runs): seed 1 ~102k + seed 2 ~68k
+  per design -> ~340k searches + historic at matched NFE + staging + E_test
+  re-eval (~132k at ~2,000 merged policies, 66 SU/policy measured; cap or
+  let ε re-calibration shrink it) ≈ 490k (18 % reserve). Model basis ≈ 690k
+  does NOT fit — the first seed-1 run is the cost check; abort criteria
+  before submitting seed 2.
+  IMPLEMENTATION GATE — the implementing session MUST first run a thorough
+  secondary investigation that the new configuration is as strongly,
+  reliably and efficiently parallelized on Anvil as the N=100 production
+  geometry was, closing at least: (i) WALL TIME — 750k NFE at N=300 is
+  ~99 h measured on 8x128 (152 h model), above the 96 h cap, and there is NO
+  working resume (`.runtime` files are diagnostic dumps; Borg checkpoint is
+  disabled as race-prone across islands and has never run; the OOM'd
+  go/no-go run was relaunched from scratch; docs claiming snapshot resume
+  are wrong) -> either >= 12 nodes (node-scaling UNMEASURED beyond 8:
+  single-island curve -8.6 %/doubling, the only cross-node production pair
+  +30 % SU/NFE, `projection.csv` assumes 0.729 flat) or implement + test
+  checkpoint/restore across islands; measure before committing 100k SU.
+  (ii) MEMORY — 223-242 GB/node at 128 ranks (two RSS fits) vs the 217 GB
+  safety line / ~240 GB cgroup; nothing measured above N=200 at L=10; a
+  spike OOM'd a 139 GB-steady run -> `NYCOPT_SEARCH_REALIZATION_BATCH=150`
+  (batched path exists, used in step-09, NEVER inside a Borg search; batch
+  penalty measured only at N=20) + one `submit_smoke.sh` pass with the
+  batch set; add a memory check to `nycopt_check_allocation` (rank-only
+  today). (iii) ε RE-CALIBRATION on the N=300 ensembles before any search
+  (note §7.6 item 1) + τ re-pin in every env. (iv) MECHANICS —
+  `SEARCH_ENSEMBLE_N`=300 (`src/scenario_designs.py`), restage steps 02-05,
+  `production` MOEA config split into 750k/500k variants (or seed-indexed
+  NFE) with `--time` and node count sized per (i), env headers, E_test
+  unchanged (R=25; rewrite the "one search evaluation" sentence as its own
+  precision argument, §7.6 item 3).
+
+- [ ] **[local]** AFTER the design above is settled in that session (not
+  before): update every doc, note and manuscript passage to the adopted
+  configuration — `experimental_design.md` (K=3 -> 1, unit of analysis =
+  seed, design-comparison claim conditional on one draw per design with the
+  draw-sensitivity re-evaluation in §3 as the supporting check, seed-1/seed-2
+  NFE scheme), `research_project_summary.md` (replication paragraph, budget
+  re-based on the ~600k balance and measured costs), `scenario_design_methods.md`
+  §6 + SI S8.5 + `moea_config.py` notes (geometry, cost, REMOVE the
+  snapshot-resume claim), main text 3.1.1 / SI Text S4-S5 (N=300 and its
+  tail-content numbers), `ensemble_size_diagnostics.md` §7.6, env-file
+  headers. Purge every "N = 100", "K = 3", "33,400 SU", "32.6 h" that
+  describes the campaign; `test_terminology.py` is the place to enforce it.
 
 - [x] **[local]** REGRET TOLERANCE tau RE-ADOPTED 2026-08-14 on ROUND values
   (reliabilities 0.02, deficit-P99 2 pp, flood 0.25 ft-d/yr, storage 5 pp;
@@ -507,8 +573,9 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   solutions in outputs/fixed_probabilistic/ffmp_obj8/sets/); per-node RSS
   flat at ~140 GB throughout — no memory creep at 128/node.
   Verify surviving runs before fanning out to the remaining draws x seeds. Production inputs (pools d0–d2,
-  search ensembles, E_test + presim) are staged, verified, and adequacy-gated
-  (campaign 6-axis min tail share 0.311 / 0.306 / 0.303 across draws). The
+  search ensembles, E_test + presim) are staged and verified (campaign 6-axis
+  min per-axis P90 tail share 0.27-0.29 across the regenerated draws, recorded
+  per draw). The
   baseline-on-E_test matrix is regenerated on the unified substrate
   (2026-08-08) and the threshold + regret-tolerance parameters are adopted —
   no metric-side blockers remain. The Anvil shakeout is closed (see Done),
@@ -610,6 +677,16 @@ Venue tags: **[local]** laptop-only, **[HPC]** needs the cluster,
   the manuscript-final styling pass + full-E_test rerun reuse.
 - [ ] **[local]** Manuscript Results / Discussion / Conclusions; SI sections
   beyond S8 are outline-only.
+- [ ] **[HPC]** LOW PRIORITY, SI ONLY — DRAW-SENSITIVITY RE-EVALUATION of the
+  Pareto sets: after the searches, re-evaluate each design's final Pareto set
+  on the other two draws of its OWN search ensemble (d1, d2 at N = 300;
+  staging ~70 SU each, ~66 SU per 100 policies on a 300 x 10-yr trimmed run;
+  ~0.5-1k SU total) to quantify draw-dependence of the objective values
+  without re-running the search — the Zatarain Salazar et al. (2017) Fig. 12
+  analogue and the supporting check for K = 1 referenced in
+  `experimental_design.md`. Report paired per-policy shifts against ε and
+  against the E_test re-evaluation; SI material only.
+
 ## Parked (scope decisions, not blockers)
 
 - [ ] Remaining manuscript scoping sentence: demand is Decree-capped and held

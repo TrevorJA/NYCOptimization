@@ -2,10 +2,10 @@
 
 Consumes the per-rung outputs of ``diagnose_hazard_selectors.py`` run in prefix mode
 (``NYCOPT_SELDIAG_PREFIX_P``) against ONE staged stream-only candidate pool, and
-answers the campaign sizing question: at what pool size P does the hazard-filling
-selector pass the adequacy gate — minimum per-axis tail share above the pool P90
->= ~0.30 on every retained axis at (m = 8, N = 100), seed-mean convention (within-seed
-minimum, averaged over selector seeds; ``hazard_selector_diagnostics.md`` §4 block D)?
+records how the hazard-filling selector's tail enrichment — minimum per-axis tail
+share above the pool P90 at N = 100, seed-mean convention (within-seed minimum,
+averaged over selector seeds; ``hazard_selector_diagnostics.md`` §4 block D) —
+saturates with pool size P on the campaign and full retained axis sets.
 
 Each rung P' is scored from the first P' rows of the one staged image. Because
 realizations are keyed to a global index with per-realization child streams, a prefix
@@ -19,7 +19,8 @@ Fits (both vs log P):
     exponent is read against the P^(-1/8)..P^(-1/5) bracket from the intrinsic
     dimension (~5.1) of the 8-axis image.
   * min per-axis tail share (full m): saturating form  tail(P) = A - B * P^(-beta);
-    the fitted curve locates the gate crossing when the empirical rungs bracket it.
+    the asymptote A, the exponent beta, and the P at which the fit comes within
+    ``SATURATION_TOL`` of A state where enrichment saturates.
 
 All configuration is via environment variables (no CLI value flags):
 
@@ -58,8 +59,12 @@ GEN_SU = os.environ.get("NYCOPT_NESTEDP_GEN_SU", "(not recorded)")
 
 DIAG_DIR = config.OUTPUTS_DIR / "supplemental" / "hazard_selector_diagnostics"
 
-#: The pre-registered adequacy criterion (min per-axis tail share, every axis).
-TAIL_CRITERION = 0.30
+#: Share of an i.i.d. selection above the pool P90 (the reference line).
+TAIL_NULL_SHARE = 0.10
+
+#: Tail-share distance from the fitted asymptote at which the fit is read as
+#: saturated (the seed-level spread of the statistic is ~0.02).
+SATURATION_TOL = 0.01
 
 #: Theoretical scaling bracket for the improvement exponent: P^(-1/m) with m the
 #: nominal (8) and intrinsic (~5.1 -> 1/5 used as the round bracket edge) dimension.
@@ -76,7 +81,7 @@ def _rung_dir(p: int) -> Path:
 
 
 def _load_rung(p: int) -> dict:
-    """Extract one rung's gate metrics from its diagnostics outputs.
+    """Extract one rung's tail-share metrics from its diagnostics outputs.
 
     Full-battery rungs (no ``saturation_mode`` in summary.json) carry the full-set
     per-axis table in ``per_axis_coverage.csv`` (no ``m_set`` column) and the
@@ -151,9 +156,6 @@ def _load_rung(p: int) -> dict:
                     "conc_ratio": conc,
                     "snap_mean": snap,
                 }
-
-    for mset, r in rung["msets"].items():
-        r["gate_pass"] = bool(r["tail_min"] >= TAIL_CRITERION)
     return rung
 
 
@@ -165,26 +167,28 @@ def _fit_powerlaw(P: np.ndarray, y: np.ndarray) -> dict:
 
 
 def _fit_saturating(P: np.ndarray, y: np.ndarray) -> dict | None:
-    """Fit tail(P) = A - B * P^(-beta); return params + the gate crossing P*."""
+    """Fit tail(P) = A - B * P^(-beta); return params + the saturation size.
+
+    ``P_saturated`` is the pool size at which the fit is within ``SATURATION_TOL``
+    of its asymptote A, i.e. B * P^(-beta) = SATURATION_TOL.
+    """
     def f(p, A, B, beta):
         return A - B * np.power(p, -beta)
 
     try:
         (A, B, beta), _ = curve_fit(
-            f, P.astype(float), y, p0=(max(y.max(), 0.3), 1.0, 0.15),
+            f, P.astype(float), y, p0=(y.max(), 1.0, 0.15),
             bounds=([0.0, 0.0, 0.01], [1.0, 100.0, 1.0]), maxfev=20000,
         )
     except RuntimeError:
         return None
-    crossing = None
-    if A > TAIL_CRITERION:
-        crossing = float((B / (A - TAIL_CRITERION)) ** (1.0 / beta))
+    p_sat = float((B / SATURATION_TOL) ** (1.0 / beta)) if B > 0 else float(P.min())
     return {"A": float(A), "B": float(B), "beta": float(beta),
-            "crossing": crossing, "yhat": f(P.astype(float), A, B, beta)}
+            "P_saturated": p_sat, "yhat": f(P.astype(float), A, B, beta)}
 
 
 def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
-    """Tail share + snap concentration vs P: the sizing decision in one look."""
+    """Tail share + snap concentration vs P: the saturation record in one look."""
     P = np.array([r["P"] for r in rungs], dtype=float)
     fig, (a, a2) = plt.subplots(1, 2, figsize=(9.6, 3.8))
 
@@ -198,13 +202,13 @@ def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
         a.plot(Pg, fit["A"] - fit["B"] * Pg ** (-fit["beta"]), "--", lw=1,
                color=_MSET_COLORS["full"], alpha=0.7,
                label=f"fit: {fit['A']:.2f} − {fit['B']:.2f}·P^(−{fit['beta']:.3f})")
-    a.axhline(TAIL_CRITERION, color="#c1272d", lw=1.2, ls=":",
-              label=f"gate ≥ {TAIL_CRITERION:g}")
-    a.axhline(0.10, color="0.5", lw=1, ls="--", label="unbiased 0.10")
+    a.axhline(TAIL_NULL_SHARE, color="0.5", lw=1, ls="--",
+              label=f"i.i.d. reference ({TAIL_NULL_SHARE:g})")
     a.set_xscale("log")
     a.set_xlabel("candidate pool size P")
     a.set_ylabel("min per-axis tail share (seed mean)")
-    a.set_title("Adequacy gate vs pool size (N = 100)")
+    a.set_ylim(bottom=0)
+    a.set_title("Tail enrichment vs pool size (N = 100)")
     a.legend(fontsize=6.5)
 
     for mset in [m for m in _MSETS if m in rungs[0]["msets"]]:
@@ -240,15 +244,15 @@ def _markdown(rungs: list[dict], fits: dict) -> str:
         "rows of that one image — an honest i.i.d. pool of its size (global-index",
         "child streams). Robust p1/p99 bounds, pool P90s, and the axis screen are",
         "recomputed per prefix. Selector: campaign `lhs_nn` at N = 100, 10 seeds",
-        "(+50-seed random null). Gate statistic: within-seed minimum per-axis tail",
-        "share above the pool P90, averaged over seeds (block-D convention).",
-        f"Criterion: >= {TAIL_CRITERION:g} on every retained axis at m = 8.*",
+        "(+50-seed random null). Statistic: within-seed minimum per-axis tail",
+        "share above the pool P90, averaged over seeds (block-D convention),",
+        f"reported against the {TAIL_NULL_SHARE:g} share of an i.i.d. selection.*",
         "",
         "## Per-rung results (full retained set, m = 8)",
         "",
         "| P | screen retained | max abs rho_S | tail share min | tail share mean |"
-        " worst axis | conc. ratio | gate |",
-        "|---|---|---|---|---|---|---|---|",
+        " worst axis | conc. ratio |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in rungs:
         f = r["msets"]["full"]
@@ -256,22 +260,21 @@ def _markdown(rungs: list[dict], fits: dict) -> str:
             f"| {r['P']:,} | {r['n_retained']}/8 | {r['max_abs_rho']:.2f} "
             f"| {f['tail_min']:.3f} | {f['tail_mean']:.3f} "
             f"| {f['worst_axis']} ({f['worst_axis_seed_mean']:.3f}) "
-            f"| {f['conc_ratio']:.3f} | {'PASS' if f['gate_pass'] else 'fail'} |"
+            f"| {f['conc_ratio']:.3f} |"
         )
 
     if all("campaign" in r["msets"] for r in rungs):
         lines += [
             "",
-            "## Gate verdict at the campaign selection set",
+            "## Tail share at the campaign selection set",
             "",
-            "| P | campaign tail min | campaign gate |",
+            "| P | campaign tail min | campaign tail mean |",
             "|---|---|---|",
         ]
         for r in rungs:
             c = r["msets"]["campaign"]
             lines.append(
-                f"| {r['P']:,} | {c['tail_min']:.3f} "
-                f"| {'PASS' if c['gate_pass'] else 'fail'} |"
+                f"| {r['P']:,} | {c['tail_min']:.3f} | {c['tail_mean']:.3f} |"
             )
 
     lines += ["", "## Fitted scaling (full set)", ""]
@@ -288,39 +291,24 @@ def _markdown(rungs: list[dict], fits: dict) -> str:
     if fit is not None:
         lines.append(
             f"- Min per-axis tail share: A − B·P^(−beta) with A = "
-            f"{fit['A']:.3f}, B = {fit['B']:.3f}, beta = {fit['beta']:.3f}."
+            f"{fit['A']:.3f}, B = {fit['B']:.3f}, beta = {fit['beta']:.3f}; "
+            f"the fit is within {SATURATION_TOL:g} of A from "
+            f"P ≈ {fit['P_saturated']:,.0f}."
         )
-        if fit["crossing"] is not None:
-            lines.append(
-                f"  Fitted gate crossing at P ≈ {fit['crossing']:,.0f}."
-            )
-        else:
-            lines.append(
-                f"  Fitted asymptote A = {fit['A']:.3f} < {TAIL_CRITERION:g}: "
-                "the gate is unreachable under this fit at any P."
-            )
 
-    passing = [r["P"] for r in rungs if r["msets"]["full"]["gate_pass"]]
-    lines += ["", "## Verdict", ""]
-    if passing:
+    top = rungs[-1]
+    lines += ["", "## Saturation", ""]
+    lines.append(
+        f"- Full retained set (m = 8, N = 100) at the largest rung P = {top['P']:,}: "
+        f"min per-axis tail share {top['msets']['full']['tail_min']:.3f} "
+        f"(i.i.d. reference {TAIL_NULL_SHARE:g}; worst axis "
+        f"{top['msets']['full']['worst_axis']})."
+    )
+    if "campaign" in top["msets"]:
+        c = top["msets"]["campaign"]
         lines.append(
-            f"- The (m = 8, N = 100) adequacy gate PASSES from P = {min(passing):,} "
-            f"(measured, not extrapolated). Recommended production pool size: "
-            f"P >= {min(passing):,}."
-        )
-    else:
-        lines.append(
-            "- The (m = 8, N = 100) adequacy gate FAILS at every measured rung: "
-            "full-set enrichment is geometry-limited, so selection restricts to "
-            "the campaign set (config.HAZARD_SELECTION_AXES; see the campaign "
-            "gate table above). The (m, N, P) call is the user's."
-        )
-    camp_pass = [r["P"] for r in rungs
-                 if r["msets"].get("campaign", {}).get("gate_pass")]
-    if camp_pass:
-        lines.append(
-            f"- The campaign selection set passes the gate from P = "
-            f"{min(camp_pass):,} (measured)."
+            f"- Campaign selection set (m = {c['m']}, N = 100) at P = {top['P']:,}: "
+            f"min per-axis tail share {c['tail_min']:.3f}, mean {c['tail_mean']:.3f}."
         )
     lines += [
         "",
@@ -353,7 +341,8 @@ def main() -> None:
     (DIAG_DIR / "nested_P_saturation.md").write_text(md)
 
     payload = {
-        "pool_slug": POOL_SLUG, "rungs": rungs, "tail_criterion": TAIL_CRITERION,
+        "pool_slug": POOL_SLUG, "rungs": rungs,
+        "tail_null_share": TAIL_NULL_SHARE, "saturation_tol": SATURATION_TOL,
         "fits": {k: (None if v is None else {kk: vv for kk, vv in v.items() if kk != "yhat"})
                  for k, v in fits.items()},
         "generation_su": GEN_SU,

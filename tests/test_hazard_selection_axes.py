@@ -1,9 +1,9 @@
-"""The campaign hazard-selection axis set (m = 6, nested-P verdict) stays coherent.
+"""The campaign hazard-selection axis set (m = 6, nested-P diagnostic) stays coherent.
 
 Guards the config default against drift: every configured selection axis must be
 a real candidate hazard metric, and the two axes the nested-P diagnostic dropped
-(structurally un-enrichable at any affordable pool size) must stay out unless the
-env override is used deliberately.
+(their per-axis tail enrichment is geometry-limited at any affordable pool size)
+must stay out unless the env override is used deliberately.
 """
 
 import config

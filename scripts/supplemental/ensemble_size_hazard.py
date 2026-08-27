@@ -21,7 +21,7 @@ Blocks (all tables under ``outputs/supplemental/ensemble_size_diagnostics/tables
                                  library plan.
   A-NP  ``np_ladder.csv``       the same selector on nested prefixes P' of pool
                                  d0 (exact i.i.d. pools of their size): the
-                                 joint (N, P) adequacy surface.
+                                 joint (N, P) tail-enrichment surface.
   A-PS  ``ps_tail_sampling.csv`` the exact i.i.d. law of a size-N subset of the
                                  pool image: per-axis counts above the pool
                                  P90/P99, relative quantile error, and the

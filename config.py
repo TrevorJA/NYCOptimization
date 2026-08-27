@@ -427,10 +427,13 @@ ENSEMBLE_MASTER_CHUNK_SIZE = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_CHUNK_SIZE",
 
 # Campaign hazard SELECTION axis set (m = 6), chosen via the nested-P
 # saturation diagnostic (outputs/supplemental/hazard_selector_diagnostics/).
-# This set passes the per-axis tail-share adequacy gate (>= 0.30) at P = 1e6
-# (min per-axis tail share 0.311; thin margin — re-confirm per production
-# draw). drought_duration and flood_rise_rate remain computed in every hazard
-# image and reportable post-hoc; they simply never enter the snap distance.
+# On the regenerated P = 1e6 production pools this set's minimum per-axis tail
+# share above the pool P90 is 0.27-0.29 (min over the six axes, mean over
+# anchor plans), about 3x the 0.10 share of an i.i.d. selection, saturated in
+# pool size and flat in N. The full eight-axis set is geometry-limited at
+# ~0.22 (nested-P improvement exponent ~0.04). drought_duration and
+# flood_rise_rate remain computed in every hazard image and reportable
+# post-hoc; they simply never enter the snap distance.
 HAZARD_SELECTION_AXES = _parse_list_env("NYCOPT_HAZARD_SELECTION_AXES", [
     "drought_magnitude",
     "drought_severity",

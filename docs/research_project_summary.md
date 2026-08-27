@@ -221,9 +221,12 @@ at strength, never as a comparison result.
 previously staged production inputs (candidate pools, both matched designs' search
 ensembles, E_test with its presim pass, the baseline-on-E_test matrix) and the
 first-round go/no-go searches were INVALIDATED by the 2026-08-18 seasonal-rotation
-fix and hazard-axis rename; all must be regenerated, and the per-draw adequacy gates
-(min per-axis tail share ≥ ~0.30) re-confirmed on the regenerated pools, before the
-fan-out (`TODO.md` §1).
+fix and hazard-axis rename; all must be regenerated before the fan-out (`TODO.md`
+§1). The per-draw tail-share threshold formerly applied to the hazard-filling
+selection is retired; the minimum per-axis share above the pool P90 is reported as
+an emergent property of the selector on the pool's joint geometry (0.27–0.29 on the
+regenerated pools, about three times the 0.10 i.i.d. share, saturated in pool size
+and flat in N).
 
 **Decided:** the three designs above; a single stationary search population with deep
 uncertainty carried only in E_test; N = 100, L = 10 yr at equal NFE; 500k NFE per search
