@@ -42,13 +42,13 @@ for GEOM in "${GEOMS[@]}"; do
     WANT_RANKS="${RANKS}" NYCOPT_MOEA_CONFIG="${CFG}" python3 -c "
 import os
 import config
-mc = config.ACTIVE_MOEA_CONFIG
+cfg = config.ACTIVE_MOEA_CONFIG
 want = int(os.environ['WANT_RANKS'])
-assert mc.total_ntasks_mpi == want, (
-    f'geometry drift: supplemental_config.BORG_SCALE_GEOMETRIES[{mc.name!r}] '
+assert cfg.total_ntasks_mpi == want, (
+    f'geometry drift: supplemental_config.BORG_SCALE_GEOMETRIES[{cfg.name!r}] '
     f'says {want} ranks but MOEAConfig.total_ntasks_mpi is '
-    f'{mc.total_ntasks_mpi} — realign the two registries.')
-print(f'geometry OK: {mc.name} = {mc.total_ntasks_mpi} ranks')
+    f'{cfg.total_ntasks_mpi} — realign the two registries.')
+print(f'geometry OK: {cfg.name} = {cfg.total_ntasks_mpi} ranks')
 "
     # Memory: 3G/rank (charged as 2 CPUs above shared's MaxMemPerCPU) up to 64
     # ranks; larger geometries use the default per-CPU budget, whose aggregate

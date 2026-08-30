@@ -8,7 +8,7 @@
 
 | Design | Search ensemble | Draws searched | Seeds | Role |
 |---|---|---|---|---|
-| `fixed_probabilistic` (PS) | N = 300 i.i.d. realizations, L = 10 yr | 1 (d0) | 2 | exact control |
+| `monte_carlo` (MC) | N = 300 i.i.d. realizations, L = 10 yr | 1 (d0) | 2 | exact control |
 | `hazard_filling_stationary` (HF) | N = 300 selected from the d0 P = 10⁶ pool, L = 10 yr | 1 (d0) | 2 | proposed method |
 | `historic` | one 78-yr trace | 1 | 2 | prevailing-practice reference, matched NFE |
 

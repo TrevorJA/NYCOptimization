@@ -124,7 +124,7 @@ def main() -> None:
     print(f"  {len(g)} candidate vectors.")
 
     a8cols = ["rel", "def", "fld", "sto", "a8_best__historic",
-              "a8_best__fixed_probabilistic",
+              "a8_best__monte_carlo",
               "a8_best__hazard_filling_stationary", "a8_verdict_best",
               "a8_spread_best", "a8_assay_min_best"]
     ok8 = g[g["a8_verdict_best"] == "informative"]
@@ -134,7 +134,7 @@ def main() -> None:
           .head(25).to_string(index=False))
 
     c3cols = ["rel", "def", "fld", "sto", "c3_q50__historic",
-              "c3_q50__fixed_probabilistic",
+              "c3_q50__monte_carlo",
               "c3_q50__hazard_filling_stationary", "c3_verdict_q50",
               "c3_spread_q50", "c3_assay_min_q50", "c3_verdict_best"]
     okc = g[(g["c3_verdict_q50"] == "informative")].drop_duplicates(
@@ -154,9 +154,9 @@ def main() -> None:
     print(f"    {len(both)} qualify.")
     print(both.sort_values("assay_worst", ascending=False)[
         ["rel", "def", "fld", "sto", "a8_best__historic",
-         "a8_best__fixed_probabilistic",
+         "a8_best__monte_carlo",
          "a8_best__hazard_filling_stationary", "a8_assay_min_best",
-         "c3_q50__historic", "c3_q50__fixed_probabilistic",
+         "c3_q50__historic", "c3_q50__monte_carlo",
          "c3_q50__hazard_filling_stationary", "c3_assay_min_q50",
          "assay_worst"]].head(30).to_string(index=False))
 
@@ -179,10 +179,10 @@ def main() -> None:
                 sub = sub[sub[col] == v2]
         col = {"rel": "rel", "dfc": "def", "fld": "fld", "sto": "sto"}[key]
         sub = sub[sub[col].isin(grid_v)].sort_values(col)
-        print(sub[[col, "a8_best__historic", "a8_best__fixed_probabilistic",
+        print(sub[[col, "a8_best__historic", "a8_best__monte_carlo",
                    "a8_best__hazard_filling_stationary", "a8_verdict_best",
                    "a8_assay_min_best", "c3_q50__historic",
-                   "c3_q50__fixed_probabilistic",
+                   "c3_q50__monte_carlo",
                    "c3_q50__hazard_filling_stationary", "c3_verdict_q50",
                    "c3_assay_min_q50"]].to_string(index=False))
 

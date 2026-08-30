@@ -198,10 +198,10 @@ def test_derive_slug_moea_config_suffix():
 @pytest.mark.slow
 def test_ensemble_not_in_slug_is_scenario_dir():
     """The search ensemble is the parent {scenario} dir, NOT part of the slug."""
-    env = {"NYCOPT_SCENARIO_DESIGN": "fixed_probabilistic",
+    env = {"NYCOPT_SCENARIO_DESIGN": "monte_carlo",
            "NYCOPT_MOEA_CONFIG": "production"}
     slug = _slug_with_env(env)
-    assert "kn_" not in slug and "fixed_probabilistic" not in slug
+    assert "kn_" not in slug and "monte_carlo" not in slug
     # The scenario name is the partition instead.
     code = (
         "import sys; sys.path.insert(0, '.'); "
@@ -218,7 +218,7 @@ def test_ensemble_not_in_slug_is_scenario_dir():
         capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stderr
-    assert [ln for ln in result.stdout.splitlines() if ln.strip()][-1] == "fixed_probabilistic"
+    assert [ln for ln in result.stdout.splitlines() if ln.strip()][-1] == "monte_carlo"
 
 
 @pytest.mark.slow

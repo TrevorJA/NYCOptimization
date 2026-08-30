@@ -30,8 +30,18 @@ RETIRED_TERMS: dict[str, str] = {
     "simulated annealing": "deterministic LHS + nearest-neighbour snap "
                            "(the annealer was never implemented)",
     "support_points": "deleted from the campaign",
-    "fixed_probabilistic_short": "fixed_probabilistic",
+    "fixed_probabilistic_short": "monte_carlo",
     "fixed_probabilistic_long": "deleted from the campaign",
+    # The i.i.d. control is the Monte Carlo Sampling design: N realizations
+    # drawn independently from the stationary generator and held fixed across
+    # the search (the sample average approximation). "Monte Carlo" names this
+    # design only; the hazard-filling candidate pool is "drawn i.i.d.", and
+    # E_test estimator noise is "sampling noise".
+    "fixed_probabilistic": "monte_carlo (the Monte Carlo Sampling design, MC)",
+    "resampled_probabilistic": "monte_carlo_resampled",
+    "probabilistic sampling": "Monte Carlo sampling (the Monte Carlo Sampling "
+                              "design, MC)",
+    "fixedprob": "mc (workflow/envs/ffmp_obj8_mc_*.env)",
     "regret_from_best": "deleted -- set-relative and design-coupled",
     # The name stays retired although incumbent-relative regret is computed:
     # Herman et al. (2015)'s R1 is regret from a baseline STATE OF THE WORLD,

@@ -301,7 +301,7 @@ def test_null_differences_are_within_design_only(tmp_path):
 def test_assay_sensitivity_flags_an_insensitive_tolerance(tmp_path):
     """If the unmatched reference cannot be separated, a null is uninformative."""
     rows = []
-    for design, gap in (("historic", 0.0), ("fixed_probabilistic", 0.30)):
+    for design, gap in (("historic", 0.0), ("monte_carlo", 0.30)):
         for draw in (0, 1):
             rows += [(design, draw, 0, 1.0, 0.40 + gap + 0.005 * draw, 0.0, 4),
                      (design, draw, 0, 9.0, 0.99 + 0.0 * draw, 0.0, 4)]

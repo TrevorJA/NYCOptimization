@@ -86,11 +86,11 @@ def merge_equal_nfe(formulation: str, nfe: int, install: bool) -> Path:
     scenario = active_scenario_name()
     slug = derive_slug(formulation)
     sets_dir = run_output_dir(scenario, slug, "sets")
-    mc = ACTIVE_MOEA_CONFIG
+    cfg = ACTIVE_MOEA_CONFIG
     var_names = get_var_names(formulation)
     parts, provenance = [], []
-    for seed in range(1, (mc.n_seeds or 1) + 1):
-        budget = mc.max_evaluations_for_seed(seed)
+    for seed in range(1, (cfg.n_seeds or 1) + 1):
+        budget = cfg.max_evaluations_for_seed(seed)
         if budget is None or budget < nfe:
             raise ValueError(f"seed {seed} budget {budget} is below the reporting NFE {nfe}")
         src = (_snapshot_set_path(sets_dir, slug, seed, nfe) if budget > nfe

@@ -18,7 +18,7 @@ Configuration is via environment variables (no CLI value flags):
     NYCOPT_OVERLAY_POOL_SLUG      staged pool slug (default statpool_10yr_n1000000_d0)
     NYCOPT_OVERLAY_SEARCH_SLUGS   comma-separated staged search-ensemble slugs; empty =
                                   auto-discover staged dirs carrying a hazard_image.npz
-                                  with a non-empty selection (hazfill_*/fixedprob_*)
+                                  with a non-empty selection (hazfill_*/fixprob_*)
     NYCOPT_OVERLAY_AXES           comma-separated axis subset (default: the campaign
                                   selection set, config.HAZARD_SELECTION_AXES)
 

@@ -1,7 +1,7 @@
 # Hazard-Support Decomposition of the E_test Design Contrast (SI)
 
 *Supplemental re-scoring (SI Text S10) decomposing the `hazard_filling_stationary`
-(HF) − `fixed_probabilistic` (PS) difference on E_test by where each state of
+(HF) − `monte_carlo` (MC) difference on E_test by where each state of
 the world (SOW) sits relative to the stationary candidate pool's hazard support.
 Zero simulation, every deliverable reduces persisted artifacts. Code:
 `scripts/supplemental/hazard_support_run.py` (stage A support membership, stage
@@ -23,10 +23,10 @@ spans a CMIP6-informed forcing envelope and neither search design contains a
 climate signal. Putting climate-forced sub-ensembles inside the HF candidate
 pool is not run, because it would confound the selection-rule factor with
 search-population breadth and leak the test distribution into one design,
-voiding the i.i.d. control that makes PS the exact null for HF. The question is
+voiding the i.i.d. control that makes MC the exact null for HF. The question is
 instead answered from the persisted re-evaluation output.
 
-> Decompose the HF − PS difference on E_test by whether each SOW's hazard image
+> Decompose the HF − MC difference on E_test by whether each SOW's hazard image
 > lies inside, at the fringe of, or outside the stationary pool's hazard
 > support. A difference that persists on out-of-support SOWs states the
 > generalization claim directly. A difference confined to the supported region
@@ -149,7 +149,7 @@ Criteria are the focal criterion set of the active variant
 the cube's own `reeval_raw_meta.json`, the moving-measuring-stick guard). Both
 are labelled in every table and thresholds are never re-chosen.
 
-**Headline statistic.** The HF − PS difference of endpoint 1 per stratum, with
+**Headline statistic.** The HF − MC difference of endpoint 1 per stratum, with
 per-seed points on each design's searched draw and the design summarized by
 the seed mean (the seed is the unit of analysis, one searched draw per
 design). Uncertainty comes from a SOW-level bootstrap that resamples SOWs with
@@ -165,7 +165,7 @@ partitions of the same cubes are read together.
 
 **Decision rules.**
 
-- Generalization supported. The out-of-support HF − PS difference on endpoint
+- Generalization supported. The out-of-support HF − MC difference on endpoint
   1 is positive, its SOW-bootstrap 95 % CI excludes zero, and both seeds of
   each design agree in sign.
 - Claim bounded. The in-support difference is positive by the same standard
@@ -187,7 +187,7 @@ partitions of the same cubes are read together.
 | `F2_support_score_distribution` | How E_test divides across the strata and that the division is stable across the three pool draws (ECDF of `out_frac` per draw, cut points marked). |
 | `F3_axis_excursion` | Which hazard axes carry the excursion, by forcing tercile, and that seasonal structure is not an axis. |
 | `F4_reach_by_tercile` | Per selection axis, where E_test's sub-window quantiles sit against the pool's p1/p99 band, by forcing tercile. |
-| `F5_contrast_by_stratum` (stage B) | The headline, HF − PS satisficing and no-harm differences vs support stratum, seed-level points with SOW-bootstrap CIs. |
+| `F5_contrast_by_stratum` (stage B) | The headline, HF − MC satisficing and no-harm differences vs support stratum, seed-level points with SOW-bootstrap CIs. |
 | `F6_partition_agreement` (stage B) | Whether the hazard-support and forcing-tercile partitions tell the same story about where the difference lives. |
 | `F7_pool_vs_design_deficit` (stage B) | Failure rate vs pool-deficit decile (`HSD_DEFICIT_BINS` = 10) beside the step-11 search-ensemble deficit. |
 

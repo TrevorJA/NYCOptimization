@@ -4,7 +4,7 @@
 #
 # Every design generates from its own namespaced seed stream; the array index
 # is the ensemble-draw index k (0..K-1, K = design.n_ensemble_draws). The
-# pool-owning designs (`resampled_probabilistic`, `hazard_filling_*`) generate
+# pool-owning designs (`monte_carlo_resampled`, `hazard_filling_*`) generate
 # their candidate pool (+ hazard_image.npz) here, and the pool is regenerated
 # per draw (src/scenario_designs.py::pool_slug(draw)), so the array index
 # applies to pools too; the two DU hazard-filling designs share the pool of a
@@ -17,7 +17,7 @@
 # NYCOPT_ENSEMBLE_FORCE=1 to overwrite an already-staged slug.
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env \
 #          --array=0-2 workflow/02_generate_ensemble.sh
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env \
 #          --array=0-2 workflow/02_generate_ensemble.sh

@@ -37,8 +37,8 @@ import src.robustness as rob                                        # noqa: E402
 import supplemental_config as sc                                    # noqa: E402
 from src.etest import campaign_reeval_preset                        # noqa: E402
 
-DESIGNS = ("historic", "fixed_probabilistic", "hazard_filling_stationary")
-MATCHED = ("fixed_probabilistic", "hazard_filling_stationary")
+DESIGNS = ("historic", "monte_carlo", "hazard_filling_stationary")
+MATCHED = ("monte_carlo", "hazard_filling_stationary")
 CONTROL = "historic"
 #: Re-eval tag of the cubes scored: the campaign preset unless overridden.
 REEVAL_TAG = os.environ.get("NYCOPT_REEVAL_ENSEMBLE_PRESET") or campaign_reeval_preset()
@@ -226,11 +226,11 @@ def main() -> None:                                        # noqa: C901
         for _, r in g.iterrows():
             print(f"  {r['tau_k']:<5g} "
                   f"{r['best__historic']:9.3f}  "
-                  f"{r['best__fixed_probabilistic']:9.3f}  "
+                  f"{r['best__monte_carlo']:9.3f}  "
                   f"{r['best__hazard_filling_stationary']:9.3f}  "
                   f"{r['verdict_best']:<14s}  "
                   f"{r['median__historic']:8.3f}  "
-                  f"{r['median__fixed_probabilistic']:8.3f}  "
+                  f"{r['median__monte_carlo']:8.3f}  "
                   f"{r['median__hazard_filling_stationary']:8.3f}  "
                   f"{r['verdict_median']}")
 
@@ -490,17 +490,17 @@ def main() -> None:                                        # noqa: C901
             fam_rows.append(r)
     fam = pd.DataFrame(fam_rows)
     fam.to_csv(OUT / "rtolB_candidate_families.csv", index=False)
-    cols = ["family", "value", "best__historic", "best__fixed_probabilistic",
+    cols = ["family", "value", "best__historic", "best__monte_carlo",
             "best__hazard_filling_stationary", "verdict_best", "spread_best",
-            "median__historic", "median__fixed_probabilistic",
+            "median__historic", "median__monte_carlo",
             "median__hazard_filling_stationary", "verdict_median",
             "spread_median"]
     print(fam[cols].to_string(index=False))
     print("\n  (a2) same, restricted to the COMPROMISE 3 axes:")
     ccols = ["family", "value", "comp_best__historic",
-             "comp_best__fixed_probabilistic",
+             "comp_best__monte_carlo",
              "comp_best__hazard_filling_stationary", "comp_verdict_best",
-             "comp_median__historic", "comp_median__fixed_probabilistic",
+             "comp_median__historic", "comp_median__monte_carlo",
              "comp_median__hazard_filling_stationary", "comp_verdict_median"]
     print(fam[ccols].to_string(index=False))
 
@@ -524,9 +524,9 @@ def main() -> None:                                        # noqa: C901
     print(f"    {len(gr)} vectors; informative on BOTH best and median: "
           f"{len(info)}")
     show = ["rel", "def", "fld", "sto", "best__historic",
-            "best__fixed_probabilistic", "best__hazard_filling_stationary",
+            "best__monte_carlo", "best__hazard_filling_stationary",
             "spread_best", "median__historic",
-            "median__fixed_probabilistic",
+            "median__monte_carlo",
             "median__hazard_filling_stationary", "spread_median"]
     if len(info):
         print(info.sort_values("spread_median", ascending=False)[show]
@@ -537,7 +537,7 @@ def main() -> None:                                        # noqa: C901
     im["assay_min_gap_median"] = im[[
         f"assay_gap_median__{d}" for d in MATCHED]].min(axis=1)
     print(im.sort_values("assay_min_gap_median", ascending=False)[
-        show + ["assay_gap_median__fixed_probabilistic",
+        show + ["assay_gap_median__monte_carlo",
                 "assay_gap_median__hazard_filling_stationary"]]
         .head(20).to_string(index=False))
 
@@ -552,9 +552,9 @@ def main() -> None:                                        # noqa: C901
         comp_rows.append(r)
     cg = pd.DataFrame(comp_rows)
     cg.to_csv(OUT / "rtolB_candidate_grid_compromise.csv", index=False)
-    print(cg[["rel", "fld", "best__historic", "best__fixed_probabilistic",
+    print(cg[["rel", "fld", "best__historic", "best__monte_carlo",
               "best__hazard_filling_stationary", "verdict_best",
-              "median__historic", "median__fixed_probabilistic",
+              "median__historic", "median__monte_carlo",
               "median__hazard_filling_stationary", "verdict_median",
               "spread_median"]].to_string(index=False))
 

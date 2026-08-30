@@ -7,7 +7,7 @@ The planned main-text figure sequence. Figures 3–9 are rendered by `scripts/ma
 | 1 | Basin map (made outside this repo); a condensed FFMP operating-rules panel may join it or stand alone in Section 2 | not yet produced |
 | 2 | Graphical experimental-design diagram, panels (a) workflow, (b) hazard-filling selection, (c) re-evaluation and robustness comparison | not yet produced; working sketch `methods_diagram/sketch_v5.png` |
 | 3 | Deeply uncertain forcing space: CMIP6 change-factor profiles, harmonic fit, sampled box, change in the flow duration curve | `fig03_forcing_space.png` |
-| 4 | Realized hazard-space composition of the PS and HF search ensembles vs the candidate pool and the historical record | `fig04_ensemble_composition.png` |
+| 4 | Realized hazard-space composition of the MC and HF search ensembles vs the candidate pool and the historical record | `fig04_ensemble_composition.png` |
 | 5 | Each design's Pareto-approximate set on parallel axes (search-time objectives, shown per design, never compared across designs) | `fig05_pareto_set_parallel_axes.png` |
 | 6 | Robustness rankings: each design's policies sorted by E_test satisficing robustness under each criterion set (RQ2) | `fig06_criteria_robustness.png` |
 | 7 | All-Parties robustness vs no-harm frequency against the FFMP incumbent (RQ1 headline) | `fig07_regret_vs_incumbent.png` |

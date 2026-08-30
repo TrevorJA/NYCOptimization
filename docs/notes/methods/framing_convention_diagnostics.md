@@ -45,7 +45,7 @@ Measured on the N = 100 calibration cubes (900 pooled unit-years per design).
   τ_b 0.35–0.60 vs 0.92–0.93). Where estimable the two operators are
   rank-correlated ρ_S = 0.85–0.89, so the stabler mean is retained.
 - **Controllability.** Floor share of the baseline's flood burden 0.57
-  (fixed_probabilistic) and 0.61 (hazard_filling_stationary), so the
+  (monte_carlo) and 0.61 (hazard_filling_stationary), so the
   controllable fraction is at least 0.43 and 0.39.
 - **NJ delivery.** Max |ρ_S| against any objective 0.38 (flood mean), about
   0.15 against NYC delivery and ≤ 0.08 against Trenton. The only flagged pair

@@ -172,7 +172,7 @@ def _generate_forcing(
 
 
 def _build_direct_iid(design: ScenarioDesign, draw: int) -> None:
-    """Generate N i.i.d. realizations for one draw of ``fixed_probabilistic``.
+    """Generate N i.i.d. realizations for one draw of ``monte_carlo``.
 
     N theta draws x 1 realization each; under the stationary population this is N
     i.i.d. Kirsch-Nowak records, the statistical control for ``hazard_filling_stationary``.
@@ -213,7 +213,7 @@ def _build_lhs_theta(design: ScenarioDesign, draw: int) -> None:
 
 
 def _build_resample_pool(design: ScenarioDesign, draw: int) -> None:
-    """Generate the stationary resampling pool for ``resampled_probabilistic``.
+    """Generate the stationary resampling pool for ``monte_carlo_resampled``.
 
     The simulation layer redraws N indices from this i.i.d. pool at every function
     evaluation, so the pool is the staged artifact. Each draw gets a fresh pool.

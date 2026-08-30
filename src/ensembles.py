@@ -74,8 +74,8 @@ class EnsembleSpec:
     start_date: str | None = None
     # When True, this spec describes a resample pool: ``realization_indices``
     # is the full pool, and the simulation layer redraws ``resample_size``
-    # indices from it at every function evaluation (the resampled-
-    # probabilistic design, Trindade et al. 2017). False for all fixed
+    # indices from it at every function evaluation (the Monte Carlo
+    # resampled design, Trindade et al. 2017). False for all fixed
     # designs (the default).
     resample_per_eval: bool = False
     # Number of realizations to draw per evaluation when ``resample_per_eval``;

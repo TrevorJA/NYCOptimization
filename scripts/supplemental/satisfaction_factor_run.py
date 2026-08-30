@@ -24,7 +24,7 @@ via the filesystem barrier and deletes them.
 Usage (local smoke, historic design, serial):
     NYCOPT_SF_SMOKE=1 python scripts/supplemental/satisfaction_factor_run.py
 Usage (SLURM, one job per design):
-    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_fixed_probabilistic.env \\
+    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_monte_carlo.env \\
         workflow/supplemental/satisfaction_factor.sh
 """
 

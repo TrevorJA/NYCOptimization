@@ -12,7 +12,7 @@ Usage (from repo root, venv; submit via the epsilon_ensemble_refilter.sh
 launcher or any `shared` job):
     python3 scripts/supplemental/write_refiltered_sets.py \
         --slug ffmp_obj8 --suffix eps20260812 \
-        --scenarios historic fixed_probabilistic hazard_filling_stationary
+        --scenarios historic monte_carlo hazard_filling_stationary
 """
 
 import argparse
@@ -37,7 +37,7 @@ def main():
     ap.add_argument("--slug", default="ffmp_obj8")
     ap.add_argument("--suffix", default="eps20260812")
     ap.add_argument("--scenarios", nargs="+",
-                    default=["historic", "fixed_probabilistic",
+                    default=["historic", "monte_carlo",
                              "hazard_filling_stationary"])
     args = ap.parse_args()
 

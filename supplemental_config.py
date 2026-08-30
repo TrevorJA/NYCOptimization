@@ -249,7 +249,7 @@ EPS_SCALE_GRID: tuple = (0.25, 0.5, 1.0, 2.0, 4.0)
 #: the shared vector well beyond what the ensemble search measures need. Its
 #: cube and diagnostics stay reported; its archive resolves below its own noise
 #: floor (disclosed).
-EPS_CAMPAIGN_DESIGNS: tuple = ("fixed_probabilistic", "hazard_filling_stationary")
+EPS_CAMPAIGN_DESIGNS: tuple = ("monte_carlo", "hazard_filling_stationary")
 
 # ---------------------------------------------------------------------------
 # Output tree (gitignored, regenerable)
@@ -1283,7 +1283,7 @@ def rtol_table_path(name: str) -> Path:
 # Hazard-support decomposition of the E_test design contrast (HSD)
 # (docs/notes/methods/hazard_support_decomposition.md)
 #
-# Decomposes the hazard_filling - fixed_probabilistic difference on E_test by
+# Decomposes the hazard_filling - monte_carlo difference on E_test by
 # where each SOW sits relative to the stationary candidate pool's hazard
 # support. Zero simulation, two stages:
 #   stage A (policy-free): support membership of every E_test SOW against the
@@ -1380,7 +1380,7 @@ HSD_MIN_STRATUM_SOW: int = 30
 # ---------------------------------------------------------------------------
 # Stage B settings
 # ---------------------------------------------------------------------------
-#: SOW-level bootstrap replicates / seed for the paired HF - PS difference CI.
+#: SOW-level bootstrap replicates / seed for the paired HF - MC difference CI.
 HSD_BOOTSTRAP_N: int = 2000
 HSD_BOOTSTRAP_SEED: int = 7
 
@@ -1468,7 +1468,7 @@ ESD_POOL_P: int = 2_000 if ESD_SMOKE else 1_000_000
 ESD_POOL_DRAWS: tuple = (0, 1, 2)
 
 #: The library pool: every regenerated library member comes from THIS pool, so
-#: the PS reference prefix and the HF selections share one i.i.d. population.
+#: the MC reference prefix and the HF selections share one i.i.d. population.
 ESD_LIBRARY_POOL_DRAW: int = 0
 
 
@@ -1478,10 +1478,10 @@ def esd_pool_slug(draw: int) -> str:
 
 
 #: Staged production search ensembles evaluated as they are (already prepped):
-#: the PS fresh draws and the HF per-pool-draw constructions at N = 100.
+#: the MC fresh draws and the HF per-pool-draw constructions at N = 100.
 #: Design -> tuple of (draw, slug). Skipped with a message when not staged.
 ESD_STAGED_ENSEMBLES: "dict[str, tuple[tuple[int, str], ...]]" = {
-    "fixed_probabilistic": tuple(
+    "monte_carlo": tuple(
         (k, f"fixprob_10yr_n100_d{k}") for k in (0, 1, 2)),
     "hazard_filling_stationary": tuple(
         (k, f"hazfill_stat_abs_10yr_n100_d{k}") for k in (0, 1, 2)),
@@ -1503,7 +1503,7 @@ ESD_HF_ANCHOR_DRAWS: tuple = (0, 101, 102) if ESD_SMOKE else (0, 101, 102, 103, 
 ESD_HF_LIBRARY_PLANS: int = 2 if ESD_SMOKE else 3
 
 #: Random-null seeds (matched random designs of the same N) and the number of
-#: uniform i.i.d. subsets per N for the PS sampling-distribution block.
+#: uniform i.i.d. subsets per N for the MC sampling-distribution block.
 ESD_NULL_SEEDS: int = 10 if ESD_SMOKE else 50
 ESD_PS_SUBSETS: int = 20 if ESD_SMOKE else 200
 
@@ -1523,9 +1523,9 @@ ESD_TAIL_QUANTILES: tuple = (90.0, 99.0)
 ESD_FORMULATION: str = "ffmp"
 
 #: The epsilon-filtered merged reference sets whose UNION the per-objective
-#: bests and nearest neighbours are drawn from (PS rows before HF rows).
+#: bests and nearest neighbours are drawn from (MC rows before HF rows).
 ESD_POLICY_SET_FILES: "dict[str, Path]" = {
-    "fixed_probabilistic": _PROJECT_DIR / "outputs" / "fixed_probabilistic"
+    "monte_carlo": _PROJECT_DIR / "outputs" / "monte_carlo"
     / "ffmp_obj8" / "sets" / "ffmp_obj8_merged_eps20260812.set",
     "hazard_filling_stationary": _PROJECT_DIR / "outputs" / "hazard_filling_stationary"
     / "ffmp_obj8" / "sets" / "ffmp_obj8_merged_eps20260812.set",
@@ -1547,10 +1547,10 @@ ESD_POLICY_BEST_OBJECTIVES: tuple = (
 #: Size of the fixed policy set (incumbent + 9 by rule; smoke = incumbent + 1).
 ESD_N_POLICIES: int = 2 if ESD_SMOKE else 10
 
-#: Rows of the library pool forming the i.i.d. PS reference (a prefix).
+#: Rows of the library pool forming the i.i.d. MC reference (a prefix).
 ESD_P_REF: int = 200 if ESD_SMOKE else 5_000
 
-#: Minimum PS replicate count per N; disjoint prefix blocks are supplemented
+#: Minimum MC replicate count per N; disjoint prefix blocks are supplemented
 #: to this count with random overlapping subsets (flagged) where floor(P_REF/N)
 #: falls short.
 ESD_PS_MIN_REPLICATES: int = 4 if ESD_SMOKE else 20
@@ -1575,7 +1575,7 @@ ESD_STAGING_ROOT: "Path | None" = Path(os.environ.get(
 ESD_BOOTSTRAP_B: int = 100 if ESD_SMOKE else 1_000
 ESD_BOOTSTRAP_SEED: int = 11
 
-#: Random-subset seed for the supplemented PS replicates.
+#: Random-subset seed for the supplemented MC replicates.
 ESD_REPLICATE_SEED: int = 23
 
 #: Epsilon-cube cross-check: realization-axis subsample sizes and draws.
@@ -1586,7 +1586,7 @@ ESD_EPSCUBE_SUBSETS: int = 20
 # Pre-registered decision thresholds (Layer B; methods note §4.3)
 # ---------------------------------------------------------------------------
 #: Level SE <= ESD_LEVEL_SE_EPS_FRAC x epsilon; paired SE (binding) <=
-#: ESD_PAIRED_SE_EPS_FRAC x epsilon; flip rate <= ESD_FLIP_RATE_MAX; PS
+#: ESD_PAIRED_SE_EPS_FRAC x epsilon; flip rate <= ESD_FLIP_RATE_MAX; MC
 #: |optimism| <= ESD_OPTIMISM_EPS_FRAC x epsilon; HF construction SD <=
 #: ESD_LEVEL_SE_EPS_FRAC x epsilon.
 ESD_LEVEL_SE_EPS_FRAC: float = 1.0
@@ -1599,7 +1599,7 @@ ESD_OPTIMISM_EPS_FRAC: float = 0.5
 # ---------------------------------------------------------------------------
 #: (design, slug, seed) runtime archives read for the NFE-asymptote reading.
 ESD_NFE_ARCHIVES: tuple = (
-    ("fixed_probabilistic", "ffmp_obj8", 1),
+    ("monte_carlo", "ffmp_obj8", 1),
     ("hazard_filling_stationary", "ffmp_obj8", 1),
     ("historic", "ffmp_obj8_mm_full", 1),
     ("historic", "ffmp_obj8_mm_full", 2),

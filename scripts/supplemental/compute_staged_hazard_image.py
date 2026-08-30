@@ -10,7 +10,7 @@ window per realization, so the coordinates are commensurable with the candidate-
 images, the realized hazard-filling ensembles, and the E_test sub-window image.
 
 Intended for ensembles that never receive a hazard image on their generation path —
-``fixed_probabilistic`` stages flows only (its generator skips the image because no
+``monte_carlo`` stages flows only (its generator skips the image because no
 selection happens), yet the realized-composition diagnostics need its coordinates.
 
 Writes ``hazard_image.npz`` into the staged directory in the
@@ -24,7 +24,7 @@ Configuration is via environment variables (no CLI value flags):
 
 Run after the ensemble is staged (workflow step 02)::
 
-    NYCOPT_SCENARIO_DESIGN=fixed_probabilistic \
+    NYCOPT_SCENARIO_DESIGN=monte_carlo \
         python scripts/supplemental/compute_staged_hazard_image.py
 """
 

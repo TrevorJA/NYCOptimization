@@ -2,7 +2,7 @@
 
 *Paper 3 literature note. Annotated summaries of items in the Zotero collection "Paper 3 NYC Reoptimization" (`ISYGLK35`). Last updated 2026-07-13.*
 
-Scope: the end-to-end DU-optimization and adaptive-pathways lineage that this study plugs into — search across a deeply uncertain ensemble, re-evaluate on an independent ensemble, then discover/adapt. These define the applied workflow against which the ensemble-design intervention is positioned, and they all inherit the i.i.d./probabilistic search-ensemble construction the proposed hazard-space design replaces. The framework underpinning them (MORDM) and the robustness metrics they use are in [objective & robustness formulations](objective_and_robustness_formulations.md).
+Scope: the end-to-end DU-optimization and adaptive-pathways lineage that this study plugs into — search across a deeply uncertain ensemble, re-evaluate on an independent ensemble, then discover/adapt. These define the applied workflow against which the ensemble-design intervention is positioned, and they all inherit the i.i.d. Monte Carlo search-ensemble construction the proposed hazard-space design replaces. The framework underpinning them (MORDM) and the robustness metrics they use are in [objective & robustness formulations](objective_and_robustness_formulations.md).
 
 ---
 

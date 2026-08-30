@@ -5,7 +5,7 @@ The campaign re-evaluates every Pareto set on the leading ``E_TEST_REEVAL_N_THET
 SOWs of the generated 1,000-point E_test design (``src.etest``; 500 SOWs = the first 25 chunks,
 ``etest_kn_50yr_n25000_first25ch``). The subset keeps R (realizations per SOW) untouched, so
 every per-SOW objective value is computed in the final metric currency; only the cross-SOW
-Monte Carlo error depends on the prefix length (worst-case SE of a satisficing fraction is
+sampling error depends on the prefix length (worst-case SE of a satisficing fraction is
 0.5/sqrt(N_theta)).
 
 NOTHING is regenerated, copied, or re-prepped. The subset directory holds only three metadata

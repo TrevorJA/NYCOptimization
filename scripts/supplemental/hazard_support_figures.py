@@ -96,7 +96,7 @@ METRIC_LABELS: dict = {
 #: Plain-language design names for the contrast figures.
 DESIGN_PLAIN: dict = {
     "hazard_filling_stationary": "hazard filling",
-    "fixed_probabilistic": "random sampling",
+    "monte_carlo": "Monte Carlo sampling",
     "historic": "historic record only",
 }
 
@@ -298,7 +298,7 @@ def fig_contrast(contrast: pd.DataFrame, boot: pd.DataFrame,
                 gg = sel[sel["group"] == g]
                 hf = (gg[gg["design"] == "hazard_filling_stationary"]
                       .groupby("draw")[val_col].mean())
-                ps_mean = (gg[gg["design"] == "fixed_probabilistic"]
+                ps_mean = (gg[gg["design"] == "monte_carlo"]
                            .groupby("draw")[val_col].mean().mean())
                 ax.scatter(np.full(len(hf), i) + 0.12, hf - ps_mean, s=26,
                            color=design_color("hazard_filling_stationary"),

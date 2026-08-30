@@ -8,7 +8,7 @@ immutable ``ScenarioDesign``; the design name is the top level of the output
 tree, ``outputs/{design}/{moea_slug}/...``.
 
 The campaign is the three designs flagged ``campaign=True``: ``historic``,
-``fixed_probabilistic`` and ``hazard_filling_stationary`` (``campaign_designs()``).
+``monte_carlo`` and ``hazard_filling_stationary`` (``campaign_designs()``).
 The other registered designs are wired but non-campaign. Every design generates
 its own realizations from its own seed domain; only the hazard-filling designs
 select from a candidate pool, because hazard coordinates are emergent properties
@@ -16,7 +16,7 @@ of a realized sequence and cannot be prescribed at generation.
 
 Candidate pools are sampled i.i.d., never by LHS: a uniform random size-N subset
 of an i.i.d. pool has exactly the law of N fresh i.i.d. draws, which is what
-makes ``fixed_probabilistic`` the exact control for ``hazard_filling_stationary``.
+makes ``monte_carlo`` the exact control for ``hazard_filling_stationary``.
 A DU candidate pool must also carry ``realizations_per_profile == 1``. Both
 conditions are enforced by ``assert_iid_pools()`` at import.
 """
@@ -47,7 +47,7 @@ SCENARIO_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
 SEARCH_ENSEMBLE_N: int = int(os.environ.get("NYCOPT_SEARCH_N", "300"))
 
 # Candidate-pool cardinality P for the hazard-filling designs and the
-# resampling-pool cardinality for ``resampled_probabilistic``. The default is
+# resampling-pool cardinality for ``monte_carlo_resampled``. The default is
 # the laptop scale; production P = 1e6 via NYCOPT_CANDIDATE_POOL_N at
 # generation time.
 CANDIDATE_POOL_SIZE: int = int(os.environ.get("NYCOPT_CANDIDATE_POOL_N", "2000"))
@@ -168,7 +168,7 @@ class ScenarioDesign:
         Only ``pool_resample`` and ``hazard_fill`` own a pool. The pool is
         regenerated per draw so a hazard-filling draw re-rolls everything that
         is random about its construction and its between-draw variance is
-        commensurable with ``fixed_probabilistic``. Hazard-filling designs of
+        commensurable with ``monte_carlo``. Hazard-filling designs of
         the same population share the pool at the same draw.
 
         Args:
@@ -323,11 +323,12 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "reported rather than entered into the matched contrasts. K=1: "
               "composition variance is zero by construction.",
     ),
-    "fixed_probabilistic": ScenarioDesign(
-        name="fixed_probabilistic",
-        family="fixed_probabilistic_ensemble",
-        description="N x L realizations generated i.i.d. from the stationary "
-                    "Kirsch-Nowak generator; frozen across the search.",
+    "monte_carlo": ScenarioDesign(
+        name="monte_carlo",
+        family="monte_carlo_ensemble",
+        description="Monte Carlo sampling: N x L realizations drawn independently "
+                    "from the stationary Kirsch-Nowak generator and held fixed "
+                    "across the search (the sample average approximation).",
         population="stationary",
         construction="direct_iid",
         theta_sampler="iid",
@@ -342,9 +343,9 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "hazard_filling_stationary: the two differ only in the selection rule "
               "applied to the same population law.",
     ),
-    "resampled_probabilistic": ScenarioDesign(
-        name="resampled_probabilistic",
-        family="resampled_probabilistic_ensemble",
+    "monte_carlo_resampled": ScenarioDesign(
+        name="monte_carlo_resampled",
+        family="monte_carlo_resampled_ensemble",
         description="Own stationary pool; N realizations redrawn at every "
                     "function evaluation.",
         population="stationary",
@@ -394,7 +395,7 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
               "per-axis p1/p99 bounds — see scengen.subsample.ROBUST_LO_PCT), which "
               "deliberately over-represents the severe (rare) hazard corners relative "
               "to their pool frequency -- the deliberate distribution shift the study "
-              "tests. Controlled by fixed_probabilistic (same generator, same "
+              "tests. Controlled by monte_carlo (same generator, same "
               "population law, same N, same L; only the selection rule differs). "
               "Hazard axes are SCREENED per pool (degenerate drop + near-duplicate "
               "dedupe at |rho_S| >= 0.95; all other non-degenerate descriptors "
@@ -521,7 +522,7 @@ SCENARIO_DESIGNS: dict[str, ScenarioDesign] = {
     ),
     "scaling_stationary": ScenarioDesign(
         name="scaling_stationary",
-        family="fixed_probabilistic_ensemble",
+        family="monte_carlo_ensemble",
         description="Stationary Kirsch-Nowak ensemble sized for the Anvil "
                     "parallel-scaling experiment (timing stand-in).",
         population="stationary",
@@ -550,7 +551,7 @@ def assert_iid_pools() -> None:
 
     1. Every design except ``lhs_theta`` samples theta i.i.d.; a random subset
        of an LHS design is not i.i.d., which would void the control that makes
-       ``fixed_probabilistic`` the exact reference for the hazard-filling
+       ``monte_carlo`` the exact reference for the hazard-filling
        designs. Nothing else in the pipeline would fail if this were broken.
     2. A DU candidate pool carries ``realizations_per_profile == 1``, since
        realizations sharing a theta are not independent.
@@ -573,7 +574,7 @@ def assert_iid_pools() -> None:
             f"'{design.name}' must sample theta i.i.d., got "
             f"{design.theta_sampler!r}. A random subset of an LHS design is not "
             f"i.i.d., which would void the control that makes "
-            f"fixed_probabilistic the exact reference for the hazard-filling "
+            f"monte_carlo the exact reference for the hazard-filling "
             f"designs. See scenario_design_methods.md §3.2."
         )
         if design.construction == "hazard_fill" and design.population == "du_forced":

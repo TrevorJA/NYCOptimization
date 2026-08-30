@@ -82,18 +82,18 @@ whether step 03 applies at all — follows from the design alone:
 | construction | designs | campaign | 02 builds | 03 | 04 array |
 |---|---|---|---|---|---|
 | `preset` | `historic` | yes | nothing (static preset) | — | — |
-| `direct_iid` | `fixed_probabilistic` | yes | one N×L ensemble **per draw** | — | `0-(K-1)` |
+| `direct_iid` | `monte_carlo` | yes | one N×L ensemble **per draw** | — | `0-(K-1)` |
 | `hazard_fill` | `hazard_filling_stationary` | yes | one draw-invariant candidate pool + its hazard image | **yes** — all K draws in one job | `0-(K-1)` |
 | `hazard_fill` | `hazard_filling_stationary_cdf`, `hazard_filling_du`, `hazard_filling_absolute` | no (retained) | as above | **yes** | `0-(K-1)` |
 | `lhs_theta` | `input_stratified` | no (retained) | LHS over forcing params, realizations generated at each design point, **per draw** | — | `0-(K-1)` |
-| `pool_resample` | `resampled_probabilistic` | no (retained) | one draw-invariant pool (redrawn per evaluation in-search) | — | `0` |
+| `pool_resample` | `monte_carlo_resampled` | no (retained) | one draw-invariant pool (redrawn per evaluation in-search) | — | `0` |
 | `stationary_kn` | `scaling_stationary` | no (supplemental) | direct Kirsch-Nowak stand-in | — | `0` |
 
 The array index in `02`/`04` is the ensemble-draw index *k*; set `--array=0-(K-1)`
 with K = `design.n_ensemble_draws` (= 3 for the matched designs). The campaign
 searches draw 0 only; draws 1–2 are staged for the SI draw-sensitivity
 re-evaluation of each design's final set. **Cost:** per-design construction
-multiplies step-02 cost by K for `fixed_probabilistic` and `input_stratified` —
+multiplies step-02 cost by K for `monte_carlo` and `input_stratified` —
 each draw is a fresh N×L generation, not a re-index of shared data. Pool-owning
 designs pay it once (array tasks k>0 are no-ops), and designs sharing a
 population share one pool per draw (the two stationary hazard designs; the two
@@ -110,9 +110,9 @@ time (seed 1 runs 750k NFE, seed 2 500k; `docs/notes/methods/campaign_design.md`
 
 ```bash
 # Matched designs: seed 1 prices the campaign; submit seed 2 after it
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,DRAW=0 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
        --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,DRAW=0 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
        --array=2 --nodes=12 --ntasks-per-node=128 --time=72:00:00 workflow/06_run_mmborg.sh
 # (identical lines with ffmp_obj8_hazfill_stat_production.env)
 # Historic reference (NFE-bounded, single trace): 12 h for seed 1, 8 h for seed 2

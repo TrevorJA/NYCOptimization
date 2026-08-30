@@ -27,7 +27,7 @@
 # a sourced production env file (NYCOPT_REGRET_TAU, NYCOPT_CRITERIA_VARIANT).
 #
 # Submit:
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env \
 #          workflow/supplemental/hazard_support_decomposition.sh
 # Switches: NYCOPT_HSD_SMOKE=1 (P=2,000 pools, first 200 SOWs, smoke_ prefix),
 # NYCOPT_HSD_REFRESH=1 (stage-A recompute), NYCOPT_HSD_FIGURES_ONLY=1 (redraw

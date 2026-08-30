@@ -442,7 +442,7 @@ def _compute_hazard_image(slug: str) -> dict | None:
     Only the hazard-filling designs stage a hazard image at build time (the SSI-6 +
     POT pass is pure waste for the others), but the MECHANISM TEST needs the search
     hazard coordinates of EVERY design — the prediction for ``historic`` /
-    ``fixed_probabilistic`` is precisely that their failures concentrate where their
+    ``monte_carlo`` is precisely that their failures concentrate where their
     ensembles left hazard space unsampled. So the image is computed here, on demand,
     through the IDENTICAL generation-time code path
     (``src.ensemble_generation._hazard_block``), and cached next to the ensemble so

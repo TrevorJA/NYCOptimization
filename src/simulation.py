@@ -1940,7 +1940,7 @@ def evaluate(dv_vector, formulation_name="ffmp", objective_set=None,
         from config import SEARCH_ENSEMBLE_SPEC
         ensemble_spec = SEARCH_ENSEMBLE_SPEC
 
-    # Resampled-probabilistic design: redraw the search ensemble from the master
+    # Monte Carlo resampled design: redraw the search ensemble from the master
     # pool for this evaluation (Trindade et al. 2017). The master-pool spec is
     # marked resample_per_eval=True by ScenarioDesign.resolve_search_spec.
     if ensemble_spec is not None and ensemble_spec.resample_per_eval:

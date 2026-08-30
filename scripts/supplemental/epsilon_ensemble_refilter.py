@@ -22,7 +22,7 @@ inflation-adjusted sizes (INFLATE_MERGED / INFLATE_SEED).
 Usage (from repo root, venv; submit via
 workflow/supplemental/epsilon_ensemble_refilter.sh):
     python3 scripts/supplemental/epsilon_ensemble_refilter.py \
-        --slug ffmp_obj8 --scenarios historic fixed_probabilistic \
+        --slug ffmp_obj8 --scenarios historic monte_carlo \
         hazard_filling_stationary
 """
 
@@ -100,7 +100,7 @@ INFLATE_MERGED, INFLATE_SEED = 1.10, 1.35
 #: An axis is over-coarsened when its occupied 1-D box count falls below
 #: min(MIN_AXIS_BOXES, the ADOPTED vector's count on the same substrate) —
 #: relative to adopted because some axes are intrinsically narrow (the
-#: fixed_probabilistic flood axis spans ~1.6 boxes under the adopted 0.3, so
+#: monte_carlo flood axis spans ~1.6 boxes under the adopted 0.3, so
 #: an absolute floor would disqualify every candidate including 'adopted').
 MIN_AXIS_BOXES = 8
 
@@ -430,7 +430,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--slug", default="ffmp_obj8")
     ap.add_argument("--scenarios", nargs="+",
-                    default=["historic", "fixed_probabilistic",
+                    default=["historic", "monte_carlo",
                              "hazard_filling_stationary"])
     ap.add_argument("--figures-only", action="store_true",
                     help="Re-render figures only (sweeps are recomputed in "

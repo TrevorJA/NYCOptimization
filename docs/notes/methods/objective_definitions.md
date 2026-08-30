@@ -418,7 +418,7 @@ difference in exactly the annual-unit metric space the per-SOW cube lives in,
 so the regret tolerance and the search resolution sit on one calibration, and
 `τ_i^floor` is the measured noise floor of that objective's per-SOW estimator.
 Taking the max matters because one `k` is shared across eight objectives, and
-an epsilon below its own noise floor would make every rung fire on Monte Carlo
+an epsilon below its own noise floor would make every rung fire on sampling
 noise for that axis while being far outside the noise on the others. The
 adopted whole vector is pinned as `NYCOPT_REGRET_TAU` in the production env
 files and `k` is swept over `REGRET_TAU_GRID` (`scripts/main/compare_designs.py`)
@@ -552,7 +552,7 @@ hazard-space classifier and factor map on the same labels are its supplemental
 view, with the hazard axes screened for redundancy before fitting. The
 prediction is that a design's policies fail on E_test in the hazard region it
 under-covered during search, so hazard-filling designs should show no excess
-association and `fixed_probabilistic` and `historic` should. A null is a
+association and `monte_carlo` and `historic` should. A null is a
 reportable result. Discovery in either space is reported as support for a
 difference found on the primary metric, never as the basis of the comparison.
 

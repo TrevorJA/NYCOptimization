@@ -32,12 +32,12 @@ submission and never pinned here, so the common E_test is a recorded choice.
 ```bash
 # One optimization = one independent job (array index = Borg seed); production
 # needs the 12-node geometry and a per-seed --time (see each file's header):
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,DRAW=0 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
        --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
 
 # Chunked re-evaluation on the common held-out ensemble (campaign path, then 09b):
 sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:00 \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/fixed_probabilistic/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
+       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
        workflow/09_simulate_test_chunks.sh
 ```
 
@@ -46,7 +46,7 @@ sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:0
 MM-Borg run identities (consumed by steps 05, 06, 08, 09, 09b, 11), by family:
 
 - **Production campaign** — `ffmp_obj8_historic_production.env`,
-  `ffmp_obj8_fixedprob_production.env`, `ffmp_obj8_hazfill_stat_production.env`:
+  `ffmp_obj8_mc_production.env`, `ffmp_obj8_hazfill_stat_production.env`:
   the three campaign designs under the `production` MOEA config (1,533 ranks
   on 12 nodes; N = 300 for the matched designs; seed 1 at 750k NFE and seed 2
   at 500k, every seed reported at equal NFE from the 125,000-per-island
@@ -55,7 +55,7 @@ MM-Borg run identities (consumed by steps 05, 06, 08, 09, 09b, 11), by family:
   `NYCOPT_SCENARIO_DESIGN` and header comments
   (`docs/notes/methods/campaign_design.md`).
 - **Moderate-NFE dev** — `ffmp_obj8_historic_moderate.env`,
-  `ffmp_obj8_fixedprob_moderate.env`, `ffmp_obj8_hazfill_stat_moderate.env`:
+  `ffmp_obj8_mc_moderate.env`, `ffmp_obj8_hazfill_stat_moderate.env`:
   the same designs under `mm_moderate` (50k NFE, 511 ranks on 4 nodes).
 - **Base** — `ffmp_obj8_historic.env` (`mm_full`, 50k NFE, 165 ranks; the
   pre-campaign historic identity).
@@ -66,7 +66,7 @@ MM-Borg run identities (consumed by steps 05, 06, 08, 09, 09b, 11), by family:
   dev-only tiny-NFE identities (`workflow/submit_smoke.sh`,
   `workflow/submit_search_memory_smoke.sh`). Not for replication.
 - **Supplemental diagnostics** — `eps_calib_historic.env`,
-  `eps_calib_fixed_probabilistic.env`, `eps_calib_hazard_filling_stationary.env`
+  `eps_calib_monte_carlo.env`, `eps_calib_hazard_filling_stationary.env`
   (epsilon calibration); `ensemble_size_diagnostics.env`
   (`hazard_filling_stationary` identity with `NYCOPT_CANDIDATE_POOL_N` pinned
   to the P = 10⁶ pool; every `workflow/supplemental/ensemble_size_*.sh`);
@@ -99,7 +99,7 @@ The scenario design is NOT in the slug — it is the parent directory:
 `outputs/{scenario}/{moea_slug}/`. The MOEA config name is appended unless it
 is the `production` default. Examples:
 
-- `ffmp_obj8_fixedprob_production.env` (production) → `outputs/fixed_probabilistic/ffmp_obj8/`
+- `ffmp_obj8_mc_production.env` (production) → `outputs/monte_carlo/ffmp_obj8/`
 - `ffmp_obj8_historic_moderate.env` (mm_moderate) → `outputs/historic/ffmp_obj8_mm_moderate/`
 
 For ad-hoc tags, set `RUN_SLUG_TAG=mytag`; the slug becomes

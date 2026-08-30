@@ -54,7 +54,7 @@ PANEL_WIDTH = 13.5
 #: Panel titles use the manuscript's scenario-design names (Table 1); the
 #: parenthetical carries the Pareto-set size instead of the acronym.
 DESIGN_TITLES = {
-    "fixed_probabilistic": "Probabilistic Sampling",
+    "monte_carlo": "Monte Carlo Sampling",
     "hazard_filling_stationary": "Hazard Filling",
     "historic": "Historical",
 }

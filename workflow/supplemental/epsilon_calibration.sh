@@ -10,7 +10,7 @@
 # same design.
 #
 # Submit (from repo root), once per design:
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_fixed_probabilistic.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_monte_carlo.env \
 #       workflow/supplemental/epsilon_calibration.sh
 #   (also eps_calib_historic.env, eps_calib_hazard_filling_stationary.env)
 #

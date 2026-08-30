@@ -42,7 +42,7 @@ HAZARD_AXIS_LABELS: dict[str, str] = {
 #: density field is grayscale (magnitude job) and E_test is the reserved purple.
 LAYER_COLORS: dict[str, str] = {
     "hazard_filling_stationary": "#d95f02",
-    "fixed_probabilistic":       "#1f77b4",
+    "monte_carlo":       "#1f77b4",
     "etest":                     "#7a4fa3",
 }
 _FALLBACK_COLORS = ("#2a9d8f", "#c44536", "#8a8a3b")

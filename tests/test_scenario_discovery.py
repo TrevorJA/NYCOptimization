@@ -318,7 +318,7 @@ def test_end_to_end_recovers_planted_axis_and_mechanism(tmp_path, image, screen,
         "selected_rows": np.arange(N_SEARCH),
     })
 
-    res = sd.discover_for_design("fixed_probabilistic", raw, etest, screen,
+    res = sd.discover_for_design("monte_carlo", raw, etest, screen,
                                  label="criterion:reference_all8")
 
     # The compromise rule must pick the policy that actually satisfices somewhere.

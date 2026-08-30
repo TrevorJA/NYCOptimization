@@ -28,7 +28,7 @@
 #
 # Campaign submission (chain identical resubmissions, each resumes, then 09b):
 #   sbatch --nodes=8 --ntasks-per-node=128 --time=24:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,\
+#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,\
 # NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=<merged.ref>,\
 # NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=150 \
 #          workflow/09_simulate_test_chunks.sh

@@ -57,7 +57,7 @@ from src.plotting.style import (  # noqa: E402
     apply_style, design_color, design_label, save_figure, short_label_for,
 )
 
-PS, HF = "fixed_probabilistic", "hazard_filling_stationary"
+MC, HF = "monte_carlo", "hazard_filling_stationary"
 EPS_COLOR = "#009E73"
 CAMPAIGN_COLOR = "0.35"
 NULL_COLOR = "0.55"
@@ -248,7 +248,7 @@ def fig_a4_ps_tail(ps: pd.DataFrame) -> None:
     g0 = ps[ps.axis == axes_names[0]].sort_values("n")
     a2.plot(g0.n, g0.prob_ge1_p99_closed_form, "-", color="black",
             label=r"beyond the pool's P99: closed form $1-0.99^N$")
-    a2.plot(g0.n, 1.0 - g0.prob_zero_p99_empirical, "o", ms=4, color=design_color(PS),
+    a2.plot(g0.n, 1.0 - g0.prob_zero_p99_empirical, "o", ms=4, color=design_color(MC),
             label=f"beyond P99: empirical over 200 subsets ({_axis_label(axes_names[0])})")
     a2.plot(g0.n, g0.prob_ge1_p90_closed_form, "-", color="0.5",
             label=r"beyond the pool's P90: closed form $1-0.90^N$")
@@ -262,7 +262,7 @@ def fig_a4_ps_tail(ps: pd.DataFrame) -> None:
     for q, ls in ((50, "-"), (90, "--"), (99, ":")):
         col = f"relerr_p{q}_rms"
         m = ps.groupby("n")[col].mean()
-        a3.plot(m.index, m.values, ls, marker="o", ms=3, color=design_color(PS),
+        a3.plot(m.index, m.values, ls, marker="o", ms=3, color=design_color(MC),
                 label=f"sample P{q} vs pool P{q} (mean over the 6 axes)")
     _mark_campaign(a3, campaign_label=True)
     a3.set_xlabel(N_LABEL)
@@ -270,28 +270,28 @@ def fig_a4_ps_tail(ps: pd.DataFrame) -> None:
     a3.set_ylim(bottom=0)
     a3.set_title("(c) how far a sample's quantiles sit from the pool's")
     a3.legend(fontsize=6.5)
-    fig.suptitle("What an i.i.d. sample of N pool members contains, by construction (the fixed-probabilistic design), pool d0")
+    fig.suptitle("What an i.i.d. sample of N pool members contains, by construction (the Monte Carlo design), pool d0")
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, scfg.esd_figure_path("A4_ps_tail_sampling"))
     plt.close(fig)
 
 
 def fig_a5_descriptor_convergence(cv: pd.DataFrame) -> None:
-    """A5: pooled-mean vs ensemble-max descriptors vs N (PS bands, HF plans)."""
+    """A5: pooled-mean vs ensemble-max descriptors vs N (MC bands, HF plans)."""
     axes_names = list(dict.fromkeys(cv.axis))
     fig, ax = plt.subplots(2, len(axes_names), figsize=(2.6 * len(axes_names), 6.2),
                            sharex=True)
     for k, axis in enumerate(axes_names):
         for r, stat in enumerate(("pooled_mean", "ensemble_max")):
             a = ax[r, k]
-            for design in (PS, HF):
+            for design in (MC, HF):
                 g = cv[(cv.axis == axis) & (cv.statistic == stat) & (cv.design == design)].sort_values("n")
                 if g.empty:
                     continue
                 lab = None
                 if k == 0 and r == 0:
                     lab = ("fixed-probabilistic (i.i.d.): median, band = 5–95 % over 200 subsets"
-                           if design == PS else "hazard-filling: median, band = range over 10 anchor plans")
+                           if design == MC else "hazard-filling: median, band = range over 10 anchor plans")
                 a.plot(g.n, g.p50, "o-", ms=3, color=design_color(design), label=lab)
                 a.fill_between(g.n, g.p05, g.p95, color=design_color(design), alpha=0.18, lw=0)
             pool_val = cv[(cv.axis == axis) & (cv.statistic == stat)].pool_value.iloc[0]
@@ -356,15 +356,15 @@ class Library:
     def replicates(self, design: str, n: int) -> tuple[list[np.ndarray], list[str]]:
         """Member rows and a replicate label per replicate of (design, n)."""
         reps, labels = [], []
-        if design == PS:
+        if design == MC:
             blocks, flags = supplemented_replicates(self.p_ref, n, scfg.ESD_PS_MIN_REPLICATES,
                                                     scfg.ESD_REPLICATE_SEED)
             for b, fl in zip(blocks, flags):
                 reps.append(self.ref_rows[b])
                 labels.append("random_overlapping" if fl else "disjoint_prefix")
             if n == scfg.ESD_N_CAMPAIGN:
-                for d in sorted(set(self.real_draw[self.real_design == PS])):
-                    rows = np.flatnonzero((self.real_design == PS) & (self.real_draw == d))
+                for d in sorted(set(self.real_draw[self.real_design == MC])):
+                    rows = np.flatnonzero((self.real_design == MC) & (self.real_draw == d))
                     if len(rows) == n:
                         reps.append(rows)
                         labels.append(f"staged_draw{d}")
@@ -386,12 +386,12 @@ class Library:
 
 def layer_b_statistics(lib: Library) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """All per-(design, N, objective) statistics, the tail bands, and the raw values."""
-    ref_values = lib.compose(lib.ref_rows)                        # (P, M) PS reference
+    ref_values = lib.compose(lib.ref_rows)                        # (P, M) MC reference
     ref_codes = epsilon_relations(ref_values, lib.epsilons, lib.directions)
     rows, band_rows, values_store = [], [], {"ref": ref_values}
     rng = np.random.default_rng(scfg.ESD_BOOTSTRAP_SEED)
     tail_k = [k for k, nm in enumerate(lib.active_names) if _is_tail(nm)]
-    for design in (PS, HF):
+    for design in (MC, HF):
         for n in scfg.ESD_N_LADDER:
             reps, labels = lib.replicates(design, n)
             if len(reps) < 2:
@@ -402,7 +402,7 @@ def layer_b_statistics(lib: Library) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
             lse = level_se(values)                                  # (P, M)
             pse = summarize_over_pairs(paired_se(values))           # dict (M,)
             codes = np.stack([epsilon_relations(v, lib.epsilons, lib.directions) for v in values])
-            reference = ref_codes if design == PS else majority_relation(codes)
+            reference = ref_codes if design == MC else majority_relation(codes)
             fr = flip_rate(codes, reference)
             gap = optimism(values, ref_values, lib.directions)      # (R, P, M)
             gap_mean, gap_sd = gap.mean(axis=0), gap.std(axis=0, ddof=1)
@@ -457,7 +457,7 @@ def decision_table(stats: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     t["pass_paired_se"] = t.paired_se_max <= scfg.ESD_PAIRED_SE_EPS_FRAC * t.epsilon
     t["pass_flip_rate"] = t.flip_rate <= scfg.ESD_FLIP_RATE_MAX
     t["pass_bias"] = np.where(
-        t.design == PS,
+        t.design == MC,
         t.optimism_mean_maxabs <= scfg.ESD_OPTIMISM_EPS_FRAC * t.epsilon,
         t.shift_sd_max <= scfg.ESD_LEVEL_SE_EPS_FRAC * t.epsilon)
     t["pass_all"] = t.pass_level_se & t.pass_paired_se & t.pass_flip_rate & t.pass_bias
@@ -491,7 +491,7 @@ def n_eff_table(lib: Library) -> pd.DataFrame:
     """Realization-level vs naive unit-level bootstrap at the campaign point."""
     rng = np.random.default_rng(scfg.ESD_BOOTSTRAP_SEED + 1)
     rows = []
-    for design in (PS, HF):
+    for design in (MC, HF):
         reps, labels = lib.replicates(design, scfg.ESD_N_CAMPAIGN)
         for r_i, (r, lab) in enumerate(zip(reps[:5], labels[:5])):
             for p in range(lib.n_policy):
@@ -526,7 +526,7 @@ def fig_b_stat_vs_n(stats: pd.DataFrame, col: str, ylabel: str, stem: str, eps_f
     for k, name in enumerate(objs):
         a = ax[k]
         eps = float(stats[stats.objective == name].epsilon.iloc[0])
-        for design in (PS, HF):
+        for design in (MC, HF):
             g = stats[(stats.objective == name) & (stats.design == design)].sort_values("n")
             if g.empty:
                 continue
@@ -562,10 +562,10 @@ def fig_b_stat_vs_n(stats: pd.DataFrame, col: str, ylabel: str, stem: str, eps_f
 def fig_b3_flip(stats: pd.DataFrame) -> None:
     """Flip rate of pairwise epsilon-dominance verdicts vs N."""
     fig, a = plt.subplots(figsize=(7.0, 4.4))
-    for design in (PS, HF):
+    for design in (MC, HF):
         g = stats[stats.design == design].groupby("n")["flip_rate"].first()
         a.plot(g.index, g.values, "o-", ms=4, color=design_color(design),
-               label=(f"{design_label(design)}: verdict at N vs the 5,000-member reference" if design == PS
+               label=(f"{design_label(design)}: verdict at N vs the 5,000-member reference" if design == MC
                       else f"{design_label(design)}: verdict at N vs the majority of its 3–5 constructions"))
     a.axhline(scfg.ESD_FLIP_RATE_MAX, color="#c1272d", lw=1.2, ls=":",
               label=f"pre-registered criterion (≤ {scfg.ESD_FLIP_RATE_MAX:g})")
@@ -582,13 +582,13 @@ def fig_b3_flip(stats: pd.DataFrame) -> None:
 
 
 def fig_b4_optimism(bands: pd.DataFrame, stats: pd.DataFrame) -> None:
-    """PS estimator bias vs N per operator; HF construction shift ± SD beside it."""
+    """MC estimator bias vs N per operator; HF construction shift ± SD beside it."""
     objs = list(dict.fromkeys(stats.objective))
     fig, ax = _grid(len(objs))
     for k, name in enumerate(objs):
         a = ax[k]
         eps = float(stats[stats.objective == name].epsilon.iloc[0])
-        for design in (PS, HF):
+        for design in (MC, HF):
             g = bands[(bands.objective == name) & (bands.design == design)]
             m = g.groupby("n")["optimism_mean"].median()
             lo = g.groupby("n")["optimism_mean"].min()
@@ -614,7 +614,7 @@ def fig_b4_optimism(bands: pd.DataFrame, stats: pd.DataFrame) -> None:
         ax[j].axis("off")
     handles, labels = ax[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=7, frameon=False)
-    fig.suptitle("Bias of the i.i.d. estimate (PS) and the intended shift of the hazard-filling design (HF), both vs the i.i.d. reference")
+    fig.suptitle("Bias of the i.i.d. estimate (MC) and the intended shift of the hazard-filling design (HF), both vs the i.i.d. reference")
     fig.tight_layout(rect=(0, 0.07, 1, 0.96))
     save_figure(fig, scfg.esd_figure_path("B4_optimism_vs_n"))
     plt.close(fig)
@@ -627,7 +627,7 @@ def fig_b5_tail_bands(bands: pd.DataFrame, lib: Library) -> None:
     fig, ax = plt.subplots(2, len(tail), figsize=(3.6 * len(tail), 6.4), sharex=True)
     ax = np.atleast_2d(ax)
     cmap = plt.get_cmap("tab10")
-    for r, design in enumerate((PS, HF)):
+    for r, design in enumerate((MC, HF)):
         for c, name in enumerate(tail):
             a = ax[r, c]
             eps = float(lib.epsilons[lib.active_names.index(name)])
@@ -664,7 +664,7 @@ def fig_b6_neff(neff: pd.DataFrame) -> None:
     fig, a = plt.subplots(figsize=(7.5, 3.8))
     objs = list(dict.fromkeys(neff.objective))
     x = np.arange(len(objs))
-    for i, design in enumerate((PS, HF)):
+    for i, design in enumerate((MC, HF)):
         g = neff[neff.design == design].groupby("objective")["n_eff_ratio"]
         med = np.array([g.median().get(o, np.nan) for o in objs])
         lo = np.array([g.quantile(0.1).get(o, np.nan) for o in objs])
@@ -688,7 +688,7 @@ def fig_b6_neff(neff: pd.DataFrame) -> None:
 
 def epscube_crosscheck(lib: Library) -> pd.DataFrame | None:
     rows = []
-    for design in (PS, HF):
+    for design in (MC, HF):
         path = scfg.epsilon_cube_path(design)
         if not path.exists():
             print(f"[esd:B7] epsilon cube missing for {design}: {path}")
@@ -722,7 +722,7 @@ def fig_b7_crosscheck(cross: pd.DataFrame, stats: pd.DataFrame) -> None:
     for k, name in enumerate(objs):
         a = ax[k]
         eps = float(stats[stats.objective == name].epsilon.iloc[0])
-        for design in (PS, HF):
+        for design in (MC, HF):
             g = stats[(stats.objective == name) & (stats.design == design)].sort_values("n")
             a.plot(g.n, g.level_se_median, "o-", ms=4, color=design_color(design),
                    label=f"{design_label(design)}: this library (10 rule-selected policies)")

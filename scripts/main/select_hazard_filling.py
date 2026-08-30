@@ -29,7 +29,7 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
     """Select and stage one ensemble draw from that draw's own candidate pool.
 
     Each draw re-rolls both its pool (step 02) and its LHS anchor plan, so draws
-    are commensurable with ``fixed_probabilistic`` draws.
+    are commensurable with ``monte_carlo`` draws.
 
     Args:
         design: The active hazard-filling design.

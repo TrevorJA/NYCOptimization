@@ -374,7 +374,7 @@ def _fig_eps_ladder(results: list, combined: pd.DataFrame) -> None:
     n = len(order)
     n_active = sum(1 for nm in order if nm not in _NON_DEFAULT_NOTE)
     ys = {nm: n - 1 - i for i, nm in enumerate(order)}
-    dodge = {"historic": 0.22, "fixed_probabilistic": 0.0,
+    dodge = {"historic": 0.22, "monte_carlo": 0.0,
              "hazard_filling_stationary": -0.22}
     tiny = 1e-6  # below any attainable floor; masks exact-zero float noise
     plotted: list = []

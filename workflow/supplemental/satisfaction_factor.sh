@@ -6,7 +6,7 @@
 # epsilon calibration (supplemental_config.py SF_* section, no CLI value flags).
 #
 # Submit (from repo root), once per ensemble campaign design:
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_fixed_probabilistic.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_monte_carlo.env \
 #       workflow/supplemental/satisfaction_factor.sh
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_hazard_filling_stationary.env \
 #       workflow/supplemental/satisfaction_factor.sh

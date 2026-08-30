@@ -2,7 +2,7 @@
 ensemble_composition.py - Manuscript figure 4: realized composition of the search ensembles.
 
 Section 4.1's evidence base: the realized hazard-space composition of the two
-matched search ensembles (PS and HF) against the candidate pool they share a
+matched search ensembles (MC and HF) against the candidate pool they share a
 population law with, and against the historical record. Two scatter panels show
 each ensemble over the pool's joint density in the drought magnitude-intensity
 plane; six marginal panels show every campaign selection axis, with the pool as
@@ -698,7 +698,7 @@ def required_hazard_images(pool_slug: str | None = None) -> list[Path]:
         "NYCOPT_COMPOSITION_POOL_SLUG", DEFAULT_POOL_SLUG)
     slugs = [
         pool_slug,
-        SCENARIO_DESIGNS["fixed_probabilistic"].search_ensemble_slug(draw),
+        SCENARIO_DESIGNS["monte_carlo"].search_ensemble_slug(draw),
         SCENARIO_DESIGNS["hazard_filling_stationary"].search_ensemble_slug(draw),
     ]
     return [config.STAGED_ENSEMBLE_DIR / s / "hazard_image.npz" for s in slugs]
@@ -721,19 +721,19 @@ def fig_ensemble_composition(ctx, out_stub: Path, table_dir: Path) -> list[Path]
     from src.scenario_designs import SCENARIO_DESIGNS
 
     draw = config.SCENARIO_ENSEMBLE_DRAW
-    pool_path, ps_path, hf_path = required_hazard_images()
-    for p in (pool_path, ps_path, hf_path):
+    pool_path, mc_path, hf_path = required_hazard_images()
+    for p in (pool_path, mc_path, hf_path):
         if not p.exists():
             raise FileNotFoundError(
                 f"staged hazard image not found: {p} (workflow steps 02-03; "
-                f"fixed_probabilistic is scored post hoc by "
+                f"monte_carlo is scored post hoc by "
                 f"scripts/supplemental/compute_staged_hazard_image.py)"
             )
 
     pool = load_hazard_image(pool_path)
-    ps = load_ensemble_layer(
-        SCENARIO_DESIGNS["fixed_probabilistic"].search_ensemble_slug(draw),
-        "PS ensemble", style.design_color("fixed_probabilistic"))
+    mc = load_ensemble_layer(
+        SCENARIO_DESIGNS["monte_carlo"].search_ensemble_slug(draw),
+        "MC ensemble", style.design_color("monte_carlo"))
     hf = load_ensemble_layer(
         SCENARIO_DESIGNS["hazard_filling_stationary"].search_ensemble_slug(draw),
         "HF ensemble", style.design_color("hazard_filling_stationary"))
@@ -744,7 +744,7 @@ def fig_ensemble_composition(ctx, out_stub: Path, table_dir: Path) -> list[Path]
         raise ValueError(
             f"NYCOPT_COMPOSITION_SCATTER must be '2d' or '3d', got {mode!r}")
     fig = build_composition_figure(
-        pool["H"], list(pool["hazard_axes"]), [ps, hf], hist_H, hist_axes,
+        pool["H"], list(pool["hazard_axes"]), [mc, hf], hist_H, hist_axes,
         scatter_mode=mode, range_layers=[hf],
     )
     written = style.save_manuscript_figure(fig, out_stub)
@@ -764,14 +764,14 @@ def fig_ensemble_composition(ctx, out_stub: Path, table_dir: Path) -> list[Path]
                "pool_p1": np.percentile(pool_v, 1),
                "pool_p50": np.percentile(pool_v, 50),
                "pool_p99": np.percentile(pool_v, 99)}
-        for layer, key in ((ps, "ps"), (hf, "hf")):
+        for layer, key in ((mc, "mc"), (hf, "hf")):
             v = _col(layer.H, layer.axes, m)
             row.update({f"{key}_min": v.min(), f"{key}_p50": np.median(v),
                         f"{key}_max": v.max()})
         rows.append(row)
     pd.DataFrame(rows).to_csv(table_dir / "composition_summary.csv", index=False)
 
-    print(f"[fig04] pool P={pool['H'].shape[0]:,}, PS n={ps.H.shape[0]}, "
+    print(f"[fig04] pool P={pool['H'].shape[0]:,}, MC n={mc.H.shape[0]}, "
           f"HF n={hf.H.shape[0]}, historic windows={hist_H.shape[0]} "
           f"(draw {draw}, scatter {mode})")
     return written

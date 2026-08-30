@@ -6,7 +6,7 @@
 #
 # Submit from the repo root:
 #   sbatch workflow/supplemental/epsilon_ensemble_refilter.sh \
-#       [--slug ffmp_obj8 --scenarios historic fixed_probabilistic ...]
+#       [--slug ffmp_obj8 --scenarios historic monte_carlo ...]
 #
 #SBATCH --job-name=eps_ens_refilter
 #SBATCH --account=ees260021

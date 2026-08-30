@@ -28,7 +28,7 @@ designs.
 
 Representativeness is a different property for the two designs.
 
-- `fixed_probabilistic` (PS) is an i.i.d. sample from the stationary generator,
+- `monte_carlo` (MC) is an i.i.d. sample from the stationary generator,
   so every objective is a sample statistic of a population quantity (frequency,
   mean, or pooled percentile of annual units). Representativeness is estimator
   precision and estimator bias versus N (order-statistic operators are
@@ -75,7 +75,7 @@ are compared end to end with a fresh simulation of that ensemble (agreement to
 
 **Policy set (ten, fixed by rule before any result).** From the union U of the
 two matched designs' ε-filtered merged pilot Pareto-approximate sets at
-N = 100 (`ESD_POLICY_SET_FILES`), PS rows before HF rows:
+N = 100 (`ESD_POLICY_SET_FILES`), MC rows before HF rows:
 
 | id | rule |
 |---|---|
@@ -83,7 +83,7 @@ N = 100 (`ESD_POLICY_SET_FILES`), PS rows before HF rows:
 | P1–P4 | per-objective best in U for NYC delivery reliability, Montague flow reliability, downstream flood exceedance, NYC storage P01 (`solution_selection.best_single`, ties to the lowest row) |
 | P5, P6 | best-satisficing compromise per design (`factor_mapping.select_compromise`, rule `best_satisficing`, thresholds from the cube's own snapshot) on that design's pilot re-evaluation cube |
 | P7, P8 | nearest neighbour of each compromise in U's direction-oriented, min–max-scaled objective space (Euclidean over the 8 active objectives) |
-| P9 | the PS design's `min_dist_ideal` compromise |
+| P9 | the MC design's `min_dist_ideal` compromise |
 
 If a rule returns an already-selected DV vector, the next-best under that rule
 is taken. The set spans the response regimes the operators see. It is not a
@@ -91,7 +91,7 @@ population and nothing ranks it.
 
 **Reference, library, replicates.**
 
-- PS reference. The first P_ref = 5,000 rows of `statpool_10yr_n1000000_d0`.
+- MC reference. The first P_ref = 5,000 rows of `statpool_10yr_n1000000_d0`.
   A prefix of an i.i.d. pool is an exact i.i.d. sample (SI Text S2), so 5,000
   rows give ⌊5000/N⌋ disjoint replicates (100, 66, 50, 33, 25, 16, 12, 10 over
   the ladder). Where that count falls below 20 (N ≥ 300) the disjoint set is
@@ -101,7 +101,7 @@ population and nothing ranks it.
   anchor plans (draws 0, 101, 102, where draw 0 at N = 100 is the production
   `hazfill_stat_abs_10yr_n100_d0` ensemble exactly), plus at N = 100 the
   production constructions on pools d1 and d2 (fresh pool and fresh anchors).
-- PS fresh draws. The staged `fixprob_10yr_n100_d{0,1,2}` ensembles.
+- MC fresh draws. The staged `fixprob_10yr_n100_d{0,1,2}` ensembles.
 - Ladder N ∈ {50, 75, 100, 150, 200, 300, 400, 500} (`ESD_N_LADDER`), and
   every figure marks the campaign N (`ESD_N_CAMPAIGN`).
 - Library realized. 10 policies × 9,571 realizations (8,971 regenerated pool
@@ -109,7 +109,7 @@ population and nothing ranks it.
   unit-years, about 50 SU. Pool members are regenerated from their global
   indices into chunked staged ensembles (≤ 1,000 realizations each, step-04
   inputs per chunk) and are bit-identical to the staged production members.
-  Replicates realized are PS 100/66/53/33/25/20/20/20 for N = 50…500 and HF 3
+  Replicates realized are MC 100/66/53/33/25/20/20/20 for N = 50…500 and HF 3
   constructions at every N with 5 at N = 100. HF standard errors rest on 2–4
   degrees of freedom and are read as orders of magnitude.
 - Smoke mode (`NYCOPT_ESD_SMOKE=1`) runs every stage on the staged P = 2,000
@@ -125,9 +125,9 @@ sign matters.
 |---|---|---|---|---|
 | 1 | Level SE | SD over replicates of J_p(S_r), per policy; max and median over policies. Tail operators additionally get the replicate 5/50/95 band and a realization-level bootstrap (B = 1,000), never σ/√N | ≤ ε on every objective | Kasprzyk et al. 2013; Reed et al. 2013 |
 | 2 | **Paired SE (binding)** | SD over replicates of J_a(S_r) − J_b(S_r) for every policy pair on common realizations; max over pairs (median and P90 reported) | ≤ ε/2 on every objective (two policies one box apart are separated at ≥ 2 SE) | Linderoth et al. 2006; Homem-de-Mello & Bayraksan 2014 |
-| 3 | Flip rate | fraction of pairs whose ε-dominance relation at replicate r differs from the reference relation (PS: the 5,000-member reference; HF: the across-replicate majority at that N), averaged over replicates | ≤ 0.05 | Zatarain Salazar et al. 2017 |
-| 4a | Optimism (PS) | mean over replicates of sign × (J_p(S_r) − J_p(S_ref)), per policy; max over policies. For fixed policies this is estimator bias, not selection optimism | ≤ ε/2 | Kaut & Wallace 2007 |
-| 4b | Construction SD and shift (HF) | SD over constructions of J_p(S_r) − J_p(S_ref^PS) (the noise) and its mean (the intended design effect, reported) | SD ≤ ε | Kaut & Wallace 2007; Bonham et al. 2024 |
+| 3 | Flip rate | fraction of pairs whose ε-dominance relation at replicate r differs from the reference relation (MC: the 5,000-member reference; HF: the across-replicate majority at that N), averaged over replicates | ≤ 0.05 | Zatarain Salazar et al. 2017 |
+| 4a | Optimism (MC) | mean over replicates of sign × (J_p(S_r) − J_p(S_ref)), per policy; max over policies. For fixed policies this is estimator bias, not selection optimism | ≤ ε/2 | Kaut & Wallace 2007 |
+| 4b | Construction SD and shift (HF) | SD over constructions of J_p(S_r) − J_p(S_ref^MC) (the noise) and its mean (the intended design effect, reported) | SD ≤ ε | Kaut & Wallace 2007; Bonham et al. 2024 |
 | 5 | Effective sample size | per operator at the campaign N, n_eff/(N(L−1)) = (SD_unit-bootstrap / SD_realization-bootstrap)² | reported (SI Text S5) | Quinn et al. 2017; Hamilton et al. 2022 |
 
 The criterion fractions are `ESD_LEVEL_SE_EPS_FRAC`, `ESD_PAIRED_SE_EPS_FRAC`,
@@ -161,8 +161,8 @@ the staged production member list 100/100).
 |---|---|---|
 | A-HF | per-axis tail share above pool P90 and P99, per-axis KS to uniform, joint L2-star, MST edge statistics, minimum separation, each as a ratio to a matched random design | N ladder × pools d0, d1, d2 × 10 anchor plans (draws 0, 101–109); 50-seed random null |
 | A-NP | min per-axis tail share above P90 (seed-mean convention) on nested prefixes P′ of pool d0 | P′ ∈ {5·10³, 2·10⁴, 10⁵, 3·10⁵, 10⁶} × N ladder × 10 plans |
-| A-PS | sampling distribution of per-axis counts above pool P90/P99, relative error of subset quantiles vs the pool, closed-form P(≥ 1 member beyond quantile q) = 1 − qᴺ | 200 uniform size-N subsets of the pool image |
-| A-CV | convergence of the descriptors themselves, pooled mean per axis vs ensemble extreme per axis | 5/50/95 bands over the PS subsets; HF plans |
+| A-MC | sampling distribution of per-axis counts above pool P90/P99, relative error of subset quantiles vs the pool, closed-form P(≥ 1 member beyond quantile q) = 1 − qᴺ | 200 uniform size-N subsets of the pool image |
+| A-CV | convergence of the descriptors themselves, pooled mean per axis vs ensemble extreme per axis | 5/50/95 bands over the MC subsets; HF plans |
 
 The tail-share statistic is the min per-axis share above P90 over the selection
 axes, seed-mean convention, reported against the 0.10 share of an i.i.d.
@@ -184,12 +184,12 @@ share falls from 0.22 (N = 100) to 0.18 (N = 500), at P′ = 2·10⁴ from 0.25 
 its value is set by the m = 6 geometry of the pool's joint support rather than
 by pool supply. HF joint L2-star improves slowly with N (0.019 → 0.011) while a
 random design stays at 0.17, and minimum separation stays 1.4–2× the random
-design's, so no near-duplicate pathology appears up to N = 500. For PS the
+design's, so no near-duplicate pathology appears up to N = 500. For MC the
 exact i.i.d. law holds. A size-N sample holds on average 0.01·N members above
 the pool P99 per axis (0.97 at N = 100, 5.0 at N = 500), the closed form
 1 − 0.99ᴺ matches the empirical probability of holding at least one, and the
 RMS relative error of the subset P99 is 0.16 at N = 100 and 0.08 at N = 500.
-This is the mechanism behind the Layer-B tail-operator noise. PS pooled-mean
+This is the mechanism behind the Layer-B tail-operator noise. MC pooled-mean
 descriptors are unbiased with a 5–95 % width shrinking from 27 % (N = 50) to
 9 % (N = 500), the ensemble maxima drift monotonically and never converge, and
 HF pooled means sit at 1.57–1.59× the pool mean at every N, so the design
@@ -201,16 +201,16 @@ and the cost of N is compute alone.
 Worst-pair paired SE and companion statistics in units of the objective's ε
 (`tables/decision_table.csv`, `n_min.csv`, figures B1–B6):
 
-| design | N | level SE max / ε (worst obj.) | paired SE max / ε (worst obj.) | flip rate | bias (PS) or construction SD (HF) / ε | passes |
+| design | N | level SE max / ε (worst obj.) | paired SE max / ε (worst obj.) | flip rate | bias (MC) or construction SD (HF) / ε | passes |
 |---|---|---|---|---|---|---|
-| PS | 50 | 1.14 (Montague def.) | 1.12 (Montague def.) | 0.051 | 0.52 | no |
-| PS | 75 | 0.87 | 0.86 (Montague def.) | 0.040 | 0.32 | no (paired) |
-| PS | 100 | 0.82 | 0.82 (NYC def.), 0.79 (Montague def.), 0.71 (storage) | 0.037 | 0.27 | no (paired) |
-| PS | 150 | 0.63 | 0.62 (Montague def.), 0.52 (storage) | 0.034 | 0.15 | no (paired) |
-| PS | 200 | 0.64 | 0.63 (Montague def.), 0.61 (NYC def.), 0.51 (storage) | 0.026 | 0.16 | no (paired) |
-| PS | **300** | 0.45 | 0.45 (Montague def.), 0.43 (NYC def.), 0.40 (storage) | 0.026 | 0.09 | **yes** |
-| PS | 400 | 0.46 | 0.45 | 0.019 | 0.08 | yes |
-| PS | 500 | 0.40 | 0.40 | 0.011 | 0.05 | yes |
+| MC | 50 | 1.14 (Montague def.) | 1.12 (Montague def.) | 0.051 | 0.52 | no |
+| MC | 75 | 0.87 | 0.86 (Montague def.) | 0.040 | 0.32 | no (paired) |
+| MC | 100 | 0.82 | 0.82 (NYC def.), 0.79 (Montague def.), 0.71 (storage) | 0.037 | 0.27 | no (paired) |
+| MC | 150 | 0.63 | 0.62 (Montague def.), 0.52 (storage) | 0.034 | 0.15 | no (paired) |
+| MC | 200 | 0.64 | 0.63 (Montague def.), 0.61 (NYC def.), 0.51 (storage) | 0.026 | 0.16 | no (paired) |
+| MC | **300** | 0.45 | 0.45 (Montague def.), 0.43 (NYC def.), 0.40 (storage) | 0.026 | 0.09 | **yes** |
+| MC | 400 | 0.46 | 0.45 | 0.019 | 0.08 | yes |
+| MC | 500 | 0.40 | 0.40 | 0.011 | 0.05 | yes |
 | HF | 50 | 1.00 (Montague def.) | 1.10 (storage), 1.00 (Montague def.), 0.93 (NYC def.) | 0.067 | 1.00 | no |
 | HF | 75 | 4.2 (NYC def.) | 4.2 (NYC def.), 1.3 (Montague def.) | 0.059 | 4.2 | no |
 | HF | 100 (5 constructions) | 2.0 (NYC def.) | 2.0 (NYC def.), 0.70 (Montague def.) | 0.058 | 2.0 | no |
@@ -224,14 +224,14 @@ Every reliability objective and the flood objective pass every criterion at
 every N ≥ 75 for both designs (paired SE ≤ 0.34 ε at N = 100, flood ≤ 0.10 ε).
 The decision is carried by the three pooled-percentile operators.
 
-**N_min(PS) = 300.** The binding statistic is the worst-pair paired SE and the
+**N_min(MC) = 300.** The binding statistic is the worst-pair paired SE and the
 binding objectives are the two deficit-P99 operators and storage P01. At
 N = 100 the worst pair differs by 0.7–0.8 ε per replicate on those axes, so two
 policies one ε-box apart on a deficit axis are re-ordered by the sample about
 one time in five, and at N = 300 the paired SE is 0.40–0.45 ε. The pair-median
 paired SE is far smaller (0.11–0.41 ε at N = 100, 0.02–0.2 ε at 300), and the
 binding pairs involve the per-objective-best extremes (P3, the flood-optimal
-policy, and the P5/P7 PS compromise pair), which the policy rule was meant to
+policy, and the P5/P7 MC compromise pair), which the policy rule was meant to
 expose.
 
 **N_min(HF) is not located on the ladder.** HF meets every criterion on seven
@@ -242,9 +242,9 @@ at N = 500, and the flip rate (0.058 at N = 100, 0.052 at 500 on 3–5
 constructions) sits at the criterion. The mechanism (figure B5,
 `layer_b_policy_bands.csv`) is that the worst-1 % annual CVaR90 of NYC deficit
 takes values on discrete shelves set by the FFMP drought-stage delivery cuts.
-Seven of the ten policies read exactly the same value in every PS replicate
+Seven of the ten policies read exactly the same value in every MC replicate
 (SD = 0), and a replicate that pushes the worst unit onto the next shelf moves
-the objective by 10–35 percentage points, one to three ε at once. PS crosses a
+the objective by 10–35 percentage points, one to three ε at once. MC crosses a
 shelf rarely and its paired SE decays as N^(−1/2) (0.82 ε → 0.43 ε from N = 100
 to 300). HF selects precisely the extreme members that decide the shelf, so
 different anchor plans land on different shelves and the construction SD does
@@ -256,7 +256,7 @@ maximum-type statistics one order statistic in.
 **Decay fits** (log worst-pair paired SE/ε on log N, slope β with SE, fitted
 ε/2 crossing N*):
 
-| objective | PS β | PS N* | HF β | HF N* |
+| objective | MC β | MC N* | HF β | HF N* |
 |---|---|---|---|---|
 | NYC def P99 | −0.48 (0.04) | 232 | −0.24 (0.25) | undetermined |
 | Montague def P99 | −0.44 (0.03) | 283 | −0.64 (0.12) | 184 |
@@ -265,15 +265,15 @@ maximum-type statistics one order statistic in.
 | Montague rel | −0.55 (0.04) | 35 | −0.43 (0.07) | 44 |
 | flood | −0.61 (0.02) | 7 | −0.46 (0.14) | 4 |
 
-The PS exponents are the √N law of an i.i.d. sample and place the crossing
+The MC exponents are the √N law of an i.i.d. sample and place the crossing
 between the 200 and 300 rungs (ladder answer 300). The HF exponents on
 Montague deficit and storage are steeper than √N (the shelf variance there
 averages out, crossing near N ≈ 160–180). Only NYC deficit P99 is unresolved,
 and its SE of β is as large as β.
 
-**Bias and design effect (figure B4).** PS estimator bias is ≤ 0.27 ε at
+**Bias and design effect (figure B4).** MC estimator bias is ≤ 0.27 ε at
 N = 100 (identically zero for the frequency and mean operators) and ≤ 0.09 ε at
-N = 300. The HF construction shift from the PS reference is N-independent
+N = 300. The HF construction shift from the MC reference is N-independent
 (median over policies −0.94 ε on NYC reliability, −0.75 ε Montague reliability,
 −0.70 ε NYC deficit, −0.47 ε Montague deficit, −2.3 ε flood exceedance, −1.4 ε
 storage P01, ≈ 0 on Trenton and NJ reliability).
@@ -281,7 +281,7 @@ storage P01, ≈ 0 on Trenton and NJ reliability).
 **Effective sample size (figure B6, `n_eff.csv`).** n_eff/N(L−1) is 0.68
 (NYC deficit P99), 0.73 (NYC reliability), 0.79 (NJ), 0.82 (storage P01), 0.84
 (Montague reliability), 0.90 (Montague deficit), 0.93 (Trenton), 1.02 (flood
-mean) for PS and 0.70–1.23 for HF. Serial dependence within a realization costs
+mean) for MC and 0.70–1.23 for HF. Serial dependence within a realization costs
 at most about 30 % of the pooled units, so the 2,700 pooled unit-years of one
 evaluation at N = 300 act as roughly 1,840–2,700 independent units, above the
 1,000 one-year realizations of Quinn et al. (2017). The naive unit-level
@@ -289,7 +289,7 @@ bootstrap understates the tail operators' SE by up to 20 %, so every SE here
 is realization-level.
 
 **Adopted.** N_common = 300, the i.i.d. control's crossing (the smallest
-ladder N at which every criterion holds for PS, missed at N = 100 only by the
+ladder N at which every criterion holds for MC, missed at N = 100 only by the
 paired-SE criterion on the three tail operators by a factor 1.4–1.6). The
 hazard-filling design's NYC-deficit P99 residual (construction SD 1.7 ε at
 N = 300, 1.3–4.2 ε across N ≤ 400 on three constructions) is disclosed as a

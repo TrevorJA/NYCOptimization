@@ -44,14 +44,14 @@ for _i, _n in enumerate(FFMP_VR_N_SWEEP):
 
 #: Campaign scenario designs in canonical display order (ensemble designs first,
 #: the historic reference trace last).
-DESIGN_ORDER: tuple = ("fixed_probabilistic", "hazard_filling_stationary", "historic")
+DESIGN_ORDER: tuple = ("monte_carlo", "hazard_filling_stationary", "historic")
 
 #: Per-design plotting identity: Okabe-Ito colors keyed to the DESIGN (never to
 #: plot order; the palette is validated for CVD + normal-vision separation) plus
 #: the display name and reference-trace flag.
 DESIGN_STYLE: dict[str, dict] = {
-    "fixed_probabilistic": {
-        "color": "#0072B2", "label": "Fixed probabilistic (i.i.d. control)",
+    "monte_carlo": {
+        "color": "#0072B2", "label": "Monte Carlo sampling (i.i.d. control)",
         "reference": False},
     "hazard_filling_stationary": {
         "color": "#D55E00", "label": "Hazard-filling (stationary)",

@@ -43,7 +43,7 @@ Scripts `scripts/supplemental/epsilon_calibration_{run,figures}.py`, launcher
   historic design resamples unit-years, an i.i.d. approximation that
   understates noise under serial dependence, disclosed), and (c) the
   granularity, the 1/(N·units) lattice of the frequency objectives. The floor
-  is taken over `EPS_CAMPAIGN_DESIGNS` (fixed_probabilistic,
+  is taken over `EPS_CAMPAIGN_DESIGNS` (monte_carlo,
   hazard_filling_stationary) with the binding design recorded; the raw
   requirement differs by at most 2.5× between them. The historic reference is
   measured and reported but excluded from the maximum, because its 77-unit

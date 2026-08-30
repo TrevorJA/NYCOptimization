@@ -121,7 +121,7 @@ class TestExcursions:
 class TestPairedDelta:
     def test_draw_level_nesting(self):
         # HF draw 0 seeds mean (0.75 + 0.5)/2 = 0.625; HF draw 1 seed = 0.25
-        # -> HF draw-level mean 0.4375. PS single draw mean 0.25. Seeds are
+        # -> HF draw-level mean 0.4375. MC single draw mean 0.25. Seeds are
         # averaged WITHIN a draw first, so the two-seed draw does not count
         # twice against the one-seed draw.
         idx = np.arange(4)
@@ -129,7 +129,7 @@ class TestPairedDelta:
             ("hazard_filling_stationary", 0, 1): np.array([1, 1, 1, 0], bool),
             ("hazard_filling_stationary", 0, 2): np.array([1, 1, 0, 0], bool),
             ("hazard_filling_stationary", 1, 1): np.array([1, 0, 0, 0], bool),
-            ("fixed_probabilistic", 0, 1): np.array([1, 0, 0, 0], bool),
+            ("monte_carlo", 0, 1): np.array([1, 0, 0, 0], bool),
         }
         delta = paired_design_delta(vecs, idx)
         assert delta == pytest.approx(0.4375 - 0.25)
@@ -141,7 +141,7 @@ class TestPairedDelta:
     def test_subset_indexing(self):
         vecs = {
             ("hazard_filling_stationary", 0, 1): np.array([1, 0, 0, 0], bool),
-            ("fixed_probabilistic", 0, 1): np.array([0, 0, 1, 1], bool),
+            ("monte_carlo", 0, 1): np.array([0, 0, 1, 1], bool),
         }
-        # Restricted to rows {0, 1}: HF = 0.5, PS = 0.0.
+        # Restricted to rows {0, 1}: HF = 0.5, MC = 0.0.
         assert paired_design_delta(vecs, np.array([0, 1])) == pytest.approx(0.5)

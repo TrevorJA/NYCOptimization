@@ -202,7 +202,7 @@ FIGURES: tuple[FigureSpec, ...] = (
                       "fig_ensemble_composition"),
         tier="manuscript", number=4, section="4.1",
         kind="ensemble_composition", needs=frozenset({"hazard_images"}),
-        caption="Realized hazard-space composition of the PS and HF search "
+        caption="Realized hazard-space composition of the MC and HF search "
                 "ensembles vs the candidate pool and the historical record.",
     ),
     FigureSpec(

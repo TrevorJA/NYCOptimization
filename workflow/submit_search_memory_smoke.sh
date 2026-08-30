@@ -9,7 +9,7 @@
 # <= ~217,000 MB) and the warm per-evaluation time from the runtime files
 # (expected ~540 s; campaign_design.md §6).
 #
-# Usage (from repo root, after steps 02 -> 04 at N=300 for fixed_probabilistic):
+# Usage (from repo root, after steps 02 -> 04 at N=300 for monte_carlo):
 #   bash workflow/submit_search_memory_smoke.sh            # submit
 #   bash workflow/submit_search_memory_smoke.sh --dry-run  # print the sbatch line
 

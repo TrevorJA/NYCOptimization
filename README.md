@@ -34,7 +34,7 @@ Everything submittable lives in `workflow/` (numbered steps `00`–`14`, plus
 toggles — comes from a single env file under `workflow/envs/`; the scripts take
 no value-carrying CLI flags (see [workflow/envs/README.md](workflow/envs/README.md)).
 The campaign identities are the three `workflow/envs/ffmp_obj8_*_production.env`
-files (`historic`, `fixedprob`, `hazfill_stat`).
+files (`historic`, `mc`, `hazfill_stat`).
 
 ### 1.0 Setup
 
@@ -132,7 +132,7 @@ sbatch workflow/01_generate_presim.sh
 #### 2.1 Search-ensemble staging (steps 02–04)
 
 The `historic` scenario design uses the single observed trace and **skips this
-section**. `fixed_probabilistic` generates its own realizations (step `02`);
+section**. `monte_carlo` generates its own realizations (step `02`);
 `hazard_filling_stationary` selects its search ensemble from its own P = 10⁶
 candidate pool (step `03`); each draw is then formatted into pywrdrb HDF5
 inputs (step `04`). The array index in `02`/`04` is the ensemble-draw index *k*
@@ -141,9 +141,9 @@ the SI draw-sensitivity re-evaluation); sizing and seeds come from the design
 registry, never from the command line.
 
 ```bash
-# fixed_probabilistic: one N x L ensemble per draw
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=fixed_probabilistic --array=0-2 workflow/02_generate_ensemble.sh
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=fixed_probabilistic --array=0-2 workflow/04_prep_pywrdrb_inputs.sh
+# monte_carlo: one N x L ensemble per draw
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-2 workflow/02_generate_ensemble.sh
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-2 workflow/04_prep_pywrdrb_inputs.sh
 
 # hazard_filling_stationary: the P = 1e6 pool is built sharded (50 array tasks), merged, and verified
 sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50 \
@@ -199,7 +199,7 @@ regret family can be scored. Run it once per campaign env file, scenario-matched
 ```bash
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
        workflow/05_run_baseline.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
        workflow/05_run_baseline.sh --search-ensemble
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
        workflow/05_run_baseline.sh --search-ensemble
@@ -219,10 +219,10 @@ smaller `mm_moderate` config, so pass the production geometry and a per-seed
 `--time` explicitly (these lines are also in each env file's header):
 
 ```bash
-# Matched designs (fixedprob, hazfill_stat): seed 1 then, once seed 1 has priced the campaign, seed 2
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,DRAW=0 \
+# Matched designs (mc, hazfill_stat): seed 1 then, once seed 1 has priced the campaign, seed 2
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
        --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,DRAW=0 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
        --array=2 --nodes=12 --ntasks-per-node=128 --time=72:00:00 workflow/06_run_mmborg.sh
 # (same two lines with ffmp_obj8_hazfill_stat_production.env)
 
@@ -252,18 +252,18 @@ compare designs and render figures:
 
 ```bash
 # Equal-NFE cross-seed reference set (installs {slug}_merged.set, the step-08/09 reference)
-set -a; source workflow/envs/ffmp_obj8_fixedprob_production.env; set +a
+set -a; source workflow/envs/ffmp_obj8_mc_production.env; set +a
 python3 scripts/main/extract_runtime_archive.py --seed 1
 python3 scripts/main/extract_runtime_archive.py --merge --install
 
 # MOEAFramework runtime diagnostics (hypervolume, generational distance), per seed
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env workflow/07_run_diagnostics.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env workflow/07_run_diagnostics.sh
 
 # Chunked E_test re-evaluation of the reference set (shared partition, 16 ranks x 8 cpus, batch 50), then merge
 sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:00 \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/fixed_probabilistic/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
+       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
        workflow/09_simulate_test_chunks.sh          # resumable: resubmit the same line until every unit is written
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/fixed_probabilistic/ffmp_obj8/sets/ffmp_obj8_merged.set \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set \
        workflow/09b_merge_test_chunks.sh
 ```
 
@@ -321,7 +321,7 @@ Anvil project space and are symlinked into `outputs/synthetic_ensembles/`.
 ## Staging requirements
 
 The `historic` scenario design runs end-to-end with no staged data. Every
-other design resolves once its ensemble is staged: `fixed_probabilistic` via
+other design resolves once its ensemble is staged: `monte_carlo` via
 steps `02`+`04`, and `hazard_filling_stationary` via its P = 10⁶ pool
 (`gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`), then step `03`
 with `NYCOPT_CANDIDATE_POOL_N=1000000`, then step `04`. Until staged, the

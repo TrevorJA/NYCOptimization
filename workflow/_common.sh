@@ -165,15 +165,15 @@ _buf = io.StringIO()
 with contextlib.redirect_stdout(_buf):
     import config
 sys.stderr.write(_buf.getvalue())
-mc = config.ACTIVE_MOEA_CONFIG
+cfg = config.ACTIVE_MOEA_CONFIG
 print(config.active_scenario_name())
 print(config.derive_slug('${FORMULATION}'))
-print(mc.name)
-print(mc.total_ntasks_mpi if mc.total_ntasks_mpi is not None else '')
-print(mc.n_islands if mc.n_islands is not None else '')
-_nfe = mc.max_evaluations_for_seed(int(os.environ.get('SEED', '1')))
+print(cfg.name)
+print(cfg.total_ntasks_mpi if cfg.total_ntasks_mpi is not None else '')
+print(cfg.n_islands if cfg.n_islands is not None else '')
+_nfe = cfg.max_evaluations_for_seed(int(os.environ.get('SEED', '1')))
 print(_nfe if _nfe is not None else '')
-print(mc.runtime_frequency if mc.runtime_frequency is not None else '')
+print(cfg.runtime_frequency if cfg.runtime_frequency is not None else '')
 print(config.SCENARIO_ENSEMBLE_DRAW)
 ")
     if [[ "${#_cfg[@]}" -lt 8 || -z "${_cfg[0]:-}" ]]; then
@@ -356,7 +356,7 @@ from src.formulations import get_n_vars
 
 f = os.environ['FORMULATION']
 seed = int(os.environ.get('SEED', '1'))
-mc = config.ACTIVE_MOEA_CONFIG
+cfg = config.ACTIVE_MOEA_CONFIG
 spec = config.SEARCH_ENSEMBLE_SPEC
 obj = config.get_objective_set()
 design = config.ACTIVE_SCENARIO_DESIGN
@@ -366,9 +366,9 @@ print('Scenario design :', config.active_scenario_name())
 print('Ensemble draw   :', draw, f'| design K = {design.n_ensemble_draws}')
 print('Search ensemble :', None if spec is None else spec.preset_name,
       '| is_ensemble =', None if spec is None else spec.is_ensemble)
-print('MOEA config     :', mc.name, '| islands =', mc.n_islands,
-      '| NFE/island (this seed) =', mc.max_evaluations_for_seed(seed),
-      '| ranks =', mc.total_ntasks_mpi, '| seeds =', mc.n_seeds)
+print('MOEA config     :', cfg.name, '| islands =', cfg.n_islands,
+      '| NFE/island (this seed) =', cfg.max_evaluations_for_seed(seed),
+      '| ranks =', cfg.total_ntasks_mpi, '| seeds =', cfg.n_seeds)
 print('Realization batch:', config.SEARCH_REALIZATION_BATCH or 'off (one scenario block)')
 print('Salinity LSTM   :', config.INCLUDE_SALINITY_MODEL)
 print('Temperature LSTM:', config.INCLUDE_TEMPERATURE_MODEL)
@@ -384,9 +384,9 @@ assert spec is not None, (
     'SEARCH_ENSEMBLE_SPEC is None: the scenario design '
     f'{config.active_scenario_name()!r} could not resolve its search ensemble. '
     'Stage it first (workflow steps 02-04) or pick a staged design in the env file.')
-assert None not in (mc.n_islands, mc.n_workers_per_island,
-                    mc.max_evaluations_for_seed(seed)), (
-    f'MOEA config {mc.name!r} is schema-only (unset numbers) and cannot launch; '
+assert None not in (cfg.n_islands, cfg.n_workers_per_island,
+                    cfg.max_evaluations_for_seed(seed)), (
+    f'MOEA config {cfg.name!r} is schema-only (unset numbers) and cannot launch; '
     'set NYCOPT_MOEA_CONFIG to a concrete config (see src/moea_config.py).')
 
 # Duplicate-run guard: the .set file is written once, at successful completion,

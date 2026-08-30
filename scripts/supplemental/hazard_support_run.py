@@ -1,7 +1,7 @@
 """hazard_support_run.py - Hazard-support decomposition of the E_test design contrast.
 
 Supplemental diagnostic (docs/notes/methods/hazard_support_decomposition.md; SI
-Text S10): decomposes the ``hazard_filling`` - ``fixed_probabilistic`` difference
+Text S10): decomposes the ``hazard_filling`` - ``monte_carlo`` difference
 on E_test by where each state of the world (SOW) sits relative to the stationary
 candidate pool's hazard support. Zero simulation - every quantity reduces
 persisted artifacts. Two stages, one entry point:
@@ -28,7 +28,7 @@ images exist):
 Stage B (consumes the stage-A labels unchanged): re-scores each (design, draw,
 seed) run's Starr satisficing fraction and no-harm frequency per support
 stratum and per forcing tercile of ``m``, with a SOW-level paired bootstrap CI
-on the HF - PS difference, from the campaign re-eval cubes on
+on the HF - MC difference, from the campaign re-eval cubes on
 ``HSD_REEVAL_TAG``. Skipped with a message when no matched-design cube exists
 on the tag.
 
@@ -74,7 +74,7 @@ from src.satisficing_criteria import (  # noqa: E402
 
 #: The matched contrast, in (proposed - control) order.
 HF_DESIGN = "hazard_filling_stationary"
-PS_DESIGN = "fixed_probabilistic"
+MC_DESIGN = "monte_carlo"
 
 
 ###############################################################################
@@ -181,7 +181,7 @@ def axis_excursions(Z: np.ndarray) -> np.ndarray:
 
 
 def paired_design_delta(vec_by_run: dict, idx: np.ndarray) -> float:
-    """HF - PS difference of design means on one SOW index set.
+    """HF - MC difference of design means on one SOW index set.
 
     A design's value is the mean over its draws of the mean over each draw's
     seeds of the run's fixed-policy pass fraction on ``idx``. The campaign
@@ -193,10 +193,10 @@ def paired_design_delta(vec_by_run: dict, idx: np.ndarray) -> float:
         idx: SOW row indices to score (a stratum, or a bootstrap resample).
 
     Returns:
-        The HF - PS difference, NaN if either design is absent.
+        The HF - MC difference, NaN if either design is absent.
     """
     design_vals = {}
-    for design in (HF_DESIGN, PS_DESIGN):
+    for design in (HF_DESIGN, MC_DESIGN):
         per_draw: dict = {}
         for (d, draw, _seed), vec in vec_by_run.items():
             if d == design:
@@ -205,7 +205,7 @@ def paired_design_delta(vec_by_run: dict, idx: np.ndarray) -> float:
             return float("nan")
         design_vals[design] = float(np.mean(
             [np.mean(v) for v in per_draw.values()]))
-    return design_vals[HF_DESIGN] - design_vals[PS_DESIGN]
+    return design_vals[HF_DESIGN] - design_vals[MC_DESIGN]
 
 
 ###############################################################################
@@ -569,7 +569,7 @@ def run_stage_b(sow: pd.DataFrame) -> None:
 
     runs = [r for r in discover_runs(scfg.HSD_FORMULATION, scfg.HSD_REEVAL_TAG)]
     have = {d for r in runs for d in [r.design]}
-    if not ({HF_DESIGN, PS_DESIGN} <= have):
+    if not ({HF_DESIGN, MC_DESIGN} <= have):
         print(f"[hsd] stage B skipped: matched-design cubes not found on tag "
               f"'{scfg.HSD_REEVAL_TAG}' (found: {sorted(have) or 'none'}). "
               f"Point NYCOPT_HSD_REEVAL_TAG at a tag both designs were "
@@ -652,7 +652,7 @@ def run_stage_b(sow: pd.DataFrame) -> None:
         pd.DataFrame(noharm_rows).to_csv(
             scfg.hsd_table_path("hsd_stratum_noharm", tagged=True), index=False)
 
-    # SOW-level paired bootstrap on the HF - PS difference, per group.
+    # SOW-level paired bootstrap on the HF - MC difference, per group.
     rng = np.random.default_rng(scfg.HSD_BOOTSTRAP_SEED)
     boot_rows = []
     for (cset_key, endpoint), vec_by_run in fixed_vecs.items():
@@ -668,11 +668,11 @@ def run_stage_b(sow: pd.DataFrame) -> None:
                                                replace=True))
                     for _ in range(scfg.HSD_BOOTSTRAP_N)])
                 # Per-draw sign agreement: each HF draw's seed-mean against
-                # the PS design mean (draws are not paired across designs).
+                # the MC design mean (draws are not paired across designs).
                 hf: dict = {}
                 ps: dict = {}
                 for (d, draw, _s), vec in vec_by_run.items():
-                    tgt = hf if d == HF_DESIGN else ps if d == PS_DESIGN else None
+                    tgt = hf if d == HF_DESIGN else ps if d == MC_DESIGN else None
                     if tgt is not None:
                         tgt.setdefault(draw, []).append(float(vec[idx].mean()))
                 ps_mean = float(np.mean([np.mean(v) for v in ps.values()])) \

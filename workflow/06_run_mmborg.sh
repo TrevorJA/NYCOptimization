@@ -14,7 +14,7 @@
 # whose .set file already exists; otherwise the pre-flight refuses.
 #
 # Submit (from repo root; production needs --nodes=12 --ntasks-per-node=128):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_fixedprob_production.env,DRAW=0 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
 #          --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
 #
 # Geometry: the MPI rank count comes from the MOEA config

@@ -14,7 +14,7 @@ locations will shift upstream; update this table at that pass.
 | MGD | million gallons per day | Section 2.1 |
 | cfs | cubic feet per second | Section 2.1 |
 | HIST | Historical design | Section 3.1.1 |
-| PS | Probabilistic Sampling design | Section 3.1.1 |
+| MC | Monte Carlo Sampling design | Section 3.1.1 |
 | HF | Hazard Filling design | Section 3.1.1 |
 | i.i.d. | independent and identically distributed | Introduction P6 (drafted) |
 | SSI-6 | six-month Standardized Streamflow Index | Section 3.1.3 |

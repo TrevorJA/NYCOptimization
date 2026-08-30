@@ -8,9 +8,9 @@
 
 Three **evaluation ensembles** (one per scenario design) and one held-out **test ensemble** for re-evaluation. All three designs are drawn from a single stationary population. The methodological contribution is **hazard filling**: an in-the-loop evaluation ensemble built by space-filling coverage of the empirical hazard manifold of a candidate pool, contrasted against random sampling from the same stationary generator.
 
-Each design is constructed by its own recipe with its own seed stream. No design draws from another's data. This is what lets `fixed_probabilistic` and `hazard_filling` each honestly represent the practice it stands for while sharing a population law.
+Each design is constructed by its own recipe with its own seed stream. No design draws from another's data. This is what lets `monte_carlo` and `hazard_filling` each honestly represent the practice it stands for while sharing a population law.
 
-Hazard filling is the only design that needs a candidate pool, and this is intrinsic rather than incidental. Hazard coordinates are emergent properties of a realized flow sequence, so no generator can be asked to produce a realization at a prescribed drought severity. A hazard-space design must therefore **select from** a finite pool (LHS anchors plus a nearest-neighbour snap), whereas a probabilistic design **generates** its realizations directly. The nearest-neighbour step is a consequence of this fact, not an approximation of a preferable procedure.
+Hazard filling is the only design that needs a candidate pool, and this is intrinsic rather than incidental. Hazard coordinates are emergent properties of a realized flow sequence, so no generator can be asked to produce a realization at a prescribed drought severity. A hazard-space design must therefore **select from** a finite pool (LHS anchors plus a nearest-neighbour snap), whereas the Monte Carlo design **generates** its realizations directly. The nearest-neighbour step is a consequence of this fact, not an approximation of a preferable procedure.
 
 Deep uncertainty enters the study only through the test ensemble E_test (§5). Both search designs are stationary.
 
@@ -49,9 +49,9 @@ Restricting the study to this one population is deliberate. It isolates RQ2 — 
 
 ### 3.2 The candidate pool must be sampled i.i.d., not LHS
 
-The candidate pool is drawn **i.i.d.** from the stationary generator by plain Monte Carlo.
+The candidate pool is drawn **i.i.d.** from the stationary generator, never by LHS or any other structured design.
 
-This is load-bearing. A uniform random size-$N$ subset of an i.i.d. pool has exactly the joint law of $N$ fresh i.i.d. draws. That is what makes `fixed_probabilistic` the **exact statistical control** for `hazard_filling`: the two differ only in the selection rule applied to the same population law, and any difference in re-evaluated robustness is attributable to that rule alone. A random subset of an LHS design is not i.i.d., so an LHS-sampled pool would silently void the control. An invariant test enforces the i.i.d. condition, because nothing else in the pipeline would fail if it were broken.
+This is load-bearing. A uniform random size-$N$ subset of an i.i.d. pool has exactly the joint law of $N$ fresh i.i.d. draws. That is what makes `monte_carlo` the **exact statistical control** for `hazard_filling`: the two differ only in the selection rule applied to the same population law, and any difference in re-evaluated robustness is attributable to that rule alone. A random subset of an LHS design is not i.i.d., so an LHS-sampled pool would silently void the control. An invariant test enforces the i.i.d. condition, because nothing else in the pipeline would fail if it were broken.
 
 The pool owns $P = 10^6$ realizations (§6) and is never simulated. Only each realization's hazard coordinates and generation seed are stored, and the $N$ selected members are regenerated exactly on demand from the deterministic, globally indexed random-stream architecture (§3.4). This storage arrangement is what makes a $10^6$-member pool tractable.
 
@@ -81,7 +81,7 @@ Both matched designs run at **$N = 300$, $L = 10$ yr**. `historic` is an unmatch
 
 **4.1 `historic`.** The observed record as one continuous trace; $N=1$, one 78-yr trace (Dec 1945 – Nov 2023) scored as 77 FFMP-year units. The reference for prevailing applied practice (Giuliani et al. 2016; Herman et al. 2020). $K=1$: composition variance is zero by construction. Cannot be size-matched, and is not part of the controlled contrast.
 
-**4.2 `fixed_probabilistic`.** Generate $N$ realizations of length $L$ i.i.d. from the stationary generator; freeze for the search. $K$ draws × $S$ seeds (draw = ensemble-sampling variance; seed = MOEA variance). Precedent: Quinn et al. (2017); Zatarain Salazar et al. (2017). This is the discipline's random-sampling default, the reference against which designed selection is judged, and — by §3.2 — the exact statistical control for `hazard_filling`.
+**4.2 `monte_carlo`.** Generate $N$ realizations of length $L$ i.i.d. from the stationary generator; freeze for the search. $K$ draws × $S$ seeds (draw = ensemble-sampling variance; seed = MOEA variance). Precedent: Quinn et al. (2017); Zatarain Salazar et al. (2017). This is the discipline's random-sampling default, the reference against which designed selection is judged, and — by §3.2 — the exact statistical control for `hazard_filling`.
 
 **4.3 `hazard_filling` (registry key `hazard_filling_stationary`) — novel.** Select $E_d \subset C$, $\lvert E_d \rvert = N$, whose hazard coordinates cover the empirical hazard manifold.
 
@@ -99,7 +99,7 @@ Selection operates on the stored hazard image alone; the pool's daily traces are
 
 | Contrast | Held fixed | Question |
 |---|---|---|
-| `fixed_probabilistic` → `hazard_filling` | generator, population law, $N$, $L$ | Does hazard-space coverage change robustness relative to random sampling? |
+| `monte_carlo` → `hazard_filling` | generator, population law, $N$, $L$ | Does hazard-space coverage change robustness relative to random sampling? |
 | `historic` | — | Prevailing-practice reference, unmatched in size and budget. |
 
 The contrast varies exactly one thing (the selection rule) within a single population, and the i.i.d. pool gives it an exact random-selection control (§3.2).
@@ -172,17 +172,17 @@ Because $N$ and $L$ are common, per-evaluation simulation cost, scenario-years, 
 
 ### Replication
 
-A **draw** is the design's construction re-run from scratch with a fresh seed — one definition for every design, re-rolling *everything* that is random about building the ensemble. For `fixed_probabilistic` that is a fresh i.i.d. sample; for `hazard_filling`, **a fresh candidate pool *and* a fresh LHS anchor plan**.
+A **draw** is the design's construction re-run from scratch with a fresh seed — one definition for every design, re-rolling *everything* that is random about building the ensemble. For `monte_carlo` that is a fresh i.i.d. sample; for `hazard_filling`, **a fresh candidate pool *and* a fresh LHS anchor plan**.
 
-The pool must be re-drawn per draw, and this is load-bearing. Generating the pool *is* part of a hazard-filling design's construction. If the pool were pinned across draws, a hazard-filling draw would vary only its anchor plan while a `fixed_probabilistic` draw re-rolls its entire sample — the two between-draw variances would not be commensurable, and hazard filling would appear more stable **by construction** rather than as a finding.
+The pool must be re-drawn per draw, and this is load-bearing. Generating the pool *is* part of a hazard-filling design's construction. If the pool were pinned across draws, a hazard-filling draw would vary only its anchor plan while a `monte_carlo` draw re-rolls its entire sample — the two between-draw variances would not be commensurable, and hazard filling would appear more stable **by construction** rather than as a finding.
 
 Three draws are staged per matched design (d0–d2). The campaign **searches one draw** (d0) with $S = 2$ seeds; `historic` has structural-zero composition variance and runs the same two seeds. The unit of analysis for between-design comparison is the **seed**, and the comparison is conditional on the one draw per design. Draws d1 and d2 serve the SI draw-sensitivity re-evaluation: each design's final Pareto set is re-simulated on its own other two draws and the paired per-policy shifts are reported against ε (`experimental_design.md`, Replication; `campaign_design.md` §5).
 
 ### Ensemble-quality diagnostics
 
-**Build-QC.** Scenario redundancy (the §3.3 rank-correlation diagnostic re-run on $E_d$ and reported alongside the pool's — a diagnostic, not a gate). Statistical fidelity to $Q_{\text{obs}}$ (monthly moments, lag-1 and cross-site correlation, flow-duration curve) is a **within-`fixed_probabilistic` check only**; hazard filling distorts marginals by design and is never ranked on fidelity — only checked that each selected member is a valid generator output.
+**Build-QC.** Scenario redundancy (the §3.3 rank-correlation diagnostic re-run on $E_d$ and reported alongside the pool's — a diagnostic, not a gate). Statistical fidelity to $Q_{\text{obs}}$ (monthly moments, lag-1 and cross-site correlation, flow-duration curve) is a **within-`monte_carlo` check only**; hazard filling distorts marginals by design and is never ranked on fidelity — only checked that each selected member is a valid generator output.
 
-**Coverage is method verification, not a comparison result.** L2-star discrepancy and minimum-spanning-tree edge statistics on normalized hazard coordinates, plus the snap-distance distribution, are reported **against the expected discrepancy of a random design at the same $(N, m)$** so the $m$-vs-$N$ tension is visible rather than asserted. Because the LHS + nearest-neighbour selector does not optimize discrepancy, this is an independent measurement that the selector administered the intervention at strength — that the `hazard_filling` ensemble is compositionally shifted relative to `fixed_probabilistic`. It is build-QC, not an endpoint.
+**Coverage is method verification, not a comparison result.** L2-star discrepancy and minimum-spanning-tree edge statistics on normalized hazard coordinates, plus the snap-distance distribution, are reported **against the expected discrepancy of a random design at the same $(N, m)$** so the $m$-vs-$N$ tension is visible rather than asserted. Because the LHS + nearest-neighbour selector does not optimize discrepancy, this is an independent measurement that the selector administered the intervention at strength — that the `hazard_filling` ensemble is compositionally shifted relative to `monte_carlo`. It is build-QC, not an endpoint.
 
 **Outcome hypotheses** (falsifiable, may be null). The primary cross-design comparison is the **multivariate Starr satisficing fraction** on $E_{\text{test}}$, with univariate satisficing, Laplace, and maximin as secondary anchors (`objective_definitions.md` §3). Incumbent-relative regret (per-objective regret and gain magnitudes, harm frequencies, and the no-harm frequency against the default FFMP policy in the same SOW) is the co-primary family and answers RQ1. No set-relative (best-in-set) regret and no perfect-foresight (Cohen-style) regret are computed.
 

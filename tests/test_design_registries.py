@@ -50,7 +50,7 @@ from src.moea_config import (
 # uncertainty enters only via E_test (src/etest.py), not as a search design.
 CAMPAIGN_DESIGNS = {
     "historic",
-    "fixed_probabilistic",
+    "monte_carlo",
     "hazard_filling_stationary",
 }
 # Retained, fully wired, but not in the main campaign: the DU-forced designs, the
@@ -58,7 +58,7 @@ CAMPAIGN_DESIGNS = {
 # stand-in. Campaign membership is the config-level switch (the `campaign` flag);
 # no construction code is deleted.
 NON_CAMPAIGN_DESIGNS = {
-    "resampled_probabilistic",
+    "monte_carlo_resampled",
     "input_stratified",
     "hazard_filling_du",
     "hazard_filling_stationary_cdf",
@@ -124,7 +124,7 @@ def test_pools_are_iid_sampled():
 
     The cross-design control is distributional equivalence: a uniform random
     size-N subset of an i.i.d. pool has exactly the joint law of N fresh i.i.d.
-    draws, which is what makes ``fixed_probabilistic`` the EXACT statistical
+    draws, which is what makes ``monte_carlo`` the EXACT statistical
     control for ``hazard_filling_stationary`` -- they differ only in the
     selection rule applied to the same population law.
 
@@ -170,7 +170,7 @@ def test_every_design_has_a_seed_domain():
 
 
 def test_design_seed_is_deterministic_and_draw_dependent():
-    d = get_scenario_design("fixed_probabilistic")
+    d = get_scenario_design("monte_carlo")
     assert d.generation_seed(3) == d.generation_seed(3)
     assert d.generation_seed(3) != d.generation_seed(4)
     assert d.generation_seed(0) == design_seed(SEED_ROOT, "fixed", 0)
@@ -213,7 +213,7 @@ def test_only_hazard_filling_and_resample_own_a_pool():
     are emergent and cannot be prescribed at generation."""
     with_pool = {n for n, d in SCENARIO_DESIGNS.items() if d.pool_slug(0) is not None}
     assert with_pool == {
-        "resampled_probabilistic",
+        "monte_carlo_resampled",
         "hazard_filling_stationary",
         "hazard_filling_stationary_cdf",
         "hazard_filling_du",
@@ -238,11 +238,11 @@ def test_pools_are_redrawn_per_draw():
     """A draw re-rolls EVERYTHING random about building the ensemble, pool included.
 
     If the pool were pinned across draws, a hazard-filling draw would vary only its
-    LHS anchor plan while a ``fixed_probabilistic`` draw re-rolls its entire sample.
+    LHS anchor plan while a ``monte_carlo`` draw re-rolls its entire sample.
     The two between-draw variances would then not be commensurable, and hazard-filling
     would look more stable BY CONSTRUCTION rather than as a finding.
     """
-    for name in ("hazard_filling_du", "hazard_filling_stationary", "resampled_probabilistic"):
+    for name in ("hazard_filling_du", "hazard_filling_stationary", "monte_carlo_resampled"):
         d = get_scenario_design(name)
         assert d.pool_slug(0) != d.pool_slug(1), f"'{name}' pins its pool across draws"
         assert d.generation_seed(0) != d.generation_seed(1)
@@ -266,7 +266,7 @@ def test_no_simulated_annealing_selector():
 
 def test_resample_flag_only_on_resampled():
     resampling = {n for n, d in SCENARIO_DESIGNS.items() if d.resample_per_eval}
-    assert resampling == {"resampled_probabilistic"}
+    assert resampling == {"monte_carlo_resampled"}
 
 
 def test_hazard_image_only_for_hazard_filling():
@@ -284,7 +284,7 @@ def test_hazard_image_only_for_hazard_filling():
 # -- slugs and resolution ---------------------------------------------------
 
 def test_slugs_key_on_draw_not_seed():
-    d = get_scenario_design("fixed_probabilistic")
+    d = get_scenario_design("monte_carlo")
     assert d.search_ensemble_slug(0).endswith("_d0")
     assert d.search_ensemble_slug(2).endswith("_d2")
     assert d.search_ensemble_slug(0) != d.search_ensemble_slug(2)
@@ -320,7 +320,7 @@ def test_staging_required_designs_raise_when_not_staged(name, tmp_path, monkeypa
         get_scenario_design(name).resolve_search_spec()
 
 
-@pytest.mark.parametrize("name", ["fixed_probabilistic", "input_stratified"])
+@pytest.mark.parametrize("name", ["monte_carlo", "input_stratified"])
 def test_generated_designs_resolve_own_staged_slug(name, tmp_path, monkeypatch):
     """Generated designs resolve their OWN staged ensemble -- no pool, no subset."""
     import config
@@ -351,11 +351,11 @@ def test_hazard_filling_resolves_reduced_ensemble_per_draw(tmp_path, monkeypatch
         d.resolve_search_spec(draw=2)  # that draw is not staged
 
 
-def test_resampled_probabilistic_resolves_to_its_own_pool(tmp_path, monkeypatch):
+def test_monte_carlo_resampled_resolves_to_its_own_pool(tmp_path, monkeypatch):
     """The pool belongs to the design -- it is not a shared master."""
     import config
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design("resampled_probabilistic")
+    d = get_scenario_design("monte_carlo_resampled")
     pool = d.pool_slug(0)
     assert pool.startswith("respool_")
     _stage(tmp_path, pool, d.pool_size, d.realization_years)
@@ -381,7 +381,7 @@ def test_resolution_is_a_pure_lookup(tmp_path, monkeypatch):
     """
     import config
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    d = get_scenario_design("fixed_probabilistic")
+    d = get_scenario_design("monte_carlo")
     with pytest.raises(NotImplementedError):
         d.resolve_search_spec()
     assert not list(tmp_path.iterdir()), "resolution wrote to the staging dir"

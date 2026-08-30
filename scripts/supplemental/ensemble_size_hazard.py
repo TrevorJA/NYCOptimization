@@ -22,13 +22,13 @@ Blocks (all tables under ``outputs/supplemental/ensemble_size_diagnostics/tables
   A-NP  ``np_ladder.csv``       the same selector on nested prefixes P' of pool
                                  d0 (exact i.i.d. pools of their size): the
                                  joint (N, P) tail-enrichment surface.
-  A-PS  ``ps_tail_sampling.csv`` the exact i.i.d. law of a size-N subset of the
+  A-MC  ``ps_tail_sampling.csv`` the exact i.i.d. law of a size-N subset of the
                                  pool image: per-axis counts above the pool
                                  P90/P99, relative quantile error, and the
                                  closed-form P(>= 1 member beyond q) = 1 - q^N.
   A-CV  ``descriptor_convergence.csv``
                                  pooled-mean vs ensemble-extreme descriptors
-                                 versus N (PS bands over subsets; HF plans).
+                                 versus N (MC bands over subsets; HF plans).
   plan  ``policies.csv`` / ``policies.json``   the fixed policy set (§4.1 rule).
         ``library_plan.json``    chunks of pool members to regenerate + the
                                  staged production ensembles to read as-is.
@@ -217,7 +217,7 @@ def np_ladder(pool: dict) -> pd.DataFrame:
 
 
 ###############################################################################
-# Block A-PS: the exact i.i.d. law of size-N subsets of the pool image
+# Block A-MC: the exact i.i.d. law of size-N subsets of the pool image
 ###############################################################################
 
 def ps_tail_sampling(pool: dict) -> pd.DataFrame:
@@ -257,7 +257,7 @@ def ps_tail_sampling(pool: dict) -> pd.DataFrame:
                 rec[f"relerr_p{int(q)}_rms"] = float(np.sqrt(np.nanmean(e ** 2)))
                 rec[f"relerr_p{int(q)}_p95abs"] = float(np.nanpercentile(np.abs(e), 95))
             records.append(rec)
-        print(f"[esd:A-PS] N={n} done", flush=True)
+        print(f"[esd:A-MC] N={n} done", flush=True)
     return pd.DataFrame.from_records(records)
 
 
@@ -273,7 +273,7 @@ def _cv_grid() -> list[int]:
 
 
 def descriptor_convergence(pool: dict, selections: dict) -> pd.DataFrame:
-    """Pooled-mean and ensemble-max per axis vs N: PS subset bands and HF plans."""
+    """Pooled-mean and ensemble-max per axis vs N: MC subset bands and HF plans."""
     H, axes = pool["H"], pool["axes"]
     records = []
     for n in _cv_grid():
@@ -286,7 +286,7 @@ def descriptor_convergence(pool: dict, selections: dict) -> pd.DataFrame:
             for stat, arr in (("pooled_mean", means), ("ensemble_max", maxes)):
                 v = arr[:, k]
                 records.append({
-                    "design": "fixed_probabilistic", "n": n, "axis": axis, "statistic": stat,
+                    "design": "monte_carlo", "n": n, "axis": axis, "statistic": stat,
                     "p05": float(np.percentile(v, 5)), "p50": float(np.percentile(v, 50)),
                     "p95": float(np.percentile(v, 95)), "n_replicates": len(v),
                     "pool_value": float(H[:, k].mean() if stat == "pooled_mean" else H[:, k].max()),
@@ -314,11 +314,11 @@ def descriptor_convergence(pool: dict, selections: dict) -> pd.DataFrame:
 ###############################################################################
 
 def _load_union() -> dict:
-    """Union of the matched designs' reference sets (PS rows first)."""
+    """Union of the matched designs' reference sets (MC rows first)."""
     from src.solution_selection import load_natural_front
 
     dvs, objs, src, rows, names, dirs = [], [], [], [], None, None
-    for design in ("fixed_probabilistic", "hazard_filling_stationary"):
+    for design in ("monte_carlo", "hazard_filling_stationary"):
         path = scfg.ESD_POLICY_SET_FILES[design]
         if not path.exists():
             raise FileNotFoundError(f"policy set file missing: {path}")
@@ -403,7 +403,7 @@ def select_policy_set() -> tuple[pd.DataFrame, dict]:
         _add_by_rank(f"best_{oname}", "per_objective_best", order)
 
     compromise = {}
-    for design in ("fixed_probabilistic", "hazard_filling_stationary"):
+    for design in ("monte_carlo", "hazard_filling_stationary"):
         ids = _compromise_ids(design)
         compromise[design] = ids
         if not ids:
@@ -412,7 +412,7 @@ def select_policy_set() -> tuple[pd.DataFrame, dict]:
         uidx = int(np.flatnonzero(mask & (union["row"] == ids["best_satisficing"]))[0])
         _add_by_rank(f"compromise_best_satisficing_{design}", "select_compromise",
                      np.array([uidx]))
-    for design in ("fixed_probabilistic", "hazard_filling_stationary"):
+    for design in ("monte_carlo", "hazard_filling_stationary"):
         comp = [c for c in chosen if c["rule"] == "select_compromise" and design in c["label"]]
         if not comp:
             continue
@@ -420,16 +420,16 @@ def select_policy_set() -> tuple[pd.DataFrame, dict]:
         d = np.linalg.norm(scaled - ref[None, :], axis=1)
         _add_by_rank(f"adjacent_to_compromise_{design}", "nearest_in_scaled_objective_space",
                      np.argsort(d, kind="stable"))
-    ps_ids = compromise.get("fixed_probabilistic", {})
+    ps_ids = compromise.get("monte_carlo", {})
     if ps_ids:
-        mask = union["source"] == "fixed_probabilistic"
+        mask = union["source"] == "monte_carlo"
         uidx = int(np.flatnonzero(mask & (union["row"] == ps_ids["min_dist_ideal"]))[0])
-        # Fall through to the next-closest-to-ideal PS row if already chosen.
+        # Fall through to the next-closest-to-ideal MC row if already chosen.
         ps_rows = np.flatnonzero(mask)
         d = np.linalg.norm(scaled[ps_rows], axis=1)
         order = ps_rows[np.argsort(d, kind="stable")]
         assert int(order[0]) == uidx or _taken(dv[uidx])
-        _add_by_rank("compromise_min_dist_ideal_fixed_probabilistic", "select_compromise",
+        _add_by_rank("compromise_min_dist_ideal_monte_carlo", "select_compromise",
                      np.concatenate([[uidx], order]))
 
     chosen = chosen[:scfg.ESD_N_POLICIES]
@@ -544,7 +544,7 @@ def main() -> None:
     plan = build_library_plan(selections, qc)
     scfg.esd_json_path("library_plan").write_text(json.dumps(plan))
     print(f"[esd:plan] library: {plan['n_unique_pool_members']} unique pool members "
-          f"({scfg.ESD_P_REF} PS reference + {plan['n_hf_members_outside_prefix']} HF-only) "
+          f"({scfg.ESD_P_REF} MC reference + {plan['n_hf_members_outside_prefix']} HF-only) "
           f"in {len(plan['chunks'])} chunks of <= {scfg.ESD_CHUNK_SIZE}; "
           f"{len(plan['staged_ensembles'])} staged production ensembles; "
           f"{policies.shape[0]} policies. ({time.time() - t0:.0f}s)")

@@ -96,7 +96,7 @@ def sow_noise_floor(baseline: rob.RawCube, theta_m, bin_size: int = None
     The floor estimator of the per-SOW substrate (see the module docstring):
     the SOWs are sorted on ``m``, partitioned into consecutive bins of
     ``bin_size`` SOWs, and ``sigma_local`` is the median across bins of the
-    within-bin standard deviation — an UPPER BOUND on the Monte Carlo noise of
+    within-bin standard deviation — an UPPER BOUND on the sampling noise of
     one SOW's pooled objective value, since each bin's spread also carries the
     r1/r2 response and the residual m-trend inside the bin.
     ``null_sd_unpaired = sqrt(2) * sigma_local`` is the SD of a difference

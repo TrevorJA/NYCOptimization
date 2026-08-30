@@ -44,19 +44,19 @@ Numbering follows the manuscript (Section 1, P7). See `notes/research_questions.
 
 Three designs, all drawn from one **stationary population** (Kirsch–Nowak fitted to the
 historic record, no climate perturbation). Registry: `src/scenario_designs.py`. HF is the
-manuscript's shorthand for `hazard_filling_stationary` and PS for `fixed_probabilistic`.
+manuscript's shorthand for `hazard_filling_stationary` and MC for `monte_carlo`.
 
 | Design | Construction | Role |
 |---|---|---|
 | `historic` | The observed record, one continuous 78-yr trace (Dec 1945 – Nov 2023), scored as 77 FFMP-year units | Prevailing-practice reference (Giuliani 2016; Herman 2020); unmatched |
-| `fixed_probabilistic` | N × L realizations drawn i.i.d. from the stationary generator; frozen across the search | The random-sampling control (Quinn 2017; Zatarain Salazar 2017) |
+| `monte_carlo` | N × L realizations drawn i.i.d. from the stationary generator; frozen across the search | The random-sampling control (Quinn 2017; Zatarain Salazar 2017) |
 | `hazard_filling_stationary` | LHS anchors in absolute, robust range-scaled hazard space (p1/p99 bounds), snapped to the nearest member of its own i.i.d. candidate pool | **Proposed method** |
 
-**The controlled contrast.** `fixed_probabilistic` → `hazard_filling_stationary` holds
+**The controlled contrast.** `monte_carlo` → `hazard_filling_stationary` holds
 the generator, population law, N, and L fixed and varies *only the selection rule*: does
 hazard coverage beat random sampling? Because the candidate pool is sampled i.i.d., a
 uniform random size-N subset of it has exactly the law of N fresh i.i.d. draws, which
-makes `fixed_probabilistic` the *exact statistical control* for
+makes `monte_carlo` the *exact statistical control* for
 `hazard_filling_stationary`. This is the Eker & Kwakkel (2018) null benchmark
 (diversity-based selection did not beat random selection) raised to hazard space, on a
 real system, with seed-replicated searches and draw-dependence measured by
@@ -82,7 +82,7 @@ probability-preserving flow stratification).
 
 ## Pipeline
 
-1. **Generation** — the stationary Kirsch–Nowak generator produces the `fixed_probabilistic`
+1. **Generation** — the stationary Kirsch–Nowak generator produces the `monte_carlo`
    ensemble directly and the `hazard_filling_stationary` candidate pool (P = 10⁶ per
    draw). The pool is sampled i.i.d., and only its hazard image plus seeds are stored;
    realizations regenerate deterministically on demand (chunked storage for large pools).
@@ -133,7 +133,7 @@ re-anchoring audit run on the 500-SOW production cube
   (N, L) is required: if L differed, the selection rule would be confounded with record
   length.
 - **The i.i.d. pool is load-bearing.** A uniform random size-N subset of an i.i.d. pool
-  has exactly the law of N fresh i.i.d. draws, which is what makes `fixed_probabilistic`
+  has exactly the law of N fresh i.i.d. draws, which is what makes `monte_carlo`
   the exact control for `hazard_filling_stationary`. A structured (e.g. LHS) pool would
   void the control. Enforced by an invariant test.
 - **Seed-stream disjointness**: the candidate pool and the test ensemble generate from
