@@ -57,3 +57,4 @@ docs/notes/literature/fulltext/
 # Ad-hoc sandbox (never referenced by workflow/ or src/)
 scripts/temporary/*
 !scripts/temporary/.gitkeep
+docs/prior_study_presentations/*

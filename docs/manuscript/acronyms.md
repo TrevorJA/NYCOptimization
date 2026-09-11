@@ -35,7 +35,9 @@ locations will shift upstream; update this table at that pass.
   appears once, as attribution to Starr (1962), and never again.
 - **SOW** is the unit of all robustness and regret fractions; "per-SOW", not
   "per-state" or "per-scenario".
-- **incumbent** — the default 2017 FFMP policy used as the regret reference.
+- **current FFMP policy** — the default 2017 FFMP policy used as the regret
+  reference ("status quo policy" per Herman et al., 2015). "Incumbent" is retired;
+  see `docs/terminology.md`.
 - **years** — simulated record lengths are stated in plain years with the
   partition into SOWs and realizations made explicit; never "scenario-years"
   or "ensemble-years".
