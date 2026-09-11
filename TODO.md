@@ -137,3 +137,11 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   sentence in the manuscript.
 - [ ] Forward hooks only: per-realization diversion staging (`src/ensemble_prep.py`)
   and the deferred DU-factor presets (`src/ensembles.py`).
+
+## 5. Proposal revision follow-ups (2026-09-02)
+
+- [ ] **[local]** Figure labels to match `docs/terminology.md`: "no-harm frequency" → "low-regret frequency" (`src/plotting/regret_summary.py`, `regret_headline.py`, `factor_maps.py`, `factor_map_surfaces.py`, `src/figures/registry.py`); "delivery" → "diversion" in objective labels; "SSI-months" → "deficit-months" on hazard axes; "Probabilistic Sampling (PS)" → "Monte Carlo Sampling (MC)" in rendered legends (figs 01, 04, 05, 08).
+- [ ] **[HPC]** E_test at 50 realizations per SOW (proposal Section 3.5): regenerate or extend `etest_kn_50yr_n25000` to R = 50 for the 500 re-evaluated SOWs (25,000 realizations, 1.25M years); re-evaluation cost doubles to ~132k SU and the campaign total rises to ~489k SU (reserve ~18 %). Update `src/etest.py`, `campaign_design.md` §5–6, and the SI cost text.
+- [ ] **[local]** Zotero: add Hogarty (1970), Van Loon (2015), Fleig et al. (2006), Tijdeman et al. (2020), AghaKouchak et al. (2021), Brunner (2023), Brunner & Gilleland (2020) to collection `ISYGLK35` (currently only in the Paper 2 collection); OCR the Hogarty PDF and confirm its year (1969 vs 1970) and ICP case number.
+- [ ] **[local]** Reconcile `docs/notes/terminology.md` (older code-oriented vocabulary: "input space", "candidate pool", "incumbent regret", "test ensemble") with `docs/terminology.md`, which governs manuscript prose; the two currently conflict.
+- [ ] **[local]** Decide capitalization across the two papers: proposal uses "Decree Parties" / "1954 Decree" (FFMP document form); the stochastic DRB manuscript uses "decree parties" / "1954 decree".
