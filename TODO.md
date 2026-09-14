@@ -7,46 +7,13 @@ cluster, **[local]** laptop.
 
 ## 1. Anvil HPC rename for the Monte Carlo design
 
-The i.i.d. control design is renamed: registry `fixed_probabilistic` → `monte_carlo`
-(`resampled_probabilistic` → `monte_carlo_resampled`), prose "Probabilistic
-Sampling (PS)" → "Monte Carlo Sampling (MC)". The laptop tree is renamed; the
-cluster tree must be brought into line before any campaign command runs there,
-because `NYCOPT_SCENARIO_DESIGN=fixed_probabilistic` no longer resolves and every
-loader now looks under `outputs/monte_carlo/`.
+Path renames DONE on the cluster 2026-08-30: pull, env files, and every
+`outputs/` path moved and verified (`find outputs logs -name
+'*fixed_probabilistic*'` prints nothing; registry, baseline partition, and
+`search_ensemble_slug()` → `fixprob_10yr_n300_d{k}` all resolve). Run-manifest
+snapshots under `outputs/run_manifests/` deliberately keep the old string as
+frozen per-run provenance. Only the regeneration pointer below remains open.
 
-- [ ] **[HPC]** `git pull` first. The env files are renamed in git
-  (`ffmp_obj8_fixedprob_{moderate,production}.env` → `ffmp_obj8_mc_{moderate,production}.env`,
-  `eps_calib_fixed_probabilistic.env` → `eps_calib_monte_carlo.env`); resubmit any
-  queued job whose `NYCOPT_ENV_FILE` names an old file.
-- [ ] **[HPC]** From the project root, plain moves mirroring the laptop renames
-  (nothing deleted; every line is a no-op where the path is absent):
-
-  ```bash
-  mv outputs/fixed_probabilistic outputs/monte_carlo
-  [ -d outputs/figures/fixed_probabilistic ] && mv outputs/figures/fixed_probabilistic outputs/figures/monte_carlo
-  [ -d outputs/figures/_exploratory/fixed_probabilistic ] && mv outputs/figures/_exploratory/fixed_probabilistic outputs/figures/_exploratory/monte_carlo
-  [ -d outputs/supplemental/epsilon_refilter/fixed_probabilistic_ffmp_obj8 ] && mv outputs/supplemental/epsilon_refilter/fixed_probabilistic_ffmp_obj8 outputs/supplemental/epsilon_refilter/monte_carlo_ffmp_obj8
-  for f in outputs/supplemental/epsilon_calibration/cube/unit_cube_ffmp_fixed_probabilistic_seed42_n512.h5 \
-           outputs/supplemental/epsilon_calibration/figures/parallel_axes_ffmp_fixed_probabilistic_seed42_n512.png \
-           outputs/supplemental/epsilon_calibration/figures/scalar_distributions_ffmp_fixed_probabilistic_seed42_n512.png \
-           outputs/supplemental/epsilon_calibration/tables/archive_sweep_ffmp_fixed_probabilistic_seed42_n512.csv \
-           outputs/supplemental/epsilon_calibration/tables/epsilon_diagnostics_ffmp_fixed_probabilistic_seed42_n512.csv \
-           outputs/supplemental/framing_convention/tables/redundancy_flagged_fixed_probabilistic.csv \
-           outputs/supplemental/framing_convention/tables/redundancy_spearman_fixed_probabilistic.csv; do
-    [ -e "$f" ] && mv "$f" "${f//fixed_probabilistic/monte_carlo}"
-  done
-  # Cluster-only artifacts the laptop never held (runtime/, reference sets, hazard-support,
-  # ensemble-size and E_test-overlay tables, logs): deepest first so parents move after children.
-  find outputs logs -depth -name '*fixed_probabilistic*' -print0 2>/dev/null \
-    | while IFS= read -r -d '' f; do mv "$f" "${f//fixed_probabilistic/monte_carlo}"; done
-  find outputs logs -name '*fixed_probabilistic*' 2>/dev/null   # must print nothing
-  ```
-
-  No scratch or staging tree outside `outputs/` carries the design name
-  (`workflow/README.md`, `workflow/supplemental/*.sh` name none). The staged
-  search-ensemble slug `fixprob_10yr_n300_d{k}` under `outputs/synthetic_ensembles/`
-  and its step-04 inputs are a data-layer stem, deliberately unchanged;
-  `monte_carlo.search_ensemble_slug()` still resolves to it.
 - [ ] Flagged, not renamed. Internal contents still carry `fixed_probabilistic`;
   regenerate from the renamed inputs rather than rewriting in place:
   - `outputs/monte_carlo/ffmp_obj8/reeval/*/reeval_raw_meta.json`, field
