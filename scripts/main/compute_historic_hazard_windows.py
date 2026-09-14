@@ -21,9 +21,10 @@ Feeds the historical-record marker layer of the ensemble-composition figure
 (manuscript figure 4; ``src/plotting/ensemble_composition.py``).
 
 Writes a cached ``hazard_windows_{L}yr.npz`` under
-``outputs/supplemental/historic_hazard_windows/`` carrying its anchor month and
-reference start as provenance; the loader recomputes when they do not match the
-current convention. Pass ``force=True`` to recompute unconditionally.
+``outputs/supplemental/historic_hazard_windows/`` carrying its anchor month,
+reference start, scenario stamp and dry-axis cut as provenance; the loader
+recomputes when any of them does not match the current convention. Pass
+``force=True`` to recompute unconditionally.
 
 Run standalone::
 
@@ -81,8 +82,10 @@ def historic_hazard_windows(
         ``(H, hazard_axes, window_starts)`` with one row of ``H`` per disjoint
         ``SCENARIO_YEARS``-year window, in chronological order.
     """
+    from scengen.diagnostics import check_hazard_image_provenance
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import (
+        _DRY_CUT_MONTHS,
         _REFERENCE_START,
         _SCENARIO_STAMP_START,
         DEFAULT_NYC_INFLOW_NODES,
@@ -91,22 +94,24 @@ def historic_hazard_windows(
 
     if CACHE_PATH.exists() and not force:
         with np.load(CACHE_PATH, allow_pickle=True) as z:
-            # Convention provenance: a cache from another anchor/reference/
-            # stamp convention (or predating provenance) silently recomputes.
-            stale = (
-                "anchor_month" not in z
-                or int(z["anchor_month"]) != WINDOW_ANCHOR_MONTH
-                or str(z["reference_start"]) != _REFERENCE_START
-                or "scenario_stamp_start" not in z
-                or str(z["scenario_stamp_start"]) != _SCENARIO_STAMP_START
-            )
+            # Convention provenance: a cache from another anchor, reference,
+            # stamp or dry-cut convention (or predating provenance) recomputes.
+            try:
+                check_hazard_image_provenance(z, CACHE_PATH)
+                stale = (
+                    "anchor_month" not in z
+                    or int(z["anchor_month"]) != WINDOW_ANCHOR_MONTH
+                    or str(z["reference_start"]) != _REFERENCE_START
+                )
+            except ValueError:
+                stale = True
             if not stale:
                 return (
                     z["H"],
                     [str(a) for a in z["hazard_axes"]],
                     pd.DatetimeIndex([str(s) for s in z["window_starts"]]),
                 )
-        print(f"[hist-hazard] cache {CACHE_PATH.name} predates the current date "
+        print(f"[hist-hazard] cache {CACHE_PATH.name} predates the current scoring "
               f"convention; recomputing.")
 
     reference_monthly, reference_daily = _reference_series(flowtype)
@@ -157,6 +162,7 @@ def historic_hazard_windows(
         anchor_month=np.asarray(WINDOW_ANCHOR_MONTH),
         reference_start=np.asarray(_REFERENCE_START, dtype=object),
         scenario_stamp_start=np.asarray(_SCENARIO_STAMP_START, dtype=object),
+        dry_cut_months=np.asarray(_DRY_CUT_MONTHS),
     )
     print(f"[hist-hazard] wrote {CACHE_PATH} ({H.shape[0]} windows x {H.shape[1]} axes; "
           f"{starts[0].date()} .. {starts[-1].date()} starts).")

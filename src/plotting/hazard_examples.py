@@ -206,8 +206,9 @@ def sequence_of(daily: pd.Series, index: int, reference: tuple, n_years: int) ->
     Mirrors ``src.ensemble_generation._hazard_block``: the trailing partial
     FFMP-year is cut from the daily and monthly inputs, the wet axes exclude
     the leading ``config.METRIC_EXCLUSION_MONTHS`` by date, and the SSI-6
-    series keeps its leading months as accumulation input before the same
-    cut is applied to it.
+    series keeps its leading months as accumulation input and is then cut by
+    date at the same boundary, so the sequence drawn opens where the
+    objectives' window opens.
 
     Args:
         daily: Daily aggregate NYC inflow of the realization (DatetimeIndex
@@ -244,12 +245,12 @@ def sequence_of(daily: pd.Series, index: int, reference: tuple, n_years: int) ->
     dry_calc, _threshold, ref_mean = get_reference_fits(ref_m, ref_d)
 
     # SynHydro returns only the months on which SSI-6 is defined, so the
-    # output is stamped from the tail of the monthly index; the leading cut is
-    # the one ``compute_candidate_hazard_image`` applies, and the descriptor
-    # check below fails loudly if the two ever drift apart.
+    # output is stamped from the tail of the monthly index and cut by date at
+    # the metric window's start; the descriptor check below fails loudly if
+    # ``compute_candidate_hazard_image`` ever scores from another month.
     ssi = dry_calc.transform(flows_to_series(monthly.to_numpy(), freq="MS"))
     ssi = pd.Series(ssi.to_numpy(dtype=float), index=monthly.index[-len(ssi):])
-    ssi = ssi.iloc[excl:]
+    ssi = ssi.loc[ssi.index >= metric_start]
     dry = critical_event_descriptors(ssi)
     dry_row = [dry[m.removeprefix("drought_")] for m in DRY_EVENT_METRICS]
     if not np.allclose(dry_row, H_row[0, :len(DRY_EVENT_METRICS)], rtol=1e-6, atol=1e-9):

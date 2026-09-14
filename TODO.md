@@ -49,6 +49,20 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 - [ ] **[HPC]** Pull all four repos on Anvil; check the SU balance (`mybalance`)
   against the ~600k the budget assumes.
+- [ ] **[HPC]** Recompute every hazard image under the June 1 dry-axis window before
+  step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months`):
+  the P = 10⁶ pools d0–d2 are stream-only, so regenerate them per draw
+  (`workflow/supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`);
+  then the step-03 selections; E_test's `hazard_image_subwindows.npz`
+  (`etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` after deleting the
+  old artifact and any leftover shard files); E_test's realization-level
+  `hazard_image.npz` (written by `gen_etest_merge.sh`; read by step 11, the
+  hazard-support decomposition, and `make_etest_subset.py`, which slices it into
+  the 500-SOW subset); and the cached `outputs/supplemental/historic_hazard_windows/`
+  (recomputes itself on the provenance mismatch). Afterwards rerun the readers:
+  `compute_staged_hazard_image.py` for the Monte Carlo ensembles, the
+  hazard-examples figure, `ensemble_size_hazard.sh`, `hazard_support_decomposition.sh`,
+  `hazard_selector_diagnostics`, the E_test overlay, and step 11.
 - [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–2: step 02
   (`monte_carlo`, `--array=0-2`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line

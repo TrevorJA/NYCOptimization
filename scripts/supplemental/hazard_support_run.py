@@ -214,17 +214,17 @@ def paired_design_delta(vec_by_run: dict, idx: np.ndarray) -> float:
 
 def _load_subwindow_image() -> dict:
     """The E_test sub-window hazard image, provenance-checked, smoke-sliced."""
-    from scengen.hazard_metrics import _SCENARIO_STAMP_START
+    from scengen.diagnostics import check_hazard_image_provenance
 
     path = staged_ensemble_dir(scfg.HSD_ETEST_SLUG) / "hazard_image_subwindows.npz"
     if not path.exists():
         sys.exit(f"[hsd] E_test sub-window hazard image missing: {path}\n"
                  f"[hsd] Run scripts/main/compute_etest_hazard_image.py first.")
     z = np.load(path, allow_pickle=True)
-    stamp = str(z["scenario_stamp_start"]) if "scenario_stamp_start" in z else None
-    if "reference_start" not in z or stamp != _SCENARIO_STAMP_START:
-        sys.exit(f"[hsd] {path} carries a retired date convention "
-                 f"(scenario_stamp_start={stamp!r}); regenerate it.")
+    try:
+        check_hazard_image_provenance(z, path)
+    except ValueError as err:
+        sys.exit(f"[hsd] {err}")
     img = {
         "H": np.asarray(z["H"], dtype=float),
         "axes": [str(a) for a in z["hazard_axes"]],

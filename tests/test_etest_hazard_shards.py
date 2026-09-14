@@ -60,6 +60,12 @@ def test_merge_is_row_order_invariant_and_unlinks(tmp_path, merge_shards):
     assert [str(x) for x in a["hazard_axes"]] == [str(x) for x in b["hazard_axes"]]
     assert int(a["window_years"]) == int(b["window_years"])
 
+    # The merged artifact carries the scoring-convention provenance every
+    # reader checks.
+    from scengen.diagnostics import check_hazard_image_provenance
+
+    check_hazard_image_provenance(a, dir_a / "hazard_image_subwindows.npz")
+
     # Rows sorted by (rid, win); theta_index = rid // R.
     rid, win = a["realization_ids"], a["window_index"]
     assert list(zip(rid, win)) == sorted(zip(rid, win))
