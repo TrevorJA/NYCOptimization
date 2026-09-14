@@ -53,7 +53,7 @@ from src.plotting import style
 
 #: Manuscript display labels for the six selection axes (Section 3.1.3 symbols).
 HAZARD_METRIC_LABELS: dict[str, str] = {
-    "drought_magnitude":      "Drought magnitude, $M$ (SSI-months)",
+    "drought_magnitude":      "Drought magnitude, $M$ (deficit-months)",
     "drought_severity":       "Drought severity, $S$ (s.d.)",
     "drought_onset_rate":     "Onset rate, $R_\\mathrm{on}$ (s.d. month$^{-1}$)",
     "drought_recovery_rate":  "Recovery rate, $R_\\mathrm{rec}$ (s.d. month$^{-1}$)",

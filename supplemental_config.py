@@ -1421,6 +1421,58 @@ def hsd_figure_path(name: str, tagged: bool = False) -> Path:
 
 
 ###############################################################################
+# Hazard-metric illustration on example HF realizations (HEX)
+# (manuscript Section 3.1.3; src/plotting/hazard_examples.py)
+#
+# A figure driver only: reads the staged HF search ensemble (hazard image +
+# daily traces of the N selected realizations) and draws the ensemble's hazard
+# characteristics with a few example realizations highlighted, next to each
+# example's SSI-6 series and annual peak discharge. No simulation, no pool.
+###############################################################################
+
+
+def configure_hex_env() -> None:
+    """Apply env knobs for the hazard-examples figure.
+
+    Salinity and temperature LSTMs off (pure post-processing). The scenario
+    design defaults to ``historic`` so importing ``config`` never requires the
+    HF ensemble to be staged; the HF slug is resolved from the registry by
+    draw (``NYCOPT_ENSEMBLE_DRAW``), never from the active design.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+#: Example targets: the ensemble percentile (0-1) wanted on the named
+#: selection axes, one dict per example; unnamed axes are free, and the
+#: member nearest each target in rank space is drawn. In order: drought-
+#: dominated, flood-dominated, compound, benign. At most four (one identity
+#: each: src.plotting.hazard_examples.EXAMPLE_COLORS).
+HEX_EXAMPLE_TARGETS: list = [
+    {"drought_magnitude": 0.97, "drought_severity": 0.90, "flood_peak_discharge": 0.10},
+    {"flood_peak_discharge": 0.97, "flood_pulse_duration": 0.90, "drought_magnitude": 0.10},
+    {"drought_magnitude": 0.90, "flood_peak_discharge": 0.90},
+    {"drought_magnitude": 0.30, "drought_severity": 0.30, "flood_peak_discharge": 0.30},
+]
+
+#: ``(x, y, z)`` hazard metrics of the 3-D geometry (y is the depth axis);
+#: figure 4's triple, so the two figures share one view of the hazard space.
+HEX_SCATTER_TRIPLE: tuple = ("drought_severity", "flood_peak_discharge", "drought_magnitude")
+
+#: Left-panel geometries rendered, one figure each: ``"3d"`` (scatter over
+#: HEX_SCATTER_TRIPLE) and ``"parallel"`` (parallel axes over every selection
+#: axis). Both are drawn so the geometry can be chosen from the renders.
+HEX_GEOMETRIES: tuple = ("3d", "parallel")
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+HEX_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "hazard_examples"
+HEX_FIGURES_DIR: Path = HEX_OUTPUT_ROOT / "figures"
+HEX_TABLES_DIR: Path = HEX_OUTPUT_ROOT / "tables"
+
+
+###############################################################################
 # Ensemble-size diagnostics: a statistically grounded minimum N (ESD)
 # (docs/notes/methods/ensemble_size_diagnostics.md; SI Texts S4/S5)
 #

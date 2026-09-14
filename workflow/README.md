@@ -206,7 +206,9 @@ All settings live in the root `supplemental_config.py`; env identities in
   `predicted_inflow_bitcheck.sh` (vectorized forecast kernel acceptance).
 - **Figures**: `si_figures_design.sh` (pre-campaign design support),
   `si_figures_results.sh` (needs campaign outputs), `sim_selected_policies.sh`
-  (selected policies on the historic trace).
+  (selected policies on the historic trace), `hazard_examples.sh` (the hazard
+  metrics on example HF realizations; needs the staged HF ensemble of steps
+  02–03).
 
 ## Verifying changes locally (no HPC)
 
