@@ -58,3 +58,4 @@ docs/notes/literature/fulltext/
 scripts/temporary/*
 !scripts/temporary/.gitkeep
 docs/prior_study_presentations/*
+docs/experimental_proposal/*

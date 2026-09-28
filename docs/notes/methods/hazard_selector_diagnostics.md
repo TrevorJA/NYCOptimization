@@ -28,6 +28,8 @@ Anchor-based rules face the manifold-support problem: hazard axes are structural
 
 ## 3. Metric battery
 
+The design's defining metrics (minimax distance relative to the pool, per-axis Kolmogorov–Smirnov distance, minimum-spanning-tree edge lengths, per-axis span, nearest-member redistribution and effective sample size) and the certified exact-assignment gap of the `lhs_nn` rule are defined in `hf_design_metrics.md`. The battery below is the selector-comparison instrument; its cube-based L2-star discrepancy is kept for the rule comparison only. Snap distances are the exact target-to-member pairing of the greedy rule (`subsample.lhs_nn_assignment`).
+
 Per (rule, seed), on the screened pool sub-image (`selection_metrics`, `per_axis_selection_metrics`):
 
 - **Coverage uniformity**: L2-star discrepancy in the absolute (campaign) and rank geometries, placed against the many-seed random null; MST edge statistics and minimum pairwise separation (near-duplicate guard) in absolute geometry.

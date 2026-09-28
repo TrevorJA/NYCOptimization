@@ -42,7 +42,7 @@
 
 **Scenario redundancy.** Overlap of two or more scenarios' coordinates in hazard space, regardless of whether they came from different input-space samples. Motivated by the redundancy framing of Olden & Poff (2003) applied to scenarios rather than indices. Quantify via maximin/minimax distances (Johnson et al. 1990) or effective sample size.
 
-**Uniformity and representativeness diagnostics.** Centered L2 discrepancy for uniformity in hazard space (Fang et al. 2000, *Technometrics*) and energy distance for distributional match to a target (Székely & Rizzo 2013, *JSPI*).
+**Coverage, diversity, and measure diagnostics.** Minimax distance relative to the candidate pool and per-axis Kolmogorov–Smirnov distance for coverage (Johnson et al. 1990; Pronzato & Müller 2012), minimum-spanning-tree edge lengths for diversity (Franco et al. 2009; Damblin et al. 2013), per-axis span for range, and the nearest-member redistribution with its effective sample size for the measure the ensemble represents (Dupačová et al. 2003; Kish 1965). Defined in `methods/hf_design_metrics.md`; the cube-based L2-star discrepancy survives only in the selector-comparison battery.
 
 ## Evaluation and robustness
 
