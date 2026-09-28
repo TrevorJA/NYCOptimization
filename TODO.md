@@ -53,6 +53,12 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   (`monte_carlo`, `--array=0-2`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line
   `pool='statpool_10yr_n1000000_d{k}'`), step 04 both (`--array=0-2`).
+  DRAW 0 DONE 2026-09-11 for the figure-4 composition variant:
+  `fixprob_10yr_n300_d0` (step 02, 12 min) and `hazfill_stat_abs_10yr_n300_d0`
+  (step 03, 12 min; abs L2\* 0.0117 vs null 0.1650 ± 0.0068, pctl 0), plus the
+  MC hazard image via the new `workflow/supplemental/staged_hazard_image.sh`.
+  STILL OPEN for the campaign: draws 1–2 of both, and step 04 for every draw
+  (the figure needs only `hazard_image.npz`, so step 04 was skipped).
 - [ ] **[HPC]** Build QC on each restaged ensemble: `validate_staged_seasonality.py`
   and the per-axis tail-share record per hazfill draw; then step 05 baselines for
   both matched designs scenario-matched to d0 (`--search-ensemble`).
@@ -92,6 +98,52 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 3. Diagnostics on the step-08/09 cube
 
+- [ ] **[!! DECISION NEEDED, affects the campaign]** The stored `.set` objective columns
+  predate the metric-window change and are not reproducible with the current code.
+  Measured 2026-09-11 by the transfer-evaluation path-consistency check (job 20576426,
+  30 policies, 10 per design, each re-evaluated on its OWN d0 ensemble):
+
+  | | at search time (`dc7e70b`, 2026-08-11/12) | now |
+  |---|---|---|
+  | `config.START_DATE` | `1945-10-01` | `1945-12-01` |
+  | `config.END_DATE` | `2022-09-30` | `2023-11-30` |
+  | `ENSEMBLE_START_DATE` | did not exist | `1945-12-01` |
+
+  The change is commit `a1e88bd` (2026-08-18, "align metrics on June 1"), which lands
+  AFTER the production searches. Signatures: `historic` stored reliabilities are
+  multiples of 1/76 where today's code gives 1/77 (one extra complete FFMP year); the
+  ensemble designs keep 9 unit-years but sample a 2-month-shifted slice, giving
+  systematic offsets of **1-4 epsilon** (worst 3.91 eps on `montague_flow_reliability_annual`,
+  medians up to 3.38 eps). Not pywrdrb LP jitter - the offsets are systematic and signed.
+  Evidence table: `outputs/supplemental/transfer_evaluation/tables/tev_path_consistency.csv`.
+
+  Consequences to decide on: (a) any figure or table that reads `.set` objective columns
+  and compares them to freshly computed values is mixing two metric windows; (b) the
+  adopted epsilon vector and the re-filtered set cardinalities (335/991/784) were derived
+  on the OLD window; (c) `campaign_design.md` cites post-refilter counts of 1,040/833/335
+  against 991/784/335 on disk, which may be a related vintage mismatch. The E_test
+  re-evaluation path is NOT affected (it simulates; it does not read stored columns).
+  The transfer-evaluation instrument sidesteps this by simulating all nine cells.
+
+- [x] **[HPC]** Transfer evaluation (supplemental, exploratory) — **DONE 2026-09-11**.
+  All nine (source optimization x target ensemble) cells simulated through one path:
+  6,330 units, 0 failures, 214 core-h, ~215 SU (jobs 20576426 check, 20576769 /
+  20577099 / 20577100 / 20577686 evaluate, 20578233 merge+analyze+figures).
+  `docs/notes/methods/transfer_evaluation.md` §8 carries the results; tables and
+  figures under `outputs/supplemental/transfer_evaluation/`.
+  Headline, after diagnostics: the merged-set composition result reduces to ONE
+  objective. `historic` supplies 52.1% / 57.5% of the ensembles' merged sets, but
+  enrichment against pool share is only 1.23x / 1.31x under plain Pareto (i.e. no
+  design effect) and 3.28x / 3.62x only after epsilon thinning; dropping
+  `nyc_storage_min_p01_pct` collapses it to 0.98x / 1.95x while every other
+  leave-one-out leaves it at 3.1-4.5x. Substantively: historic-optimized policies
+  hold median minimum NYC storage of 22.5% vs 13.2% / 15.6% (MC ensemble) and
+  14.2% vs 3.0% / 6.2% (hazard-filling ensemble) — the ensemble searches trade the
+  storage buffer away. NOT a ranking of designs.
+  Follow-ups available, not run: the own-draw d1/d2 arm
+  (`NYCOPT_TEV_INCLUDE_DRAWS=1`, +3,550 units, ~155 core-h), which closes the SI
+  draw-sensitivity item above.
+
 - [ ] **[local]** Regret tolerance: re-run pass A on the regenerated incumbent cube
   (`rtol_noise_floor.csv` carries stale ε), then pass B on the production cube with
   `NYCOPT_REGRET_TAU` unset (k-sweep, seed nulls, paired bootstrap, assay control),
@@ -102,9 +154,13 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[local]** Framing diagnostic 3: OAT stringency + threshold-margin CDFs on the
   persisted cube (`framing_convention_diagnostics.md`).
 - [ ] **[HPC]** SI draw-sensitivity re-evaluation: each matched design's merged set on
-  its own d1/d2 (~1k SU). Needs a driver (evaluate a `.set` on a staged
-  search-ensemble slug via `evaluate_annual_units`, persist per-realization units,
-  paired shifts vs ε); none exists.
+  its own d1/d2. **The driver now exists** — `src/transfer_eval.py` +
+  `scripts/supplemental/transfer_evaluation_run.py` evaluate a `.set` on any staged
+  search-ensemble slug via `evaluate_annual_units` and persist per-realization units.
+  The d1/d2 cells are declared in `supplemental_config.TEV_DRAW_TARGETS`; run with
+  `NYCOPT_TEV_INCLUDE_DRAWS=1` on `workflow/supplemental/transfer_evaluation_eval.sh`
+  (+3,550 units, ~155 core-h at N=100). Note the sets were searched at N=100, so the
+  draw cells are N=100, not the N=300 the ~1k SU estimate assumed.
 - [ ] **[HPC]** Optional: nested-P saturation record (`nestedp_ladder.sh`) under the
   renamed hazard axes; hazard-support no-harm arm re-read with
   `NYCOPT_HSD_REEVAL_TAG=etest_kn_50yr_n25000` (no simulation).

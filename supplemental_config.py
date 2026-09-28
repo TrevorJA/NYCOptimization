@@ -1658,6 +1658,200 @@ def esd_library_path() -> Path:
 
 
 ###############################################################################
+# Transfer evaluation across scenario-design search ensembles (TEV)
+# (docs/notes/methods/transfer_evaluation.md)
+#
+# Builds the (source optimization) x (target ensemble) matrix over the three
+# campaign designs. Each design's adopted Pareto-approximate set is evaluated
+# under the OTHER designs' search ensembles; the on-design (diagonal) cells are
+# read from the objective columns already stored in each .set file and are
+# never re-simulated. Three readouts, all existing study metrics:
+#   1. fraction of each set dominating the scenario-matched FFMP baseline;
+#   2. the epsilon-nondominated merged reference set per target ensemble, and
+#      how much of it each optimization contributed;
+#   3. hypervolume of each set under each ensemble, on one shared reference.
+# Supplemental and exploratory: nothing here feeds src.robustness, the step-10
+# scorecards, or any manuscript figure.
+###############################################################################
+
+
+def configure_tev_env() -> None:
+    """Apply env knobs for the transfer-evaluation instrument.
+
+    Salinity and temperature LSTMs off, matching the campaign searches.
+
+    ``NYCOPT_SEARCH_N`` is pinned to 100 because the adopted .set files were
+    searched on the N=100 draw-0 ensembles (produced 2026-08-11/12), while
+    ``src.scenario_designs.SEARCH_ENSEMBLE_N`` now defaults to 300 (raised in
+    commit 3890f88 on 2026-08-26). Without the pin,
+    ``resolve_search_spec(0)`` returns an n300 slug that is not staged, and a
+    future staging of it would silently score N=100 diagonal values against
+    N=300 off-diagonal values.
+
+    The scenario design defaults to ``historic`` so importing ``config`` never
+    requires a staged search ensemble. It does NOT need to match the source
+    design of a cell: every target is passed to ``evaluate_annual_units`` as an
+    explicit ``ensemble_spec``, and the three campaign env files are identical
+    on every evaluation-relevant knob (objectives, demand source, LSTM flags,
+    MOEA config), so one process serves all three sources. ``setdefault``
+    means an explicitly exported value still wins.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SEARCH_N", "100")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+# ---------------------------------------------------------------------------
+# Mode switch
+# ---------------------------------------------------------------------------
+#: NYCOPT_TEV_SMOKE=1 runs a handful of units per cell to prove the code path
+#: (minutes on a few ranks). Artifacts carry a ``smoke_`` prefix so a smoke
+#: pass can never masquerade as the full-scale matrix.
+TEV_SMOKE: bool = os.environ.get("NYCOPT_TEV_SMOKE", "0") == "1"
+
+#: Solutions per cell under TEV_SMOKE (evenly spaced over each set).
+TEV_SMOKE_N_SOLUTIONS: int = 4
+
+#: NYCOPT_TEV_RETRY_FAILED=1 makes a resumed job re-attempt units whose
+#: previous run raised, instead of treating a ``.failed`` sidecar as done.
+TEV_RETRY_FAILED: bool = os.environ.get("NYCOPT_TEV_RETRY_FAILED", "0") == "1"
+
+# ---------------------------------------------------------------------------
+# Inputs
+# ---------------------------------------------------------------------------
+#: Formulation of every policy in every set (the campaign FFMP; 36 DVs).
+TEV_FORMULATION: str = "ffmp"
+
+#: MOEA slug the campaign sets live under.
+TEV_SLUG: str = "ffmp_obj8"
+
+#: The adopted epsilon-refiltered merged sets, one per source optimization.
+#: These are the campaign-current sets (suffix eps20260812; see
+#: docs/notes/methods/epsilon_calibration_experiment.md) and the same files
+#: ESD_POLICY_SET_FILES consumes. Row counts at adoption: 335 / 991 / 784.
+TEV_SET_FILES: "dict[str, Path]" = {
+    design: _PROJECT_DIR / "outputs" / design / TEV_SLUG / "sets"
+    / f"{TEV_SLUG}_merged_eps20260812.set"
+    for design in ("historic", "monte_carlo", "hazard_filling_stationary")
+}
+
+#: Target ensembles, as (scenario design, draw) pairs resolved through
+#: ``SCENARIO_DESIGNS[design].resolve_search_spec(draw)``. Draw 0 is the
+#: ensemble each design actually searched on.
+TEV_TARGETS: "tuple[tuple[str, int], ...]" = (
+    ("historic", 0),                     # -> historic_single (single trace)
+    ("monte_carlo", 0),                  # -> fixprob_10yr_n100_d0
+    ("hazard_filling_stationary", 0),    # -> hazfill_stat_abs_10yr_n100_d0
+)
+
+#: Own-draw cells (each matched design's set on its own d1/d2), the SI
+#: draw-sensitivity item at TODO.md. Declared so the driver can run them as one
+#: extra submission; NOT part of the default cell list. Enable with
+#: NYCOPT_TEV_INCLUDE_DRAWS=1.
+TEV_INCLUDE_DRAWS: bool = os.environ.get("NYCOPT_TEV_INCLUDE_DRAWS", "0") == "1"
+TEV_DRAW_TARGETS: "tuple[tuple[str, int], ...]" = (
+    ("monte_carlo", 1), ("monte_carlo", 2),
+    ("hazard_filling_stationary", 1), ("hazard_filling_stationary", 2),
+)
+
+# ---------------------------------------------------------------------------
+# Path-consistency check (PRE-REGISTERED; methods note)
+# ---------------------------------------------------------------------------
+#: Solutions per design evaluated through the driver against the design's OWN
+#: d0 ensemble, differenced against the stored .set columns. Ten per design
+#: (30 units, well under 1 core-hour) rather than ten in total, so each design
+#: gets its own delta estimate.
+TEV_CHECK_N_SOLUTIONS: int = 10
+
+#: Reference magnitude for the agreement claim, as a fraction of each
+#: objective's epsilon. Mirrors END_TO_END_EPS_FRAC in
+#: scripts/supplemental/ensemble_size_library_run.py. This is the magnitude the
+#: methods note reports against, NOT a pass/fail gate on pywrdrb's run-to-run
+#: LP jitter. It matters because the merged reference set (readout 2) mixes
+#: stored diagonal values with simulated off-diagonal ones: if |delta| is far
+#: below epsilon, no solution changes epsilon box and the merge is unaffected.
+TEV_CHECK_EPS_FRAC: float = 0.01
+
+# ---------------------------------------------------------------------------
+# Analysis settings
+# ---------------------------------------------------------------------------
+#: Dominance comparison slack, in oriented natural units. 0.0 = exact, which is
+#: correct here: .set files store full float text and objectives sit on a
+#: 1/900 (or 1/77) annual-unit lattice, so ties are genuine outcomes rather
+#: than float noise (src.solution_selection.dominates).
+TEV_DOMINANCE_TOL: float = 0.0
+
+#: Multipliers applied to the adopted epsilon vector for the sensitivity sweep
+#: on readout 2. A contribution share that reorders across these is reported as
+#: unstable rather than as a finding.
+TEV_EPS_SCALES: tuple = (0.5, 1.0, 2.0)
+
+#: Indicators requested from MOEAFramework CalculateIndicator. ``Contribution``
+#: is the 5.0 replacement for the 3.x SetContribution tool; it returns a
+#: FRACTION of the reference set, and epsilon-box matching requires ``-e``.
+TEV_INDICATORS: tuple = ("Hypervolume", "Contribution", "AdditiveEpsilonIndicator")
+
+#: Seconds allowed for one CalculateIndicator call before the analysis falls
+#: back to reporting the indicator as unavailable. Exact hypervolume in 8
+#: dimensions is expensive; the properties file ships a ``pisa`` alternative
+#: and an explicit disable switch, so a timeout is an expected outcome, not a
+#: bug.
+TEV_INDICATOR_TIMEOUT_S: float = 1800.0
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+#: Per-unit artifacts are many small files and the merged tensors are ~200 MB,
+#: so they live in projects space (5 TB, not purged) rather than the 25 GB
+#: home quota; tables and figures stay in home. Override with
+#: NYCOPT_TEV_UNITS_ROOT. See the storage-hygiene note in the project memory.
+TEV_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "transfer_evaluation"
+TEV_TABLES_DIR: Path = TEV_OUTPUT_ROOT / "tables"
+TEV_FIGURES_DIR: Path = TEV_OUTPUT_ROOT / "figures"
+TEV_SETS_DIR: Path = TEV_OUTPUT_ROOT / "sets"
+
+_TEV_UNITS_ENV = os.environ.get("NYCOPT_TEV_UNITS_ROOT", "").strip()
+TEV_UNITS_ROOT: Path = (
+    Path(_TEV_UNITS_ENV) if _TEV_UNITS_ENV
+    else Path("/anvil/projects/x-ees260021/NYCOptimization/supplemental/transfer_evaluation")
+)
+
+
+def tev_prefix() -> str:
+    """``smoke_`` under TEV_SMOKE, else empty."""
+    return "smoke_" if TEV_SMOKE else ""
+
+
+def tev_table_path(name: str) -> Path:
+    """Path for a named table CSV (smoke-prefixed under TEV_SMOKE)."""
+    return TEV_TABLES_DIR / f"{tev_prefix()}{name}.csv"
+
+
+def tev_json_path(name: str) -> Path:
+    """Path for a named JSON artifact (smoke-prefixed under TEV_SMOKE)."""
+    return TEV_TABLES_DIR / f"{tev_prefix()}{name}.json"
+
+
+def tev_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return TEV_FIGURES_DIR / f"{tev_prefix()}{name}"
+
+
+def tev_set_path(name: str) -> Path:
+    """Path for a MOEAFramework-format .set file written by this instrument."""
+    return TEV_SETS_DIR / f"{tev_prefix()}{name}.set"
+
+
+def tev_cell_dir(source: str, target_slug: str) -> Path:
+    """Per-unit artifact directory for one (source set, target ensemble) cell.
+
+    Two-indexed by construction: the matrix has a source and a target, and a
+    path carrying only one of them could not be read back unambiguously.
+    """
+    return TEV_UNITS_ROOT / f"{tev_prefix()}units" / f"src-{source}__tgt-{target_slug}"
+
+
+###############################################################################
 # Objective-dynamics anatomy figures (historic single trace + local KN ensemble)
 # (docs/notes/methods/objective_dynamics_diagnostics.md; drivers
 #  scripts/supplemental/objective_dynamics_figures.py and
