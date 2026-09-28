@@ -1421,6 +1421,58 @@ def hsd_figure_path(name: str, tagged: bool = False) -> Path:
 
 
 ###############################################################################
+# Hazard-metric illustration on example HF realizations (HEX)
+# (manuscript Section 3.1.3; src/plotting/hazard_examples.py)
+#
+# A figure driver only: reads the staged HF search ensemble (hazard image +
+# daily traces of the N selected realizations) and draws the ensemble's hazard
+# characteristics with a few example realizations highlighted, next to each
+# example's SSI-6 series and annual peak discharge. No simulation, no pool.
+###############################################################################
+
+
+def configure_hex_env() -> None:
+    """Apply env knobs for the hazard-examples figure.
+
+    Salinity and temperature LSTMs off (pure post-processing). The scenario
+    design defaults to ``historic`` so importing ``config`` never requires the
+    HF ensemble to be staged; the HF slug is resolved from the registry by
+    draw (``NYCOPT_ENSEMBLE_DRAW``), never from the active design.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+#: Example targets: the ensemble percentile (0-1) wanted on the named
+#: selection axes, one dict per example; unnamed axes are free, and the
+#: member nearest each target in rank space is drawn. In order: drought-
+#: dominated, flood-dominated, compound, benign. At most four (one identity
+#: each: src.plotting.hazard_examples.EXAMPLE_COLORS).
+HEX_EXAMPLE_TARGETS: list = [
+    {"drought_magnitude": 0.97, "drought_severity": 0.90, "flood_peak_discharge": 0.10},
+    {"flood_peak_discharge": 0.97, "flood_pulse_duration": 0.90, "drought_magnitude": 0.10},
+    {"drought_magnitude": 0.90, "flood_peak_discharge": 0.90},
+    {"drought_magnitude": 0.30, "drought_severity": 0.30, "flood_peak_discharge": 0.30},
+]
+
+#: ``(x, y, z)`` hazard metrics of the 3-D geometry (y is the depth axis);
+#: figure 4's triple, so the two figures share one view of the hazard space.
+HEX_SCATTER_TRIPLE: tuple = ("drought_severity", "flood_peak_discharge", "drought_magnitude")
+
+#: Left-panel geometries rendered, one figure each: ``"3d"`` (scatter over
+#: HEX_SCATTER_TRIPLE) and ``"parallel"`` (parallel axes over every selection
+#: axis). Both are drawn so the geometry can be chosen from the renders.
+HEX_GEOMETRIES: tuple = ("3d", "parallel")
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+HEX_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "hazard_examples"
+HEX_FIGURES_DIR: Path = HEX_OUTPUT_ROOT / "figures"
+HEX_TABLES_DIR: Path = HEX_OUTPUT_ROOT / "tables"
+
+
+###############################################################################
 # Ensemble-size diagnostics: a statistically grounded minimum N (ESD)
 # (docs/notes/methods/ensemble_size_diagnostics.md; SI Texts S4/S5)
 #
@@ -1849,6 +1901,135 @@ def tev_cell_dir(source: str, target_slug: str) -> Path:
     path carrying only one of them could not be read back unambiguously.
     """
     return TEV_UNITS_ROOT / f"{tev_prefix()}units" / f"src-{source}__tgt-{target_slug}"
+
+
+###############################################################################
+# Hazard Filling (HF) design metrics (HFM)
+# (docs/notes/methods/hf_design_metrics.md; drivers
+#  scripts/supplemental/hf_design_metrics_run.py and hf_design_metrics_figures.py;
+#  wrapper workflow/supplemental/hf_design_metrics.sh)
+#
+# Measures, on hazard images alone (no simulation), the properties that define
+# the HF search ensemble: the target displacement of the sequential selection
+# and its gap to the exact minimum-total-displacement assignment (certified),
+# the minimax distance and per-axis Kolmogorov-Smirnov distance to uniform
+# (coverage), the minimum-spanning-tree edge lengths (diversity), the per-axis
+# span (range), and the nearest-member redistribution of the candidate
+# ensemble's mass with its effective sample size (the probability measure the
+# ensemble represents). Every set is scored in the selector's own p1/p99
+# range-scaled coordinates against the candidate ensemble it was drawn from;
+# the same-N reference is R random subsets of that ensemble. All definitional
+# constants here are pre-registered (methods note).
+###############################################################################
+
+
+def configure_hfm_env() -> None:
+    """Apply env knobs for the HF design metrics.
+
+    Salinity and temperature LSTMs off (pure post-processing; config imports
+    as a lookup). Scenario design defaults to ``historic`` so importing
+    ``config`` never requires a staged search ensemble; the pool, HF, and MC
+    slugs are built here from the size knobs and cross-checked against the
+    design registry by the run script.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+# ---------------------------------------------------------------------------
+# Mode switch
+# ---------------------------------------------------------------------------
+#: HFM_SMOKE=1 runs on the locally staged P=300 candidate image and its N=40
+#: HF selection (seconds); the production run uses the P=1e6 images at N=300.
+HFM_SMOKE: bool = os.environ.get("NYCOPT_HFM_SMOKE", "0") == "1"
+
+# ---------------------------------------------------------------------------
+# Inputs (persisted hazard images; nothing here triggers generation)
+# ---------------------------------------------------------------------------
+HFM_POOL_P: int = 300 if HFM_SMOKE else int(os.environ.get("NYCOPT_CANDIDATE_POOL_N", "1000000"))
+HFM_N: int = 40 if HFM_SMOKE else int(os.environ.get("NYCOPT_SEARCH_N", "300"))
+HFM_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
+HFM_DRAWS: tuple = (0,) if HFM_SMOKE else (0, 1, 2)
+HFM_HF_DESIGN: str = "hazard_filling_stationary"
+
+
+def hfm_pool_slug(draw: int) -> str:
+    """Candidate-ensemble slug of ``draw`` (registry grammar ``statpool_*``)."""
+    return f"statpool_{HFM_YEARS}yr_n{HFM_POOL_P}_d{draw}"
+
+
+def hfm_hf_slug(draw: int) -> str:
+    """Realized HF ensemble slug of ``draw`` (its image embeds the candidate H)."""
+    return f"hazfill_stat_abs_{HFM_YEARS}yr_n{HFM_N}_d{draw}"
+
+
+def hfm_mc_slug(draw: int) -> str:
+    """MC ensemble slug of ``draw`` (image written post hoc; skipped if absent)."""
+    return f"fixprob_{HFM_YEARS}yr_n{HFM_N}_d{draw}"
+
+
+#: Historical disjoint 10-year window cache (compute_historic_hazard_windows.py).
+HFM_HISTORIC_WINDOWS_PATH: Path = (
+    SUPPLEMENTAL_OUTPUT_ROOT / "historic_hazard_windows" / f"hazard_windows_{HFM_YEARS}yr.npz"
+)
+
+# ---------------------------------------------------------------------------
+# Settings (pre-registered)
+# ---------------------------------------------------------------------------
+#: Selector geometry: the candidate ensemble's per-axis percentile bounds. Must
+#: equal scengen's ROBUST_LO_PCT / ROBUST_HI_PCT (asserted at run time).
+HFM_BOUND_PCT: tuple = (1.0, 99.0)
+
+#: Nearest-candidate counts on which the exact assignment is solved, grown
+#: until the optimum is certified; the last rung must reach N so a full
+#: matching exists.
+HFM_KNN_LADDER: tuple = (8, 16, 32, 64) if HFM_SMOKE else (32, 64, 128, 256, 512)
+assert HFM_KNN_LADDER[-1] >= HFM_N, "HFM_KNN_LADDER must reach HFM_N"
+
+#: Random N-subsets of the candidate ensemble: the same-N reference.
+HFM_RANDOM_REPLICATES: int = 20 if HFM_SMOKE else 100
+HFM_RANDOM_SEED_BASE: int = 1000
+
+#: Nested candidate-ensemble prefixes for the p1/p99 bound-stability record.
+HFM_NP_PREFIXES: tuple = (50, 100, 200, 300) if HFM_SMOKE else (5_000, 20_000, 100_000, 300_000, 1_000_000)
+
+#: Quantiles of the candidate-to-nearest-member distance reported beside the
+#: minimax (maximum) and the mean.
+HFM_COVERAGE_QUANTILES: tuple = (0.50, 0.90, 0.99)
+
+#: Candidate percentile above which the per-axis tail share is counted
+#: (i.i.d. expectation 1 - HFM_TAIL_PCT/100 = 0.10).
+HFM_TAIL_PCT: float = 90.0
+
+#: Probability grid on which ECDFs are persisted for the figures.
+HFM_ECDF_LEVELS: int = 101
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+HFM_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "hf_design_metrics"
+HFM_TABLES_DIR: Path = HFM_OUTPUT_ROOT / "tables"
+HFM_FIGURES_DIR: Path = HFM_OUTPUT_ROOT / "figures"
+
+
+def hfm_prefix() -> str:
+    """``smoke_`` under HFM_SMOKE, else empty."""
+    return "smoke_" if HFM_SMOKE else ""
+
+
+def hfm_table_path(name: str) -> Path:
+    """Path for a named table CSV (smoke-prefixed under HFM_SMOKE)."""
+    return HFM_TABLES_DIR / f"{hfm_prefix()}{name}.csv"
+
+
+def hfm_json_path(name: str) -> Path:
+    """Path for a named JSON artifact (smoke-prefixed under HFM_SMOKE)."""
+    return HFM_TABLES_DIR / f"{hfm_prefix()}{name}.json"
+
+
+def hfm_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return HFM_FIGURES_DIR / f"{hfm_prefix()}{name}"
 
 
 ###############################################################################

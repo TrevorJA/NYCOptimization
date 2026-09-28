@@ -49,6 +49,21 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 - [ ] **[HPC]** Pull all four repos on Anvil; check the SU balance (`mybalance`)
   against the ~600k the budget assumes.
+- [ ] **[HPC]** Recompute every hazard image under the June 1 dry-axis window before
+  step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months`):
+  the P = 10⁶ pools d0–d2 are stream-only, so regenerate them per draw
+  (`workflow/supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`);
+  then the step-03 selections; E_test's `hazard_image_subwindows.npz`
+  (`etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` after deleting the
+  old artifact and any leftover shard files); E_test's realization-level
+  `hazard_image.npz` (written by `gen_etest_merge.sh`; read by step 11, the
+  hazard-support decomposition, and `make_etest_subset.py`, which slices it into
+  the 500-SOW subset); and the cached `outputs/supplemental/historic_hazard_windows/`
+  (recomputes itself on the provenance mismatch). Afterwards rerun the readers:
+  `compute_staged_hazard_image.py` for the Monte Carlo ensembles, the
+  hazard-examples figure, `ensemble_size_hazard.sh`, `hazard_support_decomposition.sh`,
+  `hazard_selector_diagnostics`, the E_test overlay, step 11, and
+  `hf_design_metrics.sh` (Section 7).
 - [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–2: step 02
   (`monte_carlo`, `--array=0-2`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line
@@ -201,3 +216,62 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[local]** Zotero: add Hogarty (1970), Van Loon (2015), Fleig et al. (2006), Tijdeman et al. (2020), AghaKouchak et al. (2021), Brunner (2023), Brunner & Gilleland (2020) to collection `ISYGLK35` (currently only in the Paper 2 collection); OCR the Hogarty PDF and confirm its year (1969 vs 1970) and ICP case number.
 - [ ] **[local]** Reconcile `docs/notes/terminology.md` (older code-oriented vocabulary: "input space", "candidate pool", "incumbent regret", "test ensemble") with `docs/terminology.md`, which governs manuscript prose; the two currently conflict.
 - [ ] **[local]** Decide capitalization across the two papers: proposal uses "Decree Parties" / "1954 Decree" (FFMP document form); the stochastic DRB manuscript uses "decree parties" / "1954 decree".
+
+## 6. Proposal v2 review follow-ups (2026-09-28; Reed and Lau reviews)
+
+Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedback_synthesis_2026-09.md`.
+
+- [ ] **[local]** Climate-change uncertainty inside the search ensembles (Reed): deferred by
+  decision, not dropped. Arguments against are in the project presentation supplemental slides
+  79–96 (clean search/re-evaluation split; HF as a complement to DU optimization; most
+  re-evaluation hazard conditions lie inside the stationary candidate ensemble's range). Revisit
+  only if the campaign shows re-evaluation failures concentrated in forcing regions whose hazards
+  the stationary candidate ensemble cannot reach.
+- [ ] **[local]** Re-evaluation envelope on the dry side (Reed): `hazard_support_decomposition`
+  shows E_test's excursions beyond the stationary candidate ensemble are mostly flood-side and the
+  dry-side excursions are thin. Quantify E_test's drought hazards against the 1960s drought and the
+  candidate ensemble's dry tail, then decide whether the lower bound of the annual-volume axis
+  (currently the CMIP6 range widened by 25 %, about −13.5 %) needs a drier extension. If so,
+  update `src/etest.py`, `forcing_parameterization.md`, and the proposal's Section 3.5.1 numbers.
+- [ ] **[local]** Trenton flow deficit (Lau): no written rationale existed for a
+  reliability-only Trenton objective. Either record the rationale in `objective_definitions.md`
+  (Water Code target supported by DRBC-directed lower-basin reservoirs; single-trace ε 0.03 %
+  vs 1.5 % for Montague/NYC deficits) or add the objective; evaluate Lau's regional minimax
+  (worst of Montague and Trenton reliability) as an SI formulation variant.
+- [ ] **[HPC]** Downstream-stress correlation of the hazard axes (asserted in proposal v1,
+  never computed): the SI Text S3 diagnostic in item 4; the proposal now rests on the
+  storage-conditioning and directed-release rationale until this exists.
+- [ ] **[local]** Figures embedded in proposal v2 need re-rendering with current labels and
+  sizes before circulation: `fig04_ensemble_composition` at N = 300 (legend "PS" → "MC",
+  "SSI-months" → "deficit-months"; needs the P = 10⁶ pool hazard image on Anvil);
+  `hazard_examples` on the campaign HF ensemble; the methods diagram
+  (`figures/manuscript/methods_diagram/methods_diagram_draft.pptx`: N = 300, MC, 500 SOWs ×
+  50 × 50 yr); and a planned FFMP operating-rules figure with the decision-variable groups
+  marked (baseline only, from `src/plotting/policy_rules.py`).
+- [ ] **[local]** Port the v2 literature-review structure (overfitting and policy structure;
+  the MORDM and DU-optimization lineage; the three ensemble-construction families) and the
+  deterministic-versus-stochastic search framing into the manuscript Introduction outline P2–P5.
+- [ ] **[local]** Reconcile the onset-rate denominator (manuscript Eq. 3 adds 1; code uses the
+  month difference) and the satisficing-criteria variant (`DEFAULT_CRITERIA_VARIANT =
+  "v2_20260821"` vs the "adopted" values in `robustness_threshold_diagnostics.md`).
+
+## 7. HF design metrics (2026-09-28)
+
+- [ ] **[HPC]** After the June 1 recompute (Section 2 item; the pre-fix images lack
+  `dry_cut_months` and every reader refuses them), run
+  `workflow/supplemental/hf_design_metrics.sh` on the June 1 window images
+  (`statpool`/`hazfill_stat_abs` d0–d2 at P = 10⁶, N = 300; `fixprob` d0–d2; the historic
+  windows cache), or copy `hazfill_stat_abs_10yr_n300_d{k}/{hazard_image.npz,_meta.json}`,
+  `fixprob_10yr_n300_d{k}/hazard_image.npz`, and the historic windows cache here (about
+  80 MB per draw) and run the driver locally with `NYCOPT_CANDIDATE_POOL_N=1000000
+  NYCOPT_SEARCH_N=300`; then fill the bracketed placeholders in SI Text S4, manuscript §3.1.3,
+  the proposal §3.2.1–3.2.2, and `hf_design_metrics.md` §8 from `hfm_summary.csv`,
+  `hfm_axes.csv`, `hfm_bound_stability.csv`; place `F1_marginals_range`,
+  `F2_coverage_diversity`, `F3_target_displacement`, `F4_measure_weights` as Figures S4–S7.
+- [ ] **[local]** Later decision on the selection rule, argued from the production metrics
+  (not part of the current method): replace the sequential rule (Eq. 7) by the certified
+  exact assignment if the measured gap in total displacement or the Jaccard overlap is
+  material across d0–d2; optimize the target design (maximin or centered-discrepancy
+  Latin hypercube) if the targets' own MST edge statistics fall below the random
+  reference; a minimax-optimal (k-center) selection on the candidate ensemble if the HF
+  minimax distance is not below the random reference.

@@ -6,14 +6,17 @@ E_test realizations are ``L_test`` (50) years long while the pool convention sco
 ``SCENARIO_YEARS`` (10) year scenarios, so each realization is split into
 ``L_test // SCENARIO_YEARS`` DISJOINT 10-yr sub-windows and every sub-window is scored
 exactly as a pool scenario would be: SSI-6 controlling-event run-theory dry axes on the
-window's monthly aggregate NYC inflow (the leading 6 months excluded implicitly by the
-SSI accumulation spin-up) and POT wet axes on its daily series with the leading
+window's monthly aggregate NYC inflow (scored from the first month after the leading
+6-month exclusion window) and POT wet axes on its daily series with the leading
 ``METRIC_EXCLUSION_MONTHS`` cut by date. The SSI fit, POT threshold, and reference mean
 stay fitted once on the full historical record — identical to the pool's convention —
 so E_test sub-window coordinates are commensurable with pool coordinates.
 
 Writes ``hazard_image_subwindows.npz`` into the staged E_test directory with row keys
-``(realization_id, window_index)`` plus ``theta_index = realization_id // R_test``.
+``(realization_id, window_index)`` plus ``theta_index = realization_id // R_test`` and
+the scoring-convention provenance every reader checks
+(``scengen.diagnostics.check_hazard_image_provenance``); an existing artifact that fails
+that check is refused rather than reused.
 Chunks are processed independently and cached as shard files, so an interrupted run
 resumes where it stopped (delete the shards to force recomputation).
 
@@ -195,7 +198,8 @@ def _merge_shards(shard_paths: list[Path], out_path: Path, R: int) -> None:
     axes = [str(a) for a in parts[0]["hazard_axes"]]
     order = np.lexsort((win, rid))
     H, rid, win = H[order], rid[order], win[order]
-    from scengen.hazard_metrics import _REFERENCE_START, _SCENARIO_STAMP_START
+    from scengen.hazard_metrics import (_DRY_CUT_MONTHS, _REFERENCE_START,
+                                        _SCENARIO_STAMP_START)
 
     np.savez(
         out_path,
@@ -204,6 +208,7 @@ def _merge_shards(shard_paths: list[Path], out_path: Path, R: int) -> None:
         window_years=np.asarray(SCENARIO_YEARS), exclusion_months=np.asarray(METRIC_EXCLUSION_MONTHS),
         reference_start=np.asarray(_REFERENCE_START, dtype=object),
         scenario_stamp_start=np.asarray(_SCENARIO_STAMP_START, dtype=object),
+        dry_cut_months=np.asarray(_DRY_CUT_MONTHS),
     )
     for p in shard_paths:
         p.unlink()
@@ -219,6 +224,10 @@ def main() -> None:
     out_dir = staged_ensemble_dir(slug)
     out_path = out_dir / "hazard_image_subwindows.npz"
     if out_path.exists():
+        from scengen.diagnostics import check_hazard_image_provenance
+
+        with np.load(out_path, allow_pickle=True) as z:
+            check_hazard_image_provenance(z, out_path)
         print(f"[etest-hazard] already computed: {out_path}. Delete it to recompute.")
         return
 

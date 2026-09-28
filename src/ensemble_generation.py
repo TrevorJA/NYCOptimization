@@ -696,10 +696,10 @@ def _hazard_block(
     the trailing partial FFMP year (Jun 1 – Nov 30 of the final year) is cut
     from both the daily and monthly series, and the wet (POT) axes additionally
     exclude the leading ``config.METRIC_EXCLUSION_MONTHS`` (6) calendar months
-    by date. The leading months stay in the monthly series — they are the SSI-6
-    accumulation input, over which SSI-6 is undefined, so a drought event
-    cannot start there and the dry axes exclude the same leading window
-    implicitly.
+    by date. The leading months stay in the monthly series as the SSI-6
+    accumulation input; scengen scores the SSI-6 series from the first month
+    after that window (``scengen.hazard_metrics.scored_dry_ssi``), so the dry
+    axes exclude the same leading window exactly.
     """
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import compute_candidate_hazard_image

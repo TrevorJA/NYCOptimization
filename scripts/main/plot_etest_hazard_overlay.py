@@ -86,7 +86,7 @@ def _layer_for(slug: str, color: str) -> OverlayLayer:
 
 def main() -> None:
     """Build the overlay figure + per-axis containment stats."""
-    from scengen.diagnostics import load_hazard_image
+    from scengen.diagnostics import check_hazard_image_provenance, load_hazard_image
     from scengen.subsample import ROBUST_HI_PCT, ROBUST_LO_PCT
 
     variant = get_etest_variant(E_TEST_VARIANT)
@@ -101,19 +101,12 @@ def main() -> None:
         print(f"[overlay] Pool hazard image not found: {pool_path}.")
         sys.exit(1)
 
-    from scengen.hazard_metrics import _SCENARIO_STAMP_START
-
     pool = load_hazard_image(pool_path)
     et = np.load(etest_path, allow_pickle=True)
-    et_stamp = str(et["scenario_stamp_start"]) if "scenario_stamp_start" in et else None
-    if "reference_start" not in et or et_stamp != _SCENARIO_STAMP_START:
-        sys.exit(
-            f"[overlay] {etest_path} lacks current date-convention provenance "
-            f"(reference_start present: {'reference_start' in et}, "
-            f"scenario_stamp_start={et_stamp!r} vs {_SCENARIO_STAMP_START!r}): it was "
-            f"computed under a retired convention and is stale. Regenerate it with "
-            f"scripts/main/compute_etest_hazard_image.py."
-        )
+    try:
+        check_hazard_image_provenance(et, etest_path)
+    except ValueError as err:
+        sys.exit(f"[overlay] {err} (scripts/main/compute_etest_hazard_image.py)")
     etest_H, etest_axes = et["H"], [str(a) for a in et["hazard_axes"]]
 
     slugs = SEARCH_SLUGS or _discover_search_slugs()

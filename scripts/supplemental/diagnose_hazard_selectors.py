@@ -382,7 +382,7 @@ def _invariance(
     # Per-axis contribution to the snap distance (and dry/wet group shares).
     X = ss.minmax_normalize(H_ret)
     shares_per_seed = [
-        sd.snap_axis_contributions(X, full_rows[s], retained, seed=s)
+        sd.snap_axis_contributions(X, N_SELECT, retained, seed=s)
         for s in _seeds(N_SEEDS)
     ]
     mean_shares = {a: float(np.mean([sh[a] for sh in shares_per_seed])) for a in retained}
