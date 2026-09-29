@@ -144,7 +144,7 @@ RETIRED_TERMS: dict[str, str] = {
     # design, the seed as the unit of analysis, seed-indexed NFE, 12-node
     # geometry, the measured cost basis, and no resume.
     "K = 3":
-        "K = 1 search draw per design (d0); draws d1-d2 are staged only for "
+        "K = 1 search draw per design (d0); draw d1 is staged only for "
         "the SI draw-sensitivity re-evaluation (campaign_design.md §1)",
     "K=3":
         "K = 1 search draw per design (campaign_design.md §1)",

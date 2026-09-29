@@ -140,10 +140,10 @@ re-anchoring audit run on the 500-SOW production cube
   namespaced seed domains, so no design and the test ensemble ever share realizations.
 - **Replication**: one searched ensemble draw × S = 2 MOEA seeds per matched design, set
   against the compute balance. A draw is the design's construction re-run from scratch
-  with a fresh seed; three are staged, the search runs on draw 0, and the seed is the
-  unit of analysis. The comparison is conditional on that draw, and draw-dependence is
-  measured by re-evaluating each design's final Pareto set on its own two other draws
-  (SI). Seed 1 of every design is continued to 750k NFE and reported from its runtime
+  with a fresh seed; two are staged, the search runs on draw 0, and the seed is the
+  unit of analysis. The comparison is conditional on that draw, and the shift of the
+  objective estimates between draws is reported by re-simulating a thinned subset of
+  each design's final Pareto set on its own draw 1 (SI). Seed 1 of every design is continued to 750k NFE and reported from its runtime
   archive at 500k. `historic` runs the same two seeds. Full specification and budget:
   `notes/methods/campaign_design.md`.
 - **Single comparison point**: cross-design metrics computed only on held-out
@@ -231,12 +231,12 @@ never as a comparison result.
 **In place:** the end-to-end pipeline (smoke-verified), the measured campaign cost
 basis (173.8 s per N = 100 evaluation trimmed, full model 1.16×, and 21,850 SU per
 N = 100 / 500k-NFE production search on 8 × 128, from which every campaign number
-scales), the P = 10⁶ candidate pools for draws 0–2, E_test with its presim pass, and
+scales), the P = 10⁶ candidate pools for draws 0–1, E_test with its presim pass, and
 the incumbent-on-E_test matrix. The hazard-filling selection has no tail-share
 threshold; the minimum per-axis share above the pool P90 is reported as a property of
 the selector on the pool's joint geometry (`notes/methods/hazard_selector_diagnostics.md`).
 
-**Not yet staged:** the N = 300 search ensembles (draws 0–2 of both matched designs)
+**Not yet staged:** the N = 300 search ensembles (draws 0–1 of both matched designs)
 and their step-05 baselines (`TODO.md` §1).
 
 **Decided:** the three designs above; a single stationary search population with deep
@@ -269,7 +269,7 @@ a conditional SI extension that runs only on whatever SU remains at the end of t
 campaign. Table: `notes/methods/campaign_design.md` §6.
 
 **Remaining before campaign launch:** stage the search ensembles at N = 300 (steps
-02–04 for draws 0–2 of both matched designs, step 05 baselines) with
+02–04 for draws 0–1 of both matched designs, step 05 baselines) with
 `validate_staged_seasonality` build QC; re-verify the ε floors on the N = 300 ensembles;
 run the one-node batched-search memory smoke; then seed 1 of every design, which prices
 the campaign. Re-run the satisficing-threshold diagnostic and the criteria re-anchoring

@@ -14,13 +14,13 @@
 # MPI ranks automatically.
 #
 # Search ensembles are staged PER DRAW, so this step runs once per draw: the
-# array index is the ensemble-draw index k (0..K-1), matching step 02. Three
-# draws are staged per matched design (d0 searched; d1-d2 for the SI
-# draw-sensitivity re-evaluation), so the production array is 0-2.
+# array index is the ensemble-draw index k (0..K-1), matching step 02. Two
+# draws are staged per matched design (d0 searched; d1 for the SI
+# draw-sensitivity re-evaluation), so the production array is 0-1.
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary \
-#          --array=0-2 workflow/04_prep_pywrdrb_inputs.sh
+#          --array=0-1 workflow/04_prep_pywrdrb_inputs.sh
 #
 #SBATCH --job-name=prep_pywrdrb_inputs
 #SBATCH --account=ees260021

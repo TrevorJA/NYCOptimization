@@ -8,8 +8,8 @@
 # their candidate pool (+ hazard_image.npz) here, and the pool is regenerated
 # per draw (src/scenario_designs.py::pool_slug(draw)), so the array index
 # applies to pools too; the two DU hazard-filling designs share the pool of a
-# given draw. Three draws are staged per matched design: d0 is searched, d1-d2
-# serve the SI draw-sensitivity re-evaluation (campaign_design.md).
+# given draw. Two draws are staged per matched design: d0 is searched, d1
+# serves the SI draw-sensitivity re-evaluation (campaign_design.md).
 #
 # Env inputs: NYCOPT_ENV_FILE (optional; the design via NYCOPT_SCENARIO_DESIGN),
 # NYCOPT_CANDIDATE_POOL_N (hazard-filling pool size; campaign 1000000, see
@@ -18,9 +18,9 @@
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env \
-#          --array=0-2 workflow/02_generate_ensemble.sh
+#          --array=0-1 workflow/02_generate_ensemble.sh
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env \
-#          --array=0-2 workflow/02_generate_ensemble.sh
+#          --array=0-1 workflow/02_generate_ensemble.sh
 #
 # Output: outputs/synthetic_ensembles/{slug}/ per draw (search ensemble, or
 # the design's candidate/resampling pool).

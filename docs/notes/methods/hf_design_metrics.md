@@ -66,4 +66,4 @@ Run: `sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_size_diagnostic
 
 ## 8. Results
 
-Production values (P = 10⁶, N = 300, draws d0–d2) are recorded here after the run on the June 1 window images. Until then the SI and manuscript carry bracketed placeholders for: the assignment bracket and gap per draw; the minimax distance and mean coverage distance of HF, targets, and MC as ratios to random; the MST mean and minimum edge ratios; the per-axis Kolmogorov–Smirnov distances and spans; $n_{\text{eff}}/N$ for HF, targets, MC, and random; the tail shares; the bound-stability deviations.
+Production values (P = 10⁶, N = 300, draws d0 and d1) are recorded here after the run on the June 1 window images. Until then the SI and manuscript carry bracketed placeholders for: the assignment bracket and gap per draw; the minimax distance and mean coverage distance of HF, targets, and MC as ratios to random; the MST mean and minimum edge ratios; the per-axis Kolmogorov–Smirnov distances and spans; $n_{\text{eff}}/N$ for HF, targets, MC, and random; the tail shares; the bound-stability deviations.

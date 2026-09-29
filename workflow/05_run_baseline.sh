@@ -1,7 +1,7 @@
 #!/bin/bash
 # Step 5: Evaluate the default FFMP policy (no optimization) and save
 # baseline objective values — the comparison anchor for optimized Pareto sets.
-# Runs once per design on its searched draw (d0); d1-d2 are staged only for the
+# Runs once per design on its searched draw (d0); d1 is staged only for the
 # SI draw-sensitivity re-evaluation (docs/notes/methods/campaign_design.md).
 #
 # Usage (from repo root):

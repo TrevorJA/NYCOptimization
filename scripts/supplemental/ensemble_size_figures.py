@@ -114,7 +114,7 @@ def fig_a1_tail_share(ladder: pd.DataFrame) -> None:
             if draw == 0:
                 lab = "hazard-filling selection, pool d0: mean over 10 anchor plans (bars = range)"
             elif draw == 1:
-                lab = "hazard-filling selection, pools d1 and d2 (lighter)"
+                lab = "hazard-filling selection, pool d1 (lighter)"
             a.errorbar(sel.mean().index, sel.mean().values,
                        yerr=[sel.mean().values - sel.min().values, sel.max().values - sel.mean().values],
                        fmt="o-", ms=4, capsize=2, color=design_color(HF),

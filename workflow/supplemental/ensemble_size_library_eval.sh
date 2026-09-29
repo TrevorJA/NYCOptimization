@@ -17,7 +17,7 @@
 #
 # PREREQUISITES: every chunk of the library plan staged + prepped
 # (ensemble_size_library_stage.sh) and the production search ensembles
-# (fixprob_/hazfill_ d0-d2) prepped by step 04.
+# (fixprob_/hazfill_ d0-d1) prepped by step 04.
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_size_diagnostics.env \

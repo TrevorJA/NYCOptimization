@@ -12,7 +12,7 @@
 | `hazard_filling_stationary` (HF) | N = 300 selected from the d0 P = 10⁶ pool, L = 10 yr | 1 (d0) | 2 | proposed method |
 | `historic` | one 78-yr trace | 1 | 2 | prevailing-practice reference, matched NFE |
 
-Three draws (d0, d1, d2) are staged for both matched designs. The search runs on d0 only (K = 1). d1 and d2 exist for the SI draw-sensitivity re-evaluation (§5). The unit of analysis is the seed; the design comparison is conditional on one draw per design, and draw-dependence is measured by re-evaluating each design's final set on its own other draws.
+Two draws (d0, d1) are staged for both matched designs. The search runs on d0 only (K = 1). d1 is the replicate for the SI draw-sensitivity re-evaluation (§5). The unit of analysis is the seed, and the design comparison is conditional on one draw per design. Re-simulating each design's final set on d1 measures how far its objective estimates shift between draws. It does not show what policies a search on another draw would produce.
 
 S = 2 is a floor. A third seed for both matched designs costs ~135–160k SU of search plus the re-evaluation of its policies and is not planned (§6).
 
@@ -42,7 +42,7 @@ Twelve nodes are required because a 750k-NFE search at N = 300 is projected at 9
 
 ## 4. Pre-search steps
 
-Before the searches, both matched designs are staged at N = 300 for draws d0–d2 (workflow steps 02–04 on the P = 10⁶ pools), the step-05 incumbent baselines are simulated on each d0 ensemble, the ε vector [0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05] is re-verified against the N = 300 floors (`workflow/supplemental/epsilon_calibration.sh`; τ is re-pinned only if ε changes), and the batched-search memory smoke (`workflow/submit_search_memory_smoke.sh`) confirms node RSS and evaluation time on one node. `TODO.md` carries the action items.
+Before the searches, both matched designs are staged at N = 300 for draws d0 and d1 (workflow steps 02–04 on the P = 10⁶ pools), the step-05 incumbent baselines are simulated on each d0 ensemble, the ε vector [0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05] is re-verified against the N = 300 floors (`workflow/supplemental/epsilon_calibration.sh`; τ is re-pinned only if ε changes), and the batched-search memory smoke (`workflow/submit_search_memory_smoke.sh`) confirms node RSS and evaluation time on one node. `TODO.md` carries the action items.
 
 ## 5. E_test re-evaluation
 
@@ -59,7 +59,7 @@ Before the searches, both matched designs are staged at N = 300 for draws d0–d
 | Policies | the equal-NFE merged set per design; expected ≈ 2,000 in total (measured at N = 100, S = 1: 1,040 + 833 + 335 after the ε re-filter; unmeasured at N = 300 and S = 2) |
 | Cap | 2,000 policies (~66k SU). If the union exceeds it, the post-hoc ε re-filter is coarsened to the cardinality target and applied identically to every design |
 | Stability check | θ-subsample (250 vs 500) and R-subsample (5/10/25) ranking-stability curves scored offline from the persisted matrix |
-| Draw sensitivity (SI) | each matched design's final set re-simulated on its own d1 and d2 at N = 300 (~70 SU staging each, ~66 SU per 100 policies), ~1k SU |
+| Draw sensitivity (SI) | a thinned subset of each matched design's final set re-simulated on its own d1 at N = 300 (~70 SU staging per design, ~66 SU per 100 policies), sized to 250 SU. Paired per-policy shifts are reported against ε with no variance estimate |
 
 ## 6. Budget
 
@@ -73,8 +73,8 @@ Measured basis: 21,850 SU and 21.3 h per N = 100 / 500k-NFE search on 8 × 128 (
 | `historic`, both seeds | measured 4,200 per 500k | 10.5k | 12.3k | 15.3k |
 | Staging, ε calibration, smoke | allowance | 5k | 5k | 5k |
 | E_test re-evaluation at the cap | measured 33 SU per policy (500 SOWs) | 66k | 66k | 66k |
-| Draw-sensitivity re-evaluation | extrapolated | 1k | 1k | 1k |
-| **Total** | | **423k** | **478k** | **605k** |
-| Reserve against 600k | | 177k (30 %) | 122k (20 %) | none (−5k) |
+| Draw-sensitivity re-evaluation | sized to the limit | 0.25k | 0.25k | 0.25k |
+| **Total** | | **422k** | **478k** | **605k** |
+| Reserve against 600k | | 178k (30 %) | 122k (20 %) | none (−5k) |
 
 Decision points. After seed 1 of both matched designs: read SU per NFE and the runtime hypervolume at 125,000 per island. If the pair prices at or below the measured basis, submit seed 2 as planned; if it prices at the model basis, seed 2 runs at 500k only if the remaining balance covers it plus the 66k re-evaluation, otherwise the campaign reports S = 1 at equal NFE and S = 2 for `historic`. No third seed is planned. A third seed for both matched designs (~135–160k plus its re-evaluation) fits only on the measured basis with g = 1 and would consume the whole reserve; it is not planned.

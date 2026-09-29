@@ -23,7 +23,7 @@ All configuration comes from ``config.py`` + the scenario-design registry; no CL
 value flags. ``--draw`` / ``--all-draws`` are identifiers.
 
     sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env \\
-           --array=0-2 workflow/02_generate_ensemble.sh
+           --array=0-1 workflow/02_generate_ensemble.sh
 
 Set ``NYCOPT_ENSEMBLE_FORCE=1`` to overwrite an already-staged slug.
 """

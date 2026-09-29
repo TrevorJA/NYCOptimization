@@ -12,8 +12,8 @@
 # No array: all K draws are selected in one job, each from its own draw's pool
 # image (step 02 regenerates the pool per draw, so a draw re-rolls both the pool
 # and the LHS anchor plan). Serial (the selector is single-process); the daily
-# pool is read only for the selected realizations. Three draws are staged (d0
-# searched; d1-d2 for the SI draw-sensitivity re-evaluation); the production
+# pool is read only for the selected realizations. Two draws are staged (d0
+# searched; d1 for the SI draw-sensitivity re-evaluation); the production
 # pool is selected by passing NYCOPT_CANDIDATE_POOL_N=1000000.
 #
 # Submit (from repo root):

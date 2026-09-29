@@ -58,10 +58,10 @@ INPUT_STRAT_N_THETA: int = int(os.environ.get("NYCOPT_INPUT_STRAT_N_THETA", "20"
 INPUT_STRAT_R: int = int(os.environ.get("NYCOPT_INPUT_STRAT_R", "5"))
 
 # Independent ensemble draws staged per design (independent generations, fixed
-# before step 02 runs). Draw 0 is the searched ensemble; draws 1-2 serve the
-# SI draw-sensitivity re-evaluation of the final Pareto sets and are never
-# searched.
-N_ENSEMBLE_DRAWS: int = int(os.environ.get("NYCOPT_N_ENSEMBLE_DRAWS", "3"))
+# before step 02 runs). Draw 0 is the searched ensemble; draw 1 is the
+# replicate for the SI draw-sensitivity re-evaluation of the final Pareto sets
+# and is never searched.
+N_ENSEMBLE_DRAWS: int = int(os.environ.get("NYCOPT_N_ENSEMBLE_DRAWS", "2"))
 
 # Root seed for the whole campaign. Every generated artifact derives its seed as
 # ``design_seed(SEED_ROOT, seed_domain, draw)``, so seed domains are disjoint by
@@ -118,7 +118,7 @@ class ScenarioDesign:
         pool_size: P -- cardinality of the design's OWN pool. Only
             ``pool_resample`` and ``hazard_fill`` have one.
         n_ensemble_draws: Independent constructions staged for the design.
-            The campaign searches draw 0 only; the others serve the SI
+            The campaign searches draw 0 only; draw 1 serves the SI
             draw-sensitivity re-evaluation (see ``N_ENSEMBLE_DRAWS``).
         seed_domain: Namespace for this design's generator seed; disjoint
             domains keep designs from sharing realizations.

@@ -159,7 +159,7 @@ the staged production member list 100/100).
 
 | Block | Statistic | Ladder / replicates |
 |---|---|---|
-| A-HF | per-axis tail share above pool P90 and P99, per-axis KS to uniform, joint L2-star, MST edge statistics, minimum separation, each as a ratio to a matched random design | N ladder × pools d0, d1, d2 × 10 anchor plans (draws 0, 101–109); 50-seed random null |
+| A-HF | per-axis tail share above pool P90 and P99, per-axis KS to uniform, joint L2-star, MST edge statistics, minimum separation, each as a ratio to a matched random design | N ladder × pools d0, d1 × 10 anchor plans (draws 0, 101–109); 50-seed random null |
 | A-NP | min per-axis tail share above P90 (seed-mean convention) on nested prefixes P′ of pool d0 | P′ ∈ {5·10³, 2·10⁴, 10⁵, 3·10⁵, 10⁶} × N ladder × 10 plans |
 | A-MC | sampling distribution of per-axis counts above pool P90/P99, relative error of subset quantiles vs the pool, closed-form P(≥ 1 member beyond quantile q) = 1 − qᴺ | 200 uniform size-N subsets of the pool image |
 | A-CV | convergence of the descriptors themselves, pooled mean per axis vs ensemble extreme per axis | 5/50/95 bands over the MC subsets; HF plans |
@@ -294,9 +294,10 @@ paired-SE criterion on the three tail operators by a factor 1.4–1.6). The
 hazard-filling design's NYC-deficit P99 residual (construction SD 1.7 ε at
 N = 300, 1.3–4.2 ε across N ≤ 400 on three constructions) is disclosed as a
 measured property of that construction rather than resolved by a larger N,
-and its draw-dependence is measured by the SI draw-sensitivity re-evaluation,
-in which each matched design's final set is re-simulated on its own draws d1
-and d2 at N = 300 (`campaign_design.md` §5). The ε floors are re-measured on
+and the shift of its estimates between draws is reported by the SI
+draw-sensitivity re-evaluation, in which a thinned subset of each matched
+design's final set is re-simulated on its own draw d1 at N = 300
+(`campaign_design.md` §5). The ε floors are re-measured on
 the N = 300 ensembles and the adopted vector stands provided every entry lies
 above its floor (`epsilon_calibration_experiment.md`).
 

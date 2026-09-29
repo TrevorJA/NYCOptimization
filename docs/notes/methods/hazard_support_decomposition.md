@@ -93,8 +93,8 @@ the merged complement `beyond_support`, with the three-way table still emitted
 and the merge disclosed.
 
 **Pool-draw handling.** The population object is the stationary law and the
-three regenerated pools are i.i.d. samples of it. The primary stratum labels
-come from pool d0, and scores against d1 and d2 are computed identically and
+two regenerated pools are i.i.d. samples of it. The primary stratum labels
+come from pool d0, and scores against d1 are computed identically and
 reported as a cross-draw agreement table. Draws are never pooled, because a
 union pool would change the reference size and the threshold's meaning.
 
@@ -184,7 +184,7 @@ partitions of the same cubes are read together.
 | Figure | What the reader learns |
 |---|---|
 | `F1_support_map_theta` | Which corners of the CMIP6 forcing box leave the stationary hazard support (SOWs in the (e^m, r1) plane coloured by stratum, score colourbar companion panel). |
-| `F2_support_score_distribution` | How E_test divides across the strata and that the division is stable across the three pool draws (ECDF of `out_frac` per draw, cut points marked). |
+| `F2_support_score_distribution` | How E_test divides across the strata and that the division is stable across the two pool draws (ECDF of `out_frac` per draw, cut points marked). |
 | `F3_axis_excursion` | Which hazard axes carry the excursion, by forcing tercile, and that seasonal structure is not an axis. |
 | `F4_reach_by_tercile` | Per selection axis, where E_test's sub-window quantiles sit against the pool's p1/p99 band, by forcing tercile. |
 | `F5_contrast_by_stratum` (stage B) | The headline, HF − MC satisficing and no-harm differences vs support stratum, seed-level points with SOW-bootstrap CIs. |

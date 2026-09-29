@@ -62,7 +62,7 @@
 #
 # Switches: NYCOPT_TEV_SMOKE=1, NYCOPT_TEV_RETRY_FAILED=1,
 # NYCOPT_TEV_CLAIM_TAG=<tag> (share a work pool across submissions),
-# NYCOPT_TEV_INCLUDE_DRAWS=1 (own-draw d1/d2 cells, the SI draw-sensitivity
+# NYCOPT_TEV_INCLUDE_DRAWS=1 (own-draw d1 cells, the SI draw-sensitivity
 # item), NYCOPT_TEV_CELL=<i> (restrict a task to one cell).
 # Settings in supplemental_config.py (TEV_ section).
 #

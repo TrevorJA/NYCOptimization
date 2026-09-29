@@ -55,8 +55,8 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Recompute every hazard image under the June 1 dry-axis window before
   step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months` or
   any of the current `dry_scoring_rule`, `wet_scoring_rule` and
-  `supplement_scoring_rule`; draws per Section 8):
-  the P = 10⁶ pools d0–d2 are stream-only, so regenerate them per draw
+  `supplement_scoring_rule`):
+  the P = 10⁶ pools are stream-only, so regenerate d0 and d1 per draw
   (`workflow/supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`);
   then the step-03 selections; E_test's `hazard_image_subwindows.npz`
   (`etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` after deleting the
@@ -78,15 +78,15 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   attainment of 0.9 on drought magnitude in `axis_set_comparison.csv`. Then update
   `scenario_design_methods.md` §3.3 and §6, the manuscript, and
   `tests/test_hazard_selection_axes.py`.
-- [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–2: step 02
-  (`monte_carlo`, `--array=0-2`), step 03 (`hazard_filling_stationary`,
+- [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–1: step 02
+  (`monte_carlo`, `--array=0-1`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line
-  `pool='statpool_10yr_n1000000_d{k}'`), step 04 both (`--array=0-2`).
+  `pool='statpool_10yr_n1000000_d{k}'`), step 04 both (`--array=0-1`).
   DRAW 0 DONE 2026-09-11 for the figure-4 composition variant:
   `fixprob_10yr_n300_d0` (step 02, 12 min) and `hazfill_stat_abs_10yr_n300_d0`
   (step 03, 12 min; abs L2\* 0.0117 vs null 0.1650 ± 0.0068, pctl 0), plus the
   MC hazard image via the new `workflow/supplemental/staged_hazard_image.sh`.
-  STILL OPEN for the campaign: draws 1–2 of both, and step 04 for every draw
+  STILL OPEN for the campaign: draw 1 of both, and step 04 for every draw
   (the figure needs only `hazard_image.npz`, so step 04 was skipped).
 - [ ] **[HPC]** Build QC on each restaged ensemble: `validate_staged_seasonality.py`
   and the per-axis tail-share record per hazfill draw; then step 05 baselines for
@@ -169,9 +169,8 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   hold median minimum NYC storage of 22.5% vs 13.2% / 15.6% (MC ensemble) and
   14.2% vs 3.0% / 6.2% (hazard-filling ensemble) — the ensemble searches trade the
   storage buffer away. NOT a ranking of designs.
-  Follow-ups available, not run: the own-draw d1/d2 arm
-  (`NYCOPT_TEV_INCLUDE_DRAWS=1`, +3,550 units, ~155 core-h), which closes the SI
-  draw-sensitivity item above.
+  Follow-ups available, not run: the own-draw d1 arm
+  (`NYCOPT_TEV_INCLUDE_DRAWS=1`), which closes the SI draw-sensitivity item below.
 
 - [ ] **[local]** Regret tolerance: re-run pass A on the regenerated incumbent cube
   (`rtol_noise_floor.csv` carries stale ε), then pass B on the production cube with
@@ -182,14 +181,15 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   placements are provisional until then).
 - [ ] **[local]** Framing diagnostic 3: OAT stringency + threshold-margin CDFs on the
   persisted cube (`framing_convention_diagnostics.md`).
-- [ ] **[HPC]** SI draw-sensitivity re-evaluation: each matched design's merged set on
-  its own d1/d2. **The driver now exists** — `src/transfer_eval.py` +
-  `scripts/supplemental/transfer_evaluation_run.py` evaluate a `.set` on any staged
-  search-ensemble slug via `evaluate_annual_units` and persist per-realization units.
-  The d1/d2 cells are declared in `supplemental_config.TEV_DRAW_TARGETS`; run with
-  `NYCOPT_TEV_INCLUDE_DRAWS=1` on `workflow/supplemental/transfer_evaluation_eval.sh`
-  (+3,550 units, ~155 core-h at N=100). Note the sets were searched at N=100, so the
-  draw cells are N=100, not the N=300 the ~1k SU estimate assumed.
+- [ ] **[HPC]** SI draw-sensitivity re-evaluation: a thinned subset of each matched
+  design's merged set on its own d1, sized to 250 SU (`campaign_design.md` §5). Fix
+  the thinning rule and the policy count before the run. The driver is
+  `src/transfer_eval.py` + `scripts/supplemental/transfer_evaluation_run.py`, which
+  evaluate a `.set` on any staged search-ensemble slug via `evaluate_annual_units`
+  and persist per-realization units. The d1 cells are declared in
+  `supplemental_config.TEV_DRAW_TARGETS`; run with `NYCOPT_TEV_INCLUDE_DRAWS=1` on
+  `workflow/supplemental/transfer_evaluation_eval.sh`. Report paired per-policy
+  shifts against ε with no variance estimate.
 - [ ] **[HPC]** Optional: nested-P saturation record (`nestedp_ladder.sh`) under the
   renamed hazard axes; hazard-support no-harm arm re-read with
   `NYCOPT_HSD_REEVAL_TAG=etest_kn_50yr_n25000` (no simulation).
@@ -273,7 +273,7 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
 - [ ] **[HPC]** After the June 1 recompute (Section 2 item; the pre-fix images lack
   the current provenance legs and every reader refuses them), run
   `workflow/supplemental/hf_design_metrics.sh` on the June 1 window images
-  (`statpool`/`hazfill_stat_abs` d0–d2 at P = 10⁶, N = 300; `fixprob` d0–d2; the historic
+  (`statpool`/`hazfill_stat_abs` d0–d1 at P = 10⁶, N = 300; `fixprob` d0–d1; the historic
   windows cache), or copy `hazfill_stat_abs_10yr_n300_d{k}/{hazard_image.npz,_meta.json}`,
   `fixprob_10yr_n300_d{k}/hazard_image.npz`, and the historic windows cache here (about
   80 MB per draw) and run the driver locally with `NYCOPT_CANDIDATE_POOL_N=1000000
@@ -284,30 +284,13 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
 - [ ] **[local]** Later decision on the selection rule, argued from the production metrics
   (not part of the current method): replace the sequential rule (Eq. 7) by the certified
   exact assignment if the measured gap in total displacement or the Jaccard overlap is
-  material across d0–d2; optimize the target design (maximin or centered-discrepancy
+  material across d0–d1; optimize the target design (maximin or centered-discrepancy
   Latin hypercube) if the targets' own MST edge statistics fall below the random
   reference; a minimax-optimal (k-center) selection on the candidate ensemble if the HF
   minimax distance is not below the random reference.
 
 ## 8. Hazard scoring review (2026-09-29)
 
-- [ ] **[local]** Decide the number of staged draws before any pool beyond d0 is
-  generated (each hazard filling draw costs one P = 10⁶ pool, about 600 core-hours).
-  The search uses d0 only. Draws d1 and d2 feed the draw-sensitivity re-evaluation
-  (about 1,000 SU), the tail share across pools, `hf_design_metrics`, the
-  hazard-support stratum agreement, and per-draw build checks. Two draws support a
-  replication check and no manuscript claim needs three: the comparable studies
-  replicate random seeds and re-evaluate out of sample (Zatarain Salazar et al. 2017;
-  Trindade et al. 2017, 2019; Quinn et al. 2017; Gold et al. 2022), and none re-draws
-  its search ensemble. Construction stability can be shown on disjoint sub-pools of
-  one pool (`_subpool_stability` in `diagnose_hazard_selectors.py`). Size the
-  re-evaluation to the 250 SU limit (one replicate draw, thinned policy set). Report
-  paired per-policy shifts against ε with no variance estimate, and remove the
-  statement that draw dependence is quantified: re-simulating fixed policies measures
-  the shift of objective estimates and cannot show what policies another draw would
-  produce. Then update `experimental_design.md` (Replication), `campaign_design.md` §1
-  and §5, `scenario_design_methods.md` §6, manuscript §3.3, SI Text S10, and the
-  Section 2 restage item.
 - [ ] **[local]** Bring the manuscript draft into line with the scoring code (line
   numbers at `71b3478`):
   - :111 says the metrics are not truncation-limited. 23% of windows have a
@@ -386,8 +369,3 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
   size names two quantities, the Kish ratio of nearest-member weights
   (`hf_design_metrics.md` §5) and a serial-dependence ratio
   (`ensemble_size_diagnostics.md` §5). Give each its own name.
-- [ ] **[local]** Tests: `test_satisficing_criteria::
-  test_registry_shape_and_focal_env` fails because the `compromise` set holds four axes
-  and the test allows three. `test_hf_design_metrics::
-  test_smoke_identity_on_staged_image` passes alone and fails in the full suite, where
-  it resolves the production pool path instead of the smoke path.

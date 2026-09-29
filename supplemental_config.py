@@ -1337,13 +1337,13 @@ HSD_ETEST_SLUG: str = os.environ.get("NYCOPT_HSD_ETEST_SLUG",
 #: sensitivity. The smoke pass swaps in the P=2,000 pools.
 HSD_POOL_SLUGS: tuple = tuple(
     f"statpool_10yr_n{'2000' if HSD_SMOKE else '1000000'}_d{k}"
-    for k in range(3)
+    for k in range(2)
 )
 
 #: Realized hazard-filling ensemble slugs whose _meta.json ``normalization``
 #: blocks cross-check the recomputed pool p1/p99 bounds (skipped when absent).
 HSD_HAZFILL_SLUGS: tuple = tuple(f"hazfill_stat_abs_10yr_n100_d{k}"
-                                 for k in range(3))
+                                 for k in range(2))
 
 #: The re-eval tag stage B discovers runs under (default: the campaign
 #: re-evaluation subset) and the moea formulation identity. Stage-B artifacts
@@ -1517,7 +1517,7 @@ ESD_SMOKE: bool = os.environ.get("NYCOPT_ESD_SMOKE", "0") == "1"
 ESD_POOL_P: int = 2_000 if ESD_SMOKE else 1_000_000
 
 #: Pool draws whose hazard images Layer A scores (d0 is also the library pool).
-ESD_POOL_DRAWS: tuple = (0, 1, 2)
+ESD_POOL_DRAWS: tuple = (0, 1)
 
 #: The library pool: every regenerated library member comes from THIS pool, so
 #: the MC reference prefix and the HF selections share one i.i.d. population.
@@ -1549,7 +1549,7 @@ ESD_N_CAMPAIGN: int = 300
 
 #: Anchor plans per (pool, N) for Layer A: the design's own selector seed for
 #: these "draws" (draw 0 is the production plan; 101+ are extra plans on the
-#: same pool, never confused with the production draws 1-2 which re-roll the
+#: same pool, never confused with production draw 1, which re-rolls the
 #: pool). The first ESD_HF_LIBRARY_PLANS of them feed the library.
 ESD_HF_ANCHOR_DRAWS: tuple = (0, 101, 102) if ESD_SMOKE else (0, 101, 102, 103, 104, 105, 106, 107, 108, 109)
 ESD_HF_LIBRARY_PLANS: int = 2 if ESD_SMOKE else 3
@@ -1796,14 +1796,14 @@ TEV_TARGETS: "tuple[tuple[str, int], ...]" = (
     ("hazard_filling_stationary", 0),    # -> hazfill_stat_abs_10yr_n100_d0
 )
 
-#: Own-draw cells (each matched design's set on its own d1/d2), the SI
+#: Own-draw cells (each matched design's set on its own d1), the SI
 #: draw-sensitivity item at TODO.md. Declared so the driver can run them as one
 #: extra submission; NOT part of the default cell list. Enable with
 #: NYCOPT_TEV_INCLUDE_DRAWS=1.
 TEV_INCLUDE_DRAWS: bool = os.environ.get("NYCOPT_TEV_INCLUDE_DRAWS", "0") == "1"
 TEV_DRAW_TARGETS: "tuple[tuple[str, int], ...]" = (
-    ("monte_carlo", 1), ("monte_carlo", 2),
-    ("hazard_filling_stationary", 1), ("hazard_filling_stationary", 2),
+    ("monte_carlo", 1),
+    ("hazard_filling_stationary", 1),
 )
 
 # ---------------------------------------------------------------------------
@@ -1949,7 +1949,7 @@ HFM_SMOKE: bool = os.environ.get("NYCOPT_HFM_SMOKE", "0") == "1"
 HFM_POOL_P: int = 300 if HFM_SMOKE else int(os.environ.get("NYCOPT_CANDIDATE_POOL_N", "1000000"))
 HFM_N: int = 40 if HFM_SMOKE else int(os.environ.get("NYCOPT_SEARCH_N", "300"))
 HFM_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
-HFM_DRAWS: tuple = (0,) if HFM_SMOKE else (0, 1, 2)
+HFM_DRAWS: tuple = (0,) if HFM_SMOKE else (0, 1)
 HFM_HF_DESIGN: str = "hazard_filling_stationary"
 
 

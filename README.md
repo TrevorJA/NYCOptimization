@@ -136,14 +136,14 @@ section**. `monte_carlo` generates its own realizations (step `02`);
 `hazard_filling_stationary` selects its search ensemble from its own P = 10⁶
 candidate pool (step `03`); each draw is then formatted into pywrdrb HDF5
 inputs (step `04`). The array index in `02`/`04` is the ensemble-draw index *k*
-(`K = design.n_ensemble_draws` = 3 staged draws: d0 is searched, d1–d2 serve
+(`K = design.n_ensemble_draws` = 2 staged draws: d0 is searched, d1 serves
 the SI draw-sensitivity re-evaluation); sizing and seeds come from the design
 registry, never from the command line.
 
 ```bash
 # monte_carlo: one N x L ensemble per draw
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-2 workflow/02_generate_ensemble.sh
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-2 workflow/04_prep_pywrdrb_inputs.sh
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-1 workflow/02_generate_ensemble.sh
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-1 workflow/04_prep_pywrdrb_inputs.sh
 
 # hazard_filling_stationary: the P = 1e6 pool is built sharded (50 array tasks), merged, and verified
 sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50 \
@@ -156,7 +156,7 @@ sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=
 # then select all K draws from the pool in one job, and prep each draw
 sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=1000000 \
        workflow/03_subsample_ensemble.sh
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary --array=0-2 workflow/04_prep_pywrdrb_inputs.sh
+sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary --array=0-1 workflow/04_prep_pywrdrb_inputs.sh
 ```
 
 Step `02` alone builds the small (P = 2,000) pool the step-03 registry default

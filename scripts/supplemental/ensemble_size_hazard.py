@@ -104,7 +104,7 @@ def load_pool_image(draw: int) -> dict | None:
         raise KeyError(f"{path}: selection axes {missing} absent from {axes_all}")
     H = np.asarray(img["H"], dtype=float)[:, [axes_all.index(a) for a in axes]]
     # The campaign selector screens the selection axes per pool; the screen
-    # must retain all six on a production pool (it did on d0-d2), otherwise
+    # must retain every selection axis on a production pool, otherwise
     # the ladder would be scored on a different axis set than step 03 uses.
     screen = screen_hazard_axes(H, axes)
     if list(screen["retained"]) != axes:

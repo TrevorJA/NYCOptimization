@@ -33,7 +33,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 |------|--------|-----------|----------|--------------|
 | 00 | `00_setup_borg_jars.sh` | login node (`bash`) | optional | Build one MOEAFramework problem JAR per formulation; rerun after changing the objective set |
 | 01 | `01_generate_presim.sh` | `shared`, 1×1, 30 min | optional | Full Pywr-DRB run once; save non-NYC (STARFIT) releases for the trimmed model |
-| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (three draws staged, `--array=0-2`: d0 is searched, d1–d2 serve the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh` instead |
+| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (two draws staged, `--array=0-1`: d0 is searched, d1 serves the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh` instead |
 | 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) + `NYCOPT_CANDIDATE_POOL_N=1000000` | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
 | 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs (MPI across realizations); `--preset NAME` stages an arbitrary ensemble |
 | 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Evaluate the default (unoptimized) FFMP policy + persist its per-SOW E_test matrix for the incumbent-relative regret family; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble |
@@ -90,8 +90,8 @@ whether step 03 applies at all — follows from the design alone:
 | `stationary_kn` | `scaling_stationary` | no (supplemental) | direct Kirsch-Nowak stand-in | — | `0` |
 
 The array index in `02`/`04` is the ensemble-draw index *k*; set `--array=0-(K-1)`
-with K = `design.n_ensemble_draws` (= 3 for the matched designs). The campaign
-searches draw 0 only; draws 1–2 are staged for the SI draw-sensitivity
+with K = `design.n_ensemble_draws` (= 2 for the matched designs). The campaign
+searches draw 0 only; draw 1 is staged for the SI draw-sensitivity
 re-evaluation of each design's final set. **Cost:** per-design construction
 multiplies step-02 cost by K for `monte_carlo` and `input_stratified` —
 each draw is a fresh N×L generation, not a re-index of shared data. Pool-owning
