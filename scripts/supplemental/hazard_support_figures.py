@@ -77,8 +77,8 @@ THIRD_SHORT: tuple = ("driest third", "middle third", "wettest third")
 METRIC_TICKS: dict = {
     "drought_magnitude": "drought\nmagnitude",
     "drought_severity": "drought\nseverity",
-    "drought_onset_rate": "drought\nonset speed",
-    "drought_recovery_rate": "drought\nrecovery speed",
+    "drought_development_rate": "drought\ndevelopment rate",
+    "drought_termination_rate": "drought\ntermination rate",
     "flood_peak_discharge": "flood\npeak flow",
     "flood_pulse_duration": "flood\npulse length",
 }
@@ -87,8 +87,8 @@ METRIC_TICKS: dict = {
 METRIC_LABELS: dict = {
     "drought_magnitude": "drought magnitude\n(cumulative dryness, |ΣSSI|)",
     "drought_severity": "drought severity\n(peak dryness, |min SSI|)",
-    "drought_onset_rate": "drought onset speed\n(SSI per month)",
-    "drought_recovery_rate": "drought recovery speed\n(SSI per month)",
+    "drought_development_rate": "drought development rate\n(SSI per month)",
+    "drought_termination_rate": "drought termination rate\n(SSI per month)",
     "flood_peak_discharge": "flood peak flow\n(× long-term mean daily flow)",
     "flood_pulse_duration": "flood pulse length\n(days above threshold)",
 }

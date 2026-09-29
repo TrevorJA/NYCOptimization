@@ -105,7 +105,13 @@ RETIRED_TERMS: dict[str, str] = {
         "all-axes reference conjunction)",
     # Hazard-metric names follow the drought literature (and SynHydro's
     # get_drought_metrics columns): severity = peak SSI deficit, magnitude =
-    # cumulative deficit; the flood axis is peak discharge.
+    # cumulative deficit; the flood axis is peak discharge. The two phase rates
+    # follow Parry et al. (2016): development (onset -> minimum) and termination
+    # (minimum -> return above zero), severity over elapsed phase months.
+    "drought_onset_rate": "drought_development_rate (severity / development-phase months)",
+    "drought_recovery_rate": "drought_termination_rate (severity / termination-phase months)",
+    "onset rate": "development rate (Parry et al., 2016)",
+    "recovery rate": "termination rate (Parry et al., 2016)",
     "drought_peak_depth": "drought_severity (peak SSI-based deficit)",
     "peak depth": "drought severity (peak SSI-based deficit)",
     "drought_deficit_volume": "drought_magnitude (cumulative SSI deficit)",

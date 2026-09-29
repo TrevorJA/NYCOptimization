@@ -46,8 +46,8 @@ from src.plotting.ensemble_composition import (DEFAULT_SCATTER_TRIPLE,
 HAZARD_SYMBOLS: dict[str, str] = {
     "drought_magnitude":     r"$M$",
     "drought_severity":      r"$S$",
-    "drought_onset_rate":    r"$R_\mathrm{on}$",
-    "drought_recovery_rate": r"$R_\mathrm{rec}$",
+    "drought_development_rate": r"$R_\mathrm{dev}$",
+    "drought_termination_rate": r"$R_\mathrm{term}$",
     "flood_peak_discharge":  r"$D$",
     "flood_pulse_duration":  r"$T_P$",
 }
@@ -56,8 +56,8 @@ HAZARD_SYMBOLS: dict[str, str] = {
 HAZARD_UNITS: dict[str, str] = {
     "drought_magnitude":     "deficit-months",
     "drought_severity":      "s.d.",
-    "drought_onset_rate":    "s.d. month$^{-1}$",
-    "drought_recovery_rate": "s.d. month$^{-1}$",
+    "drought_development_rate": "s.d. month$^{-1}$",
+    "drought_termination_rate": "s.d. month$^{-1}$",
     "flood_peak_discharge":  "",
     "flood_pulse_duration":  "days",
 }

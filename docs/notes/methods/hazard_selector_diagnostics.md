@@ -96,7 +96,7 @@ honest i.i.d. pools by the global-index seeding).
   realized coverage ~2.5–3× (outlier fixation); tail enrichment moves
   smoothly across (2, 98)–(0.5, 99.5) with no cliff at the campaign default.
 - **Selection axis set: the campaign selects on m = 6**
-  ({drought magnitude, severity, onset rate, recovery rate, peak discharge,
+  ({drought magnitude, severity, development rate, termination rate, peak discharge,
   pulse duration} = `config.HAZARD_SELECTION_AXES`, consumed by the step-03
   selection). The full 8-axis set's minimum per-axis tail share is
   geometry-limited, not supply-limited: ~0.22 at P = 10⁶, with the nested-P

@@ -217,7 +217,7 @@ correlates positively with the volume multiplier (Spearman r ≈ 0.57 with e^m,
 0.45 with r1), and the dominant excursion axis is `flood_peak_discharge` for
 447 of 1,000 SOWs (then `flood_pulse_duration`, 158). Dry-forced drought
 excursions are real but thin. The dry tercile's sub-window q99 exceeds the pool
-band on drought magnitude (60.2 vs 49.0) and onset rate (2.26 vs 1.98), so only
+band on drought magnitude (60.2 vs 49.0) and development rate (2.26 vs 1.98, computed before the June 1 recompute), so only
 the top few percent of dry-tercile windows leave support. The stationary pool's
 10⁶ natural-variability windows already contain very severe droughts, and
 multiplicative wet forcing escapes the pool ceiling more readily than dry

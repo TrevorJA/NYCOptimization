@@ -251,8 +251,7 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
 - [ ] **[local]** Port the v2 literature-review structure (overfitting and policy structure;
   the MORDM and DU-optimization lineage; the three ensemble-construction families) and the
   deterministic-versus-stochastic search framing into the manuscript Introduction outline P2–P5.
-- [ ] **[local]** Reconcile the onset-rate denominator (manuscript Eq. 3 adds 1; code uses the
-  month difference) and the satisficing-criteria variant (`DEFAULT_CRITERIA_VARIANT =
+- [ ] **[local]** Reconcile the satisficing-criteria variant (`DEFAULT_CRITERIA_VARIANT =
   "v2_20260821"` vs the "adopted" values in `robustness_threshold_diagnostics.md`).
 
 ## 7. HF design metrics (2026-09-28)

@@ -150,19 +150,21 @@ S(E) \;=\; -\min_{\tau \in E}\, z_x(\tau).
 \tag{2}
 $$
 
-The onset rate normalizes the severity by the time taken to reach it,
+Following Parry, Wilby, et al. (2016), the event is divided at its minimum into a development phase, from the crossing below zero to the minimum, and a termination phase, from the minimum to the return above zero (Parry, Prudhomme, et al., 2016). The development rate is the severity divided by the duration of the development phase in months,
 
 $$
-R_{\mathrm{on}}(E) \;=\; \frac{S(E)}{\tau_{\mathrm{pk}} - \tau_{\mathrm{on}} + 1},
+R_{\mathrm{dev}}(E) \;=\; \frac{S(E)}{\tau_{\mathrm{pk}} - \tau_{\mathrm{on}} + 1},
 \tag{3}
 $$
 
-and the recovery rate normalizes the severity by the time taken to recover from it,
+and the termination rate is the severity divided by the duration of the termination phase,
 
 $$
-R_{\mathrm{rec}}(E) \;=\; \frac{S(E)}{\tau_{\mathrm{end}} - \tau_{\mathrm{pk}} + 1}.
+R_{\mathrm{term}}(E) \;=\; \frac{S(E)}{\tau_{\mathrm{end}} - \tau_{\mathrm{pk}} + 1},
 \tag{4}
 $$
+
+both in standard deviations per month, where the added month in each denominator is the month in which the index crosses zero, so that each phase lasts at least one month. Both rates are the termination rate of Parry, Wilby, et al. (2016) applied to the two phases, with the index change over a phase taken as the severity because each phase begins or ends at the zero threshold.
 
 When a realization contains more than one qualifying event, the controlling event $E^{*} = \arg\max_{E} M(E)$, the event with the largest drought magnitude and the operationally binding event under fixed initial storage, is scored. All four drought metrics are zero for a realization with no qualifying event.
 
@@ -530,6 +532,8 @@ Prior evidence predicts a price for hazard filling's severity emphasis. Robustne
 - Nowak, K., Prairie, J., Rajagopalan, B., & Lall, U. (2010). A nonparametric stochastic approach for multisite disaggregation of annual to daily streamflow. *Water Resources Research*, 46(8), W08529.
 - Olden, J. D., & Poff, N. L. (2003). Redundancy and the choice of hydrologic indices for characterizing streamflow regimes. *River Research and Applications*, 19(2), 101–121.
 - Owen, A. B. (2013). *Monte Carlo theory, methods and examples*. https://artowen.su.domains/mc/
+- Parry, S., Prudhomme, C., Wilby, R. L., & Wood, P. J. (2016). Drought termination: concept and characterisation. *Progress in Physical Geography*, 40(6), 743–767.
+- Parry, S., Wilby, R. L., Prudhomme, C., & Wood, P. J. (2016). A systematic assessment of drought termination in the United Kingdom. *Hydrology and Earth System Sciences*, 20(10), 4265–4281.
 - Pronzato, L., & Müller, W. G. (2012). Design of computer experiments: space filling and beyond. *Statistics and Computing*, 22(3), 681–701.
 - Quinn, J. D., Reed, P. M., Giuliani, M., & Castelletti, A. (2017). Rival framings: A framework for discovering how problem formulation uncertainties shape risk management trade-offs in water resources systems. *Water Resources Research*, 53(8), 7208–7233.
 - Quinn, J. D., Reed, P. M., Giuliani, M., Castelletti, A., Oyler, J. W., & Nicholas, R. E. (2018). Exploring how changing monsoonal dynamics and human pressures challenge multireservoir management for flood protection, hydropower production, and agricultural water supply. *Water Resources Research*, 54(7), 4638–4662.

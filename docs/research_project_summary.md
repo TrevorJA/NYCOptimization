@@ -18,7 +18,7 @@ used to evaluate candidate policies *during search* is constructed. The proposed
 — **hazard filling** — selects scenarios from a large candidate pool of short synthetic
 streamflow sequences so that the retained scenarios cover a multi-dimensional **hazard
 space** (six selection axes computed on each sequence: drought magnitude, severity,
-onset rate, and recovery rate from SSI-6 run theory, plus flood peak discharge and pulse
+development rate, and termination rate from SSI-6 run theory, plus flood peak discharge and pulse
 duration from peaks over threshold), deliberately over-representing the severe corners
 where reservoir policies are decided. It is compared against the discipline's default,
 an independent and identically distributed sample from the same stochastic generator.
@@ -90,7 +90,7 @@ probability-preserving flow stratification).
    sequence; the screen (degenerate drop + near-duplicate prune at |ρ_S| ≥ 0.95)
    retains all eight candidates, with rank-correlation structure reported as a
    diagnostic. The campaign **selection axes** are a fixed six-descriptor subset
-   (drought magnitude, severity, onset rate, recovery rate; flood peak discharge, pulse
+   (drought magnitude, severity, development rate, termination rate; flood peak discharge, pulse
    duration — `config.HAZARD_SELECTION_AXES`); drought duration and flood rise rate stay
    computed and reported but do not enter the snap distance.
 3. **Selection (hazard filling only)** — Latin hypercube anchors in absolute, robust

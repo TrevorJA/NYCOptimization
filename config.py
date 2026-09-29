@@ -369,8 +369,8 @@ ENSEMBLE_MASTER_CHUNK_SIZE = _parse_int_env("NYCOPT_ENSEMBLE_MASTER_CHUNK_SIZE",
 HAZARD_SELECTION_AXES = _parse_list_env("NYCOPT_HAZARD_SELECTION_AXES", [
     "drought_magnitude",
     "drought_severity",
-    "drought_onset_rate",
-    "drought_recovery_rate",
+    "drought_development_rate",
+    "drought_termination_rate",
     "flood_peak_discharge",
     "flood_pulse_duration",
 ])

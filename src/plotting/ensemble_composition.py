@@ -55,8 +55,8 @@ from src.plotting import style
 HAZARD_METRIC_LABELS: dict[str, str] = {
     "drought_magnitude":      "Drought magnitude, $M$ (deficit-months)",
     "drought_severity":       "Drought severity, $S$ (s.d.)",
-    "drought_onset_rate":     "Onset rate, $R_\\mathrm{on}$ (s.d. month$^{-1}$)",
-    "drought_recovery_rate":  "Recovery rate, $R_\\mathrm{rec}$ (s.d. month$^{-1}$)",
+    "drought_development_rate": "Development rate, $R_\\mathrm{dev}$ (s.d. month$^{-1}$)",
+    "drought_termination_rate": "Termination rate, $R_\\mathrm{term}$ (s.d. month$^{-1}$)",
     "flood_peak_discharge":   "Peak discharge, $D$ (-)",
     "flood_pulse_duration":   "Pulse duration, $T_P$ (days)",
 }
