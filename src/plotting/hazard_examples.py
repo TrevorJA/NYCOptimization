@@ -7,9 +7,14 @@ Filling search ensemble's hazard characteristics, every member in gray and a
 few example realizations in color, drawn either as a 3-D scatter over a hazard
 triple or as parallel axes over all six selection axes. The right column shows
 each example's sequence on the scored metric window: the SSI-6 series with the
-largest drought event filled, and the annual peak discharge as bars hanging
-from the top with the year of the critical flood pulse filled, so the drought
-metrics read off the bottom of each panel and the flood metrics off the top.
+controlling drought event (the one the drought metrics score) filled, and the
+annual peak discharge as bars hanging from the top with the year of the
+critical flood pulse filled, so the drought metrics read off the bottom of each
+panel and the flood metrics off the top. The controlling event is delineated
+by ``scengen.hazard_metrics.drought_events`` and ``select_drought_event``, the
+functions the hazard image is scored with. When that event was already under
+way when the scored window opens, or is still under way when it closes, an
+arrowhead in the example color at that window edge marks the truncated side.
 
 Examples are chosen by percentile targets on the selection axes: a target
 names the ensemble percentile wanted on some axes, and the member nearest that
@@ -22,8 +27,8 @@ Data contracts: the staged HF ensemble's ``hazard_image.npz`` (pool image plus
 realizations, in ``selected_rows`` order). The SSI-6 fit, the flood threshold
 and the normalizing mean are the pool's own, refitted on the historical record
 through ``scengen.hazard_metrics.get_reference_fits``, and each example's
-recomputed hazard vector is checked against its stored image row so the
-sequence drawn is the one the metrics scored.
+recomputed hazard vector and truncation flags are checked against its stored
+image row so the sequence drawn is the one the metrics scored.
 """
 
 from __future__ import annotations
@@ -86,6 +91,12 @@ BAR_DEPTH_FRAC = 0.40
 #: panels are read at a steep reduction).
 EXAMPLES_FONTSIZE: int = 16
 
+#: Run-theory settings the figure scores and delineates events with; passed
+#: explicitly to ``compute_candidate_hazard_image`` too, so the filled event is
+#: the scored one by construction (and the stored-row check guards the image).
+DROUGHT_END_THRESHOLD: int = 3
+DROUGHT_SELECT: str = "controlling"
+
 
 def axis_label(metric: str) -> str:
     """Symbol plus unit for one hazard metric, e.g. ``$M$ (deficit-months)``."""
@@ -106,23 +117,32 @@ class ExampleSequence:
         index: Row of the example in the HF ensemble (its HDF5 column).
         t: Month stamps of the SSI-6 series (years).
         ssi: SSI-6 values on the metric window.
-        event: Boolean mask of the largest drought event over ``t`` (all False
-            when the realization has no qualifying event).
+        event: Boolean mask over ``t`` of the controlling drought event, from
+            its first to its last month below zero (all False when the
+            realization has no qualifying event).
+        onset_truncated: The controlling event was under way before the
+            window opened (``scengen`` run-theory flag).
+        termination_truncated: The controlling event was still under way when
+            the window closed.
         year_mid: Mid-points of the FFMP-years of the metric window (years).
         annual_peak: Annual maximum daily inflow over the reference mean.
         critical_year: Position in ``year_mid`` of the year holding the
             realization's maximum daily flow (the critical pulse).
         H: The realization's recomputed hazard vector (candidate axes).
+        S: The realization's recomputed supplement row.
     """
 
     index: int
     t: np.ndarray
     ssi: np.ndarray
     event: np.ndarray
+    onset_truncated: bool
+    termination_truncated: bool
     year_mid: np.ndarray
     annual_peak: np.ndarray
     critical_year: int
     H: np.ndarray
+    S: np.ndarray
 
 
 def hf_ensemble_slug(draw: int | None = None) -> str:
@@ -206,9 +226,12 @@ def sequence_of(daily: pd.Series, index: int, reference: tuple, n_years: int) ->
     Mirrors ``src.ensemble_generation._hazard_block``: the trailing partial
     FFMP-year is cut from the daily and monthly inputs, the wet axes exclude
     the leading ``config.METRIC_EXCLUSION_MONTHS`` by date, and the SSI-6
-    series keeps its leading months as accumulation input and is then cut by
-    date at the same boundary, so the sequence drawn opens where the
-    objectives' window opens.
+    series is scengen's scored series (``scored_dry_ssi``), which opens on the
+    first month after that window, so the sequence drawn opens where the
+    objectives' window opens. The controlling event is delineated with the
+    scoring functions themselves (``drought_events``,
+    ``select_drought_event``) on that series, and its dry descriptors are
+    checked against the recomputed hazard vector.
 
     Args:
         daily: Daily aggregate NYC inflow of the realization (DatetimeIndex
@@ -218,14 +241,17 @@ def sequence_of(daily: pd.Series, index: int, reference: tuple, n_years: int) ->
         n_years: Realization length L.
 
     Returns:
-        The realization's sequence and recomputed hazard vector.
-    """
-    from synhydro.droughts.ssi import get_drought_metrics
+        The realization's sequence and recomputed hazard vector and supplement.
 
+    Raises:
+        ValueError: If the drawn series or event does not reproduce the
+            descriptors ``compute_candidate_hazard_image`` scored.
+    """
     from scengen.hazard_metrics import (DRY_EVENT_METRICS,
                                         compute_candidate_hazard_image,
                                         critical_event_descriptors,
-                                        flows_to_series, get_reference_fits)
+                                        drought_events, get_reference_fits,
+                                        scored_dry_ssi, select_drought_event)
 
     excl = config.METRIC_EXCLUSION_MONTHS
     idx = pd.DatetimeIndex(daily.index)
@@ -238,31 +264,36 @@ def sequence_of(daily: pd.Series, index: int, reference: tuple, n_years: int) ->
     cut = int((idx < metric_start).sum())
 
     ref_m, ref_d = reference
-    H_row, _ = compute_candidate_hazard_image(
+    H_row, _, S_row, _ = compute_candidate_hazard_image(
         monthly.to_numpy()[None, :], daily.to_numpy()[None, :], ref_m, ref_d,
-        wet_exclusion_days=cut,
+        dry_timescale=excl, dry_end_threshold=DROUGHT_END_THRESHOLD,
+        dry_select=DROUGHT_SELECT, wet_exclusion_days=cut,
+        return_supplement=True, scenario_start=t0,
     )
     dry_calc, _threshold, ref_mean = get_reference_fits(ref_m, ref_d)
 
-    # SynHydro returns only the months on which SSI-6 is defined, so the
-    # output is stamped from the tail of the monthly index and cut by date at
-    # the metric window's start; the descriptor check below fails loudly if
-    # ``compute_candidate_hazard_image`` ever scores from another month.
-    ssi = dry_calc.transform(flows_to_series(monthly.to_numpy(), freq="MS"))
-    ssi = pd.Series(ssi.to_numpy(dtype=float), index=monthly.index[-len(ssi):])
-    ssi = ssi.loc[ssi.index >= metric_start]
-    dry = critical_event_descriptors(ssi)
+    # scengen stamps the scored series on its own scenario epoch; the true
+    # month stamps are the monthly index from the metric window's start.
+    ssi, ssi_pre = scored_dry_ssi(dry_calc, monthly.to_numpy(), dry_timescale=excl)
+    stamps = monthly.index[monthly.index >= metric_start]
+    if len(stamps) != len(ssi):
+        raise ValueError(
+            f"scored_dry_ssi returned {len(ssi)} months but the metric window holds "
+            f"{len(stamps)}.")
+    z = ssi.to_numpy(dtype=float)
+    dry = critical_event_descriptors(z, ssi_pre=ssi_pre, end_threshold=DROUGHT_END_THRESHOLD,
+                                     select=DROUGHT_SELECT)
     dry_row = [dry[m.removeprefix("drought_")] for m in DRY_EVENT_METRICS]
     if not np.allclose(dry_row, H_row[0, :len(DRY_EVENT_METRICS)], rtol=1e-6, atol=1e-9):
         raise ValueError(
             f"the drawn SSI-6 series scores {dry_row} but the hazard image scored "
             f"{H_row[0, :len(DRY_EVENT_METRICS)]}: the series cut no longer mirrors "
             f"scengen.hazard_metrics.compute_candidate_hazard_image.")
-    event = np.zeros(len(ssi), dtype=bool)
-    events = get_drought_metrics(ssi, end_drought_threshold_months=3)
-    if len(events):
-        largest = events.loc[events["magnitude"].astype(float).abs().idxmax()]
-        event = (ssi.index >= largest["start"]) & (ssi.index <= largest["end"])
+    event = np.zeros(len(z), dtype=bool)
+    scored_event = select_drought_event(
+        drought_events(z, end_threshold=DROUGHT_END_THRESHOLD), DROUGHT_SELECT)
+    if scored_event is not None:
+        event[scored_event.start:scored_event.end + 1] = True
 
     scored = daily.loc[idx >= metric_start]
     ffmp_year = scored.index.year - (scored.index.month < 6)
@@ -274,13 +305,16 @@ def sequence_of(daily: pd.Series, index: int, reference: tuple, n_years: int) ->
 
     return ExampleSequence(
         index=index,
-        t=years(ssi.index),
-        ssi=ssi.to_numpy(),
+        t=years(stamps),
+        ssi=z,
         event=event,
+        onset_truncated=bool(dry["onset_truncated"]),
+        termination_truncated=bool(dry["termination_truncated"]),
         year_mid=years(year_start) + 0.5,
         annual_peak=annual_max.to_numpy(dtype=float) / ref_mean,
         critical_year=int(np.argmax(annual_max.to_numpy())),
         H=H_row[0],
+        S=S_row[0],
     )
 
 
@@ -297,8 +331,9 @@ def load_examples(slug: str, targets: list[dict[str, float]]) -> dict:
         :class:`ExampleSequence` per target).
 
     Raises:
-        ValueError: If an example's recomputed hazard vector disagrees with
-            its stored image row (the drawn sequence would not be the scored one).
+        ValueError: If an example's recomputed hazard vector or supplement
+            (truncation flags included) disagrees with its stored image row
+            (the drawn sequence would not be the scored one).
     """
     from synhydro.core.ensemble import Ensemble
 
@@ -312,6 +347,7 @@ def load_examples(slug: str, targets: list[dict[str, float]]) -> dict:
     haz = load_hazard_image(d / "hazard_image.npz")
     rows = haz["selected_rows"]
     H = haz["H"][rows] if len(rows) else haz["H"]
+    S = haz["supplement"][rows] if len(rows) else haz["supplement"]
     axes = list(haz["hazard_axes"])
     chosen = select_examples(H, axes, targets)
 
@@ -327,11 +363,12 @@ def load_examples(slug: str, targets: list[dict[str, float]]) -> dict:
     for k, i in enumerate(chosen):
         agg = frames[k].loc[:, list(DEFAULT_NYC_INFLOW_NODES)].sum(axis=1)
         seq = sequence_of(agg, i, reference, n_years)
-        if not np.allclose(seq.H, H[i], rtol=1e-4, atol=1e-6):
+        if not (np.allclose(seq.H, H[i], rtol=1e-4, atol=1e-6)
+                and np.allclose(seq.S, S[i], rtol=1e-4, atol=1e-6)):
             raise ValueError(
-                f"example row {i} of '{slug}' rescored to {seq.H} but the stored "
-                f"hazard image holds {H[i]}; the staged daily traces and the "
-                f"hazard image disagree.")
+                f"example row {i} of '{slug}' rescored to {seq.H} / {seq.S} but the "
+                f"stored hazard image holds {H[i]} / {S[i]}; the staged daily traces "
+                f"and the hazard image disagree.")
         sequences.append(seq)
     return {"H": H, "axes": axes, "chosen": chosen, "global_ids": global_ids,
             "sequences": sequences}
@@ -443,10 +480,11 @@ def draw_sequence_panel(ax, seq: ExampleSequence, color: str, marker: str, *,
 
     The flood bars hang from the top edge on an inverted right axis, the
     hyetograph convention, so the two tails occupy opposite halves of the
-    panel: deficits fill downward from zero and the largest drought event
+    panel: deficits fill downward from zero and the controlling drought event
     takes the example color; the bar of the year holding the critical pulse
     takes it likewise. A dotted guide marks the drought retention threshold
-    (SSI-6 = -1).
+    (SSI-6 = -1). A controlling event truncated by the scored window gets an
+    outward arrowhead on the zero line at the window edge it crosses.
 
     Args:
         ax: Target axes.
@@ -490,6 +528,12 @@ def draw_sequence_panel(ax, seq: ExampleSequence, color: str, marker: str, *,
 
     t_lo, t_hi = seq.year_mid[0] - 0.5, seq.year_mid[-1] + 0.5
     ax.set_xlim(t_lo, t_hi)
+    for truncated, x, head in ((seq.onset_truncated, t_lo, "<"),
+                               (seq.termination_truncated, t_hi, ">")):
+        if truncated:
+            ax.plot([x], [0.0], ls="none", marker=head, ms=9, color=color,
+                    markeredgecolor="white", markeredgewidth=0.8, clip_on=False,
+                    zorder=6)
     ax.set_xticks(np.arange(np.ceil(t_lo), np.floor(t_hi) + 1))
     ax.tick_params(labelbottom=bottom)
     if bottom:

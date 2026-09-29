@@ -64,6 +64,11 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   hazard-examples figure, `ensemble_size_hazard.sh`, `hazard_support_decomposition.sh`,
   `hazard_selector_diagnostics`, the E_test overlay, step 11, and
   `hf_design_metrics.sh` (Section 7).
+- [ ] **[HPC]** After the pools are regenerated, run the selector diagnostic at
+  production scale (`diagnose_hazard_selectors.py` on `statpool_10yr_n1000000_d0`,
+  N = 300: descriptor redundancy, axis-set comparison, truncation summary;
+  `hazard_selector_diagnostics.md`) and fix the selection-axis set
+  (`config.HAZARD_SELECTION_AXES`) before step 03.
 - [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–2: step 02
   (`monte_carlo`, `--array=0-2`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line

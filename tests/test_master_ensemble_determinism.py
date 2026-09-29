@@ -184,7 +184,9 @@ def test_sharded_chunked_generation_matches_serial(tmp_path):
     ha = np.load(serial / "hazard_image.npz", allow_pickle=True)
     hb = np.load(sharded / "hazard_image.npz", allow_pickle=True)
     np.testing.assert_array_equal(ha["H"], hb["H"])
+    np.testing.assert_array_equal(ha["supplement"], hb["supplement"])
     assert [str(x) for x in ha["hazard_axes"]] == [str(x) for x in hb["hazard_axes"]]
+    assert [str(x) for x in ha["supplement_names"]] == [str(x) for x in hb["supplement_names"]]
 
     ia = json.loads((serial / "chunk_index.json").read_text())
     ib = json.loads((sharded / "chunk_index.json").read_text())
@@ -275,6 +277,7 @@ def test_hazard_image_and_forcing_profiles_shapes(tmp_path):
     haz = load_hazard_image(out / "hazard_image.npz")
     assert haz["H"].shape[0] == n_m
     assert haz["H"].shape[1] == len(haz["hazard_axes"])
+    assert haz["supplement"].shape == (n_m, len(haz["supplement_names"]))
     assert list(haz["realization_ids"]) == list(range(n_m))
 
     prof = np.load(out / "forcing_profiles.npz")

@@ -13,9 +13,9 @@ Intended for ensembles that never receive a hazard image on their generation pat
 ``monte_carlo`` stages flows only (its generator skips the image because no
 selection happens), yet the realized-composition diagnostics need its coordinates.
 
-Writes ``hazard_image.npz`` into the staged directory in the
-``scengen.diagnostics.save_hazard_image`` format with ``selected_rows`` empty: per the
-overlay contract, an empty selection means every row IS the ensemble.
+Writes ``hazard_image.npz`` (candidate axes plus supplement) into the staged directory
+in the ``scengen.diagnostics.save_hazard_image`` format with ``selected_rows`` empty:
+per the overlay contract, an empty selection means every row IS the ensemble.
 
 Configuration is via environment variables (no CLI value flags):
 
@@ -81,22 +81,25 @@ def main() -> None:
 
     chunks = pool_chunk_specs(slug)
     print(f"[hazimg] '{slug}': {len(chunks)} chunk(s), 1 window of {L} yr per realization.")
-    parts: list[tuple[np.ndarray, np.ndarray]] = []
+    parts: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     axes: list[str] = []
+    names: list[str] = []
     for spec, gids in chunks:
-        H, rid, _win, axes = _score_chunk(
+        H, S, rid, _win, axes, names = _score_chunk(
             staged_ensemble_dir(spec.inflow_type), list(range(len(gids))),
             [int(g) for g in gids], 1, reference_monthly, reference_daily,
         )
-        parts.append((H, rid))
+        parts.append((H, S, rid))
     H = np.vstack([p[0] for p in parts])
-    rid = np.concatenate([p[1] for p in parts])
+    S = np.vstack([p[1] for p in parts])
+    rid = np.concatenate([p[2] for p in parts])
     order = np.argsort(rid)
 
     from scengen.hazard_metrics import _REFERENCE_START
 
     save_hazard_image(
         out_path, H=H[order], hazard_axes=axes,
+        supplement=S[order], supplement_names=names,
         realization_ids=rid[order], selected_rows=[],
         reference_start=_REFERENCE_START,
     )

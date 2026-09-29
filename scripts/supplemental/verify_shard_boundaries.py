@@ -13,11 +13,13 @@ All configuration is via environment variables (no CLI value flags):
     NYCOPT_NESTEDP_POOL_SLUG      the merged pool's staged slug (required)
     NYCOPT_ENSEMBLE_SHARD_COUNT   shard count used at generation (default 50)
 
-Rows are compared with a per-axis tolerance of 1% of the image's robust
-(p1-p99) axis range rather than bit equality: cross-era system-library drift
-moves the dry axes by ~0.5% of range, while genuine partition bugs (row
-misalignment, duplication, wrong-realization content) produce multi-axis
-errors of order the full axis range. Exact matches are still reported.
+Rows (candidate axes and supplement) are compared with a per-column tolerance
+of 1% of the image's robust (p1-p99) column range rather than bit equality:
+cross-era system-library drift moves the dry axes by ~0.5% of range, while
+genuine partition bugs (row misalignment, duplication, wrong-realization
+content) produce multi-axis errors of order the full axis range. A tolerance
+below 1 admits no change of a 0/1 truncation flag. Exact matches are still
+reported.
 
 Exits nonzero on any beyond-tolerance mismatch — the ladder must not run on a
 broken image.
@@ -71,7 +73,10 @@ def main() -> None:
     if meta["population"] != "stationary":
         raise SystemExit(f"[verify_shards] pool '{POOL_SLUG}' is not stationary.")
     img = load_hazard_image(staged / "hazard_image.npz")
-    H, axes = img["H"], list(img["hazard_axes"])
+    # Candidate axes and supplement are checked as one row: the supplement comes
+    # from the same scoring pass, so a partition bug shows in both.
+    H = np.hstack([img["H"], img["supplement"]])
+    axes = list(img["hazard_axes"]) + list(img["supplement_names"])
     n = int(meta["n_realizations"])
 
     cfg = ForcingEnsembleConfig(
@@ -99,6 +104,7 @@ def main() -> None:
     # Tolerance: 1% of each axis's robust range (see module docstring). A real
     # partition bug shows O(range) multi-axis errors; era-level FP drift stays
     # well under this.
+    # A 0/1 truncation flag gets a tolerance of 0.01 or 0, so it must match exactly.
     tol = 0.01 * (np.percentile(H, 99, axis=0) - np.percentile(H, 1, axis=0))
     bad = []
     for k in _check_indices(n):
@@ -107,21 +113,24 @@ def main() -> None:
             Ensemble(monthly, metadata=md), nowak=setup.nowak, kdes=setup.kdes,
             root_seed=cfg.root_seed, start_date=cfg.start_date,
         )
-        row, row_axes = _hazard_block(
+        h_row, h_axes, s_row, s_names = _hazard_block(
             inflow, [k], DEFAULT_NYC_INFLOW_NODES, reference_monthly, reference_daily,
             n_years=cfg.realization_years,
         )
-        diff = np.abs(row[0] - H[k])
+        row, row_axes = np.hstack([h_row[0], s_row[0]]), h_axes + s_names
+        diff = np.abs(row - H[k])
         if row_axes != axes or np.any(diff > tol):
             bad.append(k)
-            worst = int(np.argmax(diff / tol))
+            excess = np.where(diff > tol, diff - tol, 0.0)
+            worst = int(np.argmax(excess))
             print(f"[verify_shards] BEYOND-TOLERANCE at k={k}: "
                   f"{axes[worst]} diff {diff[worst]:.3e} > tol {tol[worst]:.3e}")
-        elif np.array_equal(row[0], H[k]):
+        elif np.array_equal(row, H[k]):
             print(f"[verify_shards] k={k}: exact match.")
         else:
+            ratio = np.max(diff[tol > 0] / tol[tol > 0])
             print(f"[verify_shards] k={k}: within tolerance "
-                  f"(max diff {np.max(diff / tol) * 100:.2f}% of the 1%-range tol).")
+                  f"(max diff {ratio * 100:.2f}% of the 1%-range tol).")
     if bad:
         raise SystemExit(
             f"[verify_shards] FAILED at {len(bad)} of {len(_check_indices(n))} "

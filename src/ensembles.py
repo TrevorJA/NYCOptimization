@@ -376,6 +376,31 @@ def staged_ensemble_missing(slug: str) -> list[str]:
     ]
 
 
+def hazard_image_provenance() -> dict:
+    """The four scoring-provenance legs every hazard-image reader checks.
+
+    For the hazard-image files written without
+    ``scengen.diagnostics.save_hazard_image`` (generation shards, the E_test
+    sub-window image and its shards, the historic-window cache), which carry
+    extra per-row keys. ``scengen.diagnostics.check_hazard_image_provenance``
+    refuses a file lacking any leg or recording another convention.
+
+    Returns:
+        ``{reference_start, scenario_stamp_start, dry_cut_months,
+        dry_scoring_rule}`` as 0-d arrays, ready for ``np.savez``.
+    """
+    import numpy as np
+    from scengen.hazard_metrics import (_DRY_CUT_MONTHS, _DRY_SCORING_RULE,
+                                        _REFERENCE_START, _SCENARIO_STAMP_START)
+
+    return {
+        "reference_start": np.asarray(_REFERENCE_START, dtype=object),
+        "scenario_stamp_start": np.asarray(_SCENARIO_STAMP_START, dtype=object),
+        "dry_cut_months": np.asarray(_DRY_CUT_MONTHS),
+        "dry_scoring_rule": np.asarray(_DRY_SCORING_RULE, dtype=object),
+    }
+
+
 def load_chunk_index(pool_slug: str) -> dict | None:
     """Load a pool's ``chunk_index.json`` (chunks -> global realization ranges), or None."""
     import json

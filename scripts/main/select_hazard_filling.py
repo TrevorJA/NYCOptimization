@@ -59,7 +59,7 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
     out_slug = design.search_ensemble_slug(draw)
 
     # The campaign selection axes (config.HAZARD_SELECTION_AXES) restrict the screen
-    # and the snap; the image keeps all candidate axes for reporting.
+    # and the snap; the image keeps all candidate axes and the supplement for reporting.
     result = select_from_candidate_image(
         H, candidate_axes, n, seed=seed, selector_space=design.selector_space,
         selection_axes=config.HAZARD_SELECTION_AXES,
@@ -98,8 +98,10 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
     save_hazard_image(
         out_dir / "hazard_image.npz",
         H=H, hazard_axes=candidate_axes, chosen_axes=result["chosen_axes"],
+        supplement=haz["supplement"], supplement_names=haz["supplement_names"],
         realization_ids=realization_ids, selected_rows=result["selected_rows"],
         reference_start=haz["reference_start"], dry_cut_months=haz["dry_cut_months"],
+        dry_scoring_rule=haz["dry_scoring_rule"],
     )
     cov = result["coverage"]["geometries"]
     print(f"[hazfill] draw {draw}: pool='{pool_slug}' P={H.shape[0]} seed={seed} "

@@ -2033,6 +2033,68 @@ def hfm_figure_path(name: str) -> Path:
 
 
 ###############################################################################
+# Hazard-selector diagnostics: descriptor redundancy, axis-set comparison and
+# truncation summary (SELDIAG)
+# (docs/notes/methods/hazard_selector_diagnostics.md; driver
+#  scripts/supplemental/diagnose_hazard_selectors.py)
+#
+# Pool slug, N, seed counts, prefix and mode remain the driver's NYCOPT_SELDIAG_*
+# environment knobs; the settings below fix what the descriptor blocks compute.
+# The descriptors are the candidate axes plus the hazard-image supplement
+# (scengen.hazard_metrics.SUPPLEMENT_METRICS) without its truncation flags.
+###############################################################################
+
+#: Supplement columns that are 0/1 truncation flags: summarized (block B3),
+#: never treated as descriptors.
+SELDIAG_TRUNCATION_FLAGS: tuple = ("drought_onset_truncated", "drought_termination_truncated")
+
+#: Descriptors whose hazardous tail is LOW (a low-flow minimum); their tail
+#: share counts members below the pool p10 instead of above the pool p90.
+SELDIAG_LOW_TAIL_DESCRIPTORS: tuple = (
+    "lowflow_min_12month", "lowflow_min_24month", "lowflow_min_year", "lowflow_min_7day",
+)
+
+#: Spearman |rho| at which descriptors cluster (average linkage on 1 - |rho|);
+#: the level at which collinearity matters (Dormann et al. 2013).
+SELDIAG_CLUSTER_RHO: float = 0.7
+
+#: Share of normal-score variance the reported leading principal components
+#: explain (their count is reported, with each one's highest-loading descriptor).
+SELDIAG_PCA_VARIANCE_SHARE: float = 0.90
+
+#: Pool percentile of the hazard-direction tail (i.i.d. share 1 - 0.90 = 0.10).
+SELDIAG_TAIL_PCT: float = 90.0
+
+#: Scaled distance beyond which a target counts as far from every pool member.
+SELDIAG_FAR_TARGET_DISTANCE: float = 0.25
+
+
+def seldiag_axis_sets(campaign, retained) -> dict:
+    """The named selection-axis sets compared by the axis-set block, in order.
+
+    Args:
+        campaign: The campaign selection axes (``config.HAZARD_SELECTION_AXES``;
+            this module never imports ``config``).
+        retained: The axes the live screen retains on the pool image.
+
+    Returns:
+        ``{name: [axis, ...]}``: ``campaign``; ``full`` (the retained set);
+        ``four_axis`` (magnitude, severity, peak discharge, pulse duration);
+        ``four_axis_rate`` (magnitude, development rate, peak discharge, pulse
+        duration); ``five_axis`` (the campaign set without severity).
+    """
+    return {
+        "campaign": list(campaign),
+        "full": list(retained),
+        "four_axis": ["drought_magnitude", "drought_severity",
+                      "flood_peak_discharge", "flood_pulse_duration"],
+        "four_axis_rate": ["drought_magnitude", "drought_development_rate",
+                           "flood_peak_discharge", "flood_pulse_duration"],
+        "five_axis": [a for a in campaign if a != "drought_severity"],
+    }
+
+
+###############################################################################
 # Objective-dynamics anatomy figures (historic single trace + local KN ensemble)
 # (docs/notes/methods/objective_dynamics_diagnostics.md; drivers
 #  scripts/supplemental/objective_dynamics_figures.py and

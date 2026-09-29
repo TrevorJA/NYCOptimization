@@ -485,17 +485,16 @@ def _compute_hazard_image(slug: str) -> dict | None:
     ref = load_historical_flows(gage=False, period="full")
     ref_daily = ref.loc[:, list(DEFAULT_NYC_INFLOW_NODES)].sum(axis=1)
     from src.ensembles import get_ensemble_spec
-    H, axes = _hazard_block(
+    H, axes, S, supplement_names = _hazard_block(
         inflow_by_real, ordered, DEFAULT_NYC_INFLOW_NODES,
         daily_to_monthly(ref_daily, agg="mean"), ref_daily.to_numpy(dtype=float),
         n_years=int(get_ensemble_spec(slug).realization_years),
     )
-    rows = np.arange(len(ordered))
     save_hazard_image(cached, H=H, hazard_axes=axes,
-                      realization_ids=ordered, selected_rows=rows,
+                      supplement=S, supplement_names=supplement_names,
+                      realization_ids=ordered, selected_rows=np.arange(len(ordered)),
                       reference_start=_REFERENCE_START)
-    return {"H": H, "hazard_axes": list(axes), "chosen_axes": list(axes),
-            "realization_ids": np.asarray(ordered, dtype=int), "selected_rows": rows}
+    return load_hazard_image(cached)
 
 
 def _historic_hazard_points(n_years: int) -> dict:

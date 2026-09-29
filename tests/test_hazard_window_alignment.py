@@ -29,7 +29,7 @@ import matplotlib  # noqa: E402
 
 matplotlib.use("Agg")
 
-from scengen.hazard_metrics import _SCENARIO_STAMP_START  # noqa: E402
+from scengen.hazard_metrics import SUPPLEMENT_METRICS, _SCENARIO_STAMP_START  # noqa: E402
 
 from config import METRIC_EXCLUSION_MONTHS  # noqa: E402
 from src.objectives_ensemble import ffmp_year_unit_slices  # noqa: E402
@@ -84,17 +84,20 @@ def test_hazard_block_scores_the_objectives_unit_window():
     # the wet axes.
     pulse = (idx >= first - pd.Timedelta(days=7)) & (idx < first)
     frame = _inflow_frame(idx, pulse=pulse)
-    H, axes = _hazard_block({0: frame}, [0], NODES, ref_m, ref_d, n_years=L)
+    H, axes, S, names = _hazard_block({0: frame}, [0], NODES, ref_m, ref_d, n_years=L)
 
     wet_cut = slices[0].start
     assert wet_cut == int((idx < first).sum())
     agg = frame.sum(axis=1).iloc[:slices[-1].stop]
     monthly = daily_to_monthly(agg, agg="mean")
-    H_units, _ = compute_candidate_hazard_image(
+    H_units, _, S_units, _ = compute_candidate_hazard_image(
         monthly[None, :], agg.to_numpy()[None, :], ref_m, ref_d,
-        wet_exclusion_days=wet_cut,
+        wet_exclusion_days=wet_cut, return_supplement=True, scenario_start=idx[0],
     )
     np.testing.assert_allclose(H, H_units)
+    # The supplement is scored on the same window and carried with the block.
+    assert names == list(SUPPLEMENT_METRICS) and S.shape == (1, len(SUPPLEMENT_METRICS))
+    np.testing.assert_allclose(S, S_units)
 
     # Opening the wet window one week earlier admits the pulse, so the two
     # cuts are not interchangeable.
@@ -105,7 +108,7 @@ def test_hazard_block_scores_the_objectives_unit_window():
     peak = axes.index("flood_peak_discharge")
     assert H_early[0, peak] > H[0, peak]
 
-    ssi = scored_dry_ssi(fit_reference_ssi(ref_m), monthly)
+    ssi, _ssi_pre = scored_dry_ssi(fit_reference_ssi(ref_m), monthly)
     assert ssi.index[0] == first
     assert len(ssi) == 12 * len(slices)
     assert ssi.index[-1] == idx[slices[-1].stop - 1].replace(day=1)
@@ -126,3 +129,36 @@ def test_example_sequence_opens_where_the_objectives_window_opens():
     assert seq.t[0] == pytest.approx((first - idx[0]).days / 365.25)
     assert len(seq.ssi) == 12 * len(slices)
     assert len(seq.year_mid) == len(slices)
+
+
+def test_example_sequence_marks_a_drought_open_at_the_window_end():
+    """A drought still under way when the scored window closes is the scored
+    controlling event: it is filled through the last month, flagged as
+    termination-truncated in the recomputed supplement, and the panel draws an
+    outward arrowhead at the right window edge (and none on the left unless the
+    onset is truncated too)."""
+    import matplotlib.pyplot as plt
+
+    from scengen.hazard_metrics import drought_events, select_drought_event
+
+    from src.plotting.hazard_examples import draw_sequence_panel, sequence_of
+
+    idx = _december_index()
+    frame = _inflow_frame(idx, seed=3)
+    frame.loc[idx >= idx[-1] - pd.DateOffset(months=20)] *= 0.1  # a dry final stretch
+    seq = sequence_of(frame.sum(axis=1), 0, _reference(), L)
+
+    event = select_drought_event(drought_events(seq.ssi))
+    assert seq.termination_truncated and event.end == len(seq.ssi) - 1
+    np.testing.assert_array_equal(np.flatnonzero(seq.event),
+                                  np.arange(event.start, event.end + 1))
+    flag = list(SUPPLEMENT_METRICS).index("drought_termination_truncated")
+    assert seq.S[flag] == 1.0
+
+    fig, ax = plt.subplots()
+    draw_sequence_panel(ax, seq, "#E69F00", "o", ssi_lim=4.0,
+                        d_max=float(seq.annual_peak.max()), bottom=True)
+    heads = [line.get_marker() for line in ax.get_lines()]
+    plt.close(fig)
+    assert ">" in heads
+    assert ("<" in heads) == seq.onset_truncated

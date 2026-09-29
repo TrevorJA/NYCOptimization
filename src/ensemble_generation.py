@@ -685,11 +685,13 @@ def _generate_profile_monthly_hmm(
 def _hazard_block(
     inflow_by_real: dict[int, pd.DataFrame], ordered_ids: list[int], nyc_nodes,
     reference_monthly: np.ndarray, reference_daily: np.ndarray, *, n_years: int,
-) -> tuple[np.ndarray, list[str]]:
+) -> tuple[np.ndarray, list[str], np.ndarray, list[str]]:
     """Compute the candidate hazard image rows for one block of realizations, in ``ordered_ids`` order.
 
     Aggregates the NYC-inflow catchments to a single series per scenario and calls
-    :func:`scengen.hazard_metrics.compute_candidate_hazard_image` once for the block.
+    :func:`scengen.hazard_metrics.compute_candidate_hazard_image` once for the block,
+    with the supplement (``scengen.hazard_metrics.SUPPLEMENT_METRICS``) scored in the
+    same pass on the same window.
 
     Hazard metrics score EXACTLY the objectives' metric window,
     [Jun 1 year 1, May 31 year ``n_years``] of the December-start scenario:
@@ -700,6 +702,10 @@ def _hazard_block(
     accumulation input; scengen scores the SSI-6 series from the first month
     after that window (``scengen.hazard_metrics.scored_dry_ssi``), so the dry
     axes exclude the same leading window exactly.
+
+    Returns:
+        ``(H, hazard_axes, S, supplement_names)``: the ``(n, 8)`` candidate axes
+        and the ``(n, 15)`` supplement, rows in ``ordered_ids`` order.
     """
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import compute_candidate_hazard_image
@@ -713,11 +719,12 @@ def _hazard_block(
         agg = inflow_by_real[k].loc[:, list(nyc_nodes)].sum(axis=1)[keep]  # daily pd.Series
         daily_rows.append(agg.to_numpy(dtype=float))
         monthly_rows.append(daily_to_monthly(agg, agg="mean"))
-    H_block, axes = compute_candidate_hazard_image(
+    H_block, axes, S_block, supplement_names = compute_candidate_hazard_image(
         np.vstack(monthly_rows), np.vstack(daily_rows), reference_monthly, reference_daily,
         wet_exclusion_days=int((idx[keep] < metric_start).sum()),
+        return_supplement=True, scenario_start=idx[0],
     )
-    return H_block, list(axes)
+    return H_block, list(axes), S_block, list(supplement_names)
 
 
 def _write_chunk_hdf5(
@@ -809,35 +816,46 @@ def shard_profile_range(n_profiles: int, shard_count: int, shard_index: int) -> 
 
 def _load_hazard_shards(
     out_dir: Path, n_expected: int
-) -> tuple[np.ndarray, list[str], list[str], list[Path]]:
+) -> tuple[np.ndarray, list[str], np.ndarray, list[str], list[str], list[Path]]:
     """Load and order every hazard-image shard in ``out_dir``; assert they tile ``[0, N)``.
 
+    Every shard must carry the current scoring provenance
+    (``scengen.diagnostics.check_hazard_image_provenance``), so a shard scored
+    under another convention is refused rather than merged.
+
     Returns:
-        ``(H, hazard_axes, sites, shard_files)`` with ``H`` rows in global-index order.
+        ``(H, hazard_axes, S, supplement_names, sites, shard_files)`` with ``H``
+        and ``S`` rows in global-index order.
     """
+    from scengen.diagnostics import check_hazard_image_provenance
+
     shard_files = sorted(out_dir.glob("hazard_image_shard_*.npz"))
     if not shard_files:
         raise FileNotFoundError(f"no hazard-image shards found in {out_dir}")
-    H_parts, id_parts, axes_ref, sites = [], [], None, []
+    H_parts, S_parts, id_parts, axes_ref, names_ref, sites = [], [], [], None, None, []
     for f in shard_files:
-        d = np.load(f, allow_pickle=True)
-        axes = [str(a) for a in d["hazard_axes"]]
-        if axes_ref is None:
-            axes_ref, sites = axes, [str(s) for s in d["sites"]]
-        elif axes != axes_ref:
-            raise ValueError(f"shard {f.name} axes {axes} != {axes_ref}")
-        H_parts.append(np.asarray(d["H"], dtype=float))
-        id_parts.append(np.asarray(d["realization_ids"], dtype=int))
+        with np.load(f, allow_pickle=True) as d:
+            check_hazard_image_provenance(d, f)
+            axes = [str(a) for a in d["hazard_axes"]]
+            names = [str(a) for a in d["supplement_names"]]
+            if axes_ref is None:
+                axes_ref, names_ref, sites = axes, names, [str(s) for s in d["sites"]]
+            elif axes != axes_ref or names != names_ref:
+                raise ValueError(f"shard {f.name} columns differ from the first shard's")
+            H_parts.append(np.asarray(d["H"], dtype=float))
+            S_parts.append(np.asarray(d["supplement"], dtype=float))
+            id_parts.append(np.asarray(d["realization_ids"], dtype=int))
     ids = np.concatenate(id_parts)
-    H = np.vstack(H_parts)
     order = np.argsort(ids)
-    ids, H = ids[order], H[order]
+    ids = ids[order]
+    H = np.vstack(H_parts)[order]
+    S = np.vstack(S_parts)[order]
     if not np.array_equal(ids, np.arange(n_expected, dtype=int)):
         raise ValueError(
             f"shards in {out_dir} do not tile [0, {n_expected}): got {len(ids)} rows, "
             f"first/last ids {ids[0]}/{ids[-1]} — regenerate the missing shard(s)."
         )
-    return H, axes_ref, sites, shard_files
+    return H, axes_ref, S, names_ref, sites, shard_files
 
 
 def _collect_shard_chunk_index(
@@ -990,7 +1008,8 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
         )
 
     if merge_shards:
-        H_merged, hazard_axes, sites, shard_files = _load_hazard_shards(out_dir, N)
+        H_merged, hazard_axes, S_merged, supplement_names, sites, shard_files = (
+            _load_hazard_shards(out_dir, N))
         print(f"[gen] Merged {len(shard_files)} hazard-image shards for "
               f"'{out_dir.name}' (N={N}).")
         chunk_index: list[dict] = []
@@ -1012,6 +1031,7 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
             )
         manifest = _finalize_pool_artifacts(
             config, out_dir, H_blocks=[H_merged], hazard_axes=hazard_axes,
+            S_blocks=[S_merged], supplement_names=supplement_names,
             sites=sites, chunk_index=chunk_index, forcing_hash=forcing_hash, setup=setup,
         )
         for f in shard_files:
@@ -1068,7 +1088,9 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
     block = max(1, min(config.hazard_block_size, chunk_profiles))
 
     H_blocks: list[np.ndarray] = []
+    S_blocks: list[np.ndarray] = []
     hazard_axes: list[str] = []
+    supplement_names: list[str] = []
     sites: list[str] = []
     chunk_index: list[dict] = []
 
@@ -1107,12 +1129,13 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
             _pt["disagg"] += time.perf_counter() - _t
             if config.compute_hazard_image:
                 _t = time.perf_counter()
-                H_block, hazard_axes = _hazard_block(
+                H_block, hazard_axes, S_block, supplement_names = _hazard_block(
                     inflow_by_real, sorted(inflow_by_real), DEFAULT_NYC_INFLOW_NODES,
                     reference_monthly, reference_daily,
                     n_years=config.realization_years,
                 )
                 H_blocks.append(H_block)
+                S_blocks.append(S_block)
                 _pt["hazard"] += time.perf_counter() - _t
             if config.store_daily:
                 chunk_gage.update(gage_by_real)
@@ -1142,19 +1165,25 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
               f"realizations [{pf0 * R},{pf1 * R}) of {N}; {_phase_totals()}")
 
     if shard is not None:
+        from src.ensembles import hazard_image_provenance
+
         np.savez(
             shard_path,
             H=np.vstack(H_blocks),
             hazard_axes=np.array(hazard_axes),
+            supplement=np.vstack(S_blocks),
+            supplement_names=np.array(supplement_names),
             realization_ids=np.arange(pf_lo * R, pf_hi * R, dtype=int),
             sites=np.array(sites),
+            **hazard_image_provenance(),  # checked at the merge (_load_hazard_shards)
         )
         print(f"[gen] Shard {shard[0] + 1}/{shard[1]} done: realizations "
               f"[{pf_lo * R},{pf_hi * R}) of {N} -> {shard_path.name}")
         return None
 
     return _finalize_pool_artifacts(
-        config, out_dir, H_blocks=H_blocks, hazard_axes=hazard_axes, sites=sites,
+        config, out_dir, H_blocks=H_blocks, hazard_axes=hazard_axes,
+        S_blocks=S_blocks, supplement_names=supplement_names, sites=sites,
         chunk_index=chunk_index, forcing_hash=forcing_hash, setup=setup,
     )
 
@@ -1165,6 +1194,8 @@ def _finalize_pool_artifacts(
     *,
     H_blocks: list[np.ndarray],
     hazard_axes: list[str],
+    S_blocks: list[np.ndarray],
+    supplement_names: list[str],
     sites: list[str],
     chunk_index: list[dict],
     forcing_hash: str,
@@ -1173,9 +1204,10 @@ def _finalize_pool_artifacts(
     """Persist the canonical staged-ensemble artifacts for one slug.
 
     The single tail shared by the serial generation path and the shard-merge
-    path, so both always write identical ``hazard_image.npz`` / ``_meta.json`` /
-    ``chunk_index.json`` / ``manifest.json`` (and ``forcing_profiles.npz`` for a
-    forced population, which requires ``setup``).
+    path, so both always write identical ``hazard_image.npz`` (candidate axes
+    plus supplement) / ``_meta.json`` / ``chunk_index.json`` / ``manifest.json``
+    (and ``forcing_profiles.npz`` for a forced population, which requires
+    ``setup``).
     """
     from scengen import forcing_space as fs
     from scengen import diagnostics as dg
@@ -1213,7 +1245,9 @@ def _finalize_pool_artifacts(
         H = np.vstack(H_blocks)  # (N, m), rows in global-index order 0..N-1
         dg.save_hazard_image(
             out_dir / "hazard_image.npz",
-            H=H, hazard_axes=hazard_axes, realization_ids=realization_ids,
+            H=H, hazard_axes=hazard_axes,
+            supplement=np.vstack(S_blocks), supplement_names=supplement_names,
+            realization_ids=realization_ids,
             selected_rows=realization_ids, reference_start=_REFERENCE_START,
         )
         spread = dg.per_metric_spread(H, hazard_axes)

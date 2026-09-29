@@ -3,7 +3,8 @@
 Renders the hazard-metric illustration of ``src/plotting/hazard_examples.py``
 in each geometry of ``HEX_GEOMETRIES``: the HF search ensemble's hazard
 characteristics with a few example realizations highlighted (left) and each
-example's SSI-6 series and annual peak discharge (right). Reads the staged HF
+example's SSI-6 series with its controlling drought event (an arrowhead marks a
+side truncated by the scored window) and annual peak discharge (right). Reads the staged HF
 ensemble of draw ``NYCOPT_ENSEMBLE_DRAW`` (hazard image + daily traces); no
 simulation, no pool.
 
@@ -41,14 +42,18 @@ from src.plotting.style import apply_manuscript_style, save_figure  # noqa: E402
 
 
 def write_examples_table(data: dict, targets: list, path: Path) -> None:
-    """The chosen examples: identity, ensemble row, pool id, target, and each
-    selection axis's value and ensemble percentile."""
+    """The chosen examples: identity, ensemble row, pool id, target, the
+    controlling event's truncation flags, and each selection axis's value and
+    ensemble percentile."""
     H, axes = data["H"], data["axes"]
     rows = []
-    for k, (i, g, t) in enumerate(zip(data["chosen"], data["global_ids"], targets)):
+    for k, (i, g, t, seq) in enumerate(zip(data["chosen"], data["global_ids"], targets,
+                                           data["sequences"])):
         row = {"example": k, "color": hex_.EXAMPLE_COLORS[k],
                "marker": hex_.EXAMPLE_MARKERS[k], "ensemble_row": i,
-               "pool_realization_id": g, "target": json.dumps(t)}
+               "pool_realization_id": g, "target": json.dumps(t),
+               "onset_truncated": seq.onset_truncated,
+               "termination_truncated": seq.termination_truncated}
         for a in config.HAZARD_SELECTION_AXES:
             row[a] = H[i, axes.index(a)]
             row[f"{a}_pctl"] = hex_.ensemble_percentile(H, axes, a)[i]

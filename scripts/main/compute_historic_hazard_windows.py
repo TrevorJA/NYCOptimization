@@ -8,8 +8,8 @@ date, and the SSI fit / POT threshold / reference mean fitted once on the FULL
 historical record. Window coordinates are therefore commensurable with the
 candidate-pool images, the realized search ensembles, and the E_test sub-window
 image. Each window is scored independently, exactly as a pool scenario would be, so a
-drought event straddling a window boundary is truncated by it (the same convention
-every ensemble scenario lives under).
+drought event straddling a window boundary is scored on its part inside the window and
+flagged in the supplement (the same convention every ensemble scenario lives under).
 
 Windows anchor at the month scenarios start in (``config.ENSEMBLE_START_DATE``,
 December): the record is cut into windows exactly the way every synthetic scenario
@@ -21,9 +21,10 @@ Feeds the historical-record marker layer of the ensemble-composition figure
 (manuscript figure 4; ``src/plotting/ensemble_composition.py``).
 
 Writes a cached ``hazard_windows_{L}yr.npz`` under
-``outputs/supplemental/historic_hazard_windows/`` carrying its anchor month,
-reference start, scenario stamp and dry-axis cut as provenance; the loader
-recomputes when any of them does not match the current convention. Pass
+``outputs/supplemental/historic_hazard_windows/`` carrying the supplement
+(``scengen.hazard_metrics.SUPPLEMENT_METRICS``) and its anchor month, reference
+start, scenario stamp, dry-axis cut and dry-axis scoring rule as provenance; the
+loader recomputes when any of them does not match the current convention. Pass
 ``force=True`` to recompute unconditionally.
 
 Run standalone::
@@ -85,23 +86,25 @@ def historic_hazard_windows(
     from scengen.diagnostics import check_hazard_image_provenance
     from scengen.hazard_filling import daily_to_monthly
     from scengen.hazard_metrics import (
-        _DRY_CUT_MONTHS,
         _REFERENCE_START,
-        _SCENARIO_STAMP_START,
         DEFAULT_NYC_INFLOW_NODES,
         compute_candidate_hazard_image,
     )
 
+    from src.ensembles import hazard_image_provenance
+
     if CACHE_PATH.exists() and not force:
         with np.load(CACHE_PATH, allow_pickle=True) as z:
             # Convention provenance: a cache from another anchor, reference,
-            # stamp or dry-cut convention (or predating provenance) recomputes.
+            # stamp, dry-cut or dry-scoring convention (or predating
+            # provenance) recomputes.
             try:
                 check_hazard_image_provenance(z, CACHE_PATH)
                 stale = (
                     "anchor_month" not in z
                     or int(z["anchor_month"]) != WINDOW_ANCHOR_MONTH
                     or str(z["reference_start"]) != _REFERENCE_START
+                    or "supplement" not in z
                 )
             except ValueError:
                 stale = True
@@ -132,7 +135,7 @@ def historic_hazard_windows(
             f"{SCENARIO_YEARS}-yr anchor-aligned window."
         )
 
-    rows, axes = [], []
+    rows, supplement_rows, axes, names = [], [], [], []
     for w0 in starts:
         cutoff = w0 + pd.DateOffset(months=METRIC_EXCLUSION_MONTHS)
         # Pool convention: the scored window ends with the last complete FFMP
@@ -142,12 +145,14 @@ def historic_hazard_windows(
         in_win = (idx >= w0) & (idx < metric_end)
         wet_cut = int(((idx >= w0) & (idx < cutoff)).sum())
         w_daily = agg.loc[in_win]
-        H_win, axes = compute_candidate_hazard_image(
+        H_win, axes, S_win, names = compute_candidate_hazard_image(
             np.asarray(daily_to_monthly(w_daily, agg="mean"), dtype=float)[None, :],
             w_daily.to_numpy(dtype=float)[None, :],
             reference_monthly, reference_daily, wet_exclusion_days=wet_cut,
+            return_supplement=True, scenario_start=w0,
         )
         rows.append(H_win[0])
+        supplement_rows.append(S_win[0])
 
     H = np.vstack(rows)
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -155,17 +160,17 @@ def historic_hazard_windows(
         CACHE_PATH,
         H=H,
         hazard_axes=np.asarray(axes, dtype=object),
+        supplement=np.vstack(supplement_rows),
+        supplement_names=np.asarray(names, dtype=object),
         window_starts=np.asarray([str(s.date()) for s in starts], dtype=object),
         window_years=np.asarray(SCENARIO_YEARS),
         exclusion_months=np.asarray(METRIC_EXCLUSION_MONTHS),
         flowtype=np.asarray(flowtype, dtype=object),
         anchor_month=np.asarray(WINDOW_ANCHOR_MONTH),
-        reference_start=np.asarray(_REFERENCE_START, dtype=object),
-        scenario_stamp_start=np.asarray(_SCENARIO_STAMP_START, dtype=object),
-        dry_cut_months=np.asarray(_DRY_CUT_MONTHS),
+        **hazard_image_provenance(),
     )
-    print(f"[hist-hazard] wrote {CACHE_PATH} ({H.shape[0]} windows x {H.shape[1]} axes; "
-          f"{starts[0].date()} .. {starts[-1].date()} starts).")
+    print(f"[hist-hazard] wrote {CACHE_PATH} ({H.shape[0]} windows x {H.shape[1]} axes "
+          f"+ {len(names)} supplement columns; {starts[0].date()} .. {starts[-1].date()} starts).")
     return H, list(axes), pd.DatetimeIndex(starts)
 
 
