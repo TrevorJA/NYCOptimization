@@ -26,7 +26,6 @@ Run:
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -36,8 +35,8 @@ from scipy.stats import ks_2samp
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
-os.environ.setdefault("NYCOPT_HFM_SMOKE", "1")
 
+import supplemental_config as scfg  # noqa: E402
 from scengen import subsample as ss  # noqa: E402
 
 from scripts.supplemental.hf_design_metrics_run import (  # noqa: E402
@@ -154,8 +153,21 @@ class TestBounds:
 _LOCAL_HF = PROJECT_DIR / "outputs" / "synthetic_ensembles" / "hazfill_stat_abs_10yr_n40_d0" / "hazard_image.npz"
 
 
+@pytest.fixture
+def smoke_settings(monkeypatch):
+    """Pin the HFM settings to the local P = 300 / N = 40 smoke images.
+
+    ``supplemental_config`` resolves ``NYCOPT_HFM_SMOKE`` once at import, so the
+    values depend on which test module imports it first.
+    """
+    monkeypatch.setattr(scfg, "HFM_SMOKE", True)
+    monkeypatch.setattr(scfg, "HFM_POOL_P", 300)
+    monkeypatch.setattr(scfg, "HFM_N", 40)
+    monkeypatch.setattr(scfg, "HFM_KNN_LADDER", (8, 16, 32, 64))
+
+
 @pytest.mark.skipif(not _LOCAL_HF.exists(), reason="local smoke HF image not staged")
-def test_smoke_identity_on_staged_image():
+def test_smoke_identity_on_staged_image(smoke_settings):
     """The staged N = 40 selection replays exactly and its exact assignment is certified."""
     from scripts.supplemental.hf_design_metrics_run import load_candidate, load_hf, replay_selection
 

@@ -47,10 +47,15 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 2. Campaign at N = 300 (`campaign_design.md` §4–6)
 
+- [ ] **[local]** Commit and push `NYCOptimization_scenario_generation` (dry-axis scoring
+  rule, supplement, image provenance). The main repo calls its interface from `71b3478`
+  on, so Anvil must pull both together.
 - [ ] **[HPC]** Pull all four repos on Anvil; check the SU balance (`mybalance`)
   against the ~600k the budget assumes.
 - [ ] **[HPC]** Recompute every hazard image under the June 1 dry-axis window before
-  step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months`):
+  step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months` or
+  any of the current `dry_scoring_rule`, `wet_scoring_rule` and
+  `supplement_scoring_rule`; draws per Section 8):
   the P = 10⁶ pools d0–d2 are stream-only, so regenerate them per draw
   (`workflow/supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`);
   then the step-03 selections; E_test's `hazard_image_subwindows.npz`
@@ -68,7 +73,11 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   production scale (`diagnose_hazard_selectors.py` on `statpool_10yr_n1000000_d0`,
   N = 300: descriptor redundancy, axis-set comparison, truncation summary;
   `hazard_selector_diagnostics.md`) and fix the selection-axis set
-  (`config.HAZARD_SELECTION_AXES`) before step 03.
+  (`config.HAZARD_SELECTION_AXES`) before step 03: adopt `four_axis` (magnitude,
+  severity, peak discharge, pulse duration) unless the campaign six reach an
+  attainment of 0.9 on drought magnitude in `axis_set_comparison.csv`. Then update
+  `scenario_design_methods.md` §3.3 and §6, the manuscript, and
+  `tests/test_hazard_selection_axes.py`.
 - [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–2: step 02
   (`monte_carlo`, `--array=0-2`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line
@@ -262,7 +271,7 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
 ## 7. HF design metrics (2026-09-28)
 
 - [ ] **[HPC]** After the June 1 recompute (Section 2 item; the pre-fix images lack
-  `dry_cut_months` and every reader refuses them), run
+  the current provenance legs and every reader refuses them), run
   `workflow/supplemental/hf_design_metrics.sh` on the June 1 window images
   (`statpool`/`hazfill_stat_abs` d0–d2 at P = 10⁶, N = 300; `fixprob` d0–d2; the historic
   windows cache), or copy `hazfill_stat_abs_10yr_n300_d{k}/{hazard_image.npz,_meta.json}`,
@@ -279,3 +288,106 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
   Latin hypercube) if the targets' own MST edge statistics fall below the random
   reference; a minimax-optimal (k-center) selection on the candidate ensemble if the HF
   minimax distance is not below the random reference.
+
+## 8. Hazard scoring review (2026-09-29)
+
+- [ ] **[local]** Decide the number of staged draws before any pool beyond d0 is
+  generated (each hazard filling draw costs one P = 10⁶ pool, about 600 core-hours).
+  The search uses d0 only. Draws d1 and d2 feed the draw-sensitivity re-evaluation
+  (about 1,000 SU), the tail share across pools, `hf_design_metrics`, the
+  hazard-support stratum agreement, and per-draw build checks. Two draws support a
+  replication check and no manuscript claim needs three: the comparable studies
+  replicate random seeds and re-evaluate out of sample (Zatarain Salazar et al. 2017;
+  Trindade et al. 2017, 2019; Quinn et al. 2017; Gold et al. 2022), and none re-draws
+  its search ensemble. Construction stability can be shown on disjoint sub-pools of
+  one pool (`_subpool_stability` in `diagnose_hazard_selectors.py`). Size the
+  re-evaluation to the 250 SU limit (one replicate draw, thinned policy set). Report
+  paired per-policy shifts against ε with no variance estimate, and remove the
+  statement that draw dependence is quantified: re-simulating fixed policies measures
+  the shift of objective estimates and cannot show what policies another draw would
+  produce. Then update `experimental_design.md` (Replication), `campaign_design.md` §1
+  and §5, `scenario_design_methods.md` §6, manuscript §3.3, SI Text S10, and the
+  Section 2 restage item.
+- [ ] **[local]** Bring the manuscript draft into line with the scoring code (line
+  numbers at `71b3478`):
+  - :111 says the metrics are not truncation-limited. 23% of windows have a
+    controlling event cut by a window edge.
+  - :135 says a straddling event is truncated and that events are captured at full
+    scale at re-evaluation. State the rule (every descriptor describes the part of the
+    event inside the scored window) and that E_test is scored on ten-year sub-windows.
+  - :137 gives no gamma parameter count (two-parameter, location zero, per calendar
+    month) and says six metrics are computed (8 axes and 15 supplement columns are).
+  - :139 has no rule for an event still open at the window end (it is scored).
+  - :153 and :167 attribute the phase division and both rates to Parry et al. (2016),
+    who define a termination rate only and do not end the phase at zero. Write
+    "adapted from" and name the development rate as this study's extension.
+  - :156 and :163 (Eqs. 3–4) need the truncated-phase branch: the index change from
+    the first or last scored month to the minimum over the elapsed months, zero when
+    the minimum lies on the window edge.
+  - :169 needs the precedent for the largest-deficit event, the sequent peak algorithm
+    as described by Fleig et al. (2006). Add Fleig et al. to the references.
+  - Define severity as the minimum index value, the peak intensity of McKee et al.
+    (1993). McKee supports the name magnitude (their Eq. 1) and never uses severity.
+  - :182 cites Olden and Poff (2003) for the rank-correlation screen. They reduce
+    indices by principal component analysis. Cite Dormann et al. (2013) for the 0.7
+    level and justify the 0.95 screen as preventing one concept entering the distance
+    twice.
+  - :208 (reference at :530) cites Minasny and McBratney (2006) as the analog of the
+    selector. Their strata are equal-probability quantiles of the candidates, so the
+    method reproduces the pool distribution. Cite it for the rank-space sensitivity
+    only.
+  - :212 carries numbers measured under the retired scoring.
+  - :459 lists event multiplicity as future work. Event and pulse counts are stored in
+    the supplement.
+- [ ] **[local]** Bring the supporting information draft into line (line numbers at
+  `71b3478`): :37 (gamma parameter count, open-event and truncation rules, the Parry
+  attribution, the Fleig citation, a stale 0.7 percent); :39 (Olden and Poff for the
+  Spearman screen); :43 (the Figure S2 caption says eight metrics, and the figure shows
+  21 descriptors with a principal component panel); :39, :45 and :47 (numbers from the
+  retired scoring). SI Text S3 gives redundancy as the reason for the axis count and
+  `scenario_design_methods.md` §3.3 gives tail enrichment. State one reason after the
+  axis set is fixed.
+- [ ] **[local]** After the production selector diagnostic, add to the SI:
+  - the truncation table (`truncation_summary.csv`: pool, selected-member and
+    top-decile fractions of truncated onsets and terminations);
+  - the descriptor redundancy figure on the 8 axes and 13 supplement descriptors with
+    the participation ratio (`descriptor_redundancy.csv`, figure F6);
+  - the axis-set table with tail shares on every descriptor for the chosen set and a
+    random selection (`axis_set_comparison.csv`, figure F11);
+  - the SSI-6 fit check: historical standard deviation and count of values at or below
+    -1 by calendar month (1.00 and 12 to 14 under the two-parameter fit, 12.4
+    expected). No script writes this table. Add it to block A of
+    `diagnose_hazard_selectors.py`;
+  - one sentence on the single-event description: among windows with two or more
+    qualifying events the controlling event is also the deepest in 65%, the fastest
+    developing in 21% and the fastest terminating in 21% (local sample of 4,000
+    realizations). No script writes these shares. Compute them from staged flows with
+    `scengen.hazard_metrics.drought_events` if they are reported.
+- [ ] **[local]** Regenerate the proposal's Figure 3 under the current scoring
+  (`workflow/supplemental/hazard_examples.sh`). The embedded image carries the retired
+  rate labels, and in two of its four examples the shaded event was not the largest
+  because a larger drought open at the window end had been dropped. State in the
+  caption that an arrowhead marks an event cut by the window edge.
+- [ ] **[local]** SynHydro (`src/synhydro/droughts/ssi.py`, `get_drought_metrics`): an
+  event is written only after `end_drought_threshold_months` consecutive non-negative
+  months, so a qualifying drought still open when the series ends is never recorded.
+  Record it after the loop. The docstring says days with SSI > 0 and the code counts
+  months with SSI >= 0. scengen no longer calls this function.
+- [ ] **[local]** Correct the remaining misattributed citations. Olden and Poff (2003)
+  for a rank-correlation threshold or Parry et al. (2016) for both rates:
+  `docs/terminology.md` :11 and :43, `flood_objective_diagnostics.md` :99,
+  `framing_convention_diagnostics.md` :26 and :67, `supplemental_config.py` :127 and
+  :817, `src/factor_mapping.py` :65, and in scengen `diagnostics.py` :421, :442, :484
+  and `hazard_metrics.py` :11. `docs/study_motivation.md` attributes intensification and
+  recovery stages to Wu et al. (2024), whose methods section does not name them.
+- [ ] **[local]** Note consistency: `scenario_design_methods.md` and
+  `experimental_design.md` cite `ensemble_size_diagnostics.md` §7.1, §7.1a and §7.3,
+  but that note's §7 is the run sequence and the numbers are in §4–5. Effective sample
+  size names two quantities, the Kish ratio of nearest-member weights
+  (`hf_design_metrics.md` §5) and a serial-dependence ratio
+  (`ensemble_size_diagnostics.md` §5). Give each its own name.
+- [ ] **[local]** Tests: `test_satisficing_criteria::
+  test_registry_shape_and_focal_env` fails because the `compromise` set holds four axes
+  and the test allows three. `test_hf_design_metrics::
+  test_smoke_identity_on_staged_image` passes alone and fails in the full suite, where
+  it resolves the production pool path instead of the smoke path.

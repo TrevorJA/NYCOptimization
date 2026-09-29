@@ -96,7 +96,7 @@ def historic_hazard_windows(
     if CACHE_PATH.exists() and not force:
         with np.load(CACHE_PATH, allow_pickle=True) as z:
             # Convention provenance: a cache from another anchor, reference,
-            # stamp, dry-cut or dry-scoring convention (or predating
+            # stamp, dry-cut or scoring-rule convention (or predating
             # provenance) recomputes.
             try:
                 check_hazard_image_provenance(z, CACHE_PATH)

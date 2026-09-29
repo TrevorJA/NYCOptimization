@@ -32,9 +32,11 @@ PROJECT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 import src.robustness as rob  # noqa: E402
+from config import ACTIVE_OBJECTIVES  # noqa: E402
+from src.objectives_ensemble import build_ensemble_objective_set  # noqa: E402
 from src.satisficing_criteria import (  # noqa: E402
-    ALL_SETS, CRITERION_SETS, NAMED_SETS, CriterionSet, criterion_by_key,
-    focal_criterion, nonbinding_threshold,
+    ALL_SETS, CRITERION_SETS, CRITERION_VARIANTS, NAMED_SETS, CriterionSet,
+    criterion_by_key, focal_criterion, nonbinding_threshold,
 )
 
 OBJ_NAMES = ["rel", "deficit", "storage"]
@@ -104,11 +106,19 @@ def test_joint_starr_counts_only_member_axes():
 
 
 def test_registry_shape_and_focal_env(monkeypatch):
-    keys = [c.key for c in CRITERION_SETS]
-    assert len(keys) == len(set(keys)), "criterion keys must be unique"
-    for c in NAMED_SETS:
-        assert 1 <= len(c.axes) <= 3, f"{c.key}: subsets hold 1-3 axes"
-        assert not c.reference
+    """Every saved variant holds the same sets, each named one a strict subset."""
+    objectives = set(build_ensemble_objective_set(ACTIVE_OBJECTIVES).names)
+    active_keys = [c.key for c in CRITERION_SETS]
+    for variant, sets in CRITERION_VARIANTS.items():
+        keys = [c.key for c in sets]
+        assert len(keys) == len(set(keys)), f"{variant}: keys must be unique"
+        assert keys == active_keys, f"{variant}: variants share their set keys"
+        assert sets[-1].reference, f"{variant}: the reference set is last"
+        for c in sets[:-1]:
+            assert not c.reference, f"{variant}/{c.key}"
+            assert c.axes and set(c.axes) < objectives, \
+                f"{variant}/{c.key}: a non-empty strict subset of the objectives"
+    assert not any(c.reference for c in NAMED_SETS)
     assert ALL_SETS[-1].reference, "the reference set displays last"
     assert criterion_by_key("reference_all8").reference
 

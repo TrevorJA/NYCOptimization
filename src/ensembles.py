@@ -377,7 +377,7 @@ def staged_ensemble_missing(slug: str) -> list[str]:
 
 
 def hazard_image_provenance() -> dict:
-    """The four scoring-provenance legs every hazard-image reader checks.
+    """The six scoring-provenance legs every hazard-image reader checks.
 
     For the hazard-image files written without
     ``scengen.diagnostics.save_hazard_image`` (generation shards, the E_test
@@ -387,17 +387,21 @@ def hazard_image_provenance() -> dict:
 
     Returns:
         ``{reference_start, scenario_stamp_start, dry_cut_months,
-        dry_scoring_rule}`` as 0-d arrays, ready for ``np.savez``.
+        dry_scoring_rule, wet_scoring_rule, supplement_scoring_rule}`` as 0-d
+        arrays, ready for ``np.savez``.
     """
     import numpy as np
     from scengen.hazard_metrics import (_DRY_CUT_MONTHS, _DRY_SCORING_RULE,
-                                        _REFERENCE_START, _SCENARIO_STAMP_START)
+                                        _REFERENCE_START, _SCENARIO_STAMP_START,
+                                        _SUPPLEMENT_SCORING_RULE, _WET_SCORING_RULE)
 
     return {
         "reference_start": np.asarray(_REFERENCE_START, dtype=object),
         "scenario_stamp_start": np.asarray(_SCENARIO_STAMP_START, dtype=object),
         "dry_cut_months": np.asarray(_DRY_CUT_MONTHS),
         "dry_scoring_rule": np.asarray(_DRY_SCORING_RULE, dtype=object),
+        "wet_scoring_rule": np.asarray(_WET_SCORING_RULE, dtype=object),
+        "supplement_scoring_rule": np.asarray(_SUPPLEMENT_SCORING_RULE, dtype=object),
     }
 
 

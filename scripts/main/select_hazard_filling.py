@@ -102,6 +102,8 @@ def _select_draw(design: ScenarioDesign, draw: int) -> None:
         realization_ids=realization_ids, selected_rows=result["selected_rows"],
         reference_start=haz["reference_start"], dry_cut_months=haz["dry_cut_months"],
         dry_scoring_rule=haz["dry_scoring_rule"],
+        wet_scoring_rule=haz["wet_scoring_rule"],
+        supplement_scoring_rule=haz["supplement_scoring_rule"],
     )
     cov = result["coverage"]["geometries"]
     print(f"[hazfill] draw {draw}: pool='{pool_slug}' P={H.shape[0]} seed={seed} "
