@@ -54,11 +54,59 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Recompute every hazard image under the June 1 dry-axis window before
   step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months` or
   any of the current `dry_scoring_rule`, `wet_scoring_rule` and
-  `supplement_scoring_rule`):
-  the P = 10⁶ pools are stream-only, so regenerate d0 and d1 per draw
-  (`workflow/supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`);
-  then the step-03 selections; both E_test images come from the regeneration item
-  below; and the cached `outputs/supplemental/historic_hazard_windows/`
+  `supplement_scoring_rule`). The P = 10⁶ pools are stream-only (hazard coordinates
+  and seeds only, no daily flows), so they are regenerated, not rescored. The code
+  side was verified locally 2026-09-30 (main `610e802`, scengen `6790a02`; the shard,
+  provenance and scoring tests pass), so what remains is this Anvil procedure:
+  1. Pull both repos; confirm `git -C ../NYCOptimization_scenario_generation
+     rev-parse --short HEAD` prints `6790a02` and
+     `python3 -c "import scengen; print(scengen.__file__)"` resolves inside that
+     checkout. Read `mybalance`.
+  2. Move the pre-June-1 pool artifacts out of `outputs/synthetic_ensembles/`
+     (e.g. to `outputs/_archive_pre_june1/`): `statpool_10yr_n1000000_d{0,1,2}`,
+     `statpool_10yr_n2000_d{0,1,2}` and the stale step-03 selection
+     `hazfill_stat_abs_10yr_n300_d0`. Leave the Monte Carlo ensembles
+     (`fixprob_10yr_n300_d{k}`) in place: their realizations are valid and only their
+     image is rescored by `compute_staged_hazard_image.py` below.
+  3. Stage the P = 2,000 smoke pools first, one per draw. `gen_pool_merge.sh` ends with
+     `verify_prefix_identity.py`, which loads the smoke image through the provenance
+     check, so a pre-June-1 smoke pool fails the merge job after it has already merged
+     and deleted the shards. Step 02 skips a slug that is already staged, hence the
+     move in item 2:
+     `sbatch --array=0-1 --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=2000,NYCOPT_ENSEMBLE_MASTER_STREAM_ONLY=1 workflow/02_generate_ensemble.sh`
+     (about 1 h each; writes `statpool_10yr_n2000_d{0,1}/hazard_image.npz`).
+  4. Per draw k ∈ {0, 1} (the two arrays may run concurrently):
+     `sbatch --array=0-49 --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_ENSEMBLE_DRAW=k workflow/supplemental/gen_pool_shards.sh`
+     then, chained on that array's job id,
+     `sbatch --dependency=afterok:<array_jobid> --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_ENSEMBLE_DRAW=k,NYCOPT_NESTEDP_POOL_SLUG=statpool_10yr_n1000000_dk,NYCOPT_NESTEDP_SMOKE_SLUG=statpool_10yr_n2000_dk workflow/supplemental/gen_pool_merge.sh`.
+     The smoke slug must match the draw: the verifier defaults to the d0 smoke pool
+     and would fail the d1 merge. Do not edit the shard header (2 cpus, 4 GB, 20 h:
+     generation is single-threaded and 4 GB already bills as two cores).
+  5. Acceptance per draw: every shard log ends `[gen] Shard i/50 done: realizations
+     [lo,hi) of 1000000`; the merge log carries `[gen] Merged 50 hazard-image shards`,
+     `[gen] Done 'statpool_10yr_n1000000_dk': N=1000000`, `[verify_shards] OK` and
+     `[verify_prefix] OK`; and
+     `python3 -c "from scengen.diagnostics import load_hazard_image as l; d=l('outputs/synthetic_ensembles/statpool_10yr_n1000000_dk/hazard_image.npz'); print(d['H'].shape, d['supplement'].shape)"`
+     prints `(1000000, 8) (1000000, 15)`. A shard killed at the wall writes nothing:
+     resubmit only that index (`--array=i`, same export); staged shard files are
+     skipped, and the merge refuses a set that does not tile [0, 10⁶). The merge
+     deletes the shards, so `pool_verify.sh` (same export as the merge) is the only
+     re-check afterwards.
+  6. Cost: about 600 core-hours per draw (single-threaded shards, ~12 h each; the
+     pool rate behind the E_test estimate below), billed at two cores per shard, so
+     ≤ 1.2k SU per draw and ≤ 2.5k SU for both draws with merges and verification;
+     about one day of wall per draw. Inside the 5k staging allowance of
+     `campaign_design.md` §6.
+  7. Frozen by this generation (a change to any of these forces another one): the
+     scengen `hazard_metrics` scoring constants (`_DRY_SCORING_RULE`,
+     `_WET_SCORING_RULE`, `_SUPPLEMENT_SCORING_RULE`, `_DRY_CUT_MONTHS = 6`,
+     `_SCENARIO_STAMP_START`, `_REFERENCE_START`), the generator fit (flowtype
+     `pub_nhmv10_BC_withObsScaled`, start 1945-12-01), the `stat_pool` seed domain
+     and the synhydro version. The selection-axis decision, N and ε live downstream
+     of the image (all 8 axes and 15 supplement columns are stored) and do not touch
+     the pool.
+  Then the step-03 selections (restage item below); both E_test images come from the
+  regeneration item below; and the cached `outputs/supplemental/historic_hazard_windows/`
   (recomputes itself on the provenance mismatch). Afterwards rerun the readers:
   `compute_staged_hazard_image.py` for the Monte Carlo ensembles, the
   hazard-examples figure, `ensemble_size_hazard.sh`, `hazard_support_decomposition.sh`,
