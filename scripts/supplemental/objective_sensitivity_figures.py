@@ -202,12 +202,12 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
     ax.set_yticks([y for y, _ in labels])
     ax.set_yticklabels([lab for _, lab in labels], fontsize=8)
     ax.set_xlim(-0.03, 1.03)
-    ax.set_xlabel("Objective value, min–max normalized per objective "
-                  "(0 = sample min, 1 = sample max)")
+    ax.set_xlabel("Objective value, min–max normalized per objective")
     ax.set_title("Objective discrimination across random policies\n"
                  "(wider box = stronger Pareto gradient; ↑ maximize, "
                  "↓ minimize)", fontsize=10)
-    ax.set_ylim(0.3, n + 0.7)
+    # Leave a blank strip under the last row for the legend.
+    ax.set_ylim(-0.7, n + 0.7)
     if ax.get_legend_handles_labels()[0]:
         ax.legend(loc="lower right", fontsize=8, frameon=True)
     fig.tight_layout()
