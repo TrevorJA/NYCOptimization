@@ -37,13 +37,10 @@ import supplemental_config as scfg  # noqa: E402  (env-then-config contract)
 
 scfg.configure_historic_env()  # set experiment env before config is imported
 
-from src.objectives import OBJECTIVES  # noqa: E402
 from src.objectives_ensemble import ENSEMBLE_OBJECTIVES  # noqa: E402
 
-# The random-DV diagnostic now evaluates the ANNUAL-UNIT (§2) objectives (the
-# set the historic single-trace design searches under). Look objectives up in a
-# combined registry so both §1 and §2 names resolve for direction/labels.
-_ALL_OBJ = {**OBJECTIVES, **ENSEMBLE_OBJECTIVES}
+# The run scores ANNUAL-UNIT (§2) objectives, so columns resolve here.
+_ALL_OBJ = ENSEMBLE_OBJECTIVES
 from src.plotting.style import (  # noqa: E402
     annotated_corr_heatmap,
     apply_style,
@@ -52,7 +49,10 @@ from src.plotting.style import (  # noqa: E402
     save_figure,
 )
 from src.plotting.parallel_coordinates import custom_parallel_coordinates  # noqa: E402
-from src.sensitivity_common import spearman_and_flagged  # noqa: E402
+from src.sensitivity_common import (  # noqa: E402
+    resolve_objective_set,
+    spearman_and_flagged,
+)
 
 import matplotlib  # noqa: E402
 
@@ -63,27 +63,25 @@ import matplotlib.pyplot as plt  # noqa: E402
 # Labels and ordering
 # ---------------------------------------------------------------------------
 
-#: Plot order grouping each replaced metric next to its stable replacement so
-#: the discrimination figure reads as a side-by-side comparison.
+#: Plot order placing each registered diagnostic next to its active
+#: counterpart so the discrimination figure reads as a side-by-side comparison.
 PREFERRED_ORDER: list[str] = [
-    "nyc_delivery_reliability_weekly",
-    "nyc_delivery_deficit_cvar90_pct",
-    "nyc_delivery_deficit_max_pct",
-    "montague_flow_reliability_weekly",
-    "montague_flow_deficit_cvar90_pct",
-    "montague_flow_deficit_max_pct",
-    "trenton_flow_reliability_weekly",
-    "trenton_flow_deficit_cvar90_pct",
-    "salt_front_intrusion_max_rm",
-    "nj_delivery_reliability_weekly",
-    "downstream_flood_exceedance_minor",
-    "downstream_flood_days_minor",
-    "downstream_flood_days_action",
-    "downstream_flood_days_major",
-    "nyc_storage_p5_pct",
-    "nyc_storage_min_pct",
-    "lordville_temp_exceedance_days",
+    "nyc_delivery_reliability_annual",
+    "nyc_delivery_deficit_p99_pct",
+    "montague_flow_reliability_annual",
+    "montague_flow_deficit_p99_pct",
+    "trenton_flow_deficit_p99_pct",
+    "trenton_flow_reliability_annual",
+    "downstream_flood_exceedance_annual",
+    "downstream_flood_days_annual",
+    "downstream_flood_days_annual_p99",
+    "nyc_storage_min_p01_pct",
+    "nj_delivery_reliability_annual",
 ]
+
+#: Names of the ACTIVE search objectives; every other scored column is a
+#: registered diagnostic and is drawn as such.
+ACTIVE_NAMES: frozenset = frozenset(resolve_objective_set("active").names)
 
 
 def _ordered_objectives(columns) -> list:
@@ -127,6 +125,7 @@ def discrimination_summary(samples: pd.DataFrame, baseline: pd.Series | None,
         rows.append({
             "objective": name,
             "direction": _ALL_OBJ[name].direction,
+            "active": name in ACTIVE_NAMES,
             "n_valid": n_valid,
             "frac_nan": float(1.0 - n_valid / n_total) if n_total else float("nan"),
             "frac_saturated": sat,
@@ -182,11 +181,14 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
     if box_data:
         bp = ax.boxplot(box_data, positions=positions, vert=False, widths=0.55,
                         patch_artist=True, showfliers=False)
-        for patch in bp["boxes"]:
-            patch.set_facecolor("steelblue")
+        for patch, (name, *_) in zip(bp["boxes"], valid_mask):
+            patch.set_facecolor("steelblue" if name in ACTIVE_NAMES else "0.75")
             patch.set_alpha(0.6)
         for med in bp["medians"]:
             med.set_color("black")
+        if any(name not in ACTIVE_NAMES for name, *_ in valid_mask):
+            ax.plot([], [], marker="s", linestyle="none", color="0.75",
+                    markersize=9, label="registered diagnostic (inactive)")
 
     # Baseline marker (normalized with each objective's own min/max).
     if baseline is not None:
@@ -206,7 +208,7 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
                  "(wider box = stronger Pareto gradient; ↑ maximize, "
                  "↓ minimize)", fontsize=10)
     ax.set_ylim(0.3, n + 0.7)
-    if baseline is not None:
+    if ax.get_legend_handles_labels()[0]:
         ax.legend(loc="lower right", fontsize=8, frameon=True)
     fig.tight_layout()
     save_figure(fig, out_stub)
@@ -268,15 +270,10 @@ def main():
                  "Run objective_sensitivity_run.py first.")
 
     df = pd.read_csv(csv).set_index("sample_id")
-    # Show only the DEFAULT active objective set (config.ACTIVE_OBJECTIVES,
-    # resolved to their annual-unit counterparts) — not any diagnostic /
-    # optional columns that may also be present in the CSV.
-    from config import ACTIVE_OBJECTIVES
-    from src.objectives_ensemble import build_ensemble_objective_set
-    active = set(build_ensemble_objective_set(ACTIVE_OBJECTIVES).names)
-    obj_names = [n for n in _ordered_objectives(df.columns) if n in active]
+    # Every scored objective column, active and diagnostic, in display order.
+    obj_names = _ordered_objectives(df.columns)
     if not obj_names:
-        sys.exit("ERROR: no active objective columns found in the samples CSV.")
+        sys.exit("ERROR: no objective columns found in the samples CSV.")
 
     baseline = df.loc[-1] if -1 in df.index else None
     samples = df.drop(index=-1, errors="ignore")

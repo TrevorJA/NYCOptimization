@@ -62,7 +62,7 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   (recomputes itself on the provenance mismatch). Afterwards rerun the readers:
   `compute_staged_hazard_image.py` for the Monte Carlo ensembles, the
   hazard-examples figure, `ensemble_size_hazard.sh`, `hazard_support_decomposition.sh`,
-  `hazard_selector_diagnostics`, the E_test overlay, step 11, and
+  `hazard_selector_diagnostics`, the E_test overlay, and
   `hf_design_metrics.sh` (Section 7).
 - [ ] **[HPC]** Regenerate E_test over the extended forcing box
   (`src/etest.py::E_TEST_VOLUME_MULTIPLIER_MIN = 0.80`, `campaign_design.md` §5; pull both
@@ -73,12 +73,21 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   in order: `gen_etest_shards.sh` → `gen_etest_merge.sh` (writes the realization-level
   image under the June 1 rules) → `prep_etest_chunks.sh` → `etest_hazard_image_shards.sh`
   → `etest_hazard_image_merge.sh` → `python3 -m scripts.supplemental.make_etest_subset
-  --pool etest_kn_50yr_n25000` → `stage_etest_subset_baseline` per design env under
-  `etest_kn_50yr_n25000_first25ch` (step 05 with
-  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` per design) → the
-  dry-envelope production leg (next item) → `hazard_support_decomposition.sh` stage A.
+  --pool etest_kn_50yr_n25000` → the current-policy cube on the full regenerated pool by
+  step 09 with `NYCOPT_CHUNK_POLICIES=baseline` (the default) and
+  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000` under the historic env (it lands in
+  `outputs/historic/{slug}/reeval/etest_kn_50yr_n25000/`; step 05 `--reeval` cannot run on
+  a chunked preset, verified locally) → `stage_etest_subset_baseline.py --baseline-src
+  <that directory>` per design env under `etest_kn_50yr_n25000_first25ch` (its default
+  source path ends in `/baseline`, which the chunked driver does not create), and point the
+  `RTD_REEVAL_BASELINE_DIR` / `RTOL_REEVAL_BASELINE_DIR` defaults in `supplemental_config.py`
+  at the new cube for the pass-A and threshold diagnostics → the dry-envelope production
+  leg (next item) → `hazard_support_decomposition.sh` stage A.
   About 0.35k SU (generation ~75 SU scaled from the pool rate, presim ~70, sub-window
-  image ≤ 100 core-h, three current-policy cubes ~100); one Anvil day of wall time.
+  image ≤ 100 core-h, the 1,000-SOW current-policy cube ~66); one Anvil day of wall time.
+  The whole chain (generation, contract, sub-window image, presim, subset, chunked
+  current-policy re-evaluation) was exercised locally on a 6 × 2 × 10-yr mini E_test on
+  2026-09-30.
   Afterwards re-render manuscript Figure 3 and SI Figures S12–S16 from the as-built
   E_test (`python -m scripts.supplemental.figures_forcing_parameterization` reads the
   staged `forcing_profiles.npz`; the drawn box already carries the extended bound).
@@ -136,17 +145,11 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Seed 2 per design (500k NFE), then
   `extract_runtime_archive.py --merge --install` (installs `ffmp_obj8_merged.set`,
   the step-08/09 reference) and step 07 per seed.
-- [ ] **[local]** Before step 09: persist per-SOW matrices pooled over the leading 5 and 10
-  realizations of each SOW beside the R = 25 matrix (`src/chunk_reeval.py::_evaluate_unit`
-  computes them from the same unit tensor; extend `persist_reeval_raw` with an `r_prefix`
-  column and `robustness.load_raw` with a selector; `tests/test_chunk_reeval.py`). The
-  persisted matrix pools all 25 realizations, so the R-subsample (5/10/25) ranking-stability
-  curve of `campaign_design.md` §5 cannot be scored without it.
 - [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b on `shared`, 16 ranks × 8 cpus,
   batch 50, `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` on every
   05/08/09/09b/10 line (deliberately not in the env files). ~66k SU at the
   2,000-policy cap.
-- [ ] **[HPC]** Post-processing on the 500-SOW cube: steps 10–14, the criteria
+- [ ] **[HPC]** Post-processing on the 500-SOW cube: steps 10, 13 and 14, the criteria
   re-anchoring audit (`criteria_reanchoring.py`), and the θ-subsample stability
   check (250 vs 500 SOWs).
 - [ ] **[HPC]** Re-render the ensemble-size figures with the campaign marker
@@ -165,24 +168,6 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   (335/991/784 on disk, 1,040/833/335 in `campaign_design.md`) carry the old window
   and are superseded by the N = 300 ε re-verification and re-filter of Section 2.
   The E_test re-evaluation and the transfer evaluation simulate and are unaffected.
-
-- [x] **[HPC]** Transfer evaluation (supplemental, exploratory) — **DONE 2026-09-11**.
-  All nine (source optimization x target ensemble) cells simulated through one path:
-  6,330 units, 0 failures, 214 core-h, ~215 SU (jobs 20576426 check, 20576769 /
-  20577099 / 20577100 / 20577686 evaluate, 20578233 merge+analyze+figures).
-  `docs/notes/methods/transfer_evaluation.md` §8 carries the results; tables and
-  figures under `outputs/supplemental/transfer_evaluation/`.
-  Headline, after diagnostics: the merged-set composition result reduces to ONE
-  objective. `historic` supplies 52.1% / 57.5% of the ensembles' merged sets, but
-  enrichment against pool share is only 1.23x / 1.31x under plain Pareto (i.e. no
-  design effect) and 3.28x / 3.62x only after epsilon thinning; dropping
-  `nyc_storage_min_p01_pct` collapses it to 0.98x / 1.95x while every other
-  leave-one-out leaves it at 3.1-4.5x. Substantively: historic-optimized policies
-  hold median minimum NYC storage of 22.5% vs 13.2% / 15.6% (MC ensemble) and
-  14.2% vs 3.0% / 6.2% (hazard-filling ensemble) — the ensemble searches trade the
-  storage buffer away. NOT a ranking of designs.
-  Follow-ups available, not run: the own-draw d1 arm
-  (`NYCOPT_TEV_INCLUDE_DRAWS=1`), which closes the SI draw-sensitivity item below.
 
 - [ ] **[local]** Regret tolerance: re-run pass A on the regenerated incumbent cube
   (`rtol_noise_floor.csv` carries stale ε), then pass B on the production cube with
@@ -227,8 +212,9 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[local]** SI gaps: Text S12 (tolerance rules) is cited in §3.4.3 but does not
   exist; Text S7 runtime diagnostics finalize after the campaign; Text S3
   downstream-stress correlation and event-seasonality checks are still marked
-  planned; SI Text S10 says no hazard-space scenario discovery is performed while
-  step 11 performs one (reconcile).
+  planned; Text S1 needs the determinism statement (frequency objectives exact,
+  tail objectives jitter-limited at ≤ 5e-3 relative, three to four orders below ε;
+  `outputs/supplemental/objective_determinism/summary.csv`, 2026-09-30).
 - [ ] **[local]** Decide whether the variable-resolution `ffmp_N` sweep runs (leftover
   SU only) and under which design; the manuscript states two research questions,
   so either add it as an SI extension or drop RQ3 from the notes.

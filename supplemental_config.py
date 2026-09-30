@@ -116,13 +116,15 @@ FORMULATION: str = "ffmp"
 #: laptop passes over the full window.
 N_SAMPLES: int = 3 if SMOKE else 24
 
-#: Objective-set selection (config setting, not a CLI flag):
-#:   "full_registry" -> every objective in src.objectives.OBJECTIVES (default;
-#:                      lets the redundancy screen compare each recommended
-#:                      metric against the diagnostic it replaces).
-#:   "active"        -> config.ACTIVE_OBJECTIVES (the current recommended set).
-#:   list[str]       -> an explicit list of registry names, used verbatim.
-OBJECTIVE_SET: "str | list[str]" = "full_registry"
+#: Objective-set selection (config setting, not a CLI flag), resolved by
+#: ``src.sensitivity_common.resolve_objective_set`` to annual-unit objectives:
+#:   "annual_registry" -> every objective in src.objectives_ensemble
+#:                        .ENSEMBLE_OBJECTIVES (default: the active set plus its
+#:                        registered diagnostics, so each diagnostic is scored
+#:                        beside its active counterpart).
+#:   "active"          -> config.ACTIVE_OBJECTIVES only.
+#:   list[str]         -> explicit annual or base registry names.
+OBJECTIVE_SET: "str | list[str]" = "annual_registry"
 
 #: Redundancy flag: |Spearman rho| above this marks a pair as collinear in the
 #: redundancy screen (pairwise-correlation thresholding, Dormann et al. 2013).

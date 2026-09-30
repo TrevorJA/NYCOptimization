@@ -49,13 +49,13 @@ scfg.configure_historic_env()  # set experiment env before config is imported
 
 import config  # noqa: E402
 from src.formulations import get_baseline_values  # noqa: E402
-from src.objectives_ensemble import build_ensemble_objective_set  # noqa: E402
 from src.sensitivity_common import (  # noqa: E402
     assign_rank_slots,
     await_all_done,
     get_mpi_context,
     mark_rank_done,
     prepare_partial_dir,
+    resolve_objective_set,
     sample_lhs_dvs,
 )
 from src.simulation import dvs_to_config, run_simulation_inmemory  # noqa: E402
@@ -104,22 +104,10 @@ def main():
 
     formulation = scfg.FORMULATION
 
-    # Calibrate the ANNUAL-UNIT (§2) objectives — the ones the historic
-    # single-trace design searches under — over the trace's FFMP-year
-    # units (N=1). Use the DEFAULT active objective set (config.ACTIVE_OBJECTIVES,
-    # resolved to their annual counterparts), not the full registry.
-    objective_set = build_ensemble_objective_set(config.ACTIVE_OBJECTIVES)
+    # The ANNUAL-UNIT (§2) objectives scored over the trace's FFMP-year units
+    # (N = 1), the selection of supplemental_config.OBJECTIVE_SET.
+    objective_set = resolve_objective_set(scfg.OBJECTIVE_SET)
     obj_names = list(objective_set.names)
-
-    # The salt-front objective only returns real values with the salinity LSTM
-    # on. Warn (don't abort) if it is requested but unavailable — it will be
-    # reported as NaN, per the experiment's "report NaN, don't drop" rule. The
-    # usual cause is the import-order contract (supplemental_config must precede
-    # config) or a host without the PywrDRB-ML LSTM checkout.
-    if is_root and "salt_front_intrusion_max_rm" in obj_names \
-            and not config.INCLUDE_SALINITY_MODEL:
-        print("[objective_sensitivity_run] WARN: salinity LSTM is OFF — "
-              "'salt_front_intrusion_max_rm' will be NaN.", flush=True)
 
     # Each rank regenerates the same LHS sample from the seed independently
     # (avoids comm.bcast). The DV space is small, so re-sampling is cheaper

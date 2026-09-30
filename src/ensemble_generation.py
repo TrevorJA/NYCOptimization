@@ -781,6 +781,14 @@ def _write_chunk_meta(
         "seed": config.root_seed,
         "root_seed": config.root_seed,
         "forcing_hash": forcing_hash,
+        # The forcing box the chunk's realizations were drawn over (parent-meta fields,
+        # repeated so a chunk stays self-describing after the parent is moved aside).
+        "bound_pct": list(config.bound_pct) if config.population != "stationary" else None,
+        "margin": config.margin if config.population != "stationary" else None,
+        "axis_bounds": (
+            {k: list(v) for k, v in config.axis_bounds.items()}
+            if config.population != "stationary" and getattr(config, "axis_bounds", None) else None
+        ),
         "flowtype": config.flowtype,
         "sites": sites,
         "source_kind": f"synhydro_{getattr(config, 'generator', 'kn')}",

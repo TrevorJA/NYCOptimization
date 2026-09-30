@@ -542,18 +542,13 @@ forcing factors are sampled independently by LHS, the correlated-factor
 instability of factor-importance rankings (Quinn et al. 2020) does not arise
 by construction.
 
-The one hazard-space inference is the step-11 coverage-deficit mechanism test
-(`scripts/main/scenario_discovery.py`). For each E_test SOW it computes the
-distance in the E_test hazard image's empirical-CDF space to the nearest member
-of the design's search ensemble and tests whether failure probability is
-positively associated with it, read as AUC minus a random-coverage null. A
-hazard-space classifier and factor map on the same labels are its supplemental
-view, with the hazard axes screened for redundancy before fitting. The
-prediction is that a design's policies fail on E_test in the hazard region it
-under-covered during search, so hazard-filling designs should show no excess
-association and `monte_carlo` and `historic` should. A null is a
-reportable result. Discovery in either space is reported as support for a
-difference found on the primary metric, never as the basis of the comparison.
+No scenario discovery is performed in hazard space, and the coverage-deficit
+test of workflow step 11 (`scripts/main/scenario_discovery.py`, the distance in
+E_test's hazard-image rank space to the nearest search-ensemble member against
+failure) is outside the experiment plan; the code is retained as an
+exploratory analysis. Discovery in the forcing space is reported as support
+for a difference found on the primary metric, never as the basis of the
+comparison.
 
 ### 4.3 Cross-design comparison rule, no pooled-reference-set hypervolume
 

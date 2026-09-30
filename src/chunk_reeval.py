@@ -26,8 +26,12 @@ ensemble (``NYCOPT_REEVAL_ENSEMBLE_PRESET``) must be the test-ensemble slug so
 from __future__ import annotations
 
 import os
-import resource
 import time
+
+try:
+    import resource  # POSIX only; the RSS line degrades to NaN elsewhere
+except ImportError:  # pragma: no cover - Windows
+    resource = None
 from pathlib import Path
 
 import numpy as np
@@ -51,7 +55,8 @@ def _print_unit_line(sid: int, chunk_idx: int, t0: float) -> None:
     from src.sensitivity_common import get_mpi_context
 
     _, rank, _ = get_mpi_context()
-    rss_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
+    rss_gb = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
+              if resource is not None else float("nan"))
     print(f"[unit] rank={rank} sol={sid} chunk={chunk_idx} "
           f"elapsed_s={time.perf_counter() - t0:.1f} rss_gb={rss_gb:.2f}",
           flush=True)

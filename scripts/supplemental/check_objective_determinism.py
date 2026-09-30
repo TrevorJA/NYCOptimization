@@ -139,7 +139,7 @@ def build_policies() -> dict:
             dv = np.clip(base + rng.uniform(-1.0, 1.0, base.size) * frac * (hi - lo),
                          lo, hi)
             cons = compute_constraint_violations(dv, form)
-            if cons == [0.0, 0.0]:
+            if all(c == 0.0 for c in cons):
                 break
             if (attempt + 1) % 25 == 0:
                 frac *= 0.5

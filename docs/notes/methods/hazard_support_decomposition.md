@@ -33,9 +33,9 @@ instead answered from the persisted re-evaluation output.
 > bounds it and motivates the climate-augmented extension as future work.
 
 Scope guards. The decomposition is supplemental and never a new primary
-endpoint, hazard-space coverage remains method verification, the one
-hazard-space inference stays the step-11 coverage-deficit mechanism test, and
-no policy-architecture comparison is introduced.
+endpoint, hazard-space coverage remains method verification, no hazard-space
+scenario discovery enters the experiment plan (the step-11 code is
+exploratory), and no policy-architecture comparison is introduced.
 
 Claim scoping. The six selection axes (`config.HAZARD_SELECTION_AXES`) encode
 drought and flood event magnitudes on the aggregate NYC inflow. E_test's
@@ -106,15 +106,13 @@ exceedance shares. Membership is mapped onto the forcing coordinates
 positional), with the `em = exp(m)` display convention of
 `src.factor_mapping.theta_features`.
 
-**Pool-level coverage deficit (the step-11 complement).** Step 11
-(`scripts/main/scenario_discovery.py`) tests failure against the distance to
-the nearest member of a design's search ensemble in E_test's SOW-level
-empirical-CDF/rank space. Stage A additionally persists, per SOW, the distance
-to the nearest member of the pool in exactly that space (SOW-level coordinates
-as the within-SOW mean of realization descriptors, screened axes via
-`src.factor_mapping.screen_hazard_axes`, `cdf_transform` anchored on E_test,
-`coverage_deficit` reused). This separates unreachable by any stationary design
-(pool deficit) from under-covered by this design (step 11's search deficit).
+**Pool-level coverage deficit.** Stage A persists, per SOW, the distance to
+the nearest member of the pool in E_test's SOW-level empirical-CDF/rank space
+(SOW-level coordinates as the within-SOW mean of realization descriptors,
+screened axes via `src.factor_mapping.screen_hazard_axes`, `cdf_transform`
+anchored on E_test, `coverage_deficit` reused from the exploratory
+`scripts/main/scenario_discovery.py`). It measures what no stationary design
+can reach (the pool deficit).
 
 ## 3. Stage B, design contrast by support stratum
 
@@ -189,7 +187,7 @@ partitions of the same cubes are read together.
 | `F4_reach_by_tercile` | Per selection axis, where E_test's sub-window quantiles sit against the pool's p1/p99 band, by forcing tercile. |
 | `F5_contrast_by_stratum` (stage B) | The headline, HF − MC satisficing and low-regret differences vs support stratum, seed-level points with SOW-bootstrap CIs. |
 | `F6_partition_agreement` (stage B) | Whether the hazard-support and forcing-tercile partitions tell the same story about where the difference lives. |
-| `F7_pool_vs_design_deficit` (stage B) | Failure rate vs pool-deficit decile (`HSD_DEFICIT_BINS` = 10) beside the step-11 search-ensemble deficit. |
+| `F7_pool_vs_design_deficit` (stage B) | Failure rate vs pool-deficit decile (`HSD_DEFICIT_BINS` = 10); the search-ensemble deficit panel is drawn only when the exploratory step-11 output exists. |
 
 Tables mirror every figure (`hsd_*.csv`) and figures follow
 `src/plotting/style.py`. Stage A runs once after the pools are staged (smoke
@@ -227,7 +225,7 @@ the top few percent of dry-tercile windows leave support. The stationary pool's
 multiplicative wet forcing escapes the pool ceiling more readily than dry
 forcing escapes its drought extremes. The rank-space pool deficit is
 near-orthogonal to the support score (r ≈ −0.06), as the construction implies,
-because the step-11 empirical-CDF space compresses tails while `out_frac`
+because the empirical-CDF space compresses tails while `out_frac`
 measures magnitude exceedance beyond the cloud. The two are complementary.
 
 Stage B is therefore read on the `beyond_support` stratum beside the

@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from itertools import combinations
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -184,6 +184,42 @@ def sample_feasible_dvs(formulation: str, seed: int, n_samples: int, *,
     return np.asarray(accepted, dtype=float), info
 
 
+def resolve_objective_set(selection):
+    """Resolve a supplemental ``OBJECTIVE_SET`` setting to an annual-unit ObjectiveSet.
+
+    Args:
+        selection: ``"active"`` (``config.ACTIVE_OBJECTIVES``),
+            ``"annual_registry"`` (every objective in
+            ``src.objectives_ensemble.ENSEMBLE_OBJECTIVES``, the active set plus
+            its registered diagnostics), or an explicit sequence of annual or
+            base registry names.
+
+    Returns:
+        The resolved ``ObjectiveSet`` in registry order.
+
+    Raises:
+        ValueError: If ``selection`` is an unknown keyword.
+    """
+    from config import ACTIVE_OBJECTIVES
+    from src.objectives_ensemble import (
+        ENSEMBLE_OBJECTIVES, build_ensemble_objective_set,
+    )
+
+    if isinstance(selection, str):
+        if selection == "active":
+            names = list(ACTIVE_OBJECTIVES)
+        elif selection == "annual_registry":
+            names = list(ENSEMBLE_OBJECTIVES)
+        else:
+            raise ValueError(
+                f"OBJECTIVE_SET must be 'active', 'annual_registry' or a list "
+                f"of registry names, got {selection!r}"
+            )
+    else:
+        names = list(selection)
+    return build_ensemble_objective_set(names)
+
+
 ###############################################################################
 # Rank-correlation diagnostics
 ###############################################################################
@@ -224,7 +260,10 @@ def kendall_tau_b(x: Sequence[float], y: Sequence[float]) -> float:
 _STABILITY_KEYWORDS: list = [
     ("reliability", 5),
     ("cvar90", 4),
+    ("_p99_", 4),
+    ("_p01_", 4),
     ("_p5_", 4),
+    ("exceedance", 3),
     ("_minor", 3),
     ("_action", 2),
     ("_major", 1),
@@ -238,7 +277,8 @@ def stability_score(name: str) -> int:
     """Heuristic 'keep me' score for redundancy pruning; higher = more stable."""
     from config import ACTIVE_OBJECTIVES
 
-    score = 10 if name in ACTIVE_OBJECTIVES else 0  # recommended set wins first
+    active = set(ACTIVE_OBJECTIVES) | set(resolve_objective_set("active").names)
+    score = 10 if name in active else 0  # active set wins first
     for kw, pts in _STABILITY_KEYWORDS:
         if kw in name:
             score += pts
