@@ -11,7 +11,7 @@ objective set computes.
 
 | Suite | Driver (`scripts/supplemental/`) | Plot module | Scored with |
 |---|---|---|---|
-| Historic single trace | `objective_dynamics_figures.py` | `objective_dynamics.py` | whole-trace (§1) performance metrics, plus the annual-unit (§2) strip the optimizer targets |
+| Historic single record | `objective_dynamics_figures.py` | `objective_dynamics.py` | whole-record (§1) performance metrics, plus the annual-unit (§2) strip the optimizer targets |
 | Local KN ensemble (`kn_50yr_n5`, 5 x 50 yr, trimmed model) | `ensemble_objective_dynamics_figures.py` | `ensemble_objective_dynamics.py` | pooled annual-unit (§2) objectives via `build_ensemble_objective_set` |
 
 Each suite renders figures A to E (one per operational quantity), F (the

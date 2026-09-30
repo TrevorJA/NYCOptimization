@@ -357,12 +357,12 @@ def _pooled_reduction_panel(ax, policies, annual_name: str, *, xlabel: str,
 
 
 # ---------------------------------------------------------------------------
-# Figure A — NYC delivery (reliability frequency + deficit P99)
+# Figure A — NYC diversion (reliability frequency + deficit P99)
 # ---------------------------------------------------------------------------
 
 def plot_delivery_anatomy(policies, *, output_file=None,
                           figsize=(13, 7.6), strict: bool = True) -> Figure:
-    """NYC delivery: seasonal distribution + pooled reliability & deficit reductions."""
+    """NYC diversion: seasonal distribution + pooled reliability & deficit reductions."""
     fig = plt.figure(figsize=figsize)
     gs = GridSpec(2, 2, figure=fig, height_ratios=[1.15, 1.0], hspace=0.42,
                   wspace=0.22)
@@ -373,10 +373,10 @@ def plot_delivery_anatomy(policies, *, output_file=None,
     _seasonal_band(
         ax_ts, policies,
         getter=lambda d: _metric_window(d["ibt_diversions"]["delivery_nyc"]),
-        ylabel="NYC delivery (MGD)",
+        ylabel="NYC diversion (MGD)",
         reference_getter=lambda d: _metric_window(d["ibt_demands"]["demand_nyc"]),
         reference_label="NYC demand (median)",
-        title="NYC delivery — seasonal distribution across the water year")
+        title="NYC diversion — seasonal distribution across the water year")
     _pooled_reduction_panel(
         ax_rel, policies, "nyc_delivery_reliability_annual",
         xlabel="Failing weeks per ensemble water year", score_fmt="rel {:.2f}",
@@ -384,10 +384,10 @@ def plot_delivery_anatomy(policies, *, output_file=None,
     ax_rel.set_title("Reliability — no-failing-week fraction (● = score)", fontsize=9)
     _pooled_reduction_panel(
         ax_def, policies, "nyc_delivery_deficit_p99_pct",
-        xlabel="Within-year CVaR90 delivery deficit (% of Decree)",
+        xlabel="Within-year CVaR90 diversion deficit (% of Decree)",
         score_fmt="P99 {:.1f}%", strict=strict)
     ax_def.set_title("Deficit — pooled within-year CVaR90", fontsize=9)
-    fig.suptitle(f"NYC delivery under the ensemble  ({_units_caption(policies)})",
+    fig.suptitle(f"NYC diversion under the ensemble  ({_units_caption(policies)})",
                  fontsize=11, y=0.995)
 
     if output_file is not None:
@@ -437,31 +437,31 @@ def plot_montague_anatomy(policies, *, output_file=None,
 
 
 # ---------------------------------------------------------------------------
-# Figure C — Trenton flow (reliability frequency only)
+# Figure C — Trenton flow (deficit P99)
 # ---------------------------------------------------------------------------
 
 def plot_trenton_anatomy(policies, *, output_file=None,
                          figsize=(13, 6.8), strict: bool = True) -> Figure:
-    """Trenton flow: seasonal distribution + pooled reliability reduction."""
+    """Trenton flow: seasonal distribution + pooled deficit P99 reduction."""
     fig = plt.figure(figsize=figsize)
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.25, 1.0], hspace=0.40)
     ax_ts = fig.add_subplot(gs[0, 0])
-    ax_rel = fig.add_subplot(gs[1, 0])
+    ax_def = fig.add_subplot(gs[1, 0])
 
     _seasonal_band(
         ax_ts, policies,
         getter=lambda d: _metric_window(d["major_flow"]["delTrenton"]),
         ylabel="Daily flow (MGD)",
         threshold=TRENTON_DECREE_TARGET_MGD,
-        threshold_label=f"Decree target ({TRENTON_DECREE_TARGET_MGD:.0f} MGD)",
+        threshold_label=f"flow target ({TRENTON_DECREE_TARGET_MGD:.0f} MGD)",
         logy=True, ylim=(TRENTON_DECREE_TARGET_MGD * 0.35,
                          TRENTON_DECREE_TARGET_MGD * 8),
         title="Trenton flow — seasonal distribution across the water year")
     _pooled_reduction_panel(
-        ax_rel, policies, "trenton_flow_reliability_annual",
-        xlabel="Failing weeks per ensemble water year", score_fmt="rel {:.2f}",
-        strict=strict)
-    ax_rel.set_title(f"Reliability — no-failing-week fraction (● = score)  "
+        ax_def, policies, "trenton_flow_deficit_p99_pct",
+        xlabel="Within-year CVaR90 flow deficit (% of flow target)",
+        score_fmt="P99 {:.1f}%", strict=strict)
+    ax_def.set_title(f"Deficit — pooled within-year CVaR90  "
                      f"({_units_caption(policies)})", fontsize=9)
 
     if output_file is not None:

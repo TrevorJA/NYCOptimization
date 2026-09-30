@@ -354,15 +354,26 @@ def _trenton_failure_weeks_annual(data: dict) -> np.ndarray:
     )
 
 
-def _montague_deficit_cvar90_annual(data: dict) -> np.ndarray:
-    """CVaR90 of weekly Montague flow deficit % within each unit-year. [0, 100]."""
-    flow = data["major_flow"]["delMontague"]
+def _flow_deficit_cvar90_annual(flow: pd.Series, target: float) -> np.ndarray:
+    """CVaR90 of weekly flow deficit % of a static target within each unit-year."""
     return np.asarray([
-        _cvar_worst_mean(
-            _weekly_flow_deficit_pct(flow.iloc[sl], MONTAGUE_DECREE_TARGET_MGD).values
-        )
+        _cvar_worst_mean(_weekly_flow_deficit_pct(flow.iloc[sl], target).values)
         for sl in ffmp_year_unit_slices(flow.index)
     ], dtype=float)
+
+
+def _montague_deficit_cvar90_annual(data: dict) -> np.ndarray:
+    """CVaR90 of weekly Montague flow deficit % within each unit-year. [0, 100]."""
+    return _flow_deficit_cvar90_annual(
+        data["major_flow"]["delMontague"], MONTAGUE_DECREE_TARGET_MGD,
+    )
+
+
+def _trenton_deficit_cvar90_annual(data: dict) -> np.ndarray:
+    """CVaR90 of weekly Trenton flow deficit % within each unit-year. [0, 100]."""
+    return _flow_deficit_cvar90_annual(
+        data["major_flow"]["delTrenton"], TRENTON_DECREE_TARGET_MGD,
+    )
 
 
 def _flood_days_minor_annual(data: dict) -> np.ndarray:
@@ -418,8 +429,9 @@ def _nyc_storage_min_annual(data: dict) -> np.ndarray:
 # Failure-year week-count thresholds (k) & env override
 ###############################################################################
 # k = failing weeks that mark a unit-year as a failure-year for the frequency
-# objectives (NYC, Montague 3; Trenton, NJ 1). Sensitivity in
-# framing_convention_diagnostics.md §1. Override via NYCOPT_FAILURE_K.
+# objectives (NYC, Montague 3; NJ and the inactive Trenton diagnostic 1).
+# Sensitivity in framing_convention_diagnostics.md §1. Override via
+# NYCOPT_FAILURE_K.
 _DEFAULT_FAILURE_K: dict[str, int] = {
     "nyc_delivery_reliability_annual":   3,
     "montague_flow_reliability_annual":  3,
@@ -465,8 +477,12 @@ _DEFAULT_THRESHOLDS: dict[str, float] = {
     "nyc_delivery_deficit_p99_pct__sat48":        48.0,
     "montague_flow_reliability_annual__sat79":    0.79,
     "montague_flow_deficit_p99_pct__sat27":       27.0,
-    "trenton_flow_reliability_annual__sat87":     0.87,
     "nj_delivery_reliability_annual__sat74":      0.74,
+    # Rule 2 external goalpost: the FFMP drought-stage Trenton target
+    # (2,700 cfs, 10% below the 3,000 cfs target), applied to the per-SOW P99.
+    "trenton_flow_deficit_p99_pct__sat10":        10.0,
+    # DIAGNOSTIC counterpart (inactive objective; rule 1 anchor).
+    "trenton_flow_reliability_annual__sat87":     0.87,
     # Rule 2 external goalpost: observed WY2001-2023 mean annual exceedance
     # (ft-days/yr), the same quantity as the §2 flood objective.
     "downstream_flood_exceedance_annual__sat1p17": 1.17,
@@ -508,6 +524,8 @@ _SAT_LABELS: dict[str, str] = {
         "montague_flow_deficit_p99_pct__sat27",
     "trenton_flow_reliability_annual":
         "trenton_flow_reliability_annual__sat87",
+    "trenton_flow_deficit_p99_pct":
+        "trenton_flow_deficit_p99_pct__sat10",
     "nj_delivery_reliability_annual":
         "nj_delivery_reliability_annual__sat74",
     "downstream_flood_exceedance_annual":
@@ -535,13 +553,13 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
      "nyc_delivery_reliability_weekly", "maximize", 0.05,
      _nyc_delivery_failure_weeks_annual, "frequency",
-     "Frac of pooled unit-years with < k weeks of NYC delivery "
+     "Frac of pooled unit-years with < k weeks of NYC diversion "
      "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
      "nyc_delivery_deficit_cvar90_pct", "minimize", 10.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
-     "delivery deficit, % of Decree cap [0-100]"),
+     "diversion deficit, % of Decree cap [0-100]"),
     ("montague_flow_reliability_annual",
      "montague_flow_reliability_weekly", "maximize", 0.05,
      _montague_failure_weeks_annual, "frequency",
@@ -552,11 +570,16 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      _montague_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
      "flow deficit, % of Decree target [0-100]"),
+    ("trenton_flow_deficit_p99_pct",
+     "trenton_flow_deficit_cvar90_pct", "minimize", 10.0,
+     _trenton_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
+     "P99 across pooled unit-years of within-year CVaR90 weekly Trenton "
+     "flow deficit, % of the 1938.95 MGD target [0-100]"),
     ("trenton_flow_reliability_annual",
      "trenton_flow_reliability_weekly", "maximize", 0.05,
      _trenton_failure_weeks_annual, "frequency",
-     "Frac of pooled unit-years with < k weeks of weekly-mean Trenton "
-     "flow < 1938.95 MGD Decree target"),
+     "DIAGNOSTIC (inactive): frac of pooled unit-years with < k weeks of "
+     "weekly-mean Trenton flow < 1938.95 MGD target"),
     ("downstream_flood_exceedance_annual",
      "downstream_flood_exceedance_minor", "minimize", 0.3,
      # worst_value: 366 days x ~15 ft, the largest per-day exceedance the
@@ -599,6 +622,7 @@ _BASE_TO_ENSEMBLE: dict[str, str] = {
     "nyc_delivery_deficit_cvar90_pct":  "nyc_delivery_deficit_p99_pct",
     "montague_flow_reliability_weekly": "montague_flow_reliability_annual",
     "montague_flow_deficit_cvar90_pct": "montague_flow_deficit_p99_pct",
+    "trenton_flow_deficit_cvar90_pct":  "trenton_flow_deficit_p99_pct",
     "trenton_flow_reliability_weekly":  "trenton_flow_reliability_annual",
     "downstream_flood_exceedance_minor":  "downstream_flood_exceedance_annual",
     "downstream_flood_days_minor":      "downstream_flood_days_annual",

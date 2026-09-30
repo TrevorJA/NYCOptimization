@@ -51,8 +51,8 @@ GROUPS = {
     "storage": lambda n: n == "nyc_storage_min_p01_pct",
 }
 
-#: Grouped reference point the ladders/OATs perturb: the adopted vector with
-#: Trenton and NJ raised to the paired NYC/Montague reliability value.
+#: Grouped reference point the ladders/OATs perturb: one shared value per
+#: family (rel, def, flood, storage).
 G_BASE = (0.02, 5.0, 0.3, 5.0)
 
 # Candidate grid (label -> 4-tuple; None = the adopted ungrouped 8-vector):

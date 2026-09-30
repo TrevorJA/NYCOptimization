@@ -5,7 +5,7 @@ The script's whole purpose is to DETECT A SIGNAL — a shape test would be
 worthless here. So every test plants a KNOWN relationship in a synthetic hazard
 image and asserts the machinery recovers it:
 
-  1. The Olden & Poff redundancy screen drops the planted duplicate axis and
+  1. The rank-correlation redundancy screen drops the planted duplicate axis and
      keeps the operationally-preferred representative of the cluster.
   2. The gradient-boosted classifier recovers the PLANTED axis as the top factor
      importance (failures planted in one corner of hazard space).

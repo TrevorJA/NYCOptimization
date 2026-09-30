@@ -44,7 +44,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 09b | `09b_merge_test_chunks.sh` | `shared`, 8 cpu, 128 G, 4 h | **required** (same identity as the 09 submission) | Merge the per-(solution, chunk) units into the re-eval cube + robustness scorecards |
 | 10 | `10_compare_designs.sh` | `shared`, 4 cpu, 1 h (or `bash`) | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Cross-design comparison of the re-evaluated Pareto sets (criterion sweep, scorecards, ranking stability) |
 | 11 | `11_scenario_discovery.sh` | `shared`, 4 cpu, 1 h (or `bash`) | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Scenario discovery on E_test failures in hazard space; the coverage-deficit mechanism test |
-| 12 | `12_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build E_test serially: LHS over the FULL DU box × R realizations per SOW, chunked, hazard image streamed. `NYCOPT_ETEST_VARIANT=kn` (default) is the campaign's E_test; `hmm` is an opt-in generator sensitivity. The sharded build is `supplemental/gen_etest_shards.sh` → `gen_etest_merge.sh` |
+| 12 | `12_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build E_test serially: LHS over the FULL DU box, its annual-volume lower bound extended to a multiplier of 0.80, × R realizations per SOW, chunked, hazard image streamed. `NYCOPT_ETEST_VARIANT=kn` (default) is the campaign's E_test; `hmm` is an opt-in generator sensitivity. The sharded build is `supplemental/gen_etest_shards.sh` → `gen_etest_merge.sh` |
 | 13 | `13_main_figures.sh` | `shared`, 4 cpu, 2 h | optional | Render the manuscript-tier figures from `src/figures/registry.py` |
 | 14 | `14_results_figures.sh` | `shared`, 4 cpu, 30 min | optional | Render the SI-tier figures from the same registry |
 
@@ -199,7 +199,10 @@ All settings live in the root `supplemental_config.py`; env identities in
   + `ensemble_cost_sweep.sh` (the t_eval(N, L, model) cost surface);
   `anvil_scaling_packing.sh`, `anvil_scaling_borg_submit.sh` + `anvil_scaling_borg.sh`
   (node packing and MM Borg strong scaling); `nestedp_smoke_calibrate.sh` +
-  `nestedp_ladder.sh` (nested-pool-size saturation of the selector).
+  `nestedp_ladder.sh` (nested-pool-size saturation of the selector);
+  `dry_envelope.sh` (drought hazard at the dry end of the E_test forcing box,
+  stream-only; `NYCOPT_DRYENV_PRODUCTION=1` re-reads the staged E_test
+  sub-window image and the P = 10⁶ pool image after the hazard recompute).
 - **Post-cube diagnostics**: `regret_tolerance_diagnostics.sh`,
   `robustness_threshold_diagnostics.sh`, `hazard_support_decomposition.sh`,
   `objective_sensitivity.sh` (historic random-DV sensitivity),

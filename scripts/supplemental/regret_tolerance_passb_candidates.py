@@ -50,13 +50,13 @@ BOOT_SEED = 7
 
 RELIABILITY = ("nyc_delivery_reliability_annual",
                "montague_flow_reliability_annual",
-               "trenton_flow_reliability_annual",
                "nj_delivery_reliability_annual")
-DEFICIT = ("nyc_delivery_deficit_p99_pct", "montague_flow_deficit_p99_pct")
+DEFICIT = ("nyc_delivery_deficit_p99_pct", "montague_flow_deficit_p99_pct",
+           "trenton_flow_deficit_p99_pct")
 FLOOD = ("downstream_flood_exceedance_annual",)
 STORAGE = ("nyc_storage_min_p01_pct",)
 COMPROMISE_AXES = ("nyc_delivery_reliability_annual",
-                   "trenton_flow_reliability_annual",
+                   "trenton_flow_deficit_p99_pct",
                    "downstream_flood_exceedance_annual")
 
 
@@ -79,7 +79,7 @@ class DesignCube:
         self.n_sol, self.n_sow, _ = self.D.shape
 
     def harm_free(self, tau_vec: np.ndarray, keep=None) -> np.ndarray:
-        """(S, G) bool: this policy harms NO kept objective beyond tau, here."""
+        """(S, G) bool: no kept objective is worse beyond tau here (low-regret)."""
         D, fin, t = self.D, self.finite, tau_vec
         if keep is not None:
             D, fin, t = D[:, :, keep], fin[:, :, keep], t[keep]

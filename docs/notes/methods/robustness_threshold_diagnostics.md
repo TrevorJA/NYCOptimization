@@ -1,6 +1,6 @@
 # Robustness Satisficing-Threshold Diagnostics (SI)
 
-Places the satisficing criteria against the status-quo FFMP policy's persisted
+Places the satisficing criteria against the current FFMP policy's persisted
 $E_{\text{test}}$ re-evaluation cube of per-SOW annual-unit objective values.
 Zero simulation. Code: `scripts/supplemental/robustness_threshold_anchor.py`
 (historic-anchor recompute, JSON cache),
@@ -14,28 +14,27 @@ audit on the production cube), configuration `RTD_*` in
 
 ## 0. Question and substrate
 
-For the incumbent re-evaluated on $E_{\text{test}}$ (1,000 LHS SOWs × 25
+For the current FFMP policy re-evaluated on $E_{\text{test}}$ (1,000 LHS SOWs × 25
 realizations × 50 yr, step-05 `--reeval`, `RTD_REEVAL_BASELINE_DIR`), per
 objective: is a criterion defensible, so that a degenerate fraction is a
-motivation result, or misplaced for $E_{\text{test}}$ severity, so that it
+motivation result, or misplaced for $E_{\text{test}}$ conditions, so that it
 voids the satisficing metric? Zeff et al. (2014) elicited the Research-Triangle
 thresholds once and later values drifted by convention (Trindade et al. 2017;
 Gold et al. 2023), so the rule here anchors on an external goalpost wherever
 one exists and treats everything else as a swept, reported choice, because
 robustness rankings degrade in agreement as criteria tighten (Quinn et al.
 2020; Hadjimichael et al. 2020). The campaign re-evaluates the leading 500 SOWs
-(`etest_kn_50yr_n25000_first25ch`), a strict prefix of this cube, so the
+(`etest_kn_50yr_n25000_first25ch`), a prefix of this cube, so the
 anchors transfer without recomputation.
 
 The substrate is each SOW's realizations' unit-years pooled through the
 objective's own unit operator (`src/reeval_core.py::sow_objective_matrix`).
-The SOW is the only counting unit and there is no separate within-SOW collapse.
+The SOW is the only counting unit.
 Inputs are `reeval_raw.parquet` plus `reeval_raw_meta.json`
 (`src/robustness.py::load_raw`), the $E_{\text{test}}$ forcing profiles
 (`forcing_profiles.npz`, $\theta = [m, r_1, r_2]$ joined on the SOW label) and
 the historic baseline HDF5. Thresholds and kinds come from the cube's own meta
-snapshot, never the live registry (the moving-measuring-stick guard, McPhail
-et al. 2020). The worst-case SE of a SOW fraction is $0.5/\sqrt{1000} \approx$
+snapshot, never the live registry (McPhail et al. 2020). The worst-case SE of a SOW fraction is $0.5/\sqrt{1000} \approx$
 1.6 pp here and 2.2 pp on 500 SOWs, and every fraction carries a Wilson 95 %
 interval. Because $E_{\text{test}}$ is an LHS box, a fraction is a
 coverage-weighted count, not a probability (Lamontagne et al. 2018). The
@@ -44,7 +43,7 @@ figures script requires the cube's SOW means to equal the shipped
 
 ## 1. Placement rules (declared before the numbers)
 
-1. A criterion the operating status quo itself fails on the observed record is
+1. A criterion current operations themselves fail on the observed record is
    not an acceptable-performance line. It classifies the observed system as
    never acceptable and, if it also lies outside the $E_{\text{test}}$ support,
    zeroes the univariate and the multivariate Starr fraction (Starr 1962;
@@ -65,7 +64,7 @@ figures script requires the cube's SOW means to equal the shipped
 
 - **Distributions and anchors** (`S_rtd_baseline_sow_cdfs`;
   `rtd_sow_summary.csv`, `rtd_default_stringency.csv`). Per-objective ECDFs of
-  the per-SOW values with the current threshold, the historic-trace anchor,
+  the per-SOW values with the current threshold, the historic-record anchor,
   the NYC stakeholder floor 0.5 (`src/pareto_filter.py::DEFAULT_STAKEHOLDER_FLOORS`)
   and the observed flood anchor, axes capped to the data support (Gold et al.
   2023, Fig. 5).
@@ -108,9 +107,9 @@ overridable by `NYCOPT_SAT_THRESHOLDS`, snapshotted into each run's
 `reeval_raw_meta.json`; basis in `supplemental_config.RTD_RECOMMENDED_THRESHOLDS`
 and `RTD_RECOMMENDATION_BASIS`). Rule-1 placements on the stricter side of the
 historic annual-unit anchors: NYC reliability 0.65, NYC deficit P99 48,
-Montague reliability 0.79, Montague deficit P99 27, Trenton reliability 0.87,
-NJ reliability 0.74. Rule-2 goalposts: flood exceedance 1.17 ft·d/yr and
-storage P01 26 % (the FFMP L5 drought-emergency boundary, kept as a stringent
+Montague reliability 0.79, Montague deficit P99 27, NJ reliability 0.74.
+Rule-2 goalposts: Trenton deficit P99 10 % (the FFMP drought-stage Trenton
+target, 2,700 cfs), flood exceedance 1.17 ft·d/yr, and storage P01 26 % (the FFMP L5 drought-emergency boundary, kept as a stringent
 aspirational criterion because the maintain-status-quo re-anchor would be a
 vacuous 0 % line).
 
@@ -120,19 +119,19 @@ by `NYCOPT_CRITERIA_VARIANT`, focal set by `NYCOPT_FOCAL_CRITERION`, default
 three objectives and leaves the others unconstrained, and robustness is
 reported under every set with a cross-set ranking-agreement check. The
 all-axes conjunction is retained only as `reference_all8`; it saturates at
-zero because the Montague reliability anchor lies outside the incumbent's
+zero because the Montague reliability anchor lies outside the current FFMP policy's
 $E_{\text{test}}$ support, a motivation finding never used for selection.
 Placements apply the rules per member axis from the audit table
-`outputs/comparison/{slug}/{tag}/criteria_reanchoring.csv` (incumbent per-SOW
+`outputs/comparison/{slug}/{tag}/criteria_reanchoring.csv` (current FFMP policy per-SOW
 quantiles, pass fraction at the adopted threshold, pooled stringency, and the
-stricter-side round of the incumbent median at ε granularity):
+stricter-side round of the current FFMP policy median at ε granularity):
 
 | set | criteria |
 |---|---|
-| `nyc_supply` | NYC reliability ≥ 0.65 (historic anchor); storage P01 ≥ 13.0 % (rule 1, incumbent median year) |
-| `downstream_flows` | Montague reliability ≥ 0.50, Trenton reliability ≥ 0.75 (rule 1, incumbent median year) |
+| `nyc_supply` | NYC reliability ≥ 0.65 (historic anchor); storage P01 ≥ 13.0 % (rule 1, current FFMP policy median year) |
+| `downstream_flows` | Montague reliability ≥ 0.50 (rule 1, current FFMP policy median year); Trenton deficit P99 ≤ 10 % (rule 2, FFMP drought-stage target) |
 | `flood` | flood exceedance ≤ 1.17 ft·d/yr (rule 2) |
-| `compromise` | NYC reliability ≥ 0.65, Trenton reliability ≥ 0.75, flood ≤ 1.17 (one axis per Decree party) |
+| `compromise` | NYC reliability ≥ 0.65, Trenton deficit P99 ≤ 10 %, flood ≤ 1.17 (one axis per Decree party) |
 
 Saturated non-discriminators (NYC deficit P99, Montague deficit P99, NJ
 reliability) are excluded from every named set and stay visible in the

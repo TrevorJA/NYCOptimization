@@ -308,6 +308,19 @@ def test_flow_failure_weeks_annual_counts_low_flow_weeks():
     assert units[1] == 0.0
 
 
+def test_trenton_deficit_cvar90_annual_full_year_shortfall():
+    """Flow at half the Trenton target for a whole unit-year gives a within-year
+    CVaR90 deficit of 50% there and 0 elsewhere."""
+    from config import TRENTON_DECREE_TARGET_MGD
+
+    idx = _dec_index(1945, 3)
+    flow = pd.Series(TRENTON_DECREE_TARGET_MGD + 500.0, index=idx)
+    flow.loc["1947-06-01":"1948-05-31"] = 0.5 * TRENTON_DECREE_TARGET_MGD
+    units = obj_ens._trenton_deficit_cvar90_annual(
+        {"major_flow": pd.DataFrame({"delTrenton": flow}, index=idx)})
+    assert units == pytest.approx([0.0, 50.0])
+
+
 def test_flood_days_annual_counts_days_per_unit_year():
     from pywrdrb.flood_thresholds import flood_stage_thresholds
     from src.objectives import _DOWNSTREAM_GAUGES
@@ -431,6 +444,7 @@ ANNUAL_NAMES = [
     "nyc_delivery_deficit_p99_pct",
     "montague_flow_reliability_annual",
     "montague_flow_deficit_p99_pct",
+    "trenton_flow_deficit_p99_pct",
     "trenton_flow_reliability_annual",
     "downstream_flood_exceedance_annual",
     "downstream_flood_days_annual",
@@ -439,14 +453,13 @@ ANNUAL_NAMES = [
     "nj_delivery_reliability_annual",
 ]
 
-# The §1 base names config.ACTIVE_OBJECTIVES uses (default 8-objective set;
-# NJ delivery activated 2026-07-30).
+# The §1 base names config.ACTIVE_OBJECTIVES uses (default 8-objective set).
 ACTIVE_BASE_NAMES = [
     "nyc_delivery_reliability_weekly",
     "nyc_delivery_deficit_cvar90_pct",
     "montague_flow_reliability_weekly",
     "montague_flow_deficit_cvar90_pct",
-    "trenton_flow_reliability_weekly",
+    "trenton_flow_deficit_cvar90_pct",
     "downstream_flood_exceedance_minor",
     "nyc_storage_p5_pct",
     "nj_delivery_reliability_weekly",
@@ -467,12 +480,12 @@ def test_base_names_resolve_to_active_annual_set():
         "nyc_delivery_deficit_p99_pct",
         "montague_flow_reliability_annual",
         "montague_flow_deficit_p99_pct",
-        "trenton_flow_reliability_annual",
+        "trenton_flow_deficit_p99_pct",
         "downstream_flood_exceedance_annual",
         "nyc_storage_min_p01_pct",
         "nj_delivery_reliability_annual",
     ]
-    assert obj_set.directions == [1, -1, 1, -1, 1, -1, 1, 1]
+    assert obj_set.directions == [1, -1, 1, -1, -1, -1, 1, 1]
     # The diagnostic P99 flood variant is NOT reachable via base names.
     assert "downstream_flood_days_annual_p99" not in obj_set.names
     # Every ACTIVE objective carries the re-eval satisficing criterion (a
@@ -546,6 +559,18 @@ def test_registry_frequency_objectives_are_fractions():
         assert isinstance(obj.unit_operator, FailureFrequencyOp)
         val = obj.unit_operator([0.0, 5.0, float("nan")])
         assert 0.0 <= val <= 1.0
+
+
+def test_registry_deficit_objectives_share_the_family_epsilon():
+    """The three deficit-P99 objectives are minimized at one shared precision."""
+    names = ("nyc_delivery_deficit_p99_pct", "montague_flow_deficit_p99_pct",
+             "trenton_flow_deficit_p99_pct")
+    for name in names:
+        obj = ENSEMBLE_OBJECTIVES[name]
+        assert obj.direction == "minimize"
+        assert isinstance(obj.unit_operator, PooledPercentileOp)
+        assert obj.unit_operator.q == 99.0
+    assert len({ENSEMBLE_OBJECTIVES[n].epsilon for n in names}) == 1
 
 
 # ---------------------------------------------------------------------------

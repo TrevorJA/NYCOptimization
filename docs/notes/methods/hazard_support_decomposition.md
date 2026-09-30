@@ -2,7 +2,7 @@
 
 *Supplemental re-scoring (SI Text S10) decomposing the `hazard_filling_stationary`
 (HF) − `monte_carlo` (MC) difference on E_test by where each state of
-the world (SOW) sits relative to the stationary candidate pool's hazard support.
+the world (SOW) sits relative to the stationary candidate ensemble's hazard support.
 Zero simulation, every deliverable reduces persisted artifacts. Code:
 `scripts/supplemental/hazard_support_run.py` (stage A support membership, stage
 B design contrast) and `scripts/supplemental/hazard_support_figures.py`,
@@ -122,7 +122,7 @@ as the within-SOW mean of realization descriptors, screened axes via
 re-evaluation run on the campaign re-evaluation preset
 (`HSD_REEVAL_TAG`, the `etest_kn_50yr_n25000_first25ch` subset named by
 `src/etest.py::campaign_reeval_preset()`), discovered by
-`compare_designs.discover_runs` / `src.results_data`, the incumbent cube
+`compare_designs.discover_runs` / `src.results_data`, the current FFMP policy's cube
 beside each run (`baseline/`), and the stage-A stratum labels consumed
 unchanged. Stage A labels all 1,000 generated SOWs and the re-evaluated 500 are
 their nested prefix.
@@ -139,7 +139,7 @@ their nested prefix.
 2. Companion. The within-stratum best-attained fraction (the run-level
    max-over-set endpoint re-scored on the stratum), carrying the max-over-set
    bias disclosure.
-3. No-harm frequency `no_harm_freq_tau` at the adopted tolerance vector
+3. Low-regret frequency `no_harm_freq_tau` at the adopted tolerance vector
    (`NYCOPT_REGRET_TAU` from the sourced production env file, never re-chosen
    here), restricted to the stratum, for the same fixed policy and as the
    within-stratum best.
@@ -187,7 +187,7 @@ partitions of the same cubes are read together.
 | `F2_support_score_distribution` | How E_test divides across the strata and that the division is stable across the two pool draws (ECDF of `out_frac` per draw, cut points marked). |
 | `F3_axis_excursion` | Which hazard axes carry the excursion, by forcing tercile, and that seasonal structure is not an axis. |
 | `F4_reach_by_tercile` | Per selection axis, where E_test's sub-window quantiles sit against the pool's p1/p99 band, by forcing tercile. |
-| `F5_contrast_by_stratum` (stage B) | The headline, HF − MC satisficing and no-harm differences vs support stratum, seed-level points with SOW-bootstrap CIs. |
+| `F5_contrast_by_stratum` (stage B) | The headline, HF − MC satisficing and low-regret differences vs support stratum, seed-level points with SOW-bootstrap CIs. |
 | `F6_partition_agreement` (stage B) | Whether the hazard-support and forcing-tercile partitions tell the same story about where the difference lives. |
 | `F7_pool_vs_design_deficit` (stage B) | Failure rate vs pool-deficit decile (`HSD_DEFICIT_BINS` = 10) beside the step-11 search-ensemble deficit. |
 
@@ -200,6 +200,10 @@ cubes with a production env file sourced (`NYCOPT_ENV_FILE` supplies
 tables. Figures regenerate from tables alone.
 
 ## 5. Support membership on the regenerated pools
+
+The numbers in this section were scored on the pre-extension E_test (annual-volume
+lower bound 0.866) under the retired scoring rules and are re-read after the
+regeneration over the extended box (`campaign_design.md` §5).
 
 Stage A on the P = 10⁶ pools gives the strata **in_support 611 / boundary 389 /
 out_of_support 0** (pool d0, primary). No SOW has a majority of its
@@ -232,7 +236,7 @@ default.
 
 ## 6. Design consequence
 
-The hazard-filling candidate pool is stationary. The stationary P = 10⁶ pool
+The stationary P = 10⁶ candidate ensemble
 spans nearly all of the hazard magnitude E_test presents. 94.3 % of E_test's
 125,000 forced sub-windows fall within the pool's own q0.99 nearest-neighbour
 fringe, no SOW has a majority of its windows beyond it, and 61 % of SOWs are

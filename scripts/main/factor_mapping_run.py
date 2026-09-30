@@ -21,11 +21,11 @@ figures never need the raw cubes:
       regret_map_surfaces.npz    top-2-axis P(low regret) grids per fit
       factor_mapping_meta.json
 
-The regret artifacts label each SOW by whether the policy harms the FFMP
-incumbent beyond tolerance on the criterion set's member axes -- the per-SOW
-decomposition of the ``no_harm_freq_tau__{key}`` scorecard column, fitted for
-the SAME compromise policies as the success/failure maps so the two figures
-are read panel-for-panel. The incumbent has no regret panel: regret is
+The regret artifacts label each SOW by whether the policy incurs regret
+against the FFMP incumbent beyond tolerance on the criterion set's member
+axes -- the per-SOW decomposition of the ``no_harm_freq_tau__{key}`` scorecard
+column, fitted for the SAME compromise policies as the success/failure maps so
+the two figures are read panel-for-panel. The incumbent has no regret panel: regret is
 measured against it, so its label is zero in every SOW by construction.
 
 Settings via env (repo rule: no CLI value flags):
@@ -223,7 +223,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
                 R = fm.regret_matrix(res.raw, base, axes=cset.axes)  # (S, G)
 
                 # (1) the fig-8 selected policy, and (2) the policy this
-                # design's search produced that harms the incumbent in the
+                # design's search produced that incurs regret in the
                 # MOST SOWs -- the worst case the front actually contains.
                 worst_i = int(np.argmax(R.mean(axis=1)))
                 views = [("compromise", compromise["index"]),

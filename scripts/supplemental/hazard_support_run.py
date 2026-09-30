@@ -26,7 +26,7 @@ images exist):
      ``cdf_transform`` anchoring, same ``coverage_deficit`` code).
 
 Stage B (consumes the stage-A labels unchanged): re-scores each (design, draw,
-seed) run's Starr satisficing fraction and no-harm frequency per support
+seed) run's Starr satisficing fraction and low-regret frequency per support
 stratum and per forcing tercile of ``m``, with a SOW-level paired bootstrap CI
 on the HF - MC difference, from the campaign re-eval cubes on
 ``HSD_REEVAL_TAG``. Skipped with a message when no matched-design cube exists

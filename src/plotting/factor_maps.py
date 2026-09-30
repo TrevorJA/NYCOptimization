@@ -14,8 +14,8 @@ companions live in ``src.factor_mapping`` /
 
 Policy selection is rule-based so it restates automatically under a different
 focal criterion: per design, the maximum-robustness policy on the
-(joint Starr, no-harm frequency) frontier plus, when different, the most
-robust policy that is (near-)never harmful vs the incumbent; a design whose
+(joint Starr, low-regret frequency) frontier plus, when different, the most
+robust policy that is low-regret in (near-)every SOW; a design whose
 joint Starr is identically zero contributes its maximin policy instead (the
 one whose WORST single-axis satisficing fraction is largest -- no mean
 aggregation). ``NYCOPT_FACTOR_POLICIES`` (JSON ``{design: [solution_id, ...]}``)
@@ -45,8 +45,8 @@ from src.plotting.style import ETEST, design_label, save_figure
 PASS_COLOR = "#009E73"
 FAIL_COLOR = "0.62"
 
-#: A policy counts as "never harmful" on the frontier at or above this
-#: no-harm frequency.
+#: A frontier policy counts as low-regret in (near-)every SOW at or above
+#: this low-regret frequency.
 NO_HARM_FLOOR = 0.99
 
 
@@ -74,7 +74,7 @@ def select_focal_policies(results: dict) -> list[dict]:
             chosen = [int(ids[np.argmax(worst_axis)])]
         else:
             no_harm = res.scorecard["no_harm_freq_tau"].reindex(ids).to_numpy(float)
-            # Max joint Starr, ties broken by no-harm frequency (else a
+            # Max joint Starr, ties broken by low-regret frequency (else a
             # dominated tie-mate can displace the frontier policy).
             best = np.lexsort((no_harm, joint))[-1]
             chosen = [int(ids[best])]

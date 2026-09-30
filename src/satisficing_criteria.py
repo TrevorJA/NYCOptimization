@@ -101,7 +101,7 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="nyc_supply",
         label="NYC supply security",
-        rationale=("NYC delivery reliability at the historic anchor (0.65); "
+        rationale=("NYC diversion reliability at the historic anchor (0.65); "
                    "storage re-anchored per rule 1 from the FFMP L5 goalpost "
                    "(26%) to the incumbent's median year (13.0, stricter "
                    "side)."),
@@ -113,12 +113,12 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="downstream_flows",
         label="Downstream flow targets",
-        rationale=("Montague and Trenton re-anchored per rule 1 to the "
-                   "incumbent's median year, rounded to the stricter side "
-                   "(0.50 and 0.75)."),
+        rationale=("Montague re-anchored per rule 1 to the incumbent's "
+                   "median year, stricter side (0.50); Trenton P99 deficit at "
+                   "the rule-2 FFMP drought-stage target (10%)."),
         criteria={
             "montague_flow_reliability_annual": 0.50,
-            "trenton_flow_reliability_annual": 0.75,
+            "trenton_flow_deficit_p99_pct": 10.0,
         },
     ),
     CriterionSet(
@@ -133,12 +133,12 @@ _ADOPTED_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="compromise",
         label="All-parties compromise",
-        rationale=("One axis per Decree-party interest: NYC delivery at the "
-                   "historic anchor, Trenton at the incumbent median-year "
-                   "placement, flood at the rule-2 external goalpost."),
+        rationale=("One axis per Decree-party interest: NYC diversion at the "
+                   "historic anchor, Trenton P99 deficit and flood at their "
+                   "rule-2 external goalposts."),
         criteria={
             "nyc_delivery_reliability_annual": 0.65,
-            "trenton_flow_reliability_annual": 0.75,
+            "trenton_flow_deficit_p99_pct": 10.0,
             "downstream_flood_exceedance_annual": 1.17,
         },
     ),
@@ -162,7 +162,7 @@ _V2_20260821_SETS: tuple[CriterionSet, ...] = (
     CriterionSet(
         key="nyc_supply",
         label="NYC supply security",
-        rationale=("Delivery reliability at the historic anchor, P99 deficit "
+        rationale=("Diversion reliability at the historic anchor, P99 deficit "
                    "capped at half the Decree allocation, storage between the "
                    "incumbent median (13%) and the FFMP L5 goalpost (26%)."),
         criteria={
@@ -175,11 +175,12 @@ _V2_20260821_SETS: tuple[CriterionSet, ...] = (
         key="downstream_flows",
         label="Downstream flow targets",
         rationale=("Montague reliability at 0.65 with a P99 deficit cap at "
-                   "50%; Trenton at 0.75."),
+                   "50%; Trenton P99 deficit at the FFMP drought-stage "
+                   "target (10%)."),
         criteria={
             "montague_flow_reliability_annual": 0.65,
             "montague_flow_deficit_p99_pct": 50.0,
-            "trenton_flow_reliability_annual": 0.75,
+            "trenton_flow_deficit_p99_pct": 10.0,
         },
     ),
     CriterionSet(

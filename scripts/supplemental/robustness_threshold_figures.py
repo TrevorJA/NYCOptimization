@@ -114,6 +114,7 @@ SHORT_LABELS = {
     "nyc_delivery_deficit_p99_pct": "NYC def",
     "montague_flow_reliability_annual": "Mon rel",
     "montague_flow_deficit_p99_pct": "Mon def",
+    "trenton_flow_deficit_p99_pct": "Tre def",
     "trenton_flow_reliability_annual": "Tre rel",
     "downstream_flood_exceedance_annual": "Flood",
     "nyc_storage_min_p01_pct": "Storage",

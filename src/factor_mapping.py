@@ -62,7 +62,7 @@ FM_LEARNING_RATE: float = float(os.environ.get("NYCOPT_FM_LEARNING_RATE", "0.1")
 #: count when smaller; below 2 usable folds CV is skipped with a reason).
 FM_CV_FOLDS: int = int(os.environ.get("NYCOPT_FM_CV_FOLDS", "5"))
 
-#: Spearman |rho| above which two hazard axes are redundant (Olden & Poff 2003).
+#: Spearman |rho| above which two hazard axes are collinear (Dormann et al. 2013).
 FM_RHO_THRESHOLD: float = float(os.environ.get("NYCOPT_FM_RHO_THRESHOLD", "0.7"))
 
 #: Probability-surface grid resolution per axis.
@@ -122,7 +122,7 @@ def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
 
     A SOW is labelled REGRET for a solution when at least one per-SOW objective
     is degraded by more than its tolerance ``tau_i`` relative to the status-quo
-    FFMP policy in that same state -- the complement of the ``no_harm``
+    FFMP policy in that same state -- the complement of the low-regret
     condition in ``robustness.regret_frequencies``, on the same unit as the
     reported regret family. Non-finite values count as regret, mirroring the
     non-finite-as-unsatisfied rule of the satisficing label.

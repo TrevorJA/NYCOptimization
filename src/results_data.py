@@ -236,7 +236,7 @@ COLLAPSE_ORDER: tuple[str, ...] = (
     "nj_delivery_reliability_annual",
     "nyc_storage_min_p01_pct",
     "downstream_flood_exceedance_annual",
-    "trenton_flow_reliability_annual",
+    "trenton_flow_deficit_p99_pct",
 )
 
 

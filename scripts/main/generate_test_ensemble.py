@@ -126,6 +126,7 @@ def etest_config(variant: ETestVariant, *, extra: dict | None = None):
         std_csv=ENSEMBLE_FORCING_STD_CSV if ENSEMBLE_FORCING_VARIANCE_AXIS else None,
         bound_pct=variant.bound_pct,
         margin=variant.margin,
+        axis_bounds=variant.axis_bounds,
         compute_hazard_image=True,
         store_daily=True,
         hazard_block_size=ENSEMBLE_MASTER_HAZARD_BLOCK,

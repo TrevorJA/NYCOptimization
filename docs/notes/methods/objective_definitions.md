@@ -1,7 +1,7 @@
 # Objective Definitions for the Scenario-Design MOEA Study
 
 *Record of the objective formulations used in the MOEA search and of the
-held-out re-evaluation metric set. Terminology per `docs/notes/terminology.md`,
+held-out re-evaluation metric set. Terminology per `docs/terminology.md`,
 and citations resolve to the Zotero collection `ISYGLK35` and the notes under
 `docs/notes/literature/`. Supporting diagnostics: `epsilon_calibration_experiment.md`,
 `framing_convention_diagnostics.md`, `flood_objective_diagnostics.md`,
@@ -30,10 +30,10 @@ re-evaluation scoring in `src/robustness.py`.
 
 ## 0. Conventions
 
-- Metrics are computed on the **metric window** of each scenario, the daily
+- Metrics are computed on the **metric window** of each realization, the daily
   series from six calendar months after its start (`METRIC_EXCLUSION_MONTHS = 6`),
   cut by date rather than by a fixed day count. Six months is the SSI-6
-  accumulation requirement. On the December-start scenario windows the cut
+  accumulation requirement. On the December-start realization windows the cut
   lands exactly on June 1, the FFMP operating-year boundary, and the
   hazard-selection metrics score the identical [Jun 1 year 1, May 31 year L]
   span (§2), so selection and evaluation see one window.
@@ -79,13 +79,12 @@ re-evaluation scoring in `src/robustness.py`.
 
 These are the per-realization temporal quantities whose windowed-series cores
 the annual-unit scheme of §2 reuses. During search every design, including
-`historic`, is scored through the §2 scheme, and the historic trace enters it
+`historic`, is scored through the §2 scheme, and the historic record enters it
 as N = 1 over its 77 FFMP-year units. The active set is **8 objectives**. NJ
 delivery carries independent information (redundancy screen, max |ρ_S| = 0.38
-against any objective and ≤ 0.08 against Trenton). All objectives use stable
-tail, percentile, or count forms rather than worst-case extremes (Quinn et al.
-2017; Bonham et al. 2024). Trenton flow serves as the salinity-repulsion
-goalpost, because the Trenton target repels salt intrusion and the salt-front
+against any objective). All objectives use stable tail, percentile, or count
+forms rather than worst-case extremes (Quinn et al. 2017; Bonham et al. 2024).
+The Trenton flow deficit serves as the salinity-repulsion goalpost, because the Trenton target repels salt intrusion and the salt-front
 LSTM, unreliable in extreme drought, stays a registered diagnostic.
 
 | # | Name (registry) | Source | Temporal aggregation | Dir | Units |
@@ -94,30 +93,30 @@ LSTM, unreliable in extreme drought, stays a registered diagnostic.
 | 2 | `nyc_delivery_deficit_cvar90_pct` | same | CVaR₉₀ of weekly deficit % `= 100·max(0, mean_w(E) − mean_w(delivery))/800` | MIN | % |
 | 3 | `montague_flow_reliability_weekly` | `major_flow.delMontague` | frac of weeks `mean_w(flow) ≥ 1131.05` | MAX | frac |
 | 4 | `montague_flow_deficit_cvar90_pct` | `delMontague` | CVaR₉₀ of `100·max(0, 1131.05 − mean_w(flow))/1131.05` | MIN | % |
-| 5 | `trenton_flow_reliability_weekly` | `major_flow.delTrenton` | frac of weeks `mean_w(flow) ≥ 1938.95` | MAX | frac |
+| 5 | `trenton_flow_deficit_cvar90_pct` | `major_flow.delTrenton` | CVaR₉₀ of `100·max(0, 1938.95 − mean_w(flow))/1938.95` | MIN | % |
 | 6 | `downstream_flood_exceedance_minor` | `flood_stage` (Hale Eddy, Fishs Eddy, Bridgeville) | mean annual `Σ_days max_gauges (stage − minor)⁺`, ft·days above NWS **minor** flood stage at the worst-affected gauge | MIN | ft·days/yr |
 | 7 | `nyc_storage_p5_pct` | `res_storage[NYC]` | 5th percentile of daily `100·Σ_res storage / 270,837` | MAX | % |
 | 8 | `nj_delivery_reliability_weekly` | `delivery_nj`, `demand_nj` (right 100) | frac of weeks `Σ_w delivery_nj ≥ 0.99·Σ_w E_nj` (entitlement `E_nj = min(demand_nj,A_t)`, monthly reset) | MAX | frac |
 
-The `Objective` entries in `src/objectives.py` carry single-trace epsilons
-(IQR/10 over random-DV policies on the historic trace, Reed et al. 2013) that
+The `Objective` entries in `src/objectives.py` carry single-record epsilons
+(IQR/10 over random-DV policies on the historic record, Reed et al. 2013) that
 apply to single-realization diagnostics only. The campaign archive resolves at
 the annual-unit epsilons of §2.
 
 **Why these aggregations.**
-- *Reliability frequencies (1, 3, 5, 8).* Hashimoto reliability and
+- *Reliability frequencies (1, 3, 8).* Hashimoto reliability and
   multivariate domain-satisficing, the form Herman et al. (2015) recommend,
   stable and fast-converging (Bonham et al. 2024). Montague reliability cannot
   saturate at 1.0 because FFMP step-downs intentionally drop releases below the
   target in drought, so it stays continuous.
-- *CVaR₉₀ deficits (2, 4).* CVaR₉₀ is used instead of the worst-week maximum,
+- *CVaR₉₀ deficits (2, 4, 5).* CVaR₉₀ is used instead of the worst-week maximum,
   which Quinn et al. (2017) flag as a high-variance, low-information signal.
   CVaR keeps the tail-risk focus but averages the worst decile, giving a
   reproducible, smooth Borg gradient. Montague flow is storm-dominated, so its
   single worst week is mostly exogenous noise and CVaR matters most there.
 - *Flood exceedance above minor stage (6).* Magnitude-weighted exceedance
   (`flood_objective_diagnostics.md`). The day count is degenerate across
-  policies (9 distinct values over 25 feasible policies on the historic trace)
+  policies (9 distinct values over 25 feasible policies on the historic record)
   while the exceedance integral resolves fully and responds strictly
   monotonically to the flood-release DVs, and exceedance tracks observed annual
   flood magnitude better (Pearson 0.91 vs 0.83). The integrand is physical
@@ -130,13 +129,17 @@ the annual-unit epsilons of §2.
   (`minor`/`major`/`action`) variants stay registered as diagnostics.
 - *Storage p5 (7).* A low percentile is a stable vulnerability proxy, whereas
   the single-day minimum is dominated by one drought event (Quinn et al. 2017).
-- *Trenton vs salinity (5) and NJ delivery (8).* New Jersey, a co-equal Decree
+- *Trenton flow deficit (5) and NJ delivery (8).* The Trenton target holds the
+  salt front below the Philadelphia and Camden water supply intakes, and
+  intrusion responds to the depth and persistence of low flow rather than to
+  the number of weeks the target is missed, so objective 5 measures the
+  severity of Trenton shortfalls. New Jersey, a co-equal Decree
   party, gets direct representation so the search can discover NYC vs NJ
   robustness conflicts (Trindade et al. 2017; Hadjimichael et al. 2020).
 
 **Diagnostics (registered, not active).** Worst-case variants
 (`*_deficit_max_pct`, `nyc_storage_min_pct`), `downstream_flood_days_minor` /
-`_major` / `_action`, `trenton_flow_deficit_cvar90_pct`, the salt-front metric
+`_major` / `_action`, `trenton_flow_reliability_weekly`, the salt-front metric
 (`salt_front_intrusion_max_rm`), and the deferred Lordville thermal metric.
 They are available for re-evaluation reporting without code changes.
 
@@ -157,7 +160,7 @@ comparison point, and every operator follows published search-time practice
 aggregation plus across-record noise filtering).** Each realization is
 simulated continuously, the first six months are outside the metric window,
 and the remainder is split into **FFMP-year units** (June 1 – May 31, the
-operating year on which the FFMP's seasonal rules reset). Scenario windows are
+operating year on which the FFMP's seasonal rules reset). Realization windows are
 December-aligned (December 1 of year 0 through November 30 of year L), so the
 exclusion ends exactly on June 1 of year 1 and the first unit opens there. The
 trailing June–November fragment of year L is discarded, leaving L − 1 units
@@ -173,12 +176,12 @@ each objective's **annual metric** on every (realization × year) unit. Stage
 | 2 | `nyc_delivery_deficit_p99_pct` | CVaR₉₀ of weekly deficit % within the year | **worst-1st-percentile unit-year** (P99) | MIN | 10.0 | Quinn et al. 2017 (WP1), 2018; Trindade/Gold worst-1 % cost |
 | 3 | `montague_flow_reliability_annual` | failure-year indicator, ≥ 3 failing weeks (`mean_w(flow) < 1131.05`) | frequency of non-failure years | MAX | 0.05 | as #1 |
 | 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | 10.0 | as #2 |
-| 5 | `trenton_flow_reliability_annual` | failure-year indicator, ≥ 1 failing week vs 1938.95 MGD | frequency of non-failure years | MAX | 0.05 | as #1 |
+| 5 | `trenton_flow_deficit_p99_pct` | CVaR₉₀ of weekly Trenton deficit % (vs 1938.95 MGD) within the year | worst-1st-percentile unit-year | MIN | 10.0 | as #2 |
 | 6 | `downstream_flood_exceedance_annual` | `Σ_days max_gauges (stage − minor)⁺` in the year (ft·days; `flood_objective_diagnostics.md`) | **mean across unit-years** (expected annual flood exceedance) | MIN | 0.3 | Trindade expected-cost form; Quinn 2017 caution |
 | 7 | `nyc_storage_min_p01_pct` | annual minimum of daily aggregate NYC storage % | **1st-percentile unit-year** | MAX | 5.0 | WP1 pattern (Quinn 2017/2018); Hamilton 2022 Q-of-max |
 | 8 | `nj_delivery_reliability_annual` | failure-year indicator, ≥ 1 failing week vs the NJ delivery criterion | frequency of non-failure years | MAX | 0.05 | as #1 |
 
-The ε column is the campaign vector [0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0,
+The ε column is the campaign vector [0.05, 10.0, 0.05, 10.0, 10.0, 0.3, 5.0,
 0.05] in native metric units (`src/objectives_ensemble.py::_ANNUAL_REGISTRY_SPEC`,
 `config.get_epsilons()`), one shared precision per objective family, derived in
 `epsilon_calibration_experiment.md` (SI Text S5). ε enters Borg at runtime, so
@@ -195,11 +198,9 @@ it stays registered as an inactive diagnostic (`downstream_flood_days_annual_p99
   criterion combines a **static goalpost** (§0) with a **failing-week count
   k** (`_DEFAULT_FAILURE_K`). k is 3 for NYC delivery and Montague flow, so a
   failure year is a month-scale shortfall rather than an isolated off week,
-  and 1 for Trenton and NJ, where a larger k saturates the metric toward 1.0.
-  The goalposts are anchored and k is a convention screened for saturation per
+  and 1 for NJ delivery. The goalposts are fixed and k is a convention screened for saturation per
   design composition (`framing_convention_diagnostics.md` §1, no shipped k
-  saturates in either composition, rankings stable to k ± 1, Trenton k of 1
-  binding).
+  saturates in either composition, rankings stable to k ± 1).
 - *The long-record design needs no special case.* Its record is scored as
   consecutive annual units with inherited state, exactly the treatment of
   Quinn et al. (2018), who slice one continuous 1000-yr record into 1-yr units
@@ -213,7 +214,7 @@ it stays registered as an inactive diagnostic (`downstream_flood_days_annual_p99
   units (Quinn's WP1 used 1000). Estimator noise at the campaign unit count is
   measured directly by the ensemble-size library
   (`ensemble_size_diagnostics.md`).
-- *Weekly bins re-anchor inside every unit-year.* Each Jun–May unit is
+- *Weekly bins restart inside every unit-year.* Each Jun–May unit is
   resampled to weeks independently, so a unit holds 53 bins with one short
   (1–2-day) trailing bin that carries full weight in the failing-week counts
   and the within-year CVaR₉₀ pools (measured effect on failing-week counts
@@ -233,10 +234,10 @@ annual-unit quantities in search and re-evaluation.
 
 **Design mapping.** All three designs use this same two-layer scheme. The
 **historic design** enters it as N = 1 over the consecutive FFMP-year units of
-its single 78-yr trace (77 metric-bearing units; prevailing-practice reference,
+its single 78-yr record (77 metric-bearing units; prevailing-practice reference,
 Giuliani & Castelletti 2016). In McPhail terms stage (i) is T1-threshold
 (reliability) or T1-absolute (magnitude and tail) and stage (ii) is T3
-frequency or expectation for #1/3/5/6 and T2 tail percentile for #2/4/7. The
+frequency or expectation for #1/3/6/8 and T2 tail percentile for #2/4/5/7. The
 `hazard_filling_stationary` sample's deliberate probability distortion relative
 to the generator is not corrected, and cross-design comparison rests entirely
 on the common re-evaluation (§3).
@@ -246,8 +247,8 @@ on the common re-evaluation (§3).
 ## 3. Re-evaluation, the held-out metric set
 
 The three designs differ only in the search ensemble. They are compared once,
-by re-evaluating every resulting Pareto-approximate set on one common held-out
-test ensemble E_test with one fixed metric set. Only at re-evaluation are
+by re-evaluating every resulting Pareto-approximate set on one common
+re-evaluation ensemble E_test with one fixed metric set. Only at re-evaluation are
 differences attributable to scenario design rather than to a moving measuring
 stick (McPhail et al. 2020, composition moves robustness values more than
 rankings).
@@ -263,8 +264,7 @@ makes the cross-design comparison commensurable is that E_test is identical
 across all designs, not that it is probability-faithful. The held-out
 re-evaluation removes the evaluation bias of scoring each design on its own
 ensemble, and selection bias is not corrected, because it is the quantity the
-experiment measures (Bartholomew & Kwakkel 2020). No explicit scenario
-weighting is used anywhere, in search or in re-evaluation.
+experiment measures (Bartholomew & Kwakkel 2020).
 
 **The per-SOW objective matrix is persisted.** Re-evaluation persists the
 (solution × SOW × objective) matrix in natural units (`reeval_raw` plus a
@@ -318,8 +318,7 @@ In McPhail terms T1 is satisfaction of constraints, T2 all states, and T3
 frequency, applied to the search objective recomputed per state. Pooling each
 θ's realizations' unit-years through the unit operator is the within-state
 collapse. Natural variability inside a state enters through the statistic's
-own definition, exactly as it does during search, so there is no separate
-within-SOW risk-attitude knob to choose or record.
+own definition, exactly as it does during search.
 
 **Why the SOW is the unit.** The construction matches the Triangle lineage,
 whose objectives are likewise ensemble statistics per state (Herman et al.
@@ -335,7 +334,7 @@ Bartholomew & Kwakkel 2020). Three reasons make it right here too.
   ±2.2 pp is 0.5/√500, a SOW-unit standard error on the 500 re-evaluated SOWs.
   Bonham et al. (2024)'s 50–300 convergence result is measured on a flat
   ensemble and so bounds N_θ, not R.
-- One unit everywhere. The incumbent-relative regret family (§3.2b), scenario
+- One unit everywhere. The regret family (§3.2b), scenario
   discovery's failure labels, and the attainability screen all consume the
   same per-SOW J_i(x, θ).
 
@@ -351,16 +350,16 @@ Ranking agreement is summarized with Kendall's τ_b computed across the design
 rankings these metrics induce, i.e. whether the metrics rank the scenario
 designs the same way (Herman et al. 2015; McPhail et al. 2018, 2020).
 
-### 3.2b Incumbent-relative regret (co-primary; answers RQ1)
+### 3.2b Regret (co-primary; answers RQ1)
 
 RQ1 asks whether re-optimized policies improve some outcomes without degrading
 others below current performance. A mean improvement can be comfortably
 positive while the policy is badly worse than the status quo in a third of
-futures. The regret family reports the signed incumbent advantage through its
+futures. The regret family reports the signed advantage over the current FFMP policy through its
 one-sided halves (`regret_*__` and `gain_mean__`) plus unit-free frequencies,
 all on the same per-SOW objective values as the primary metric.
 
-**Reference.** The incumbent 2017 FFMP policy, evaluated in the same SOW.
+**Reference.** The current FFMP policy, evaluated in the same SOW.
 McPhail et al. (2018) §3.1 license exactly this T1 (a baseline decision
 alternative's performance for a given scenario in place of the best
 alternative's) without naming, tabulating, or testing it, so this study makes
@@ -382,14 +381,14 @@ values).
   scalar role. `harm_freq__{obj}`, `party_harm_freq__{party}` (a disjunction
   over a Decree party's objectives, because under unanimity a loss is not
   compensable and so is never a sum), `no_harm_freq` (weak Pareto improvement
-  on the incumbent), `no_harm_freq_tau`, and `n_degraded_mean`.
+  on the current FFMP policy), `no_harm_freq_tau`, and `n_degraded_mean`.
 
 **Restriction to the adverse subset is McPhail's T2.** Their undesirable
 deviations metric (Kwakkel et al. 2016b) decomposes as T1 regret from median,
 T2 worst half, T3 sum. Ours is that construction with the reference changed
-from the policy's own median to the incumbent. A mean of a clipped quantity
-over all scenarios collapses toward zero when policies mostly beat the
-incumbent, but a statistic computed on the sign-selected subset does not.
+from the policy's own median to the current FFMP policy. A mean of a clipped quantity
+over all SOWs collapses toward zero when policies mostly beat
+it, but a statistic computed on the sign-selected subset does not.
 
 **No max regret.** Bonham et al. (2024) show regret families need 400+
 scenarios and never converge on extreme-of-extremes operators, and McPhail et
@@ -398,8 +397,8 @@ re-evaluated SOWs rests on about 50 worst states, a fixed-quantile operator far
 from that degeneracy.
 
 **Natural units, and no cross-objective magnitude scalar.** Dividing by the
-incumbent's own per-state value is degenerate for this objective set. Flood
-exceedance is exactly 0 in a share of states and both deficit tails are 0 in
+current FFMP policy's own per-state value is degenerate for this objective set. Flood
+exceedance is exactly 0 in a share of states and the deficit tails are 0 in
 wet ones, so the cell would be dropped, and the dropped cells are the benign
 ones, biasing the estimator toward the adverse subset. Herman et al. (2015)
 additionally show the normalized-deviation form selects poor-baseline solutions
@@ -407,7 +406,7 @@ as a mathematical artifact. Natural units dissolve both problems. Neither
 published scale is usable, because Cohen et al. (2021) normalize on the
 per-scenario span to a perfect-foresight optimum (one MOEA run per scenario)
 and Sunkara et al. (2023) rescale over the alternative set, which is
-design-coupled. An optional fixed scale (`incumbent_spread`, the incumbent's
+design-coupled. An optional fixed scale (`incumbent_spread`, the current FFMP policy's
 q90 − q10 over E_test) is implemented as a scoring-time sensitivity and is
 never the reported primary.
 
@@ -425,14 +424,14 @@ files and `k` is swept over `REGRET_TAU_GRID` (`scripts/main/compare_designs.py`
 for the reason the satisficing criteria are swept, because a single tolerance
 could manufacture or hide the whole RQ1 answer (Quinn et al. 2020). The rules
 that fix `k`, the ladder shape, the noise floor, and the discrimination band are
-specified in `regret_tolerance_diagnostics.md`. No anchor may be read off the
+specified in `regret_tolerance_diagnostics.md`. No tolerance may be read off the
 distribution of candidate-policy regret, because that is the quantity under
 test.
 
 **Why this is not redundant with satisficing.** The satisficing criteria are
-fixed scalars anchored on the incumbent's attainment
-(`robustness_threshold_diagnostics.md`), whereas the regret bar is the
-incumbent's performance in that SOW and moves with the forcing. Where a fixed
+fixed scalars set by the current FFMP policy's attainment
+(`robustness_threshold_diagnostics.md`), whereas the regret bar is
+its performance in that SOW and moves with the forcing. Where a fixed
 criterion drives the domain criterion to 0 or 1 for every policy, satisficing
 ties everything (Bonham et al. 2024's saturation failure mode) and regret still
 separates policies.
@@ -442,14 +441,14 @@ are reported as the endpoint policy's regret, the full
 `(sat_multivariate_sow, no_harm_freq_tau)` cloud, the per-design non-dominated
 frontier in that plane, and the per-objective natural-unit drill-down. This is
 the study's analogue of Bartholomew & Kwakkel's (2020) price-of-robustness
-measurement, against a fixed external incumbent per SOW rather than by
+measurement, against the current FFMP policy per SOW rather than by
 hypervolume against reference scenarios (which would reintroduce the
 pooled-reference-set bias rejected in §4.3). A severity decomposition over
 terciles of the dominant forcing factor `m` (|ρ_S| = 0.91–0.98 on all eight
 objectives) tests whether any price is paid in the benign futures, an insurance
 premium that is a finding rather than a failure.
 
-**Degeneracy guard.** A policy scores zero regret by being the incumbent,
+**Degeneracy guard.** A policy scores zero regret by being the current FFMP policy,
 which is reachable because the FFMP baseline lies inside the searched DV
 space. Regret is therefore never reported without `gain_mean` beside it.
 
@@ -459,7 +458,7 @@ Regret has four possible references, and exactly one is computed here.
 
 | Reference | Question it answers | Status here |
 |---|---|---|
-| The incumbent policy, per SOW | how much worse off than under current rules | **computed** (§3.2b) |
+| The current FFMP policy, per SOW | how much worse off than under current rules | **computed** (§3.2b) |
 | The best policy in the evaluated set, per SOW (Savage; Herman R2) | whether the wrong policy was picked from the archive | excluded |
 | The same policy in a baseline SOW (Herman R1; Kasprzyk et al. 2013) | how wrong the assumptions about the future were | not computed |
 | A perfect-foresight optimum, per scenario (Cohen et al. 2021) | what imperfect information cost | not computed |
@@ -471,7 +470,7 @@ P99 deficit operators. Herman R1 and the Kasprzyk et al. (2013) percent
 deviation are within-policy, across-SOW sensitivity measures whose reference is
 the same solution's value in a baseline state of the world, not a status-quo
 policy, so they answer a different question from RQ1 and are not the precedent
-for the incumbent comparison (that chain is McPhail et al. 2018 §3.1 for the
+for that comparison (that chain is McPhail et al. 2018 §3.1 for the
 reference, Herman et al. 2015 for the functional shape, Kwakkel et al. 2016b
 for the adverse-subset construction). Cohen et al. (2021) baseline regret would
 require one perfect-foresight MOEA run per scenario, and no perfect-foresight
@@ -493,7 +492,7 @@ is bounded above by the attainable fraction, so the screen sets the ceiling
 against which design differences are read (precedent, Shavazipour et al. 2021
 found 23 % of their test scenarios unwinnable). It is an empirical
 attainability bound over the evaluated policy pool, not a per-scenario oracle.
-The codebase separates `SEARCH_ENSEMBLE_SPEC` from the common test ensemble
+The codebase separates `SEARCH_ENSEMBLE_SPEC` from the common re-evaluation ensemble
 with a selection-bias guard (Bonham et al. 2024) that raises if they coincide.
 
 ---

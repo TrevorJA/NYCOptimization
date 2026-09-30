@@ -444,7 +444,7 @@ REG_META = {
 #: The incumbent, flat across every SOW: reliability 0.87, flood 1.0 ft-days/yr.
 REG_BASELINE = (0.87, 1.0)
 
-#: Per-SOW values of a harmful vs a benign SOW. The shortfalls against the
+#: Per-SOW values of a high-regret vs a low-regret SOW. The shortfalls against the
 #: incumbent (0.27 reliability, 3.5 ft-days) exceed even k = 10 tolerance
 #: rungs on the ANNUAL epsilons (10 * 0.02 = 0.2; 10 * 0.3 = 3.0), so the
 #: tolerance sweep cannot saturate and its monotonicity is tested on a live
@@ -454,17 +454,18 @@ REG_GOOD = (0.95, 0.40)
 
 
 def _write_regret_run(out_dir: Path, harmful_sows: int) -> None:
-    """One run whose solutions harm the incumbent in ``harmful_sows`` of the SOWs.
+    """One run whose solutions incur regret in ``harmful_sows`` of the SOWs.
 
-    Solution ``sid`` harms the first ``max(0, harmful_sows - sid)`` SOWs, so the
-    per-run "best" policy is well defined and designs are separable.
+    Solution ``sid`` incurs regret in the first ``max(0, harmful_sows - sid)``
+    SOWs, so the per-run "best" policy is well defined and designs are
+    separable.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     records = []
     for sid in range(REG_N_SOL):
         n_bad = max(0, harmful_sows - sid)
         for sow in range(REG_N_SOW):
-            # Worse than the incumbent on BOTH objectives in a harmful SOW.
+            # Worse than the incumbent on BOTH objectives in a high-regret SOW.
             rel, flood = REG_BAD if sow < n_bad else REG_GOOD
             records.append((sid, sow, REG_OBJS[0], rel))
             records.append((sid, sow, REG_OBJS[1], flood))
@@ -502,7 +503,7 @@ def regret_tree(tmp_path_factory):
     for di, design in enumerate(designs):
         _write_regret_run(
             root / design / slug / "reeval" / REG_TAG / "seed_00",
-            harmful_sows=3 - di,          # design 0 harms more often than design 1
+            harmful_sows=3 - di,          # design 0 incurs regret more often
         )
     runs = cd.discover_runs(FORMULATION, REG_TAG, None, root)
     return {"root": root, "designs": designs, "runs": runs}
@@ -517,7 +518,7 @@ def test_regret_sweep_covers_every_run_and_tolerance(regret_tree):
 
 
 def test_no_harm_frequency_is_monotone_in_the_tolerance(regret_tree):
-    """A wider tolerance cannot make FEWER states of the world harm-free."""
+    """A wider tolerance cannot make FEWER states of the world low-regret."""
     sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
     for (design, draw, seed), g in sweep.groupby(["design", "draw", "seed"]):
         g = g.sort_values("tau_k")
@@ -526,11 +527,11 @@ def test_no_harm_frequency_is_monotone_in_the_tolerance(regret_tree):
 
 
 def test_regret_separates_designs_at_zero_tolerance(regret_tree):
-    """The design that harms the incumbent in fewer SOWs must score higher.
+    """The design that incurs regret in fewer SOWs must score higher.
 
-    Design 0's best policy harms 0 SOWs (sid 3 of a 3-harm run), as does design
-    1's -- so the discriminating statistic here is the MEDIAN over the run's
-    policies, which is exactly why both are carried.
+    Design 0's best policy incurs regret in 0 SOWs (sid 3 of a 3-SOW regret
+    run), as does design 1's -- so the discriminating statistic here is the
+    MEDIAN over the run's policies, which is exactly why both are carried.
     """
     sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
     at0 = sweep[sweep["tau_k"] == 0.0].set_index("design")
@@ -565,7 +566,7 @@ def test_severity_decomposition_skips_when_no_forcing_is_staged(regret_tree):
 
 
 def test_plane_points_pair_both_axes_from_the_same_policy(regret_tree):
-    """Robustness and no-harm must be read off ONE policy or the claim is empty."""
+    """Robustness and low-regret must be read off ONE policy or the claim is empty."""
     loaded = cd.load_runs(regret_tree["runs"])
     pts = cd.regret_plane_points(loaded)
     assert not pts.empty

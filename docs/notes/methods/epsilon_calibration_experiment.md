@@ -13,7 +13,7 @@ al. (2013). Manuscript statement in Section 3.2.2 and SI Text S5.
 
 ## Adopted vector
 
-`[0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05]` in registry order, one shared
+`[0.05, 10.0, 0.05, 10.0, 10.0, 0.3, 5.0, 0.05]` in registry order, one shared
 precision per objective family (reliabilities 0.05, deficit-P99s 10.0 % of
 target, flood exceedance 0.3 ft·d/yr, storage P01 5.0 % of capacity). Derived
 in two stages.
@@ -56,7 +56,7 @@ Scripts `scripts/supplemental/epsilon_calibration_{run,figures}.py`, launcher
 
 ### Stage 2, family coarsening by archive cardinality
 
-Ensemble-averaged objectives are far smoother than the single trace, so
+Ensemble-averaged objectives are far smoother than the single record, so
 floor-level precisions over-resolve converged ensemble fronts.
 `scripts/supplemental/epsilon_ensemble_refilter.py` (launcher
 `workflow/supplemental/epsilon_ensemble_refilter.sh`, outputs
@@ -68,7 +68,7 @@ The adopted vector is the candidate whose largest merged front stays inside the
 re-evaluation sizing in force at calibration (1,000 to 1,200 policies; the
 campaign caps re-evaluation at 2,000) while every trade-off axis keeps its span
 (`grouped_axis_coverage` tables and two-panel parallel-axes figures). The
-reliability family is the dominant cardinality lever and the deficit pair the
+reliability family is the dominant cardinality lever and the deficit family the
 secondary one. Flood stays at its floor value 0.3 because production fronts
 span only a few flood ε-boxes, so flood-ε cardinality effects are box-boundary
 placement artifacts rather than resolution. Storage stays at 5.0 (a

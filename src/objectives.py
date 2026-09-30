@@ -22,8 +22,9 @@ Contracts:
   diagnostics).
 - Active flood metric = magnitude-weighted downstream flood exceedance
   (ft-days/yr at the worst tail gauge); day counts are diagnostics.
-- Decree goalposts are the static 1954 quantities (NYC 800 MGD; Montague
-  1131.05 MGD; Trenton 1938.95 MGD), never the live FFMP `mrf_target`.
+- Goalposts are static: the 1954 Decree quantities (NYC 800 MGD; Montague
+  1131.05 MGD) and the 1938.95 MGD Trenton flow target, never the live FFMP
+  `mrf_target`.
 - NYC/NJ delivery is scored against the running-average entitlement
   `min(demand, allowance)` (`_delivery_entitlement`), with the allowance bank
   accrued at the static baseline cap (a policy cannot lower its own goalpost).
@@ -552,24 +553,26 @@ def _montague_flow_deficit_max_pct(data: dict) -> float:
 
 
 ###############################################################################
-# Metric Functions — Trenton flow Decree (target = 1938.95 MGD)
+# Metric Functions — Trenton flow target (3000 cfs = 1938.95 MGD)
 ###############################################################################
-# Lower-basin flow obligation; Trenton flow also proxies salt-front repulsion.
-
-
-def _trenton_flow_reliability_weekly(data: dict) -> float:
-    """Fraction of weeks weekly-mean Trenton flow >= 1938.95 MGD Decree target. [0, 1]."""
-    return _flow_reliability_weekly(data["major_flow"]["delTrenton"], TRENTON_DECREE_TARGET_MGD)
+# Lower-basin flow target that repels the salt front from the Philadelphia and
+# Camden intakes. Salt-front intrusion responds to the depth and persistence
+# of low flow, so the active metric is the deficit tail, not the failure count.
 
 
 def _trenton_flow_deficit_cvar90_pct(data: dict) -> float:
-    """DIAGNOSTIC: CVaR90 of weekly Trenton flow deficit, % of Decree target. [0, 100]."""
+    """CVaR90 of weekly Trenton flow deficit, % of the flow target. [0, 100]."""
     return _cvar_worst_mean(
         _weekly_flow_deficit_pct(
             _metric_window(data["major_flow"]["delTrenton"]),
             TRENTON_DECREE_TARGET_MGD,
         ).values
     )
+
+
+def _trenton_flow_reliability_weekly(data: dict) -> float:
+    """DIAGNOSTIC: fraction of weeks weekly-mean Trenton flow >= 1938.95 MGD. [0, 1]."""
+    return _flow_reliability_weekly(data["major_flow"]["delTrenton"], TRENTON_DECREE_TARGET_MGD)
 
 
 ###############################################################################
@@ -683,15 +686,15 @@ def _register(name, direction, epsilon, description, func):
 
 # --- NYC water supply (Decree right = 800 MGD) ---
 _register("nyc_delivery_reliability_weekly", "maximize", 0.07,
-          f"Frac of weeks NYC delivery >= 99% of the running-avg entitlement "
+          f"Frac of weeks NYC diversion >= 99% of the running-avg entitlement "
           f"(min(demand, allowance); {NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree right)",
           _nyc_delivery_reliability_weekly)
 _register("nyc_delivery_deficit_cvar90_pct", "minimize", 1.5,
-          f"CVaR90 of weekly NYC delivery deficit, % of "
+          f"CVaR90 of weekly NYC diversion deficit, % of "
           f"{NYC_DECREE_DIVERSION_CAP_MGD:.0f} MGD Decree cap [0-100]",
           _nyc_delivery_deficit_cvar90_pct)
 _register("nyc_delivery_deficit_max_pct", "minimize", 3.0,
-          "DIAGNOSTIC: worst-week NYC delivery deficit, % of Decree cap [0-100]",
+          "DIAGNOSTIC: worst-week NYC diversion deficit, % of Decree cap [0-100]",
           _nyc_delivery_deficit_max_pct)
 
 # --- New Jersey water supply (D&R Canal diversion; active 8th objective) ---
@@ -713,14 +716,15 @@ _register("montague_flow_deficit_max_pct", "minimize", 3.0,
           "DIAGNOSTIC: worst-week Montague flow deficit, % of Decree target [0-100]",
           _montague_flow_deficit_max_pct)
 
-# --- Trenton flow Decree (lower-basin / NJ obligation; target = 1938.95 MGD) ---
-_register("trenton_flow_reliability_weekly", "maximize", 0.0003,
-          f"Frac of weeks Trenton weekly-mean flow >= "
-          f"{TRENTON_DECREE_TARGET_MGD:.0f} MGD Decree target",
-          _trenton_flow_reliability_weekly)
+# --- Trenton flow target (lower-basin salt-front goalpost; 1938.95 MGD) ---
 _register("trenton_flow_deficit_cvar90_pct", "minimize", 0.03,
-          "DIAGNOSTIC: CVaR90 of weekly Trenton flow deficit, % of Decree target [0-100]",
+          f"CVaR90 of weekly Trenton flow deficit, % of "
+          f"{TRENTON_DECREE_TARGET_MGD:.0f} MGD flow target [0-100]",
           _trenton_flow_deficit_cvar90_pct)
+_register("trenton_flow_reliability_weekly", "maximize", 0.0003,
+          f"DIAGNOSTIC: frac of weeks Trenton weekly-mean flow >= "
+          f"{TRENTON_DECREE_TARGET_MGD:.0f} MGD flow target",
+          _trenton_flow_reliability_weekly)
 
 # --- Downstream flood exposure (any of Hale Eddy / Fishs Eddy / Bridgeville) ---
 # ACTIVE metric = magnitude-weighted exceedance (flood_objective_diagnostics.md);

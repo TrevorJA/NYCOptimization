@@ -6,11 +6,11 @@
 
 ## 1. Purpose
 
-Five campaign choices inside the hazard-filling design are conventions unless measured: the **selection rule** that places N members over the hazard manifold, the **normalization bounds** that define the absolute selection geometry, the **retained axis set** (all non-degenerate descriptors minus near-duplicates at |ρ_S| ≥ 0.95), the **selection axis set** among named alternatives, and the **ensemble size N**. This experiment measures all five on a real candidate pool, entirely at the selection level — no system simulation — so it runs on a laptop test pool and scales unchanged to the production pool on HPC. It backs four SI claims:
+Five campaign choices inside the hazard-filling design are conventions unless measured: the **selection rule** that places N members over the hazard manifold, the **normalization bounds** that define the absolute selection geometry, the **retained axis set** (all non-degenerate descriptors minus near-duplicates at |ρ_S| ≥ 0.95), the **selection axis set** among named alternatives, and the **ensemble size N**. This experiment measures all five on a real candidate ensemble, entirely at the selection level — no system simulation — so it runs on a laptop test pool and scales unchanged to the production pool on HPC. It backs four SI claims:
 
 1. The campaign selector administers the intervention at strength (coverage, tail enrichment) without pathologies (near-duplicates, outlier fixation, atom mis-handling) relative to defensible alternatives.
 2. The robust normalization bounds (p1/p99) stabilize the selection geometry, and the design's headline properties are not artifacts of the bounds choice.
-3. The full retained axis set delivers the design's per-axis marginal coverage guarantee, the selection is not hostage to any single correlated axis, and the implicit weighting that correlated axes induce in the snap distance is characterized (a disclosed non-issue, not a correction).
+3. The full retained axis set delivers the design's per-axis marginal coverage guarantee, the selection is not hostage to any single correlated axis, and the implicit weighting that correlated axes induce in the selection distance is characterized (a disclosed non-issue, not a correction).
 4. The selection axis set is chosen on measured redundancy of the full descriptor set (the candidate axes plus the hazard-image supplement, `scenario_design_methods.md` §3.3) and on the tail coverage each named set delivers on every descriptor, including those it does not select on; window-edge truncation of the scored drought events is reported alongside.
 
 ## 2. Selection rules compared
@@ -20,27 +20,27 @@ All rules select N members from the same pool sub-image, normalized once with th
 | Rule | Construction | Role |
 |---|---|---|
 | `random` | Without replacement | The null every designed rule must beat (many-seed null band). |
-| `lhs_nn` | LHS anchors + greedy nearest-unused-neighbor snap | The wired status-quo selector. |
-| `lhs_assign` | Same anchors, optimal one-to-one assignment (Hungarian) | Isolates the greedy snap's order-dependence: same plan, globally optimal pairing. |
-| `maximin` | Greedy maximin distance (Kennard–Stone type; Johnson et al. 1990) | The DOE-standard comparator; anchor-free but known to load the hull. |
-| `eps_cell` | Grid the unit box at the coarsest resolution with ≥ N occupied cells; draw N occupied cells uniformly; one representative per cell (nearest cell center) | Uniform over the manifold's *occupied support* at resolution ε — no anchor can land off the manifold; one-per-cell separation guarantee. Coverage analogue of ε-dominance archiving (Laumanns et al. 2002). |
+| `lhs_nn` | LHS targets + greedy nearest-unused-neighbor snap | The wired selector. |
+| `lhs_assign` | Same targets, optimal one-to-one assignment (Hungarian) | Isolates the greedy snap's order-dependence: same plan, globally optimal pairing. |
+| `maximin` | Greedy maximin distance (Kennard–Stone type; Johnson et al. 1990) | The DOE-standard comparator; target-free but known to load the hull. |
+| `eps_cell` | Grid the unit box at the coarsest resolution with ≥ N occupied cells; draw N occupied cells uniformly; one representative per cell (nearest cell center) | Uniform over the manifold's *occupied support* at resolution ε — no target can land off the manifold; one-per-cell separation guarantee. Coverage analogue of ε-dominance archiving (Laumanns et al. 2002). |
 
-Anchor-based rules face the manifold-support problem: hazard axes are structurally dependent (run theory: deficit ≈ duration × intensity), so part of the unit box is unoccupied and anchors placed there must snap. The snap-distance distribution measures that cost; `maximin` and `eps_cell` are the anchor-free comparators.
+Target-based rules face the manifold-support problem: hazard axes are structurally dependent (run theory: deficit ≈ duration × intensity), so part of the unit box is unoccupied and targets placed there must snap. The target-displacement distribution measures that cost; `maximin` and `eps_cell` are the target-free comparators.
 
 ## 3. Metric battery
 
-The design's defining metrics (minimax distance relative to the pool, per-axis Kolmogorov–Smirnov distance, minimum-spanning-tree edge lengths, per-axis span, nearest-member redistribution and effective sample size) and the certified exact-assignment gap of the `lhs_nn` rule are defined in `hf_design_metrics.md`. The battery below is the selector-comparison instrument; its cube-based L2-star discrepancy is kept for the rule comparison only. Snap distances are the exact target-to-member pairing of the greedy rule (`subsample.lhs_nn_assignment`).
+The design's defining metrics (minimax distance relative to the pool, per-axis Kolmogorov–Smirnov distance, minimum-spanning-tree edge lengths, per-axis span, nearest-member redistribution and effective sample size) and the certified exact-assignment gap of the `lhs_nn` rule are defined in `hf_design_metrics.md`. The battery below is the selector-comparison instrument; its cube-based L2-star discrepancy is kept for the rule comparison only. Target displacements are those of the exact target-to-member pairing of the greedy rule (`subsample.lhs_nn_assignment`).
 
 Per (rule, seed), on the screened pool sub-image (`selection_metrics`, `per_axis_selection_metrics`):
 
 - **Coverage uniformity**: L2-star discrepancy in the absolute (campaign) and rank geometries, placed against the many-seed random null; MST edge statistics and minimum pairwise separation (near-duplicate guard) in absolute geometry.
-- **Per-axis marginal coverage** — the mechanism metric: LHS anchors stratify every axis into N bins regardless of dimension, so the design's coverage guarantee is per-axis marginal, not joint. Per axis in the campaign scaled coordinates: KS distance of the selected marginal to uniform, 1-D L2-star discrepancy, largest marginal gap, and the tail share above the pool P90 (unbiased ≈ 0.10).
+- **Per-axis marginal coverage** — the mechanism metric: LHS targets stratify every axis into N bins regardless of dimension, so the design's coverage guarantee is per-axis marginal, not joint. Per axis in the campaign scaled coordinates: KS distance of the selected marginal to uniform, 1-D L2-star discrepancy, largest marginal gap, and the tail share above the pool P90 (unbiased ≈ 0.10).
 - **Tail enrichment**: mean per-axis share above the pool P90 and the any-axis P90 corner share — the deliberate distribution shift, quantified.
-- **Snap behavior vs dimension**: snap-distance distribution and the distance-concentration ratio (mean snap distance / mean random pool-pair distance in the same space) — raw snap distances are not comparable across dimensions, the ratio is.
+- **Displacement vs dimension**: target-displacement distribution and the distance-concentration ratio (mean target displacement / mean random pool-pair distance in the same space) — raw displacements are not comparable across dimensions, the ratio is.
 - **Marginal distortion**: mean KS distance to the pool marginals.
 - **Dry zero-event atom**: pool share of windows with no SSI-6 ≤ −1 event, and each rule's selected share.
-- **Stability**: across-seed selected-set Jaccard per rule; anchor snap distances for the LHS rules.
-- **Selection invariance / implicit weighting**: Jaccard overlap of selected member IDs between the full-axis-set selection and leave-one-axis-out / add-one-axis-back variants; per-axis (and dry-vs-wet group) mean share of the squared snap displacement.
+- **Stability**: across-seed selected-set Jaccard per rule; target displacements for the LHS rules.
+- **Selection invariance / implicit weighting**: Jaccard overlap of selected member IDs between the full-axis-set selection and leave-one-axis-out / add-one-axis-back variants; per-axis (and dry-vs-wet group) mean share of the squared target displacement.
 
 On the descriptor set — the 8 candidate axes plus the 13 supplement descriptors (the two truncation flags excluded):
 
@@ -49,11 +49,15 @@ On the descriptor set — the 8 candidate axes plus the 13 supplement descriptor
 - **Attainment** of a selection axis: its tail share over the share an exact snap to uniform targets on the clipped p1–p99 range would give, $(p_{99} - p_{90})/(p_{99} - p_1)$; the minimum over the set's own axes is reported.
 - **Target displacement and reach**: the mean target-to-member displacement of the `lhs_nn` pairing, and the share of targets farther than 0.25 (scaled units) from every pool member.
 - **Nearest-member weights**: $n_{\text{eff}}/N$ of the Voronoi masses the pool assigns to the selected members (the measure statement of `hf_design_metrics.md` §5, computed with its helpers).
-- **Truncation**: the fractions of windows whose controlling drought event has a truncated onset or termination (the two supplement flags).
+- **Truncation**: the fractions of windows whose largest drought event has a truncated onset or termination (the two supplement flags).
+
+On the historical record:
+
+- **SSI fit check**: the record's SSI-6 under the reference fit, the two-parameter gamma per calendar month that every realization is transformed with. Per calendar month it reports the standard deviation, the count of values at or below −1 (the level a run-theory event must reach to qualify) and the count a standard normal gives, $n\,\Phi(-1)$. A fit that reproduces the record gives a standard deviation of 1 and a count near the expected one in every month.
 
 ## 4. Analysis blocks
 
-A. **Retained-set report and descriptor redundancy**: the axis screen (degenerate drop + near-duplicate dedupe at |ρ_S| ≥ 0.95) on the pool image, and the descriptor-redundancy statistics of §3 on the 21 descriptors (Spearman matrix, |ρ_S| ≥ 0.7 clusters, normal-score principal components) — a diagnostic, never used to reduce the set further. Table `descriptor_redundancy.csv`.
+A. **Retained-set report and descriptor redundancy**: the axis screen (degenerate drop + near-duplicate dedupe at |ρ_S| ≥ 0.95) on the pool image, and the descriptor-redundancy statistics of §3 on the 21 descriptors (Spearman matrix, |ρ_S| ≥ 0.7 clusters, normal-score principal components) — a diagnostic, never used to reduce the set further. Table `descriptor_redundancy.csv`. The SSI fit check of §3 on the historical record is table `ssi_fit_check.csv`.
 1. **Selector comparison** at the campaign bounds on the full retained set: designed rules × S seeds + a wide random null.
 2. **Normalization-bounds sweep**: designed rules re-run under (0, 100), (0.5, 99.5), (1, 99), (2, 98). The campaign choice is where tail enrichment and coverage stabilize; the full-range column documents the outlier-fixation failure mode.
 3. **Sub-pool draw stability**: the pool is randomly partitioned into disjoint halves — independent i.i.d. pools, since the pool is i.i.d. — and block 1 re-runs per half. Between-half spread is a zero-generation-cost stand-in for pool-re-roll (construction) variance.
@@ -64,7 +68,7 @@ E. **Selection invariance**: leave-one-axis-out and add-one-axis-back (campaign 
 
 **Truncation summary**: the pool fractions of windows with a truncated onset and with a truncated termination, the same fractions among the block-C selections of each named set (seed mean), and among the pool members in the top decile (above the pool p90) of each drought axis. Table `truncation_summary.csv`; no figure.
 
-**Figures** (SI): F1 selected members on the (dry, wet) magnitude plane per rule; F2 coverage vs the random null in both geometries; F3 tail enrichment + atom treatment; F4 snap distances + minimum separation; F5 the bounds sweep; F6 descriptor redundancy (|ρ_S| heatmap over the 21 descriptors, cluster tree with the near-duplicate and 0.7 cuts, normal-score PCA spectrum); F7 per-axis coverage and tail enrichment vs the null; F8 snap behavior vs dimension; F9 the (N × axis set) sizing surface; F10 selection invariance + implicit weighting; F11 the axis-set comparison (tail share of every named set on every descriptor, and the per-set statistics).
+**Figures** (SI): F1 selected members on the (dry, wet) magnitude plane per rule; F2 coverage vs the random null in both geometries; F3 tail enrichment + atom treatment; F4 target displacements + minimum separation; F5 the bounds sweep; F6 descriptor redundancy (|ρ_S| heatmap over the 21 descriptors, cluster tree with the near-duplicate and 0.7 cuts, normal-score PCA spectrum); F7 per-axis coverage and tail enrichment vs the null; F8 snap behavior vs dimension; F9 the (N × axis set) sizing surface; F10 selection invariance + implicit weighting; F11 the axis-set comparison (tail share of every named set on every descriptor, and the per-set statistics).
 
 ## 5. Findings
 
@@ -91,8 +95,8 @@ honest i.i.d. pools by the global-index seeding).
   `maximin` concentrates on the hull and over-selects the sparse zero-event
   corner; `eps_cell` under-enriches the tails.
 - **Per-axis mechanism holds on every axis**: every retained axis is both
-  better stratified than the null and tail-enriched above it. Snap distance
-  dilutes with dimension at fixed P (the expected anchor-to-nearest-member
+  better stratified than the null and tail-enriched above it. Target displacement
+  grows with dimension at fixed P (the expected target-to-nearest-member
   distance scales as P^(−1/m)).
 - **Enrichment is flat in N at the production pool size.** At P = 10⁶ the
   campaign-set minimum tail share is flat in N (0.27–0.29 from N = 50 to
@@ -121,6 +125,9 @@ honest i.i.d. pools by the global-index seeding).
   image and reportable post-hoc. Blocks D and E score two axis sets —
   campaign and full — the full set serving as the measured evidence for
   restricting selection; block C compares the five named sets.
+- **The SSI fit reproduces the historical record.** The record's SSI-6 has a
+  standard deviation of 1.00 in every calendar month, and 12 to 14 of the 78
+  or 79 values per month lie at or below −1 against 12.4 to 12.5 expected.
 - **Descriptor redundancy (production pools).** [value] clusters at
   |ρ_S| ≥ 0.7 over the 21 descriptors; participation ratio [value];
   [value] normal-score components reach 90% of the variance, led by
@@ -143,7 +150,7 @@ honest i.i.d. pools by the global-index seeding).
   `lhs_nn` — the seed/construction-stability SI evidence.
 
 Caveat for reading the tables: box-based L2-star structurally favors
-anchor/box-filling rules over manifold-support-filling rules, so F1 (the
+target/box-filling rules over manifold-support-filling rules, so F1 (the
 selection scatter) is the fair visual comparison.
 
 ## 6. Sizing
@@ -151,6 +158,6 @@ selection scatter) is the fair visual comparison.
 | Scale | Pool | Use |
 |---|---|---|
 | Laptop (test) | P ≈ 2,000–5,000, L = 10, stream-only (hazard image only) | Selector + bounds + N evidence; SI draft figures |
-| HPC (production) | The production candidate pool (P = 10⁶; §5) | Final SI figures on the campaign pool; records the per-axis tail share at the campaign selection set (m = 6, N = 300) on every draw |
+| HPC (production) | The production candidate ensemble (P = 10⁶; §5) | Final SI figures on the campaign pool; records the per-axis tail share at the campaign selection set (m = 6, N = 300) on every draw |
 
-The experiment reads only `hazard_image.npz` (never pool timeseries). The full battery on a synthetic 10⁶-row image at N = 300 (10 seeds, 50 null seeds, the default N ladder) took 45 min and a 3.2 GB peak working set on one workstation, 21 min of it in the bounds sweep and about 1 min in the descriptor blocks. N, seed counts, and the pool slug are environment-configured in the driver.
+The experiment reads only `hazard_image.npz` (never pool timeseries) and, for the SSI fit check, the historical record named in the pool's `_meta.json`. The full battery on a synthetic 10⁶-row image at N = 300 (10 seeds, 50 null seeds, the default N ladder) took 45 min and a 3.2 GB peak working set on one workstation, 21 min of it in the bounds sweep and about 1 min in the descriptor blocks. N, seed counts, and the pool slug are environment-configured in the driver.

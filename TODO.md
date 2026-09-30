@@ -47,28 +47,47 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 2. Campaign at N = 300 (`campaign_design.md` §4–6)
 
-- [ ] **[local]** Commit and push `NYCOptimization_scenario_generation` (dry-axis scoring
-  rule, supplement, image provenance). The main repo calls its interface from `71b3478`
-  on, so Anvil must pull both together.
 - [ ] **[HPC]** Pull all four repos on Anvil; check the SU balance (`mybalance`)
-  against the ~600k the budget assumes.
+  against the ~600k the budget assumes. The main repo calls the
+  `NYCOptimization_scenario_generation` interface of `6790a02` from `71b3478` on, so
+  pull both together.
 - [ ] **[HPC]** Recompute every hazard image under the June 1 dry-axis window before
   step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months` or
   any of the current `dry_scoring_rule`, `wet_scoring_rule` and
   `supplement_scoring_rule`):
   the P = 10⁶ pools are stream-only, so regenerate d0 and d1 per draw
   (`workflow/supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`);
-  then the step-03 selections; E_test's `hazard_image_subwindows.npz`
-  (`etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` after deleting the
-  old artifact and any leftover shard files); E_test's realization-level
-  `hazard_image.npz` (written by `gen_etest_merge.sh`; read by step 11, the
-  hazard-support decomposition, and `make_etest_subset.py`, which slices it into
-  the 500-SOW subset); and the cached `outputs/supplemental/historic_hazard_windows/`
+  then the step-03 selections; both E_test images come from the regeneration item
+  below; and the cached `outputs/supplemental/historic_hazard_windows/`
   (recomputes itself on the provenance mismatch). Afterwards rerun the readers:
   `compute_staged_hazard_image.py` for the Monte Carlo ensembles, the
   hazard-examples figure, `ensemble_size_hazard.sh`, `hazard_support_decomposition.sh`,
   `hazard_selector_diagnostics`, the E_test overlay, step 11, and
   `hf_design_metrics.sh` (Section 7).
+- [ ] **[HPC]** Regenerate E_test over the extended forcing box
+  (`src/etest.py::E_TEST_VOLUME_MULTIPLIER_MIN = 0.80`, `campaign_design.md` §5; pull both
+  repos, the main repo needs the `axis_bounds` interface of scengen). Move the pre-extension
+  staging aside first (`outputs/synthetic_ensembles/etest_kn_50yr_n25000*`: the generator
+  refuses to overwrite and `assert_staged_etest_contract` refuses the old box) together with
+  every `reeval/etest_kn_50yr_n25000*` leaf (the current-policy cubes are superseded). Then,
+  in order: `gen_etest_shards.sh` → `gen_etest_merge.sh` (writes the realization-level
+  image under the June 1 rules) → `prep_etest_chunks.sh` → `etest_hazard_image_shards.sh`
+  → `etest_hazard_image_merge.sh` → `python3 -m scripts.supplemental.make_etest_subset
+  --pool etest_kn_50yr_n25000` → `stage_etest_subset_baseline` per design env under
+  `etest_kn_50yr_n25000_first25ch` (step 05 with
+  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` per design) → the
+  dry-envelope production leg (next item) → `hazard_support_decomposition.sh` stage A.
+  About 0.35k SU (generation ~75 SU scaled from the pool rate, presim ~70, sub-window
+  image ≤ 100 core-h, three current-policy cubes ~100); one Anvil day of wall time.
+  Afterwards re-render manuscript Figure 3 and SI Figures S12–S16 from the as-built
+  E_test (`python -m scripts.supplemental.figures_forcing_parameterization` reads the
+  staged `forcing_profiles.npz`; the drawn box already carries the extended bound).
+- [ ] **[HPC]** Production leg of the dry-envelope diagnostic on the regenerated images:
+  `sbatch --export=ALL,NYCOPT_DRYENV_PRODUCTION=1 workflow/supplemental/dry_envelope.sh`
+  (reads `etest_kn_50yr_n25000/hazard_image_subwindows.npz` + `forcing_profiles.npz` and
+  `statpool_10yr_n1000000_d0/hazard_image.npz`; writes `dryenv_production_{bins,reference}.csv`
+  and figure `F2_dry_envelope_production`, the production confirmation of SI Figure S18 and
+  the numbers quoted in SI Text S6). Minutes on `shared`.
 - [ ] **[HPC]** After the pools are regenerated, run the selector diagnostic at
   production scale (`diagnose_hazard_selectors.py` on `statpool_10yr_n1000000_d0`,
   N = 300: descriptor redundancy, axis-set comparison, truncation summary;
@@ -91,13 +110,15 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Build QC on each restaged ensemble: `validate_staged_seasonality.py`
   and the per-axis tail-share record per hazfill draw; then step 05 baselines for
   both matched designs scenario-matched to d0 (`--search-ensemble`).
-- [ ] **[HPC]** Stage the 500-SOW E_test subset (login node, metadata only):
-  `python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000`,
-  then `stage_etest_subset_baseline` per design env under
-  `etest_kn_50yr_n25000_first25ch`.
 - [ ] **[HPC]** ε re-verification at N = 300: `epsilon_calibration.sh` per design.
   Go if every adopted entry lies above its N = 300 floor; otherwise raise it,
   re-pin τ in every env file, and record it in `epsilon_calibration_experiment.md`.
+- [ ] **[HPC]** Re-assess the `trenton_flow_deficit_p99_pct` ε before the next full-scale
+  search. It carries the deficit-family value (10.0) by default, but its policy spread
+  is far narrower than the Montague deficit's (P99 of 2–11 % of target across feasible
+  policies on local runs), so read its N = 300 floor and span from the same
+  `epsilon_calibration.sh` pass and give it its own value if the shared one leaves
+  under two ε boxes.
 - [ ] **[HPC]** Batched-search memory smoke: `bash workflow/submit_search_memory_smoke.sh`.
   Go if peak node memory ≤ ~217,000 MB and warm per-evaluation time ≤ 540 s + 20 %;
   otherwise batch 100 (memory miss) or re-price `campaign_design.md` §6 (time miss).
@@ -115,6 +136,12 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Seed 2 per design (500k NFE), then
   `extract_runtime_archive.py --merge --install` (installs `ffmp_obj8_merged.set`,
   the step-08/09 reference) and step 07 per seed.
+- [ ] **[local]** Before step 09: persist per-SOW matrices pooled over the leading 5 and 10
+  realizations of each SOW beside the R = 25 matrix (`src/chunk_reeval.py::_evaluate_unit`
+  computes them from the same unit tensor; extend `persist_reeval_raw` with an `r_prefix`
+  column and `robustness.load_raw` with a selector; `tests/test_chunk_reeval.py`). The
+  persisted matrix pools all 25 realizations, so the R-subsample (5/10/25) ranking-stability
+  curve of `campaign_design.md` §5 cannot be scored without it.
 - [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b on `shared`, 16 ranks × 8 cpus,
   batch 50, `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` on every
   05/08/09/09b/10 line (deliberately not in the env files). ~66k SU at the
@@ -127,32 +154,17 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 3. Diagnostics on the step-08/09 cube
 
-- [ ] **[!! DECISION NEEDED, affects the campaign]** The stored `.set` objective columns
-  predate the metric-window change and are not reproducible with the current code.
-  Measured 2026-09-11 by the transfer-evaluation path-consistency check (job 20576426,
-  30 policies, 10 per design, each re-evaluated on its OWN d0 ensemble):
-
-  | | at search time (`dc7e70b`, 2026-08-11/12) | now |
-  |---|---|---|
-  | `config.START_DATE` | `1945-10-01` | `1945-12-01` |
-  | `config.END_DATE` | `2022-09-30` | `2023-11-30` |
-  | `ENSEMBLE_START_DATE` | did not exist | `1945-12-01` |
-
-  The change is commit `a1e88bd` (2026-08-18, "align metrics on June 1"), which lands
-  AFTER the production searches. Signatures: `historic` stored reliabilities are
-  multiples of 1/76 where today's code gives 1/77 (one extra complete FFMP year); the
-  ensemble designs keep 9 unit-years but sample a 2-month-shifted slice, giving
-  systematic offsets of **1-4 epsilon** (worst 3.91 eps on `montague_flow_reliability_annual`,
-  medians up to 3.38 eps). Not pywrdrb LP jitter - the offsets are systematic and signed.
-  Evidence table: `outputs/supplemental/transfer_evaluation/tables/tev_path_consistency.csv`.
-
-  Consequences to decide on: (a) any figure or table that reads `.set` objective columns
-  and compares them to freshly computed values is mixing two metric windows; (b) the
-  adopted epsilon vector and the re-filtered set cardinalities (335/991/784) were derived
-  on the OLD window; (c) `campaign_design.md` cites post-refilter counts of 1,040/833/335
-  against 991/784/335 on disk, which may be a related vintage mismatch. The E_test
-  re-evaluation path is NOT affected (it simulates; it does not read stored columns).
-  The transfer-evaluation instrument sidesteps this by simulating all nine cells.
+- [ ] **[HPC + local]** The search-time `.set` data stays in place untouched and is
+  deleted only once the campaign has generated its replacement (Section 2, after
+  `extract_runtime_archive.py --merge --install`). Its objective columns were computed
+  on the metric window of `dc7e70b` (`START_DATE` 1945-10-01, `END_DATE` 2022-09-30),
+  before `a1e88bd` aligned the metrics on June 1, and sit 1 to 4 ε from what the current
+  code computes (`outputs/supplemental/transfer_evaluation/tables/tev_path_consistency.csv`).
+  Until the replacement exists: never compare stored `.set` objective columns with
+  freshly computed values; the adopted ε vector and the re-filtered cardinalities
+  (335/991/784 on disk, 1,040/833/335 in `campaign_design.md`) carry the old window
+  and are superseded by the N = 300 ε re-verification and re-filter of Section 2.
+  The E_test re-evaluation and the transfer evaluation simulate and are unaffected.
 
 - [x] **[HPC]** Transfer evaluation (supplemental, exploratory) — **DONE 2026-09-11**.
   All nine (source optimization x target ensemble) cells simulated through one path:
@@ -179,6 +191,11 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[local]** Satisficing thresholds: re-run `robustness_threshold_diagnostics.sh`
   and adopt final criterion values and the sweep-grid centre (open decision;
   placements are provisional until then).
+- [ ] **[local]** Satisficing criterion for `trenton_flow_deficit_p99_pct`: the 10 %
+  placement (FFMP drought-stage target) in `src/satisficing_criteria.py`,
+  `_DEFAULT_THRESHOLDS` and `RTD_RECOMMENDED_THRESHOLDS` has not been placed against
+  the incumbent's E_test cube; run `criteria_reanchoring.py` on the regenerated cube
+  and settle it with the other criteria.
 - [ ] **[local]** Framing diagnostic 3: OAT stringency + threshold-margin CDFs on the
   persisted cube (`framing_convention_diagnostics.md`).
 - [ ] **[HPC]** SI draw-sensitivity re-evaluation: a thinned subset of each matched
@@ -225,10 +242,7 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 5. Proposal revision follow-ups (2026-09-02)
 
-- [ ] **[local]** Figure labels to match `docs/terminology.md`: "no-harm frequency" → "low-regret frequency" (`src/plotting/regret_summary.py`, `regret_headline.py`, `factor_maps.py`, `factor_map_surfaces.py`, `src/figures/registry.py`); "delivery" → "diversion" in objective labels; "SSI-months" → "deficit-months" on hazard axes; "Probabilistic Sampling (PS)" → "Monte Carlo Sampling (MC)" in rendered legends (figs 01, 04, 05, 08).
-- [ ] **[HPC]** E_test at 50 realizations per SOW (proposal Section 3.5): regenerate or extend `etest_kn_50yr_n25000` to R = 50 for the 500 re-evaluated SOWs (25,000 realizations, 1.25M years); re-evaluation cost doubles to ~132k SU and the campaign total rises to ~489k SU (reserve ~18 %). Update `src/etest.py`, `campaign_design.md` §5–6, and the SI cost text.
-- [ ] **[local]** Zotero: add Hogarty (1970), Van Loon (2015), Fleig et al. (2006), Tijdeman et al. (2020), AghaKouchak et al. (2021), Brunner (2023), Brunner & Gilleland (2020) to collection `ISYGLK35` (currently only in the Paper 2 collection); OCR the Hogarty PDF and confirm its year (1969 vs 1970) and ICP case number.
-- [ ] **[local]** Reconcile `docs/notes/terminology.md` (older code-oriented vocabulary: "input space", "candidate pool", "incumbent regret", "test ensemble") with `docs/terminology.md`, which governs manuscript prose; the two currently conflict.
+- [ ] **[local]** Zotero: add Hogarty (1970), Van Loon (2015), Tijdeman et al. (2020), AghaKouchak et al. (2021), Brunner (2023), Brunner & Gilleland (2020) to collection `ISYGLK35` (currently only in the Paper 2 collection); OCR the Hogarty PDF and confirm its year (1969 vs 1970) and ICP case number.
 - [ ] **[local]** Decide capitalization across the two papers: proposal uses "Decree Parties" / "1954 Decree" (FFMP document form); the stochastic DRB manuscript uses "decree parties" / "1954 decree".
 
 ## 6. Proposal v2 review follow-ups (2026-09-28; Reed and Lau reviews)
@@ -241,17 +255,8 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
   re-evaluation hazard conditions lie inside the stationary candidate ensemble's range). Revisit
   only if the campaign shows re-evaluation failures concentrated in forcing regions whose hazards
   the stationary candidate ensemble cannot reach.
-- [ ] **[local]** Re-evaluation envelope on the dry side (Reed): `hazard_support_decomposition`
-  shows E_test's excursions beyond the stationary candidate ensemble are mostly flood-side and the
-  dry-side excursions are thin. Quantify E_test's drought hazards against the 1960s drought and the
-  candidate ensemble's dry tail, then decide whether the lower bound of the annual-volume axis
-  (currently the CMIP6 range widened by 25 %, about −13.5 %) needs a drier extension. If so,
-  update `src/etest.py`, `forcing_parameterization.md`, and the proposal's Section 3.5.1 numbers.
-- [ ] **[local]** Trenton flow deficit (Lau): no written rationale existed for a
-  reliability-only Trenton objective. Either record the rationale in `objective_definitions.md`
-  (Water Code target supported by DRBC-directed lower-basin reservoirs; single-trace ε 0.03 %
-  vs 1.5 % for Montague/NYC deficits) or add the objective; evaluate Lau's regional minimax
-  (worst of Montague and Trenton reliability) as an SI formulation variant.
+- [ ] **[local]** Lau's regional minimax (worst of the Montague and Trenton flow
+  objectives): decide whether to evaluate it as an SI formulation variant.
 - [ ] **[HPC]** Downstream-stress correlation of the hazard axes (asserted in proposal v1,
   never computed): the SI Text S3 diagnostic in item 4; the proposal now rests on the
   storage-conditioning and directed-release rationale until this exists.
@@ -260,7 +265,7 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
   "SSI-months" → "deficit-months"; needs the P = 10⁶ pool hazard image on Anvil);
   `hazard_examples` on the campaign HF ensemble; the methods diagram
   (`figures/manuscript/methods_diagram/methods_diagram_draft.pptx`: N = 300, MC, 500 SOWs ×
-  50 × 50 yr); and a planned FFMP operating-rules figure with the decision-variable groups
+  25 × 50 yr, volume axis to 0.80); and a planned FFMP operating-rules figure with the decision-variable groups
   marked (baseline only, from `src/plotting/policy_rules.py`).
 - [ ] **[local]** Port the v2 literature-review structure (overfitting and policy structure;
   the MORDM and DU-optimization lineage; the three ensemble-construction families) and the
@@ -291,45 +296,14 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
 
 ## 8. Hazard scoring review (2026-09-29)
 
-- [ ] **[local]** Bring the manuscript draft into line with the scoring code (line
-  numbers at `71b3478`):
-  - :111 says the metrics are not truncation-limited. 23% of windows have a
-    controlling event cut by a window edge.
-  - :135 says a straddling event is truncated and that events are captured at full
-    scale at re-evaluation. State the rule (every descriptor describes the part of the
-    event inside the scored window) and that E_test is scored on ten-year sub-windows.
-  - :137 gives no gamma parameter count (two-parameter, location zero, per calendar
-    month) and says six metrics are computed (8 axes and 15 supplement columns are).
-  - :139 has no rule for an event still open at the window end (it is scored).
-  - :153 and :167 attribute the phase division and both rates to Parry et al. (2016),
-    who define a termination rate only and do not end the phase at zero. Write
-    "adapted from" and name the development rate as this study's extension.
-  - :156 and :163 (Eqs. 3–4) need the truncated-phase branch: the index change from
-    the first or last scored month to the minimum over the elapsed months, zero when
-    the minimum lies on the window edge.
-  - :169 needs the precedent for the largest-deficit event, the sequent peak algorithm
-    as described by Fleig et al. (2006). Add Fleig et al. to the references.
-  - Define severity as the minimum index value, the peak intensity of McKee et al.
-    (1993). McKee supports the name magnitude (their Eq. 1) and never uses severity.
-  - :182 cites Olden and Poff (2003) for the rank-correlation screen. They reduce
-    indices by principal component analysis. Cite Dormann et al. (2013) for the 0.7
-    level and justify the 0.95 screen as preventing one concept entering the distance
-    twice.
-  - :208 (reference at :530) cites Minasny and McBratney (2006) as the analog of the
-    selector. Their strata are equal-probability quantiles of the candidates, so the
-    method reproduces the pool distribution. Cite it for the rank-space sensitivity
-    only.
-  - :212 carries numbers measured under the retired scoring.
-  - :459 lists event multiplicity as future work. Event and pulse counts are stored in
-    the supplement.
-- [ ] **[local]** Bring the supporting information draft into line (line numbers at
-  `71b3478`): :37 (gamma parameter count, open-event and truncation rules, the Parry
-  attribution, the Fleig citation, a stale 0.7 percent); :39 (Olden and Poff for the
-  Spearman screen); :43 (the Figure S2 caption says eight metrics, and the figure shows
-  21 descriptors with a principal component panel); :39, :45 and :47 (numbers from the
-  retired scoring). SI Text S3 gives redundancy as the reason for the axis count and
-  `scenario_design_methods.md` §3.3 gives tail enrichment. State one reason after the
-  axis set is fixed.
+- [ ] **[local]** Manuscript §3.1.3: the selection-diagnostic numbers (target
+  displacement across axis counts, the tail shares at $P = 10^6$) were measured under
+  the retired scoring; replace them from the production selector diagnostic.
+- [ ] **[local]** SI Text S3: the numbers in the redundancy-screen, selection-axes and
+  selection-invariance paragraphs were measured under the retired scoring; replace them
+  from the production selector diagnostic. SI Text S3 gives redundancy as the reason
+  for the axis count and `scenario_design_methods.md` §3.3 gives tail enrichment. State
+  one reason after the axis set is fixed.
 - [ ] **[local]** After the production selector diagnostic, add to the SI:
   - the truncation table (`truncation_summary.csv`: pool, selected-member and
     top-decile fractions of truncated onsets and terminations);
@@ -337,10 +311,6 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
     the participation ratio (`descriptor_redundancy.csv`, figure F6);
   - the axis-set table with tail shares on every descriptor for the chosen set and a
     random selection (`axis_set_comparison.csv`, figure F11);
-  - the SSI-6 fit check: historical standard deviation and count of values at or below
-    -1 by calendar month (1.00 and 12 to 14 under the two-parameter fit, 12.4
-    expected). No script writes this table. Add it to block A of
-    `diagnose_hazard_selectors.py`;
   - one sentence on the single-event description: among windows with two or more
     qualifying events the controlling event is also the deepest in 65%, the fastest
     developing in 21% and the fastest terminating in 21% (local sample of 4,000
@@ -351,21 +321,3 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
   rate labels, and in two of its four examples the shaded event was not the largest
   because a larger drought open at the window end had been dropped. State in the
   caption that an arrowhead marks an event cut by the window edge.
-- [ ] **[local]** SynHydro (`src/synhydro/droughts/ssi.py`, `get_drought_metrics`): an
-  event is written only after `end_drought_threshold_months` consecutive non-negative
-  months, so a qualifying drought still open when the series ends is never recorded.
-  Record it after the loop. The docstring says days with SSI > 0 and the code counts
-  months with SSI >= 0. scengen no longer calls this function.
-- [ ] **[local]** Correct the remaining misattributed citations. Olden and Poff (2003)
-  for a rank-correlation threshold or Parry et al. (2016) for both rates:
-  `docs/terminology.md` :11 and :43, `flood_objective_diagnostics.md` :99,
-  `framing_convention_diagnostics.md` :26 and :67, `supplemental_config.py` :127 and
-  :817, `src/factor_mapping.py` :65, and in scengen `diagnostics.py` :421, :442, :484
-  and `hazard_metrics.py` :11. `docs/study_motivation.md` attributes intensification and
-  recovery stages to Wu et al. (2024), whose methods section does not name them.
-- [ ] **[local]** Note consistency: `scenario_design_methods.md` and
-  `experimental_design.md` cite `ensemble_size_diagnostics.md` §7.1, §7.1a and §7.3,
-  but that note's §7 is the run sequence and the numbers are in §4–5. Effective sample
-  size names two quantities, the Kish ratio of nearest-member weights
-  (`hf_design_metrics.md` §5) and a serial-dependence ratio
-  (`ensemble_size_diagnostics.md` §5). Give each its own name.

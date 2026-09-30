@@ -17,7 +17,7 @@ unprecedented ~43-yr pluvial (Pederson et al. 2013), so the full-record 0.26
 is dominated by the pre-pluvial epoch. The CMIP6 Δρ₁ signal is a modest
 central shift (ensemble mean ≈ +0.1) whose upper tail is statistically
 indistinguishable from 39-yr sampling noise — a DU axis parameterizing
-"future persistence change" would be anchored on noise.
+"future persistence change" would rest on noise.
 
 **Why the comparison is untouched.** Every scenario design *and* E_test share
 the same generator, so the limitation does not affect the design comparison —
@@ -34,5 +34,5 @@ events) and the 50-yr E_test realizations.
 `scripts/supplemental/check_cmip6_rho1_anchor_noise.py` →
 `outputs/supplemental/persistence_axis/`. The tilted-bootstrap mechanism
 remains prototyped and validated in `scengen.persistence` as future-work
-material (a persistence-stressed test ensemble is the natural follow-on
+material (a persistence-stressed re-evaluation ensemble is the natural follow-on
 study).

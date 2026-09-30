@@ -173,7 +173,7 @@ vector that reaches simulation (DV-feasible by construction) and any policy
 evaluated outside the search remains operationally valid.
 
 Accounting note: infeasible evaluations consume NFE (`maxEvaluations` is
-per island) but essentially zero compute and zero simulated scenario-years;
+per island) but essentially zero compute and zero simulated years;
 the budget→NFE derivation must account for the feasible fraction of
 evaluations. With delivery monotonicity structural, only flood-zone
 ordering can reject a vector pre-simulation, so the DV-infeasible fraction

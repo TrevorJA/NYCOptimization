@@ -25,8 +25,9 @@ Four SI diagnostics of the adopted framing
      the controllable fraction; the floor is a sample minimum, not an oracle).
   4. **Annual-unit redundancy screen** - Spearman matrix over the policy
      population of all nine registry objective values (adopted k), flagging
-     |rho| >= ``FRAMING_RHO_FLAG_THRESHOLD`` (Olden & Poff 2003), for the
-     8th objective (``nj_delivery_reliability_annual``).
+     |rho| >= ``FRAMING_RHO_FLAG_THRESHOLD`` (pairwise-correlation
+     thresholding, Dormann et al. 2013), for the 8th objective
+     (``nj_delivery_reliability_annual``).
 
 Outputs -> ``outputs/supplemental/framing_convention/{tables,figures}``.
 Configuration lives in ``supplemental_config.py`` (FRAMING_* section) — no CLI
@@ -80,11 +81,10 @@ import matplotlib.pyplot as plt  # noqa: E402
 _DESIGNS: tuple = style.DESIGN_ORDER
 _DESIGN_STYLE: dict = style.DESIGN_STYLE
 
-#: Frequency objectives screened by the k sweep (registry display order).
+#: Active frequency objectives screened by the k sweep (registry display order).
 _FREQ_OBJECTIVES: tuple = (
     "nyc_delivery_reliability_annual",
     "montague_flow_reliability_annual",
-    "trenton_flow_reliability_annual",
     "nj_delivery_reliability_annual",
 )
 

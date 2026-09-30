@@ -13,7 +13,7 @@ citations/DOIs synced to that collection.
 - [scenario_reduction_stochastic_programming.md](scenario_reduction_stochastic_programming.md) — classical scenario reduction/generation + energy analogues (background, not a methods precedent)
 - [stochastic_streamflow_generation.md](stochastic_streamflow_generation.md) — synthetic streamflow/weather generators for the candidate pools and the held-out test ensemble
 - [bottom_up_scenario_neutral.md](bottom_up_scenario_neutral.md) — exposure-space sampling, decision scaling, stress testing
-- [hydrologic_hazard_metrics.md](hydrologic_hazard_metrics.md) — hazard-axis definitions and index redundancy
+- [hydrologic_hazard_metrics.md](hydrologic_hazard_metrics.md) — hazard-axis definitions, threshold-based drought events (Fleig et al. 2006), and index redundancy and collinearity (Olden & Poff 2003; Dormann et al. 2013)
 - [sampling_noise_and_overfitting.md](sampling_noise_and_overfitting.md) — finite-ensemble effects on optimizer reliability and generalization
 - [persistence_and_low_frequency_variability.md](persistence_and_low_frequency_variability.md) — NE-US interannual persistence: paleo/observed record, projections, GCM credibility (persistence-axis decision base)
 

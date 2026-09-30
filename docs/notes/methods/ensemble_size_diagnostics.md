@@ -33,15 +33,15 @@ Representativeness is a different property for the two designs.
   mean, or pooled percentile of annual units). Representativeness is estimator
   precision and estimator bias versus N (order-statistic operators are
   finite-sample biased, means and frequencies are not).
-- `hazard_filling_stationary` (HF) is a designed exploration, LHS anchors in the
-  six-axis robust range-scaled hazard space snapped to a 10⁶-member i.i.d.
+- `hazard_filling_stationary` (HF) is a designed exploration, LHS targets in the
+  six-axis range-scaled hazard space assigned to a 10⁶-member i.i.d.
   pool. Its objective values estimate nothing probabilistic, the distribution
   shift is the design effect, so bias is undefined. Representativeness is the
   hazard-range coverage attained (per-axis stratification and tail enrichment
   above the 0.10 i.i.d. share) and the reproducibility of the induced objective
-  vectors across independent constructions (fresh anchor plan on the same pool,
-  fresh pool and anchor plan across production draws).
-- The common criterion is the one the optimizer cares about. The noise in paired
+  vectors across independent constructions (fresh target set on the same pool,
+  fresh pool and target set across production draws).
+- The noise in paired
   dominance decisions between policies must sit below the ε-dominance
   precisions the archive resolves at (reliabilities 0.05, deficit severities
   10.0, flood 0.3, storage 5.0, `config.get_epsilons()`). An ε-archive cannot
@@ -52,7 +52,7 @@ Representativeness is a different property for the two designs.
 The unit of independence is the realization, never the annual unit. Annual
 units within a realization are serially dependent (`objective_definitions.md`
 §2), so every standard error, bootstrap, and subsample resamples realizations,
-and effective sample sizes are reported rather than assumed.
+and the effective number of independent annual units is reported rather than assumed.
 
 ## 2. The per-realization annual-unit library
 
@@ -79,7 +79,7 @@ N = 100 (`ESD_POLICY_SET_FILES`), MC rows before HF rows:
 
 | id | rule |
 |---|---|
-| P0 | the FFMP incumbent (`get_baseline_values("ffmp")`) |
+| P0 | the current FFMP policy (`get_baseline_values("ffmp")`) |
 | P1–P4 | per-objective best in U for NYC delivery reliability, Montague flow reliability, downstream flood exceedance, NYC storage P01 (`solution_selection.best_single`, ties to the lowest row) |
 | P5, P6 | best-satisficing compromise per design (`factor_mapping.select_compromise`, rule `best_satisficing`, thresholds from the cube's own snapshot) on that design's pilot re-evaluation cube |
 | P7, P8 | nearest neighbour of each compromise in U's direction-oriented, min–max-scaled objective space (Euclidean over the 8 active objectives) |
@@ -98,9 +98,9 @@ population and nothing ranks it.
   supplemented to 20 with uniformly random overlapping subsets, flagged in
   every table.
 - HF constructions. The campaign selector on pool d0 at each ladder N for three
-  anchor plans (draws 0, 101, 102, where draw 0 at N = 100 is the production
+  target sets (draws 0, 101, 102, where draw 0 at N = 100 is the production
   `hazfill_stat_abs_10yr_n100_d0` ensemble exactly), plus at N = 100 the
-  production constructions on pools d1 and d2 (fresh pool and fresh anchors).
+  production constructions on pools d1 and d2 (fresh pool and fresh targets).
 - MC fresh draws. The staged `fixprob_10yr_n100_d{0,1,2}` ensembles.
 - Ladder N ∈ {50, 75, 100, 150, 200, 300, 400, 500} (`ESD_N_LADDER`), and
   every figure marks the campaign N (`ESD_N_CAMPAIGN`).
@@ -128,7 +128,7 @@ sign matters.
 | 3 | Flip rate | fraction of pairs whose ε-dominance relation at replicate r differs from the reference relation (MC: the 5,000-member reference; HF: the across-replicate majority at that N), averaged over replicates | ≤ 0.05 | Zatarain Salazar et al. 2017 |
 | 4a | Optimism (MC) | mean over replicates of sign × (J_p(S_r) − J_p(S_ref)), per policy; max over policies. For fixed policies this is estimator bias, not selection optimism | ≤ ε/2 | Kaut & Wallace 2007 |
 | 4b | Construction SD and shift (HF) | SD over constructions of J_p(S_r) − J_p(S_ref^MC) (the noise) and its mean (the intended design effect, reported) | SD ≤ ε | Kaut & Wallace 2007; Bonham et al. 2024 |
-| 5 | Effective sample size | per operator at the campaign N, n_eff/(N(L−1)) = (SD_unit-bootstrap / SD_realization-bootstrap)² | reported (SI Text S5) | Quinn et al. 2017; Hamilton et al. 2022 |
+| 5 | Effective number of independent annual units | per operator at the campaign N, n_eff/(N(L−1)) = (SD_unit-bootstrap / SD_realization-bootstrap)² | reported (SI Text S5) | Bayley & Hammersley 1946 |
 
 The criterion fractions are `ESD_LEVEL_SE_EPS_FRAC`, `ESD_PAIRED_SE_EPS_FRAC`,
 `ESD_FLIP_RATE_MAX`, and `ESD_OPTIMISM_EPS_FRAC`.
@@ -154,12 +154,12 @@ atypical (figure B7).
 `ensemble_size_hazard.py` uses the campaign selector itself
 (`select_from_candidate_image` with `config.HAZARD_SELECTION_AXES`) and the
 `scengen` primitives, so the HF selections it scores are exactly the selections
-step 03 stages (the anchor-plan-0 selection at N = 100 on pool d0 reproduces
+step 03 stages (the target-set-0 selection at N = 100 on pool d0 reproduces
 the staged production member list 100/100).
 
 | Block | Statistic | Ladder / replicates |
 |---|---|---|
-| A-HF | per-axis tail share above pool P90 and P99, per-axis KS to uniform, joint L2-star, MST edge statistics, minimum separation, each as a ratio to a matched random design | N ladder × pools d0, d1 × 10 anchor plans (draws 0, 101–109); 50-seed random null |
+| A-HF | per-axis tail share above pool P90 and P99, per-axis KS to uniform, joint L2-star, MST edge statistics, minimum separation, each as a ratio to a matched random design | N ladder × pools d0, d1 × 10 target sets (draws 0, 101–109); 50-seed random null |
 | A-NP | min per-axis tail share above P90 (seed-mean convention) on nested prefixes P′ of pool d0 | P′ ∈ {5·10³, 2·10⁴, 10⁵, 3·10⁵, 10⁶} × N ladder × 10 plans |
 | A-MC | sampling distribution of per-axis counts above pool P90/P99, relative error of subset quantiles vs the pool, closed-form P(≥ 1 member beyond quantile q) = 1 − qᴺ | 200 uniform size-N subsets of the pool image |
 | A-CV | convergence of the descriptors themselves, pooled mean per axis vs ensemble extreme per axis | 5/50/95 bands over the MC subsets; HF plans |
@@ -247,7 +247,7 @@ Seven of the ten policies read exactly the same value in every MC replicate
 the objective by 10–35 percentage points, one to three ε at once. MC crosses a
 shelf rarely and its paired SE decays as N^(−1/2) (0.82 ε → 0.43 ε from N = 100
 to 300). HF selects precisely the extreme members that decide the shelf, so
-different anchor plans land on different shelves and the construction SD does
+different target sets land on different shelves and the construction SD does
 not fall with N until the selection itself stabilizes. With three constructions
 per rung (about 50 % relative error on an SD) the ladder cannot separate a slow
 √N-type decay from a plateau. This is Bonham et al. (2024)'s non-convergence of
@@ -278,7 +278,7 @@ N = 300. The HF construction shift from the MC reference is N-independent
 −0.70 ε NYC deficit, −0.47 ε Montague deficit, −2.3 ε flood exceedance, −1.4 ε
 storage P01, ≈ 0 on Trenton and NJ reliability).
 
-**Effective sample size (figure B6, `n_eff.csv`).** n_eff/N(L−1) is 0.68
+**Effective number of independent annual units (figure B6, `n_eff.csv`).** n_eff/N(L−1) is 0.68
 (NYC deficit P99), 0.73 (NYC reliability), 0.79 (NJ), 0.82 (storage P01), 0.84
 (Montague reliability), 0.90 (Montague deficit), 0.93 (Trenton), 1.02 (flood
 mean) for MC and 0.70–1.23 for HF. Serial dependence within a realization costs
@@ -337,7 +337,7 @@ Figures are A1–A5 (`hf_tail_share_vs_n`, `hf_coverage_vs_n`, `np_ladder`,
 
 ## Citations
 
-Bonham et al. (2024); Hamilton et al. (2022); Homem-de-Mello & Bayraksan
+Bayley & Hammersley (1946); Bonham et al. (2024); Homem-de-Mello & Bayraksan
 (2014); Kasprzyk et al. (2013); Kaut & Wallace (2007); Linderoth et al.
 (2006); Quinn et al. (2017); Reed et al. (2013); Zatarain Salazar et al.
 (2017). Resolved via `docs/notes/literature/`.

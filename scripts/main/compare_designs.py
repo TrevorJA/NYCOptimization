@@ -259,7 +259,7 @@ class LoadedRun:
 
 #: Scorecard prefixes whose orientation is FIXED by what the column means, not by
 #: the underlying objective's own direction. Regret is a loss whichever way its
-#: objective points; gain and the no-harm frequencies are the mirror. Getting one
+#: objective points; gain and the low-regret frequencies are the mirror. Getting one
 #: of these wrong silently inverts that metric in every design ranking, which is
 #: the failure mode ``tests/test_terminology.py`` exists to catch.
 _FIXED_ORIENTATION: tuple[tuple[str, bool], ...] = (
@@ -444,7 +444,7 @@ def variance_components(summary: pd.DataFrame, metric: str = PRIMARY_METRIC,
 
     With draw replication (K > 1 somewhere) the unit of analysis for
     between-design inference is the DRAW: seeds within a draw are
-    pseudoreplicates, so the effective sample size is ~K, never K*S
+    pseudoreplicates, so the number of independent replicates is ~K, never K*S
     (experimental_design.md §"Replication"), and the design F-test uses
     MS_draw as its denominator -- the seed residual would silently pretend
     n = K*S and inflate significance. When every design has exactly one draw
@@ -852,7 +852,7 @@ def rank_agreement(sweep: pd.DataFrame) -> pd.DataFrame:
 ###############################################################################
 
 #: Multipliers ``k`` on each objective's just-noticeable difference, defining the
-#: no-harm tolerance ``tau_i = k * eps_i``. k = 0 is the strict weak-Pareto-
+#: regret tolerance ``tau_i = k * eps_i``. k = 0 is the strict weak-Pareto-
 #: improvement form. Override with NYCOPT_COMPARE_REGRET_K.
 REGRET_TAU_GRID: tuple[float, ...] = _parse_float_list_env(
     "NYCOPT_COMPARE_REGRET_K", (0.0, 0.5, 1.0, 2.0, 5.0, 10.0),
@@ -893,7 +893,7 @@ def regret_tolerance_sweep(runs: list[ReevalRun],
                            grid: Iterable[float] = REGRET_TAU_GRID,
                            floors: Optional[dict] = None,
                            ) -> pd.DataFrame:
-    """No-harm frequency vs the tolerance ladder, per run.
+    """Low-regret frequency vs the tolerance ladder, per run.
 
     ``Pi_tau`` is the fraction of E_test SOWs in which a policy degrades no
     objective by more than ``tau_i = k * eps_i`` relative to the incumbent;
@@ -968,7 +968,7 @@ def _severity_terciles(spec, n_sow: int, bins: int = SEVERITY_BINS):
 
 def regret_by_severity(runs: list[ReevalRun], spec,
                        bins: int = SEVERITY_BINS) -> pd.DataFrame:
-    """Robustness and no-harm frequency within quantile bins of the forcing-severity axis.
+    """Robustness and low-regret frequency within quantile bins of the forcing-severity axis.
 
     Returns:
         Tidy frame: design, draw, seed, severity_bin, bin_lo, bin_hi, n_sow,
@@ -1021,7 +1021,7 @@ def regret_by_severity(runs: list[ReevalRun], spec,
 def regret_plane_points(loaded: Iterable[LoadedRun],
                         x: str = "sat_multivariate_sow",
                         y: str = "no_harm_freq_tau") -> pd.DataFrame:
-    """One row per re-evaluated policy: its robustness and its no-harm frequency.
+    """One row per re-evaluated policy: its robustness and its low-regret frequency.
 
     Both axes come from the same policy and both are unit-free.
 
@@ -1302,7 +1302,9 @@ _METRIC_FAMILY = {
     "sat_uni_sow": "satisficing", "laplace": "mean", "maximin": "worst-case",
     "regret_mean": "mean regret", "regret_q90": "q90 regret",
     "regret_cond": "conditional regret", "gain_mean": "mean gain",
-    "harm_freq": "harm freq", "party_harm_freq": "party harm freq",
+    "harm_freq": "regret freq", "party_harm_freq": "party regret freq",
+    "no_harm_freq": "low-regret freq", "no_harm_freq_tau": "low-regret freq (tol.)",
+    "n_degraded_mean": "mean objectives degraded",
 }
 
 
@@ -1311,7 +1313,7 @@ def metric_label(col: str) -> str:
     if col == PRIMARY_METRIC:
         return "satisficing (multivariate)"
     if "__" not in col:
-        return col
+        return _METRIC_FAMILY.get(col, col)
     family, name = col.split("__", 1)
     return f"{_METRIC_FAMILY.get(family, family)}: {style.label_for(name)}"
 
@@ -1580,7 +1582,7 @@ def _report(runs, sweep, agreement, flags, attain, regret_sweep,
             by_design = at0.groupby("design")["best"].mean().sort_values(
                 ascending=False)
             head = ", ".join(f"{d}={v:.3f}" for d, v in by_design.items())
-            print(f"[compare] NO-HARM FREQUENCY at tau = 0 (strict Pareto improvement "
+            print(f"[compare] LOW-REGRET FREQUENCY at tau = 0 (strict Pareto improvement "
                   f"on the status quo), best policy per design, mean over runs: "
                   f"{head}")
 

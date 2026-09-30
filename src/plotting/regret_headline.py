@@ -86,7 +86,7 @@ def _load_clouds(ctx, cset) -> tuple[dict, list]:
         if xcol not in card.columns or ycol not in card.columns:
             continue
         pts = 100.0 * card[[xcol, ycol]].dropna()
-        pts[ycol] = 100.0 - pts[ycol]   # no-harm -> regret frequency
+        pts[ycol] = 100.0 - pts[ycol]   # low-regret -> regret frequency
         if pts.empty:
             continue
         clouds[d] = pts

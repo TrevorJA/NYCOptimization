@@ -16,7 +16,7 @@ The SOW is the only scoring unit. Metrics:
   - univariate satisficing (``sat_uni_sow__``): its per-objective decomposition;
   - Laplace mean and maximin over SOWs, in natural units;
   - incumbent-relative regret: one-sided adverse deviation from the status-quo
-    FFMP policy on the same SOWs, in natural units, plus unit-free harm
+    FFMP policy on the same SOWs, in natural units, plus unit-free regret
     frequencies;
   - threshold spectrum, attainability screen, and ranking stability
     (Kendall tau_b across metrics).
@@ -296,12 +296,12 @@ def maximin(raw: RawCube) -> pd.DataFrame:
 ###############################################################################
 # Regret = the one-sided adverse deviation D_i from the incumbent (status-quo
 # FFMP policy) per SOW, in natural units, never summed across objectives; the
-# unit-free harm frequencies carry the cross-objective role. There is no
+# unit-free regret frequencies carry the cross-objective role. There is no
 # max-regret and no baseline-normalized form (justification in
 # docs/notes/methods/objective_definitions.md §4).
 
-#: Decree-party grouping of the annual objectives for the party-level harm
-#: frequencies. Party harm is a frequency over a disjunction (the
+#: Decree-party grouping of the annual objectives for the party-level regret
+#: frequencies. Party regret is a frequency over a disjunction (the
 #: renegotiation is unanimity-bound), never a summed score. NYC storage sits
 #: under `nyc`.
 DECREE_PARTY_OBJECTIVES: dict[str, tuple[str, ...]] = {
@@ -316,7 +316,7 @@ DECREE_PARTY_OBJECTIVES: dict[str, tuple[str, ...]] = {
     "downstream_flow": (
         "montague_flow_reliability_annual",
         "montague_flow_deficit_p99_pct",
-        "trenton_flow_reliability_annual",
+        "trenton_flow_deficit_p99_pct",
     ),
     # One active flood objective; the inactive day-count diagnostic joins this
     # disjunction only if it ever enters the active set.
@@ -338,8 +338,8 @@ def _aligned_baseline(raw: RawCube, baseline: RawCube) -> np.ndarray:
     (``nanmean`` is an identity for S == 1 and averages any accidental
     duplicates), and the join is on the SOW LABEL, never on position. A
     baseline missing SOWs the policy cube covers is a HARD ERROR: a NaN
-    incumbent row would count as harm for EVERY policy in
-    ``regret_frequencies`` (non-finite differences are harm by convention),
+    incumbent row would count as regret for EVERY policy in
+    ``regret_frequencies`` (non-finite differences are regret by convention),
     so a partially-failed incumbent would silently degrade the whole
     comparison rather than one cell.
     """
@@ -354,7 +354,7 @@ def _aligned_baseline(raw: RawCube, baseline: RawCube) -> np.ndarray:
             f"the incumbent baseline cube covers {len(baseline.sow_labels)} "
             f"SOWs but the policy cube scores {len(raw.sow_labels)}; "
             f"{len(uncovered)} SOWs are uncovered (first few: "
-            f"{uncovered[:8]}). A NaN incumbent row reads as harm for every "
+            f"{uncovered[:8]}). A NaN incumbent row reads as regret for every "
             f"policy — re-run step 05 on the same test ensemble."
         )
     with warnings.catch_warnings():
@@ -426,7 +426,7 @@ def regret_magnitudes(raw: RawCube, baseline: RawCube) -> pd.DataFrame:
 
 
 def tau_ladder(obj_names: list, k: float = None, floors: dict = None) -> dict:
-    """Per-objective no-harm tolerance in natural units: ``tau_i = k * u_i``.
+    """Per-objective regret tolerance in natural units: ``tau_i = k * u_i``.
 
     ``u_i = max(eps_i, floor_i)``, where ``eps_i`` is the objective's
     annual-unit epsilon (``src.objectives_ensemble.ENSEMBLE_OBJECTIVES``) and
@@ -522,7 +522,7 @@ def adopted_floors() -> dict | None:
 
 def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
                        parties: dict = None, axes=None) -> pd.DataFrame:
-    """Unit-free harm frequencies; these carry the cross-objective scalar role.
+    """Unit-free regret frequencies; these carry the cross-objective scalar role.
 
     Columns:
       - ``harm_freq__{obj}``        fraction of SOWs with ``D_i < 0``
@@ -542,13 +542,13 @@ def regret_frequencies(raw: RawCube, baseline: RawCube, tau: dict = None,
         off, the informative decomposition of ``no_harm_freq`` (which is small by
         construction when there are 8 objectives with genuine trade-offs).
 
-    A non-finite ``D`` counts as HARM, mirroring the non-finite-as-unsatisfied rule
-    of the satisficing path: a degenerate SOW must not read as "no harm".
+    A non-finite ``D`` counts as REGRET, mirroring the non-finite-as-unsatisfied
+    rule of the satisficing path: a degenerate SOW must not read as low-regret.
 
     ``axes`` restricts the whole computation to a subset of objectives (a
     criterion set's member axes): per-objective columns are emitted only for
     those axes, party disjunctions only for parties with a member among them,
-    and the joint no-harm conjunctions run over the subset. Default None =
+    and the joint low-regret conjunctions run over the subset. Default None =
     all objectives (the global frequencies).
     """
     D = incumbent_advantage(raw, baseline)                          # (S, G, M)
@@ -676,15 +676,15 @@ def score_criteria(raw: RawCube, baseline: Optional[RawCube] = None,
       for the set's member axes (:func:`criterion_shortfall`), namespaced by
       set because placements for a shared axis may differ between sets.
     - ``no_harm_freq_tau__{key}`` (baseline runs only): the incumbent-relative
-      no-harm frequency with the harm conjunction restricted to the set's
-      member axes -- "does the policy avoid harming the incumbent on THIS
-      framing's axes", the criterion-conditional companion of the global
+      low-regret frequency with the low-regret conjunction restricted to the
+      set's member axes -- "is the policy low-regret on THIS framing's axes",
+      the criterion-conditional companion of the global
       ``no_harm_freq_tau``.
 
     Args:
         raw: The per-SOW re-eval cube.
         baseline: Status-quo cube on the same ensemble (enables the per-set
-            no-harm columns).
+            low-regret columns).
         sets: Criterion sets; defaults to
             ``satisficing_criteria.ALL_SETS``.
 
@@ -903,7 +903,7 @@ _DEFAULT_METRICS = (
     "laplace_mean",                 # McPhail T3 = mean   (risk-neutral anchor)
     "maximin",                      # McPhail T3 = worst  (risk-averse anchor)
     "regret_magnitudes",            # incumbent-relative regret, natural units
-    "regret_frequencies",           # its unit-free harm frequencies (the scalars)
+    "regret_frequencies",           # its unit-free regret frequencies (the scalars)
 )
 
 #: Metrics that need the status-quo cube. Requested without one they are skipped

@@ -200,10 +200,12 @@ def etest_param_box(fit: dict) -> tuple[np.ndarray, np.ndarray, list[str]]:
 
     Reads the bounds from :mod:`src.etest` rather than hard-coding them, so the
     drawn box always matches the ensemble contract. E_test uses the FULL
-    empirical CMIP6 range widened by ``E_TEST_MARGIN``; the SEARCH-side pool
-    uses a trimmed 5th-95th percentile box with no widening
-    (:func:`search_param_box`). Confusing the two is what made the earlier
-    version of this figure show a box far narrower than the ensemble it drew.
+    empirical CMIP6 range widened by ``E_TEST_MARGIN`` with the annual-volume
+    lower bound extended to ``E_TEST_VOLUME_MULTIPLIER_MIN`` (the campaign
+    variant's ``axis_bounds``); the SEARCH-side pool uses a trimmed 5th-95th
+    percentile box with no widening (:func:`search_param_box`). Confusing the
+    two is what made the earlier version of this figure show a box far
+    narrower than the ensemble it drew.
 
     Returns:
         ``(lo, hi, names)`` with names ``[m, r1, psi1, r2, psi2]``.
@@ -212,9 +214,13 @@ def etest_param_box(fit: dict) -> tuple[np.ndarray, np.ndarray, list[str]]:
 
     from src import etest
 
-    return fs.harmonic_param_box(
+    lo, hi, names = fs.harmonic_param_box(
         fit, bound_pct=etest.E_TEST_BOUND_PCT, margin=etest.E_TEST_MARGIN
     )
+    bounds = etest.campaign_etest_variant().axis_bounds
+    if bounds:
+        lo, hi = fs.override_axis_bounds(lo, hi, names, bounds)
+    return lo, hi, names
 
 
 def search_param_box(fit: dict) -> tuple[np.ndarray, np.ndarray, list[str]]:

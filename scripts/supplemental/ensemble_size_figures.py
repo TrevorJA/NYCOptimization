@@ -674,7 +674,7 @@ def fig_b6_neff(neff: pd.DataFrame) -> None:
     a.axhline(1.0, color="0.5", lw=1, ls="--", label="1 = every annual unit counts as independent")
     a.set_xticks(x)
     a.set_xticklabels([_axis_label(o) for o in objs], rotation=35, ha="right", fontsize=7)
-    a.set_ylabel("effective sample size ÷ pooled annual units N(L−1)\n= (unit-level bootstrap SD / realization-level bootstrap SD)²", fontsize=8)
+    a.set_ylabel("effective number of independent annual units ÷ pooled annual units N(L−1)\n= (unit-level bootstrap SD / realization-level bootstrap SD)²", fontsize=8)
     a.set_title(f"How many of the {scfg.ESD_N_CAMPAIGN * 9} pooled annual units act as independent samples (N = {scfg.ESD_N_CAMPAIGN})")
     a.legend(fontsize=7)
     fig.tight_layout()

@@ -425,6 +425,7 @@ def _sample_forcing(
         config.n_forcing_profiles, mean_env,
         seed=config.root_seed, bound_pct=config.bound_pct, margin=config.margin,
         method=config.theta_sampler, return_params=True,
+        axis_bounds=getattr(config, "axis_bounds", None) or None,
     )
     v_wy = None
     theta_params, theta_names = np.asarray(a_params, dtype=float), list(a_names)
@@ -921,6 +922,9 @@ def _validate_config(config) -> None:
         raise ValueError(
             f"unknown theta_sampler {config.theta_sampler!r}; expected 'iid' or 'lhs'"
         )
+    for name, bounds in (getattr(config, "axis_bounds", None) or {}).items():
+        if len(bounds) != 2:
+            raise ValueError(f"axis_bounds[{name!r}] must be a (lo, hi) pair; got {bounds!r}")
     if getattr(config, "generator", "kn") not in ("kn", "hmm"):
         raise ValueError(
             f"unknown generator {config.generator!r}; expected 'kn' or 'hmm'"
@@ -1028,6 +1032,7 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
                 setup.a_wy, envelope_csv=config.mean_frac_csv, margin=config.margin,
                 seed=config.root_seed, start_date=config.start_date,
                 baseline_period=config.baseline_period, full_period=config.full_period,
+                axis_bounds=getattr(config, "axis_bounds", None) or None,
             )
         manifest = _finalize_pool_artifacts(
             config, out_dir, H_blocks=[H_merged], hazard_axes=hazard_axes,
@@ -1080,6 +1085,7 @@ def generate_forcing_ensemble(config) -> "EnsembleManifest | None":  # noqa: F82
         setup.a_wy, envelope_csv=config.mean_frac_csv, margin=config.margin,
         seed=config.root_seed, start_date=config.start_date,
         baseline_period=config.baseline_period, full_period=config.full_period,
+        axis_bounds=getattr(config, "axis_bounds", None) or None,
     ) if forced else ""
 
     # Only one chunk's daily traces are ever resident, so peak memory is bounded by chunk_size
@@ -1299,6 +1305,10 @@ def _finalize_pool_artifacts(
         "n_chunks": n_chunks,
         "bound_pct": list(config.bound_pct) if forced else None,
         "margin": config.margin if forced else None,
+        "axis_bounds": (
+            {k: list(v) for k, v in config.axis_bounds.items()}
+            if forced and getattr(config, "axis_bounds", None) else None
+        ),
         "forcing_param": "harmonic" if forced else None,
         "mean_frac_csv": str(config.mean_frac_csv) if forced else None,
         "forcing_hash": forcing_hash,

@@ -396,7 +396,7 @@ def test_incumbent_advantage_joins_on_sow_label_not_position(tmp_path):
     a positional join would pair the cube's second row (label 2) with the
     baseline's label-1 row and produce a finite, WRONG advantage. Second: a
     baseline missing a scored SOW raises — a NaN incumbent row would count as
-    harm for EVERY policy in regret_frequencies, silently degrading the whole
+    regret for EVERY policy in regret_frequencies, silently degrading the whole
     comparison.
     """
     meta2 = dict(_META, sow_labels=[0, 2])
@@ -496,13 +496,13 @@ def test_regret_frequencies_are_unit_free_and_hand_computable(tmp_path):
     df = rob.regret_frequencies(raw, base, tau=_REG_TAU)
 
     # sol0 is worse in 1 of 2 SOWs on each objective, and both losses land in the
-    # SAME SOW -- so the joint no-harm frequency is 0.5, not 0.
+    # SAME SOW -- so the joint low-regret frequency is 0.5, not 0.
     assert df.loc[0, "harm_freq__A"] == pytest.approx(0.5)
     assert df.loc[0, "harm_freq__B"] == pytest.approx(0.5)
     assert df.loc[0, "no_harm_freq"] == pytest.approx(0.5)
     assert df.loc[0, "n_degraded_mean"] == pytest.approx(1.0)     # (0 + 2) / 2
 
-    # sol1 never harms anyone.
+    # sol1 never incurs regret.
     assert df.loc[1, "harm_freq__A"] == pytest.approx(0.0)
     assert df.loc[1, "no_harm_freq"] == pytest.approx(1.0)
     assert df.loc[1, "n_degraded_mean"] == pytest.approx(0.0)
@@ -529,7 +529,7 @@ def test_party_harm_is_a_disjunction_never_a_sum(tmp_path):
     """Under unanimity a party's loss is not compensable, so the party form unions.
 
     Summing would double-count sol0's single bad SOW (worse on BOTH objectives at
-    once) and report a party harm frequency of 1.0 where the truth is 0.5.
+    once) and report a party regret frequency of 1.0 where the truth is 0.5.
     """
     raw, base = _regret_fixture(tmp_path)
     df = rob.regret_frequencies(raw, base, tau=_REG_TAU,

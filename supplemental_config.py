@@ -124,8 +124,8 @@ N_SAMPLES: int = 3 if SMOKE else 24
 #:   list[str]       -> an explicit list of registry names, used verbatim.
 OBJECTIVE_SET: "str | list[str]" = "full_registry"
 
-#: Olden & Poff (2003) redundancy flag: |Spearman rho| above this marks a pair
-#: as collinear in the redundancy screen.
+#: Redundancy flag: |Spearman rho| above this marks a pair as collinear in the
+#: redundancy screen (pairwise-correlation thresholding, Dormann et al. 2013).
 RHO_FLAG_THRESHOLD: float = 0.8
 
 # ---------------------------------------------------------------------------
@@ -814,7 +814,8 @@ FRAMING_BOOTSTRAP_B: int = 500
 FRAMING_BOOTSTRAP_SEED: int = 11
 
 #: |Spearman rho| above which an objective pair is flagged collinear in the
-#: annual-unit redundancy screen (Olden & Poff 2003).
+#: annual-unit redundancy screen (pairwise-correlation thresholding, Dormann
+#: et al. 2013).
 FRAMING_RHO_FLAG_THRESHOLD: float = 0.8
 
 # ---------------------------------------------------------------------------
@@ -1066,7 +1067,7 @@ RTD_FACTOR_MAP_OBJECTIVES: tuple = (
     "nyc_delivery_deficit_p99_pct",
     "montague_flow_reliability_annual",
     "montague_flow_deficit_p99_pct",
-    "trenton_flow_reliability_annual",
+    "trenton_flow_deficit_p99_pct",
     "downstream_flood_exceedance_annual",
     "nyc_storage_min_p01_pct",
     "nj_delivery_reliability_annual",
@@ -1128,7 +1129,7 @@ RTD_RECOMMENDED_THRESHOLDS: dict = {
     "nyc_delivery_deficit_p99_pct":        48.0,
     "montague_flow_reliability_annual":    0.79,
     "montague_flow_deficit_p99_pct":       27.0,
-    "trenton_flow_reliability_annual":     0.87,
+    "trenton_flow_deficit_p99_pct":        10.0,
     "downstream_flood_exceedance_annual":  1.17,
     "nyc_storage_min_p01_pct":             26.0,
     "nj_delivery_reliability_annual":      0.74,
@@ -1147,8 +1148,9 @@ RTD_RECOMMENDATION_BASIS: dict = {
     "montague_flow_deficit_p99_pct":
         "rule 1: anchor 27.68, stricter side; near-all-pass guardrail kept "
         "per rule 3",
-    "trenton_flow_reliability_annual":
-        "rule 1: anchor 0.8684, stricter side (in support, q0.944)",
+    "trenton_flow_deficit_p99_pct":
+        "rule 2: FFMP drought-stage Trenton target, 2,700 cfs = 10% below the "
+        "3,000 cfs target; not yet placed against the incumbent E_test cube",
     "downstream_flood_exceedance_annual":
         "rule 2: observed WY2001-2023 basin experience 1.17 ft-days/yr; "
         "discriminating (0.443 pass, critical m* = +0.035)",
@@ -1190,7 +1192,7 @@ def rtd_figure_path(name: str) -> Path:
 # Regret-tolerance diagnostics (RTOL)
 # (docs/notes/methods/regret_tolerance_diagnostics.md)
 ###############################################################################
-# Fixes the no-harm tolerance tau_i and the non-inferiority margin delta on
+# Fixes the regret tolerance tau_i and the non-inferiority margin delta on
 # no_harm_freq_tau before the campaign result is inspected; admissible anchors
 # per regret_tolerance_diagnostics.md section 1 (never the candidate-policy
 # regret distribution itself).
@@ -1206,8 +1208,8 @@ RTOL_REEVAL_BASELINE_DIR: Path = RTD_REEVAL_BASELINE_DIR
 RTOL_TAU_GRID: tuple = (0.0, 0.5, 1.0, 2.0, 5.0, 10.0)
 
 #: One-sided normal deviate for the noise floor. 1.645 -> a policy operationally
-#: identical to the incumbent is falsely flagged as harming a given objective in
-#: a given SOW at most 5% of the time.
+#: identical to the incumbent is falsely flagged as incurring regret on a given
+#: objective in a given SOW at most 5% of the time.
 RTOL_FALSE_HARM_Z: float = 1.645
 
 #: E_test forcing profiles (theta per realization), joined to the cube's SOW
@@ -1290,7 +1292,7 @@ def rtol_table_path(name: str) -> Path:
 #     P=1e6 pool images in the selector's own scaled coordinates, strata
 #     labels, per-axis excursion attribution and the SOW-level pool coverage
 #     deficit;
-#   stage B: the design contrast (Starr satisficing + no-harm frequency)
+#   stage B: the design contrast (Starr satisficing + low-regret frequency)
 #     re-scored per support stratum and per forcing tercile from the persisted
 #     per-SOW re-eval cubes on HSD_REEVAL_TAG, using the stage-A labels.
 # All definitional constants here are pre-registered (methods note).
@@ -2062,6 +2064,10 @@ SELDIAG_CLUSTER_RHO: float = 0.7
 #: explain (their count is reported, with each one's highest-loading descriptor).
 SELDIAG_PCA_VARIANCE_SHARE: float = 0.90
 
+#: SSI level of the fit check's lower-tail count: the level a run-theory event
+#: must reach to qualify (scengen.hazard_metrics.drought_events).
+SELDIAG_SSI_QUALIFYING_LEVEL: float = -1.0
+
 #: Pool percentile of the hazard-direction tail (i.i.d. share 1 - 0.90 = 0.10).
 SELDIAG_TAIL_PCT: float = 90.0
 
@@ -2114,3 +2120,157 @@ OBJDYN_FIGURES_DIR: Path = OBJDYN_OUTPUT_ROOT / "figures"
 ENSOBJDYN_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "ensemble_objective_dynamics"
 ENSOBJDYN_FIGURES_DIR: Path = ENSOBJDYN_OUTPUT_ROOT / "figures"
 ENSOBJDYN_CACHE_DIR: Path = ENSOBJDYN_OUTPUT_ROOT / "cache"
+
+
+###############################################################################
+# E_test design scope: dry envelope and realizations per SOW
+# (docs/notes/methods/campaign_design.md §5, forcing_parameterization.md;
+#  SI Texts S6 and S8.5; drivers scripts/supplemental/dry_envelope_run.py,
+#  dry_envelope_figures.py, etest_realization_precision.py; launcher
+#  workflow/supplemental/dry_envelope.sh)
+#
+# Dry envelope: paired 10-yr windows at fixed annual-volume multipliers that
+# span the E_test lower bound at the current and candidate widening margins,
+# scored under the current hazard rules against a stationary sample and the
+# historical record's windows (stream-only). The production leg bins the staged
+# E_test SOWs on their multiplier against the P=1e6 pool image.
+# Realization precision: per-SOW estimator noise as a function of R from the
+# persisted pass-A noise floor, the cross-SOW standard error, and the SU
+# pricing of the E_test options.
+###############################################################################
+
+
+def configure_dryenv_env() -> None:
+    """Apply env knobs for the E_test design-scope diagnostics.
+
+    Salinity and temperature LSTMs off (no Pywr-DRB simulation); the scenario
+    design defaults to ``historic`` so importing ``config`` never requires a
+    staged search ensemble.
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+#: NYCOPT_DRYENV_PRODUCTION=1 runs the production leg on the staged E_test
+#: sub-window image and the P=1e6 pool image (both under current provenance).
+DRYENV_PRODUCTION: bool = os.environ.get("NYCOPT_DRYENV_PRODUCTION", "0") == "1"
+
+#: NYCOPT_DRYENV_REFRESH=1 regenerates the local windows instead of reusing
+#: the persisted ``dryenv_windows.csv`` (about 50 min on a laptop).
+DRYENV_REFRESH: bool = os.environ.get("NYCOPT_DRYENV_REFRESH", "0") == "1"
+
+#: Window length in years; must equal ``config.SCENARIO_YEARS`` (the pool convention).
+DRYENV_YEARS: int = 10
+
+#: Fractional widening margins of the annual-volume lower bound to score, each
+#: relative to the full CMIP6 span; must contain ``src.etest.E_TEST_MARGIN``.
+DRYENV_CANDIDATE_MARGINS: tuple = (0.25, 0.50, 0.75, 1.00)
+
+#: Windows per level: one shared LHS plan over (r1, r2) in the E_test box, one
+#: realization each, shared bootstrap streams across levels (paired design).
+DRYENV_N_PROFILES_PER_LEVEL: int = 60
+
+#: Stationary windows from the same generator (the local stand-in for the
+#: P=1e6 candidate ensemble's dry tail; q99 rests on the top 1 % of these).
+DRYENV_STATIONARY_N: int = 1500
+
+#: Realizations generated per block (bounds peak memory).
+DRYENV_BLOCK: int = 50
+
+#: Root seeds of the forced and stationary runs (diagnostic-only streams;
+#: never a campaign seed domain).
+DRYENV_SEED_FORCED: int = 20260930
+DRYENV_SEED_STATIONARY: int = 20260931
+
+#: Drought axes and supplement descriptors summarized.
+DRYENV_DROUGHT_AXES: tuple = ("drought_magnitude", "drought_duration", "drought_severity")
+DRYENV_DROUGHT_SUPPLEMENT: tuple = ("drought_total_deficit", "lowflow_min_12month",
+                                    "lowflow_min_24month")
+
+#: Upper-tail quantiles of the stationary sample the levels are read against.
+DRYENV_TAIL_QUANTILES: tuple = (0.90, 0.99)
+
+#: Start of the 10-yr window centred on the 1960s drought of record (scored
+#: June 1961 through May 1970 after the six-month exclusion).
+DRYENV_DROUGHT_OF_RECORD_START: str = "1960-12-01"
+
+#: Staged stationary image scored under the current rules (a second reference).
+DRYENV_STAGED_STATIONARY_SLUG: str = "statpool_10yr_n300_d0"
+
+#: Production leg inputs.
+DRYENV_ETEST_SLUG: str = HSD_ETEST_SLUG
+DRYENV_POOL_SLUG: str = "statpool_10yr_n1000000_d0"
+
+#: Quantile edges (of the SOWs' e^m) defining the production bins; a
+#: ``below_cmip6_min`` bin is added in front.
+DRYENV_PRODUCTION_BINS: tuple = (0.0, 0.05, 0.10, 0.20, 1.0 / 3.0, 2.0 / 3.0, 1.0)
+
+DRYENV_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "dry_envelope"
+DRYENV_TABLES_DIR: Path = DRYENV_OUTPUT_ROOT / "tables"
+DRYENV_FIGURES_DIR: Path = DRYENV_OUTPUT_ROOT / "figures"
+
+# ---------------------------------------------------------------------------
+# Realizations per SOW
+# ---------------------------------------------------------------------------
+#: Realizations per SOW scored.
+ETR_R_LEVELS: tuple = (5, 10, 25, 50)
+
+#: SOW counts for the cross-SOW standard error.
+ETR_N_THETA_LEVELS: tuple = (250, 500, 1000)
+
+#: Whole FFMP-year units per 50-yr realization (L_test - 1).
+ETR_UNITS_PER_REALIZATION: int = 49
+
+#: Realizations per SOW the persisted pass-A noise floor was measured at
+#: (the 1,000-SOW current-policy cube on etest_kn_50yr_n25000).
+ETR_NOISE_FLOOR_R: int = 25
+ETR_NOISE_FLOOR_CSV: Path = RTOL_TABLES_DIR / "rtol_noise_floor.csv"
+ETR_THRESHOLD_SWEEP_CSV: Path = RTD_TABLES_DIR / "rtd_threshold_sweep.csv"
+ETR_THRESHOLD_RECOMMENDATION_CSV: Path = RTD_TABLES_DIR / "rtd_threshold_recommendation.csv"
+ETR_FALSE_HARM_Z: float = RTOL_FALSE_HARM_Z
+
+#: Cost basis (SU). Measured: 1.33 SU per (policy, chunk) unit on the chunked
+#: path, one chunk = 500 realizations x 50 yr (campaign_design.md §5); the
+#: full-model presim pass over the staged E_test, ~70 SU
+#: (workflow/supplemental/prep_etest_chunks.sh); the current-policy baseline,
+#: 33 SU per design on 500 SOWs x 25. Bounded by allocation, unmeasured: the
+#: sub-window hazard image shards (50 x 0.5 h x 4 cpus = 100 core-h). Estimate,
+#: unmeasured: E_test generation, scaled from the P=1e6 pool's ~600 core-h per
+#: 10^7 realization-years (SI Text S8.5) to the staged 1.25 x 10^6.
+ETR_SU_PER_POLICY_CHUNK: float = 1.33
+ETR_CHUNK_REALIZATIONS: int = 500
+ETR_POLICY_CAP: int = 2000
+ETR_N_THETA_GENERATED: int = 1000
+ETR_ETEST_REALIZATION_YEARS_REF: int = 25_000 * 50
+ETR_GENERATION_SU_REF_EST: float = 75.0
+ETR_PRESIM_SU_REF: float = 70.0
+ETR_HAZARD_IMAGE_SU_BOUND: float = 100.0
+ETR_BASELINE_SU_REF: float = 33.0
+ETR_N_DESIGNS: int = 3
+
+#: Campaign totals including the 66k re-evaluation line (campaign_design.md §6)
+#: and the balance they are budgeted against.
+ETR_CAMPAIGN_TOTALS: dict = {"measured_g1.00": 422_000, "measured_g1.17": 478_000}
+ETR_BALANCE: int = 600_000
+
+ETR_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "etest_realization_precision"
+ETR_TABLES_DIR: Path = ETR_OUTPUT_ROOT / "tables"
+
+#: Paired false-harm floors tau_i^floor measured on E_test policy cubes
+#: (regret_tolerance_diagnostics.md §2; rtolB_paired_floor_check.csv on Anvil,
+#: not local), by objective family: reliabilities 0.017 to 0.024 (upper end
+#: carried), deficit operators 1.2 pp, flood 0.04 ft-d/yr, storage 3.0 pp.
+#: sigma_paired = tau_floor / (z sqrt 2). The Trenton deficit objective has no
+#: measured floor yet (adopted 2026-09-30); the deficit-family value is carried
+#: and flagged.
+ETR_PAIRED_TAU_FLOORS_R25: dict = {
+    "nyc_delivery_reliability_annual": 0.024,
+    "nyc_delivery_deficit_p99_pct": 1.2,
+    "montague_flow_reliability_annual": 0.024,
+    "montague_flow_deficit_p99_pct": 1.2,
+    "trenton_flow_deficit_p99_pct": 1.2,
+    "downstream_flood_exceedance_annual": 0.04,
+    "nyc_storage_min_p01_pct": 3.0,
+    "nj_delivery_reliability_annual": 0.024,
+}
+ETR_PAIRED_FLOOR_UNMEASURED: tuple = ("trenton_flow_deficit_p99_pct",)

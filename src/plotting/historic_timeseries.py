@@ -7,7 +7,7 @@ system states the objectives score:
     Montague flow                  (weekly mean, Decree target, violation weeks)
     Trenton flow                   (weekly mean, Decree target, violation weeks)
     NYC diversion                  (weekly mean, against the Decree entitlement)
-    NYC delivery shortage          (weekly mean below the entitlement)
+    NYC diversion shortage         (weekly mean below the entitlement)
 
 Agreement with the objective values is the point of this figure, so nothing
 here re-derives a metric. Violation weeks come from
@@ -172,7 +172,7 @@ def _panel_diversion(ax, results: dict, colors: dict, resample: str) -> None:
 
 
 def _panel_shortage(ax, results: dict, colors: dict, resample: str) -> None:
-    """NYC delivery shortfall below the Decree entitlement."""
+    """NYC diversion shortfall below the Decree entitlement."""
     for label, data in results.items():
         delivery, entitlement = _nyc_delivery_series(data)
         short = (entitlement - delivery).clip(lower=0).resample(resample).mean()

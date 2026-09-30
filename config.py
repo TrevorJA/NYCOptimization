@@ -409,7 +409,7 @@ NJ_DELIVERY_CAP_MGD = 100.0              # NJ diversion baseline (monthly-avg D&
 # is wired. The default eight objectives:
 #   - NYC supply: weekly delivery reliability + tail (CVaR90) delivery deficit
 #   - Montague flow Decree: reliability + CVaR90 deficit
-#   - Trenton flow Decree: reliability
+#   - Trenton flow target: CVaR90 deficit (salt-front goalpost)
 #   - downstream flood exposure: ft-days above NWS minor flood stage
 #     (docs/notes/methods/flood_objective_diagnostics.md)
 #   - storage resilience: 5th-percentile combined NYC storage
@@ -421,7 +421,7 @@ _DEFAULT_OBJECTIVES = [
     "nyc_delivery_deficit_cvar90_pct",
     "montague_flow_reliability_weekly",
     "montague_flow_deficit_cvar90_pct",
-    "trenton_flow_reliability_weekly",
+    "trenton_flow_deficit_cvar90_pct",
     "downstream_flood_exceedance_minor",
     "nyc_storage_p5_pct",
     "nj_delivery_reliability_weekly",
@@ -652,7 +652,7 @@ REEVALUATION_SETTINGS = {
         "laplace_mean",                  # McPhail T3 = mean  (risk-neutral anchor)
         "maximin",                       # McPhail T3 = worst (risk-averse anchor)
         "regret_magnitudes",             # incumbent-relative regret, natural units
-        "regret_frequencies",            # its unit-free harm frequencies
+        "regret_frequencies",            # its unit-free regret frequencies
     ],
 }
 

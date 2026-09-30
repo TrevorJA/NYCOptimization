@@ -231,7 +231,7 @@ FIGURES: tuple[FigureSpec, ...] = (
         tier="manuscript", number=7, section="4.4",
         kind="robustness", needs=frozenset({"criteria_scorecard",
                                             "figure_tables"}),
-        caption="All-Parties robustness vs no-harm frequency against the "
+        caption="All-Parties robustness vs regret frequency against the "
                 "FFMP incumbent (RQ1 headline); per-design non-dominated "
                 "frontier and the incumbent's own robustness as reference.",
     ),

@@ -51,13 +51,13 @@ DESIGN_ORDER: tuple = ("monte_carlo", "hazard_filling_stationary", "historic")
 #: the display name and reference-trace flag.
 DESIGN_STYLE: dict[str, dict] = {
     "monte_carlo": {
-        "color": "#0072B2", "label": "Monte Carlo sampling (i.i.d. control)",
+        "color": "#0072B2", "label": "Monte Carlo Sampling (MC)",
         "reference": False},
     "hazard_filling_stationary": {
-        "color": "#D55E00", "label": "Hazard-filling (stationary)",
+        "color": "#D55E00", "label": "Hazard Filling (HF)",
         "reference": False},
     "historic": {
-        "color": "#B0B0B0", "label": "Historic trace (reference)",
+        "color": "#B0B0B0", "label": "Historical (HIST)",
         "reference": True},
 }
 
@@ -80,7 +80,7 @@ def overlap_style(rank: int) -> dict:
     """Line kwargs that keep EXACTLY coincident series individually visible.
 
     When several designs share an identical trace (e.g. every design pinned at
-    a no-harm frequency of 1.0), plain solid lines hide all but the one drawn
+    a low-regret frequency of 1.0), plain solid lines hide all but the one drawn
     last, and a reader cannot distinguish "they agree" from "the other series
     are missing". Staggering dash phase, marker and width shows every series at
     its true position -- never offset the DATA to fake separation.
@@ -131,25 +131,26 @@ def design_label(design: str) -> str:
 
 #: Compact single-line objective labels; ``label_for`` falls back to the raw name.
 OBJECTIVE_LABELS: dict[str, str] = {
-    # NYC delivery: satisficing reliability; CVaR90 of the deficit (% of Decree)
-    "nyc_delivery_reliability_weekly":  "NYC Delivery Reliability (weekly)",
-    "nyc_delivery_reliability_annual":  "NYC Delivery Reliability (annual)",
-    "nyc_delivery_deficit_cvar90_pct":  "NYC Delivery Deficit (weekly CVaR90, %)",
-    "nyc_delivery_deficit_p99_pct":     "NYC Delivery Deficit (P99 of annual CVaR90, %)",
-    "nyc_delivery_deficit_max_pct":     "NYC Delivery Deficit (weekly max, %)",
-    # NJ delivery
-    "nj_delivery_reliability_weekly":   "NJ Delivery Reliability (weekly)",
-    "nj_delivery_reliability_annual":   "NJ Delivery Reliability (annual)",
+    # NYC diversion: satisficing reliability; CVaR90 of the deficit (% of Decree)
+    "nyc_delivery_reliability_weekly":  "NYC Diversion Reliability (weekly)",
+    "nyc_delivery_reliability_annual":  "NYC Diversion Reliability (annual)",
+    "nyc_delivery_deficit_cvar90_pct":  "NYC Diversion Deficit (weekly CVaR90, %)",
+    "nyc_delivery_deficit_p99_pct":     "NYC Diversion Deficit (P99 of annual CVaR90, %)",
+    "nyc_delivery_deficit_max_pct":     "NYC Diversion Deficit (weekly max, %)",
+    # NJ diversion
+    "nj_delivery_reliability_weekly":   "NJ Diversion Reliability (weekly)",
+    "nj_delivery_reliability_annual":   "NJ Diversion Reliability (annual)",
     # Montague Decree flow
     "montague_flow_reliability_weekly": "Montague Flow Reliability (weekly)",
     "montague_flow_reliability_annual": "Montague Flow Reliability (annual)",
     "montague_flow_deficit_cvar90_pct": "Montague Flow Deficit (weekly CVaR90, %)",
     "montague_flow_deficit_p99_pct":    "Montague Flow Deficit (P99 of annual CVaR90, %)",
     "montague_flow_deficit_max_pct":    "Montague Flow Deficit (weekly max, %)",
-    # Trenton Decree flow
+    # Trenton flow target
+    "trenton_flow_deficit_cvar90_pct":  "Trenton Flow Deficit (weekly CVaR90, %)",
+    "trenton_flow_deficit_p99_pct":     "Trenton Flow Deficit (P99 of annual CVaR90, %)",
     "trenton_flow_reliability_weekly":  "Trenton Flow Reliability (weekly)",
     "trenton_flow_reliability_annual":  "Trenton Flow Reliability (annual)",
-    "trenton_flow_deficit_cvar90_pct":  "Trenton Flow Deficit (weekly CVaR90, %)",
     # Downstream flooding: ft·days above the NWS minor flood stage at the
     # worst-affected gauge (exceedance, active); day counts are diagnostics.
     "downstream_flood_exceedance_minor":  "Flood Exceedance (NWS minor, ft·d/yr)",
@@ -184,6 +185,8 @@ OBJ_SHORT_LABELS: dict[str, str] = {
     "montague_flow_reliability_annual": "Montague Rel. (ann)",
     "montague_flow_deficit_cvar90_pct": "Montague Def. CVaR90 %",
     "montague_flow_deficit_p99_pct":    "Montague Def. P99 %",
+    "trenton_flow_deficit_cvar90_pct":  "Trenton Def. CVaR90 %",
+    "trenton_flow_deficit_p99_pct":     "Trenton Def. P99 %",
     "trenton_flow_reliability_weekly":  "Trenton Rel. (wk)",
     "trenton_flow_reliability_annual":  "Trenton Rel. (ann)",
     "downstream_flood_exceedance_minor":  "Flood Exc. (ft·d/yr)",
@@ -224,7 +227,7 @@ def axis_label_for(name: str, direction: str = None) -> str:
     """Multi-line parallel-axis label derived from the long-form label.
 
     Splits the long form at its "(...)" qualifier and appends the
-    optimization direction, e.g. ``NYC Delivery Reliability\n(annual)\n(max)``.
+    optimization direction, e.g. ``NYC Diversion Reliability\n(annual)\n(max)``.
     The SOLE parallel-axis label convention -- derived from ``label_for``,
     never a third hand-written set.
 
@@ -265,14 +268,14 @@ FACTOR_MAP_MARKS = {
 # ---------------------------------------------------------------------------
 
 #: Six pairwise scatter pairs (0-based indices into the 8-objective active
-#: set: 0 NYC Rel, 1 NYC Def, 2 Montague Rel, 3 Montague Def, 4 Trenton Rel,
+#: set: 0 NYC Rel, 1 NYC Def, 2 Montague Rel, 3 Montague Def, 4 Trenton Def,
 #: 5 Flood Days, 6 Storage, 7 NJ Rel) for SI diagnostic plots.
 SCATTER_PAIRS: list[tuple[int, int]] = [
     (0, 2),   # NYC Rel. vs Montague Rel.
     (1, 3),   # NYC Deficit vs Montague Deficit
-    (4, 5),   # Trenton Rel. vs Flood Days
+    (4, 5),   # Trenton Deficit vs Flood Days
     (0, 6),   # NYC Rel. vs Storage
-    (0, 7),   # NYC Rel. vs NJ Rel. (the two Decree delivery parties)
+    (0, 7),   # NYC Rel. vs NJ Rel. (the two Decree diversion parties)
     (1, 5),   # NYC Deficit vs Flood Days
 ]
 

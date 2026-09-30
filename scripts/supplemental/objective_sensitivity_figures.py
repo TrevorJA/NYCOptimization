@@ -8,8 +8,9 @@ the historic objective-sensitivity diagnostic:
 
   Step 2 - **Discrimination.** Per-objective spread across random policies
            (does the objective carry a Pareto gradient?).
-  Step 3 - **Redundancy** (Olden & Poff 2003 style). Spearman rank-correlation
-           matrix over all evaluated objectives; flag ``|rho| > threshold``.
+  Step 3 - **Redundancy.** Spearman rank-correlation matrix over all evaluated
+           objectives; flag ``|rho| > threshold`` (pairwise-correlation
+           thresholding, Dormann et al. 2013).
 
 Outputs (all under ``outputs/supplemental/objective_sensitivity/``):
   correlations/ : discrimination_summary, spearman_matrix, flagged_pairs (CSV)

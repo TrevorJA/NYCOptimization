@@ -8,10 +8,10 @@ panels read alike:
 
 * success/failure: for each design's focal-criterion analysis policy (plus the
   FFMP incumbent), the probability that a SOW meets the focal satisficing set;
-* regret: the same policies, relabelled by whether the policy harms the FFMP
-  incumbent beyond tolerance on the set's member axes (the per-SOW
-  decomposition of ``no_harm_freq_tau__{key}``). No incumbent panel, since its
-  own regret is zero by construction.
+* regret: the same policies, relabelled by whether the policy incurs regret
+  against the FFMP incumbent beyond tolerance on the set's member axes (the
+  per-SOW decomposition of ``no_harm_freq_tau__{key}``). No incumbent panel,
+  since its own regret is zero by construction.
 
 Figure 8 (:func:`fig_robustness_regret_surfaces`) stacks both rows;
 :func:`fig_regret_surfaces`, :func:`fig_regret_surfaces_worst` and
@@ -80,8 +80,8 @@ class _MapSpec:
 
 
 _REGRET_LEGEND = dict(
-    pos_legend="Low regret: no focal axis harmed beyond tolerance",
-    neg_legend="High regret: at least one focal axis harmed",
+    pos_legend="Low regret: no focal axis worse beyond tolerance",
+    neg_legend="High regret: at least one focal axis worse beyond tolerance",
     count_word="low regret",
     cbar_label="P(SOW is low-regret)",
     include_incumbent=False,
@@ -99,8 +99,8 @@ REGRET_MAP = _MapSpec(
 #: Variant B: the worst case each design's front actually contains.
 REGRET_WORST_MAP = _MapSpec(
     table_stem="regret_surfaces_worst", view="worst",
-    selection="Policy per design: the Pareto-set policy that harms the "
-              "incumbent in the MOST SOWs -- the worst case the front "
+    selection="Policy per design: the Pareto-set policy that incurs "
+              "regret in the MOST SOWs -- the worst case the front "
               "contains, not the policy anyone would select.",
     **_REGRET_LEGEND,
 )
@@ -356,7 +356,7 @@ def fig_regret_exposure(ctx, out_stub: Path, table_dir: Path) -> dict:
     them hostage to the selection rule -- the compromise policy never regrets,
     the worst one may regret everywhere. This panel asks the question of the
     WHOLE front instead: in each state of the world, what share of the design's
-    Pareto policies avoid harming the incumbent? It is a frequency, so it needs
+    Pareto policies are low-regret? It is a frequency, so it needs
     no cross-objective normalization, and it cannot be made degenerate by
     picking a policy.
 
@@ -416,11 +416,11 @@ def fig_regret_exposure(ctx, out_stub: Path, table_dir: Path) -> dict:
     lines = [
         f"Every Pareto-set policy per design, on {meta.get('n_sow', '?')} "
         f"{ETEST} SOWs. One marker per SOW, coloured by the SHARE of that "
-        f"design's policies that do NOT harm the incumbent there; no single "
+        f"design's policies that are low-regret there; no single "
         f"policy is selected, so the panel cannot be degenerate by choice.",
         "",
-        f"A policy harms the incumbent in a SOW when it is worse than the "
-        f"FFMP incumbent there by more than the tolerance on any "
+        f"A policy is low-regret in a SOW when it is no worse than the "
+        f"current FFMP policy there by more than the tolerance on every "
         f"{focal.label} axis:",
     ]
     lines += [f"  •  {short_label_for(k)}:  τ = {v:.3g}" for k, v in tau.items()]

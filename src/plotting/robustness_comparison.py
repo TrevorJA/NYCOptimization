@@ -17,7 +17,7 @@ Figures:
   * robustness exceedance curves (joint Starr under the focal criterion, and
     the smooth mean-fraction-of-criteria secondary score) on shared axes;
   * the regret-vs-robustness plane: focal satisficing against the tolerance-
-    laddered no-harm frequency vs the incumbent, with per-design frontiers.
+    laddered low-regret frequency vs the incumbent, with per-design frontiers.
 """
 
 from __future__ import annotations

@@ -79,10 +79,11 @@ _PATH_COLORS = {
 #: Compact two-line axis labels for the annual-unit objective set (fallback:
 #: wrapped ``label_for``).
 _SHORT_OBJ_LABELS = {
-    "nyc_delivery_reliability_annual": "NYC Delivery\nRel.",
+    "nyc_delivery_reliability_annual": "NYC Diversion\nRel.",
     "nyc_delivery_deficit_p99_pct": "NYC Deficit\nCVaR90",
     "montague_flow_reliability_annual": "Montague\nRel.",
     "montague_flow_deficit_p99_pct": "Montague Deficit\nCVaR90",
+    "trenton_flow_deficit_p99_pct": "Trenton Deficit\nCVaR90",
     "trenton_flow_reliability_annual": "Trenton\nRel.",
     "downstream_flood_exceedance_annual": "Flood Exceedance\n(minor, ft·d)",
     "downstream_flood_days_annual": "Flood Days\n(minor)",

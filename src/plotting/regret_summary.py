@@ -3,10 +3,10 @@
 Three figures over the cross-design robustness scorecards:
 
   * :func:`plot_regret_robustness_plane`: every re-evaluated policy as
-    (satisficing robustness, no-harm frequency vs the incumbent), with each
+    (satisficing robustness, low-regret frequency vs the incumbent), with each
     design's non-dominated frontier. Regret magnitudes are not on this plot
     (they are in natural units and never combined).
-  * :func:`plot_regret_tolerance_sweep`: no-harm frequency against the tolerance
+  * :func:`plot_regret_tolerance_sweep`: low-regret frequency against the tolerance
     ladder ``tau_i = k * eps_i``.
   * :func:`plot_regret_decomposition`: per objective, in natural units, the tail
     regret and the mean gain against the incumbent (gain is always drawn beside
@@ -41,7 +41,7 @@ def _design_style(designs) -> tuple[dict, dict]:
 def pareto_frontier(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Indices of the non-dominated points when BOTH axes are maximized.
 
-    Used for the per-design frontier on the robustness/no-harm plane. Ties are
+    Used for the per-design frontier on the robustness/low-regret plane. Ties are
     kept (weak dominance only removes strictly dominated points), so a design is
     never advantaged by having found duplicates.
     """
@@ -65,7 +65,7 @@ def plot_regret_robustness_plane(points: pd.DataFrame, out_file,
                                  y: str = "no_harm_freq_tau",
                                  baseline_x: float | None = None,
                                  figsize: tuple = (7.6, 6.0)) -> Path:
-    """Scatter every policy on the (robustness, no-harm) plane, frontier per design.
+    """Scatter every policy on the (robustness, low-regret) plane, frontier per design.
 
     Args:
         points: Tidy frame with columns ``design`` and the two metric columns; one
@@ -73,9 +73,9 @@ def plot_regret_robustness_plane(points: pd.DataFrame, out_file,
             caption count when present.
         out_file: Output stub (extension supplied by ``save_figure``).
         x: Robustness column (higher = better).
-        y: No-harm column (higher = better, i.e. less regret).
+        y: Low-regret column (higher = better, i.e. less regret).
         baseline_x: The status-quo policy's own robustness, drawn as a vertical
-            reference. Its no-harm frequency against itself is 1.0 by definition,
+            reference. Its low-regret frequency against itself is 1.0 by definition,
             so it is annotated rather than plotted as a competing point.
         figsize: Figure size.
 
@@ -101,14 +101,14 @@ def plot_regret_robustness_plane(points: pd.DataFrame, out_file,
 
     if baseline_x is not None and np.isfinite(baseline_x):
         ax.axvline(baseline_x, color="firebrick", lw=2.0, ls="--", zorder=1)
-        ax.annotate("status-quo FFMP\n(no-harm = 1 by definition)",
+        ax.annotate("status-quo FFMP\n(low-regret frequency = 1 by definition)",
                     xy=(baseline_x, 1.0), xytext=(6, -12),
                     textcoords="offset points", fontsize=8, color="firebrick",
                     va="top")
 
     ax.set_xlabel("Satisficing robustness on the re-evaluation ensemble\n"
                   "(Starr domain criterion, SOW unit)")
-    ax.set_ylabel("No-harm frequency vs current operations\n"
+    ax.set_ylabel("Low-regret frequency vs current operations\n"
                   "fraction of SOWs degrading NO objective beyond tolerance")
     ax.set_title("Robustness bought, and what it cost\n"
                  "up = more robust; right = less regret vs the status quo",
@@ -127,7 +127,7 @@ def plot_regret_robustness_plane(points: pd.DataFrame, out_file,
 def plot_regret_tolerance_sweep(sweep: pd.DataFrame, out_file,
                                 statistic: str = "best",
                                 figsize: tuple = (7.2, 5.0)) -> Path:
-    """No-harm frequency against the tolerance ladder, one line per design.
+    """Low-regret frequency against the tolerance ladder, one line per design.
 
     Args:
         sweep: Output of ``compare_designs.regret_tolerance_sweep`` -- columns
@@ -162,7 +162,7 @@ def plot_regret_tolerance_sweep(sweep: pd.DataFrame, out_file,
 
     ax.set_xlabel("Tolerance $k$  (no objective degraded by more than "
                   "$k$ just-noticeable differences)")
-    ax.set_ylabel(f"No-harm frequency ({statistic} policy per run)")
+    ax.set_ylabel(f"Low-regret frequency ({statistic} policy per run)")
     ax.set_title("How much tolerance does 'no degradation vs current operations'\n"
                  "need before it holds?", fontsize=10)
     ax.set_ylim(-0.02, 1.02)
@@ -206,7 +206,7 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
         mags = mags.loc[keep]
 
     names = list(raw.obj_names)
-    # Order by how often the objective is harmed at all, worst first, so the
+    # Order by how often the objective incurs any regret, worst first, so the
     # binding party is at the top of both panels.
     harm_rank = [np.nanmean(mags[f"regret_q90__{n}"].to_numpy()) > 0 for n in names]
     order = sorted(range(len(names)), key=lambda k: -float(harm_rank[k]))

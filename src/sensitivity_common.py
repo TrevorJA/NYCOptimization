@@ -253,7 +253,8 @@ def spearman_and_flagged(samples: pd.DataFrame, obj_names: list,
     Objectives with fewer than 3 valid samples or zero variance are excluded
     from the matrix (they cannot yield a meaningful rank correlation). From each
     ``|rho| > threshold`` pair the more stable member (``stability_score``) is
-    recommended for retention (Olden & Poff 2003; Bonham et al. 2024).
+    recommended for retention (threshold-based pre-selection, Dormann et al.
+    2013; Bonham et al. 2024).
 
     Args:
         samples: Rows = samples, columns include the objective values.

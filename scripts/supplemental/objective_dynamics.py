@@ -6,7 +6,7 @@ NYC storage, downstream flooding). Each figure shows, for the default FFMP
 baseline and one interpretable contrasting policy:
 
   * the §1 whole-trace dynamics the objective reduces (weekly series vs its
-    static-Decree threshold, with sub-threshold failures shaded; or the daily
+    static Decree or flow target, with sub-target weeks shaded; or the daily
     storage / gauge-stage series);
   * the statistical reduction that collapses it to a score (CVaR90 deficit tail,
     storage duration curve); and
@@ -57,15 +57,14 @@ from src.objectives import (  # noqa: E402
     _weekly_delivery_ok,
     _weekly_flow_deficit_pct,
     _weekly_flow_ok,
+    OBJECTIVES,
 )
 from src.objectives_ensemble import (  # noqa: E402
     _flood_days_minor_annual,
-    _montague_deficit_cvar90_annual,
     _montague_failure_weeks_annual,
-    _nyc_delivery_deficit_cvar90_annual,
     _nyc_delivery_failure_weeks_annual,
     _nyc_storage_min_annual,
-    _trenton_failure_weeks_annual,
+    _trenton_deficit_cvar90_annual,
     ffmp_year_unit_slices,
 )
 from src.plotting.style import (  # noqa: E402
@@ -170,27 +169,32 @@ def _check(recomputed: float, policy: "Policy", name: str, eps: float,
 # ---------------------------------------------------------------------------
 
 def _flow_threshold_panel(ax, policies, flow_key: str, target: float,
-                          obj_name: str, *, strict: bool = True) -> None:
-    """Weekly-mean flow vs a static Decree target; sub-threshold weeks shaded.
+                          obj_name: "str | None", *, target_label: str,
+                          strict: bool = True) -> None:
+    """Weekly-mean flow vs a static flow target; sub-threshold weeks shaded.
 
-    Reliability = fraction of weeks weekly-mean flow >= target. The shaded area
-    below the target line is exactly the set of failing weeks (fail mask taken
-    from ``_weekly_flow_ok``), so the visual proportion is the score.
+    The shaded area below the target line is exactly the set of failing weeks
+    (fail mask taken from ``_weekly_flow_ok``). When ``obj_name`` names a
+    reliability objective, reliability = fraction of weeks weekly-mean flow >=
+    target, so the visual proportion is the score and it is asserted and shown
+    in the legend; with ``obj_name=None`` the panel is unscored.
     """
     for pol in policies:
         flow = pol.data["major_flow"][flow_key]
         weekly = _weekly_mean_metric_window(flow)
-        ok = _weekly_flow_ok(_metric_window(flow), target)
-        rel = float(ok.sum()) / len(ok) if len(ok) else 0.0
-        _check(rel, pol, obj_name, 1e-6, strict)
+        label = pol.label
+        if obj_name is not None:
+            ok = _weekly_flow_ok(_metric_window(flow), target)
+            rel = float(ok.sum()) / len(ok) if len(ok) else 0.0
+            _check(rel, pol, obj_name, 1e-6, strict)
+            label = _score_text(pol, obj_name, "(rel {:.2f})")
         ax.plot(weekly.index, weekly.values, lw=0.7, color=pol.color,
-                linestyle=pol.linestyle,
-                label=_score_text(pol, obj_name, "(rel {:.2f})"))
+                linestyle=pol.linestyle, label=label)
         ax.fill_between(weekly.index, weekly.values, target,
                         where=(weekly.values < target), color=pol.color,
                         alpha=FAIL_ALPHA, linewidth=0)
     ax.axhline(target, color=THRESHOLD_COLOR, lw=1.0, linestyle=":",
-               label=f"Decree target ({target:.0f} MGD)")
+               label=f"{target_label} ({target:.0f} MGD)")
     ax.set_yscale("log")
     # Focus on the decision-relevant band: only the low-flow tail near/below the
     # Decree target drives this objective, so clip the (irrelevant) flood peaks.
@@ -201,7 +205,9 @@ def _flow_threshold_panel(ax, policies, flow_key: str, target: float,
 
 
 def _tail_panel(ax, policies, deficit_getter, obj_name: str,
-                *, eps: float, strict: bool = True) -> None:
+                *, eps: float, strict: bool = True,
+                ylabel: str = "Weekly deficit (% of Decree)",
+                xmax: float = 100.0) -> None:
     """Rank-sorted weekly deficit % with the CVaR90 tail shaded and marked.
 
     x = percentage of weeks (worst first); y = weekly deficit %. The worst
@@ -226,9 +232,9 @@ def _tail_panel(ax, policies, deficit_getter, obj_name: str,
                    alpha=0.55)
         ax.plot([tail_pct], [cvar], marker="o", ms=6, color=pol.color, zorder=6)
     ax.axvspan(0, tail_pct, color="0.85", alpha=0.6, zorder=0)
-    ax.set_xlim(0, 100)
+    ax.set_xlim(0, xmax)
     ax.set_xlabel("Weeks ranked worst → best (%)")
-    ax.set_ylabel("Weekly deficit (% of Decree)")
+    ax.set_ylabel(ylabel)
     handles, _ = ax.get_legend_handles_labels()
     handles.append(Patch(facecolor="0.85", alpha=0.6,
                          label=f"worst {tail_pct:.0f}% (CVaR90 tail; ● = score)"))
@@ -262,12 +268,12 @@ def _annual_strip(ax, policies, annual_getter, index_getter, *, ylabel: str,
 
 
 # ---------------------------------------------------------------------------
-# Figure A - NYC delivery (obj 1 reliability + obj 2 CVaR90 deficit)
+# Figure A - NYC diversion (obj 1 reliability + obj 2 CVaR90 deficit)
 # ---------------------------------------------------------------------------
 
 def plot_delivery_anatomy(policies, *, output_file=None,
                           figsize=(13, 7.2), strict: bool = True) -> Figure:
-    """NYC delivery: reliability time series + CVaR90 deficit tail + §2 strip."""
+    """NYC diversion: reliability time series + CVaR90 deficit tail + §2 strip."""
     rel_name = "nyc_delivery_reliability_weekly"
     cvar_name = "nyc_delivery_deficit_cvar90_pct"
     fig = plt.figure(figsize=figsize)
@@ -303,10 +309,10 @@ def plot_delivery_anatomy(policies, *, output_file=None,
                            linewidth=0)
     ax_ts.plot(demand_ref.index, demand_ref.values, lw=0.9, color=THRESHOLD_COLOR,
                linestyle=":", label="NYC demand (entitlement cap)")
-    ax_ts.set_ylabel("Weekly-mean NYC delivery (MGD)")
+    ax_ts.set_ylabel("Weekly-mean NYC diversion (MGD)")
     _style_time_axis(ax_ts)
     ax_ts.legend(loc="lower left", framealpha=0.9, fontsize=8, ncol=1)
-    ax_ts.set_title("NYC delivery — reliability & deficit "
+    ax_ts.set_title("NYC diversion — reliability & deficit "
                     "(shaded = weeks below 99% of running-avg entitlement)",
                     fontsize=10)
 
@@ -328,14 +334,37 @@ def plot_delivery_anatomy(policies, *, output_file=None,
 
 
 # ---------------------------------------------------------------------------
-# Figure B - Montague flow (obj 3 reliability + obj 4 CVaR90 deficit)
+# Shared flow-target figure (Montague and Trenton)
 # ---------------------------------------------------------------------------
 
-def plot_montague_anatomy(policies, *, output_file=None,
-                          figsize=(13, 7.2), strict: bool = True) -> Figure:
-    """Montague flow: reliability time series + CVaR90 deficit tail + §2 strip."""
-    rel_name = "montague_flow_reliability_weekly"
-    cvar_name = "montague_flow_deficit_cvar90_pct"
+def _plot_flow_anatomy(policies, *, flow_key: str, target: float,
+                       target_label: str, rel_name: "str | None",
+                       cvar_name: str, annual_getter, strip_ylabel: str,
+                       title: str, tail_xmax: float = 100.0,
+                       output_file=None, figsize=(13, 7.2),
+                       strict: bool = True) -> Figure:
+    """Flow-target anatomy: weekly flow vs target, CVaR90 deficit tail, §2 strip.
+
+    Args:
+        policies: List of :class:`Policy`.
+        flow_key: ``major_flow`` column of the gauge (e.g. "delMontague").
+        target: Static flow target in MGD (from ``config``).
+        target_label: Legend name of the target line.
+        rel_name: Reliability objective scored on the time-series panel, or
+            None for an unscored panel.
+        cvar_name: CVaR90 deficit objective scored on the tail panel; its
+            registered epsilon is the self-check tolerance.
+        annual_getter: policy -> §2 per-FFMP-year annual metric.
+        strip_ylabel: y-axis label of the annual-unit strip.
+        title: Time-series panel title.
+        tail_xmax: Right x-limit (% of weeks) of the tail panel.
+        output_file: Optional path stub (no extension); saved via ``save_figure``.
+        figsize: Figure size.
+        strict: Assert figure-recomputed scores against ``policy.scores``.
+
+    Returns:
+        The matplotlib Figure.
+    """
     fig = plt.figure(figsize=figsize)
     gs = GridSpec(2, 2, figure=fig, height_ratios=[1.25, 1.0], hspace=0.32,
                   wspace=0.22)
@@ -343,23 +372,20 @@ def plot_montague_anatomy(policies, *, output_file=None,
     ax_tail = fig.add_subplot(gs[1, 0])
     ax_strip = fig.add_subplot(gs[1, 1])
 
-    _flow_threshold_panel(ax_ts, policies, "delMontague",
-                          MONTAGUE_DECREE_TARGET_MGD, rel_name, strict=strict)
-    ax_ts.set_title("Montague flow — reliability & deficit "
-                    "(shaded = weeks below the 1131 MGD Decree target)",
-                    fontsize=10)
+    _flow_threshold_panel(ax_ts, policies, flow_key, target, rel_name,
+                          target_label=target_label, strict=strict)
+    ax_ts.set_title(title, fontsize=10)
 
     _tail_panel(
         ax_tail, policies,
         lambda p: _weekly_flow_deficit_pct(
-            _metric_window(p.data["major_flow"]["delMontague"]),
-            MONTAGUE_DECREE_TARGET_MGD).values,
-        cvar_name, eps=1.5, strict=strict)
+            _metric_window(p.data["major_flow"][flow_key]), target).values,
+        cvar_name, eps=OBJECTIVES[cvar_name].epsilon, strict=strict,
+        ylabel=f"Weekly deficit (% of {target_label})", xmax=tail_xmax)
 
-    _annual_strip(ax_strip, policies,
-                  lambda p: _montague_failure_weeks_annual(p.data),
-                  lambda p: p.data["major_flow"]["delMontague"].index,
-                  ylabel="Failing weeks / water-year")
+    _annual_strip(ax_strip, policies, annual_getter,
+                  lambda p: p.data["major_flow"][flow_key].index,
+                  ylabel=strip_ylabel)
     ax_strip.set_title("Annual-unit view", fontsize=9)
 
     if output_file is not None:
@@ -368,33 +394,46 @@ def plot_montague_anatomy(policies, *, output_file=None,
 
 
 # ---------------------------------------------------------------------------
-# Figure C - Trenton flow (obj 5 reliability only)
+# Figure B - Montague flow (obj 3 reliability + obj 4 CVaR90 deficit)
+# ---------------------------------------------------------------------------
+
+def plot_montague_anatomy(policies, *, output_file=None,
+                          figsize=(13, 7.2), strict: bool = True) -> Figure:
+    """Montague flow: reliability time series + CVaR90 deficit tail + §2 strip."""
+    return _plot_flow_anatomy(
+        policies, flow_key="delMontague", target=MONTAGUE_DECREE_TARGET_MGD,
+        target_label="Decree target",
+        rel_name="montague_flow_reliability_weekly",
+        cvar_name="montague_flow_deficit_cvar90_pct",
+        annual_getter=lambda p: _montague_failure_weeks_annual(p.data),
+        strip_ylabel="Failing weeks / water-year",
+        title=(f"Montague flow — reliability & deficit (shaded = weeks below "
+               f"the {MONTAGUE_DECREE_TARGET_MGD:.0f} MGD Decree target)"),
+        output_file=output_file, figsize=figsize, strict=strict)
+
+
+# ---------------------------------------------------------------------------
+# Figure C - Trenton flow (obj 5 CVaR90 deficit)
 # ---------------------------------------------------------------------------
 
 def plot_trenton_anatomy(policies, *, output_file=None,
-                         figsize=(13, 6.4), strict: bool = True) -> Figure:
-    """Trenton flow: reliability time series + §2 failing-weeks strip."""
-    rel_name = "trenton_flow_reliability_weekly"
-    fig = plt.figure(figsize=figsize)
-    gs = GridSpec(2, 1, figure=fig, height_ratios=[1.3, 1.0], hspace=0.35)
-    ax_ts = fig.add_subplot(gs[0, 0])
-    ax_strip = fig.add_subplot(gs[1, 0])
+                         figsize=(13, 7.2), strict: bool = True) -> Figure:
+    """Trenton flow: weekly flow vs target + CVaR90 deficit tail + §2 strip.
 
-    _flow_threshold_panel(ax_ts, policies, "delTrenton",
-                          TRENTON_DECREE_TARGET_MGD, rel_name, strict=strict)
-    ax_ts.set_title("Trenton flow — reliability "
-                    "(shaded = weeks below the 1939 MGD Decree target)",
-                    fontsize=10)
-
-    _annual_strip(ax_strip, policies,
-                  lambda p: _trenton_failure_weeks_annual(p.data),
-                  lambda p: p.data["major_flow"]["delTrenton"].index,
-                  ylabel="Failing weeks / water-year")
-    ax_strip.set_title("Annual-unit view", fontsize=9)
-
-    if output_file is not None:
-        save_figure(fig, output_file)
-    return fig
+    The §2 strip is the within-year CVaR90 deficit whose pooled P99 is the
+    annual-unit Trenton objective.
+    """
+    return _plot_flow_anatomy(
+        policies, flow_key="delTrenton", target=TRENTON_DECREE_TARGET_MGD,
+        target_label="flow target", rel_name=None,
+        cvar_name="trenton_flow_deficit_cvar90_pct",
+        annual_getter=lambda p: _trenton_deficit_cvar90_annual(p.data),
+        strip_ylabel="Within-year CVaR90 deficit (%)",
+        title=(f"Trenton flow — deficit (shaded = weeks below the "
+               f"{TRENTON_DECREE_TARGET_MGD:.0f} MGD flow target)"),
+        # Deficit weeks are rare at Trenton; zoom on the CVaR90 tail.
+        tail_xmax=20.0,
+        output_file=output_file, figsize=figsize, strict=strict)
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +509,8 @@ def plot_flood_anatomy(policies, *, output_file=None,
     Panel (a) shows the three reservoir-tail gauge stages of the BASELINE policy
     against each gauge's NWS minor-flood line (explains what a flood day is);
     panel (b) is the §2 per-FFMP-year flood-day count for both policies (the
-    baseline-vs-contrast comparison), annotated with each policy's §1 total.
+    baseline-vs-contrast comparison), annotated with each policy's §1 mean
+    annual flood days.
     """
     obj_name = "downstream_flood_days_minor"
     fig = plt.figure(figsize=figsize)
@@ -496,15 +536,16 @@ def plot_flood_anatomy(policies, *, output_file=None,
                        "(dotted = NWS minor stage; a flood day = any gauge above)",
                        fontsize=10)
 
-    # (b) §2 per-FFMP-year flood-day count, both policies; §1 total annotated.
+    # (b) §2 per-FFMP-year flood-day count, both policies; §1 mean annotated
+    #     (registered diagnostic, scored here since it is not in the active set).
     for pol in policies:
         years, _ = _water_year_labels(pol.data["flood_stage"].index)
         vals = np.asarray(_flood_days_minor_annual(pol.data), dtype=float)
         m = min(len(years), len(vals))
-        total = float(pol.scores[obj_name])
+        mean_days = float(OBJECTIVES[obj_name].func(pol.data))
         ax_strip.step(years[:m], vals[:m], where="mid", lw=0.9, color=pol.color,
                       linestyle=pol.linestyle,
-                      label=f"{pol.label}   ({total:.0f} flood days total)")
+                      label=f"{pol.label}   ({mean_days:.2f} flood days/yr)")
     ax_strip.set_xlabel("Water year")
     ax_strip.set_ylabel("Minor-flood days / water-year")
     ax_strip.margins(x=0.01)

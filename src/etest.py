@@ -4,9 +4,10 @@ etest.py - The held-out test ensemble E_test: registry, sizing, and staging cont
 E_test is an ``EnsembleSpec``, never a ``ScenarioDesign``: it never enters
 search and is never a control, so the search side's i.i.d. requirement does not
 apply. Construction: LHS over the widened DU forcing box (:data:`E_TEST_BOUND_PCT`,
-:data:`E_TEST_MARGIN`, strictly containing the search box) with ``R > 1``
-realizations per SOW, which is what makes the SOW-unit robustness metric
-computable. Generated: ``N_theta = 1000`` x ``R = 25`` x ``L = 50`` yr in 50
+:data:`E_TEST_MARGIN`, strictly containing the search box), with the annual-volume
+lower bound extended past the widened CMIP6 minimum to
+:data:`E_TEST_VOLUME_MULTIPLIER_MIN`, and ``R > 1`` realizations per SOW, which is
+what makes the SOW-unit robustness metric computable. Generated: ``N_theta = 1000`` x ``R = 25`` x ``L = 50`` yr in 50
 staged chunks of 500 realizations; the campaign re-evaluates the leading
 ``E_TEST_REEVAL_N_THETA = 500`` SOWs (the first 25 chunks,
 :func:`campaign_reeval_preset` -> ``etest_kn_50yr_n25000_first25ch``). The
@@ -21,6 +22,7 @@ slug carrying a ``_meta.json``; the prefix subset is staged by
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,6 +66,13 @@ E_TEST_BOUND_PCT: tuple[float, float] = (
 #: Fractional widening of each harmonic-parameter range beyond the full CMIP6 span (campaign value).
 E_TEST_MARGIN: float = float(os.environ.get("NYCOPT_ETEST_MARGIN", "0.25"))
 
+#: Lower bound of the annual-volume multiplier e^m of E_test's forcing box, replacing the widened
+#: CMIP6 minimum on that one axis (the wet bound and the seasonal axes keep the margin box). Set at
+#: the dry limit of the inflow-multiplier range of the deep-uncertainty re-evaluations of Herman et
+#: al. (2014) and Trindade et al. (2017), because the driest CMIP6 run leaves the stationary drought
+#: envelope in under 2 % of its decades (campaign_design.md §5; SI Text S6, Figure S18).
+E_TEST_VOLUME_MULTIPLIER_MIN: float = float(os.environ.get("NYCOPT_ETEST_VOLUME_MIN", "0.80"))
+
 #: The default E_test construction. ``"kn"`` is THE test ensemble of the campaign; every other
 #: registered variant is an opt-in sensitivity that nothing builds automatically.
 E_TEST_DEFAULT_VARIANT: str = "kn"
@@ -98,6 +107,8 @@ class ETestVariant:
         campaign: Whether the manuscript campaign requires this variant. Exactly one variant is the
             campaign's E_test; the rest are opt-in sensitivities that nothing builds automatically.
         description: One-line human-readable summary.
+        volume_multiplier_min: Lower bound of the annual-volume multiplier e^m, applied after the
+            margin box on the ``m`` axis only (``None`` keeps the margin box).
     """
 
     name: str
@@ -111,6 +122,14 @@ class ETestVariant:
     seed_domain: str
     campaign: bool = False
     description: str = ""
+    volume_multiplier_min: float | None = None
+
+    @property
+    def axis_bounds(self) -> dict[str, tuple[float | None, float | None]]:
+        """Per-axis overrides of the margin box: the annual-volume lower bound, when set."""
+        if self.volume_multiplier_min is None:
+            return {}
+        return {"m": (math.log(self.volume_multiplier_min), None)}
 
     @property
     def n_realizations(self) -> int:
@@ -160,6 +179,7 @@ E_TEST_VARIANTS: dict[str, ETestVariant] = {
         seed_domain="etest:kn",
         campaign=True,
         description="Kirsch-Nowak over the wide DU forcing box; LHS theta x R realizations.",
+        volume_multiplier_min=E_TEST_VOLUME_MULTIPLIER_MIN,
     ),
     # Opt-in, unvalidated generator-structure sensitivity; not built by any
     # workflow step. It imposes the forcing as a monthly delta-change, so it
@@ -177,6 +197,7 @@ E_TEST_VARIANTS: dict[str, ETestVariant] = {
         campaign=False,
         description="OPT-IN sensitivity (not campaign): multi-site Gaussian-mixture HMM on annual "
                     "flows (Gold et al. 2024), same wide DU box, same LHS theta x R design.",
+        volume_multiplier_min=E_TEST_VOLUME_MULTIPLIER_MIN,
     ),
 }
 
@@ -267,6 +288,11 @@ def assert_etest_contract() -> None:
             f"E_test variant '{v.name}' shares seed domain '{v.seed_domain}' with a scenario "
             f"design. The held-out ensemble would not be held out (Bonham et al. 2024)."
         )
+        if v.volume_multiplier_min is not None:
+            assert 0.0 < v.volume_multiplier_min < 1.0, (
+                f"E_test variant '{v.name}': volume_multiplier_min={v.volume_multiplier_min} must "
+                f"lie in (0, 1); it is a reduction of the annual-mean flow."
+            )
         if v.chunk_size:
             assert v.chunk_size % v.realizations_per_theta == 0, (
                 f"E_test variant '{v.name}': chunk_size ({v.chunk_size}) must be a multiple of "
@@ -326,4 +352,30 @@ def assert_staged_etest_contract(slug: str) -> dict:
         f"generated from a reserved 'etest:*' seed stream, or the held-out re-evaluation is not "
         f"held out."
     )
+    variant = next((v for v in E_TEST_VARIANTS.values()
+                    if v.seed_domain == meta.get("seed_domain")), None)
+    if variant is not None:
+        recorded = meta.get("axis_bounds") or {}
+        expected = variant.axis_bounds
+        assert _axis_bounds_match(recorded, expected), (
+            f"Staged E_test '{slug}' records axis_bounds={recorded!r}, but the registry expects "
+            f"{expected!r} (E_TEST_VOLUME_MULTIPLIER_MIN={E_TEST_VOLUME_MULTIPLIER_MIN}). The staged "
+            f"flows were generated over another forcing box; regenerate rather than reuse them."
+        )
     return meta
+
+
+def _axis_bounds_match(recorded: dict, expected: dict, tol: float = 1e-9) -> bool:
+    """Whether a staged ``axis_bounds`` record equals the registry's (``None`` sides equal)."""
+    if set(recorded) != set(expected):
+        return False
+    for axis, exp in expected.items():
+        rec = recorded[axis]
+        if len(rec) != 2:
+            return False
+        for r, e in zip(rec, exp):
+            if (r is None) != (e is None):
+                return False
+            if e is not None and abs(float(r) - float(e)) > tol:
+                return False
+    return True

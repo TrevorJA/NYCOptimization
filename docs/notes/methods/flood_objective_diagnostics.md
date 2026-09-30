@@ -4,7 +4,7 @@
 **`downstream_flood_exceedance_annual`** (§2 scale) — Σ over days of the
 max-across-gauges (stage − NWS minor flood stage)⁺, in ft·days/yr. The day
 counts are registered diagnostics. Evidence: one local simulation pass
-(34 policies × the historic trace + the `kn_50yr_n5` KN stationary fixture,
+(34 policies × the historic record + the `kn_50yr_n5` KN stationary fixture,
 trimmed model) plus zero-simulation re-scorings of the Pywr-DRB flood-gauge
 diagnostic experiment
 (`../Pywr-DRB/experiments/nyc_flood_gauge_diagnostics/`, post-fix 2000–2023
@@ -25,7 +25,7 @@ Stage in ft comes from the model's rating-curve parameters; thresholds from
 
 Measured verdicts that support the definition:
 
-- **Resolution.** The day count is degenerate on the historic trace: across
+- **Resolution.** The day count is degenerate on the historic record: across
   25 baseline+feasible-uniform policies it takes 9 distinct values (14.7% of
   policy pairs tied); the exceedance integral takes 25/25 distinct values
   with zero ties in both domains.
@@ -82,7 +82,7 @@ sibling repo's own preprocessor). The audit manifest persists in
 `flood_run_manifest.json`.
 
 Manuscript-SI illustrations of the metric (default FFMP policy, historic
-trace + stationary KN baseline):
+record + stationary KN baseline):
 `scripts/supplemental/flood_exceedance_baseline_figures.py` →
 `S_flood_exceedance_event_anatomy`, `S_flood_exceedance_annual_series`, and
 `S_flood_exceedance_return_period`.
@@ -96,4 +96,4 @@ trace + stationary KN baseline):
 | Magnitude-weighted exceedance beats binary threshold counts for flood objectives | Quinn et al. 2017 |
 | Saturated / tied criteria give the search no gradient | Bonham et al. 2024 |
 | Rank-stability screening of metric variants | Herman et al. 2015; McPhail et al. 2018 |
-| Redundant-metric retention by rank correlation | Olden & Poff 2003 |
+| Redundant-metric retention by pairwise rank correlation | Dormann et al. 2013 |

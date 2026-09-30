@@ -6,16 +6,19 @@ adds for the descriptor redundancy, axis-set comparison and truncation summary:
 the descriptor matrix drops the truncation flags and orients the low-flow
 minima, the hazard-direction tail mask and the exact-snap limit match hand
 values, the redundancy summary clusters a correlated pair and counts
-components, the nearest-member n_eff reproduces the Kish value, the named axis
-sets follow ``supplemental_config.seldiag_axis_sets``, and the block-C records
-assemble into the tidy tables. Small synthetic inputs; no staged data.
+components, the SSI fit check counts by calendar month, the nearest-member
+n_eff reproduces the Kish value, the named axis sets follow
+``supplemental_config.seldiag_axis_sets``, and the block-C records assemble
+into the tidy tables. Small synthetic inputs; no staged data.
 """
 
 import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+from scipy.stats import norm
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR))
@@ -84,6 +87,22 @@ def test_descriptor_redundancy_clusters_and_counts_components():
     assert red["n_components"] == 2
     assert red["top_loadings"][0][1] in ("a", "a_twin")
     assert red["top_loadings"][1][1] == "b"
+
+
+def test_ssi_fit_check_counts_by_calendar_month():
+    # A June start, as the SSI-6 of a January-start record has; June holds one
+    # more value than May.
+    index = pd.date_range("1945-06-01", periods=48, freq="MS")
+    ssi = pd.Series(0.0, index=index)
+    june = [-1.0, -2.0, 0.5, 1.0]
+    ssi[index.month == 6] = june
+    check = dhs.ssi_fit_check(ssi.iloc[:-11], level=-1.0).set_index("month")
+    assert list(check.index) == list(range(1, 13))
+    assert check.loc[6, "n"] == 4 and check.loc[5, "n"] == 3
+    assert check.loc[6, "n_at_or_below"] == 2  # a value at the level counts
+    assert check.loc[6, "sd"] == pytest.approx(np.std(june))
+    assert check.loc[6, "n_expected"] == pytest.approx(4 * norm.cdf(-1.0))
+    assert (check.drop(index=6)[["sd", "n_at_or_below"]] == 0).all().all()
 
 
 def test_nearest_member_ess_ratio_is_the_kish_value():

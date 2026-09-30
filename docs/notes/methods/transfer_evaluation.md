@@ -27,7 +27,7 @@ the matrix:
 > and ask (a) what fraction of each set dominates the scenario-matched FFMP baseline, (b) if all
 > three sets are pooled and merged into one epsilon-nondominated reference set *for a given
 > ensemble*, how much of that reference set each optimization contributed, and (c) how each
-> set's hypervolume changes across evaluation ensembles.
+> set's hypervolume changes across target ensembles.
 
 The expectation on (b) is that an ensemble's merged reference set is built mostly from solutions
 optimized under that ensemble. The result of interest is the degree, and any departure from it.
@@ -61,7 +61,7 @@ Three independent artifacts confirm the N = 100 substrate: the staged directorie
 (`fixprob_10yr_n100_d0`, `hazfill_stat_abs_10yr_n100_d0`), the `_meta.json` of each
 scenario-matched baseline, and the commit date of the default change relative to the set files.
 
-The three target ensembles are `historic_single` (one 78-year observed trace, 77 FFMP
+The three target ensembles are `historic_single` (one 78-year observed record, 77 FFMP
 unit-years), `fixprob_10yr_n100_d0` and `hazfill_stat_abs_10yr_n100_d0` (N = 100 x L = 10, 900
 unit-years each).
 
@@ -104,7 +104,7 @@ provenance sidecar so a future divergence fails loudly.
 
 A work unit is one (cell, solution) pair: 4,220 units over the six off-diagonal cells. Unit cost
 is heterogeneous by a factor of five — the scenario-matched baseline sidecars record 149.8 s and
-155.4 s for one N = 100 x L = 10 evaluation, against roughly 31 s for the historic single trace.
+155.4 s for one N = 100 x L = 10 evaluation, against roughly 31 s for the single historic record.
 
 The task farm follows `src/chunk_reeval.py`, the project's tested MPI pattern: ranks pull units
 via `O_CREAT|O_EXCL` claim files rather than receiving a contiguous slice, which is what keeps
@@ -139,10 +139,10 @@ provides `to_borg` / `to_natural` so no call site multiplies by a sign inline.
 **Readout 1 — dominance over the FFMP baseline.** Per cell, the fraction of the source set that
 Pareto-dominates the baseline *as evaluated on that cell's ensemble*. Reading down a column
 compares the three designs on one common substrate; reading across a row shows how a design's
-apparent advantage moves with the evaluation ensemble. All three scenario-matched baselines
+apparent advantage moves with the target ensemble. All three scenario-matched baselines
 already exist (`config.baseline_objectives_csv`), so this readout costs no simulation. Because
 strict dominance on eight objectives is stringent and may legitimately be zero everywhere — the
-campaign's incumbent already scores zero on the joint satisficing criterion, with Montague
+current FFMP policy already scores zero on the joint satisficing criterion, with Montague
 reliability binding — three companions are reported beside it: the epsilon-dominance fraction at
 the adopted vector, the fraction *not dominated by* the baseline, and the distribution of the
 number of objectives beaten. The arithmetic is
@@ -263,11 +263,11 @@ and the Python decision-vector attribution agree to four decimals in eight of ni
 0.006 in the ninth, the difference being one solution's epsilon-box equivalence.
 
 **Readout 1, dominance over the FFMP baseline.** Strict dominance on all eight objectives is
-essentially empty: 1.2 % for the `historic` set on the historic trace and 0.0 % in every other
-cell. This is consistent with the campaign's existing finding that the incumbent's joint
+essentially empty: 1.2 % for the `historic` set on the historic record and 0.0 % in every other
+cell. This matches the campaign's finding that the current FFMP policy's joint
 satisficing score is zero, and it confirms that eight-objective strict dominance is too
 stringent to discriminate. The companions carry the signal: epsilon-dominance runs 25.7 % for
-`historic` on the historic trace against 3.3 % and 3.6 % on the two ensembles, and the mean
+`historic` on the historic record against 3.3 % and 3.6 % on the two ensembles, and the mean
 number of objectives beaten is 5.0-5.6 for `historic`, 4.2-4.4 for `hazard_filling_stationary`
 and 3.5-3.9 for `monte_carlo`, in every column.
 
@@ -277,7 +277,7 @@ ensemble:
 
 | merged set for | from `historic` | from `monte_carlo` | from `hazard_filling` | size |
 |---|---|---|---|---|
-| historic trace | 98.4 % | 0.5 % | 1.1 % | 188 |
+| historic record | 98.4 % | 0.5 % | 1.1 % | 188 |
 | Monte Carlo ensemble | 52.1 % | **34.4 %** | 13.5 % | 163 |
 | hazard-filling ensemble | 57.5 % | 21.5 % | **21.0 %** | 186 |
 
@@ -371,7 +371,7 @@ Consistent with a trade rather than an advantage, the `historic` archive is abou
 points **worse** on median NYC delivery deficit (38.6 % against 28.7 %) on the same ensemble.
 
 **Figures.** `tev_parallel_axes_by_design` draws all 2,110 policies on the eight objective axes
-per evaluation ensemble, coloured by the optimization that produced them, with a bold per-design
+per target ensemble, coloured by the optimization that produced them, with a bold per-design
 median; the storage separation is directly visible there. `tev_parallel_axes_merged_set` draws
 only the merged-set members on the same axes. `tev_enrichment_diagnostic` carries the enrichment
 and leave-one-out panels that make the one-axis attribution explicit.
@@ -381,7 +381,7 @@ and leave-one-out panels that make the one-axis attribution explicit.
 - Off-design cells are differently-composed finite samples of the same stationary population
   (for `monte_carlo` and `hazard_filling_stationary`), not held-out populations. Nothing here
   licenses a generalization claim.
-- `historic` is a single 78-year observed trace: 77 annual units against 900 for the ensembles.
+- `historic` is a single 78-year observed record: 77 annual units against 900 for the ensembles.
   Reliabilities are multiples of 1/77 on one substrate and 1/900 on the others, and the
   percentile objectives (deficit P99, storage P01) are different order statistics on the two
   supports. Comparisons that cross this boundary are directional, not quantitative.

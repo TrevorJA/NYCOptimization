@@ -10,7 +10,10 @@ Analysis blocks:
      the descriptor redundancy of the 8 candidate axes plus the 13 supplement
      descriptors: Spearman matrix, |rho| >= 0.7 clusters, and PCA on normal
      scores (eigenvalues, participation ratio, components for 90% of variance,
-     highest-loading descriptor per leading component).
+     highest-loading descriptor per leading component). SSI fit check: the
+     historical record's SSI under the reference fit, by calendar month
+     (standard deviation, count at or below the qualifying level and the
+     count a standard normal gives).
   1. Selector comparison at the campaign bounds vs a many-seed random null.
   2. Normalization-bounds sweep.
   3. Sub-pool draw stability (disjoint random halves of the pool).
@@ -190,6 +193,22 @@ def _load_pool() -> tuple[np.ndarray, list[str], dict, dict]:
         H_full, candidate_axes, S, img["supplement_names"])
 
 
+def _reference_ssi() -> pd.Series:
+    """SSI of the historical record under the reference fit the pool was scored with.
+
+    The record is transformed by the fitted calculator every scenario goes
+    through (``scengen.hazard_metrics.get_reference_fits``), on the flow
+    dataset the pool's ``_meta.json`` names.
+    """
+    from scengen.hazard_metrics import _REFERENCE_START, flows_to_series, get_reference_fits
+    from scripts.main.compute_etest_hazard_image import _reference_series
+
+    meta = json.loads((config.STAGED_ENSEMBLE_DIR / POOL_SLUG / "_meta.json").read_text())
+    reference_monthly, reference_daily = _reference_series(meta["flowtype"])
+    dry_calc, _, _ = get_reference_fits(reference_monthly, reference_daily)
+    return dry_calc.transform(flows_to_series(reference_monthly, start_date=_REFERENCE_START))
+
+
 def _sub(H_full: np.ndarray, candidate_axes: list[str], axes: list[str]) -> np.ndarray:
     return H_full[:, [candidate_axes.index(a) for a in axes]]
 
@@ -316,6 +335,33 @@ def descriptor_redundancy(
         "n_components": n_comp,
         "top_loadings": top,
     }
+
+
+def ssi_fit_check(ssi: pd.Series, *, level: float) -> pd.DataFrame:
+    """Spread and lower-tail count of an SSI series by calendar month.
+
+    Under a well-fitted distribution every calendar month's SSI is standard
+    normal: its standard deviation is 1 and ``n * Phi(level)`` of its ``n``
+    values lie at or below ``level``.
+
+    Args:
+        ssi: SSI series on a DatetimeIndex.
+        level: SSI level of the lower-tail count.
+
+    Returns:
+        One row per calendar month: ``month``, ``n``, ``sd`` (``ddof=0``, the
+        spread about the month's mean with no sample correction),
+        ``n_at_or_below`` and ``n_expected``.
+    """
+    months = ssi.groupby(ssi.index.month)
+    n = months.size()
+    return pd.DataFrame({
+        "month": n.index.to_numpy(),
+        "n": n.to_numpy(),
+        "sd": months.std(ddof=0).to_numpy(),
+        "n_at_or_below": months.apply(lambda v: int((v <= level).sum())).to_numpy(),
+        "n_expected": n.to_numpy() * norm.cdf(level),
+    })
 
 
 def hazard_tail_mask(D: np.ndarray, sign: np.ndarray, *, pct: float) -> np.ndarray:
@@ -1180,6 +1226,7 @@ def main() -> None:
         descriptors["D"], descriptors["names"], threshold=scfg.SELDIAG_CLUSTER_RHO,
         variance_share=scfg.SELDIAG_PCA_VARIANCE_SHARE,
     )
+    fit_check = ssi_fit_check(_reference_ssi(), level=scfg.SELDIAG_SSI_QUALIFYING_LEVEL)
     table, details = _main_comparison(H_ret, retained)
     sweep = _bounds_sweep(H_ret, retained)
     halves = _subpool_stability(H_ret, retained)
@@ -1199,6 +1246,7 @@ def main() -> None:
     nsw.to_csv(out / "n_sweep.csv", index=False)
     inv.to_csv(out / "selection_invariance.csv", index=False)
     _redundancy_table(redundancy).to_csv(out / "descriptor_redundancy.csv", index=False)
+    fit_check.to_csv(out / "ssi_fit_check.csv", index=False)
     comparison.to_csv(out / "axis_set_comparison.csv", index=False)
     truncation.to_csv(out / "truncation_summary.csv", index=False)
 
@@ -1240,6 +1288,12 @@ def main() -> None:
             "n_components_variance_share": redundancy["n_components"],
             "top_loadings": redundancy["top_loadings"],
         },
+        "ssi_fit_check": {
+            "level": scfg.SELDIAG_SSI_QUALIFYING_LEVEL,
+            **{f"{column}_range": [float(fit_check[column].min()),
+                                   float(fit_check[column].max())]
+               for column in ("sd", "n_at_or_below", "n_expected")},
+        },
         "axis_set_comparison": {
             mset: {
                 row.statistic: row.mean for row in comparison.loc[
@@ -1265,7 +1319,7 @@ def main() -> None:
     _fig_invariance(inv, contributions, out)
     _fig_axis_set_comparison(comparison, dim, axis_sets, out)
 
-    print(f"[seldiag] wrote 10 tables + summary.json + 11 figures -> {out}")
+    print(f"[seldiag] wrote 11 tables + summary.json + 11 figures -> {out}")
 
 
 if __name__ == "__main__":

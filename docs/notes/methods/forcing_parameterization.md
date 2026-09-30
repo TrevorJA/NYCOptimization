@@ -103,7 +103,21 @@ so a single outlier GCM run does not drive the box; with the phases fixed the re
 envelope does not over-disperse, so this already keeps the LHS monthly envelope tightly bounded to the
 CMIP6 monthly range (`SI_harmonic_monthly_flow_comparison.png`). An optional `margin` widens (`>0`,
 extrapolation) or tightens (`<0`) the box. **E_test samples the FULL empirical range `(0, 100)`
-widened by `margin = +0.25`** (`src/etest.py::E_TEST_BOUND_PCT` / `E_TEST_MARGIN`). The
+widened by `margin = +0.25`** (`src/etest.py::E_TEST_BOUND_PCT` / `E_TEST_MARGIN`), **with the
+annual-volume axis extended on the dry side to a volume multiplier of 0.80**
+(`E_TEST_VOLUME_MULTIPLIER_MIN`, applied as an `axis_bounds` override of the `m` lower bound after
+the margin box; the wet bound, e^m = 1.32, and the seasonal axes keep the margin box). The margin
+box's own lower bound is e^m = 0.866 (−13.5 %) and the driest CMIP6 run is 0.929. Measured on
+paired 10-yr windows at fixed volume levels (`scripts/supplemental/dry_envelope_run.py`,
+`dryenv_levels.csv`; SI Figure S18): at the driest CMIP6 run 1.7 % of windows exceed the stationary
+generator's 99th-percentile controlling-event drought magnitude (1 % by construction), at 0.866
+10 % do (22 % on the magnitude summed over all events in the window), and at 0.807, the measured
+level nearest the adopted bound, 17 % do (48 % summed) with the median decade at the stationary
+90th percentile. The value 0.80 is the dry limit of the inflow-multiplier range of the
+deep-uncertainty re-evaluations of Herman et al. (2014) and Trindade et al. (2017), and the bound
+follows the rule of Hadjimichael et al. (2020) that a re-evaluation envelope spans beyond the
+stationary synthetic flows on both sides. With the extension 18 % of the re-evaluated SOWs lie
+below the former bound and 35 % below the driest CMIP6 run (`dryenv_etest_share.csv`). The
 non-campaign DU search designs (`campaign=False` in `src/scenario_designs.py`) sample the default
 `(5, 95)` box with `margin = 0`, so the test envelope strictly contains that box.
 

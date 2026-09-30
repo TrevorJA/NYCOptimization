@@ -1,91 +1,59 @@
-# Project Terminology
+# Code-Facing Glossary
 
-*Controlled vocabulary for NYCOptimization manuscripts, code, and notes. Full citations live in the literature notes indexed by `docs/notes/literature/scenario_design.md`. When writing, use these terms exactly and avoid the flagged synonyms.*
+*Maps the prose vocabulary of `docs/terminology.md`, which governs the manuscript, the notes and every figure, to the registry keys, slugs, environment variables and column names the code uses. An entry exists only where a code-side name exists; the definitions live in the authority.*
 
 ---
 
-## The three spaces
+## Designs and ensembles
 
-**Input space** (synonym to avoid in prose, "parametric space"). The space of factors that *define* scenario generation. Examples are stochastic generator parameters, HMM transition and emission parameters, climate-change multipliers, and demand factors. In the MORDM literature a sampled point in this space is a **state of the world (SOW)** (Kasprzyk et al. 2013, *EMS*; Trindade et al. 2017, *AWR*). Most prior scenario design samples this space, e.g., LHS over generator parameters (Quinn et al. 2018, *WRR*; Steinschneider et al. 2019, *WRR*).
+**Scenario design.** Registry `src/scenario_designs.py::SCENARIO_DESIGNS`, selected by `NYCOPT_SCENARIO_DESIGN`; the design name is the top-level `outputs/{scenario}/` directory (`config.active_scenario_name()`), the only sense in which the code says scenario. The Historical (HIST) design is `historic`, the Monte Carlo Sampling (MC) design is `monte_carlo` and the Hazard Filling (HF) design is `hazard_filling_stationary`; only these three carry `campaign=True`.
 
-**Hazard space.** This project's term for the space of hydrologic hazard metrics computed directly on each realized streamflow sequence, before any system simulation. The campaign **selection axes** are six descriptors (`config.HAZARD_SELECTION_AXES`): four SSI-6 run-theory drought metrics (drought magnitude = cumulative deficit, drought severity = peak deficit, development rate and termination rate = severity over the elapsed months of the two phases delimited at the minimum, Parry et al. 2016) and two peaks-over-threshold flood metrics (flood peak discharge, flood pulse duration). Drought duration and flood rise rate are computed and reported but do not enter the selection distance. Grounding citations are Yevjevich (1967, run theory), Vicente-Serrano et al. (2012, SSI), and Olden & Poff (2003, index redundancy and selection). "Hazard" follows the risk-triplet usage where risk is a function of hazard, exposure, and vulnerability (IPCC SREX 2012, UNDRR Sendai terminology). The hazard space is a property of the *scenario*, not of the simulated system response. The closest existing term is the scenario-neutral literature's **exposure space**, the grid of perturbed forcing attributes in stress testing (Culley et al. 2016, *WRR*; Guo et al. 2018, *J. Hydrol.*; Fowler et al. 2024, *WIREs Water*). We do not use "exposure space" for our construct because (a) exposure has a conflicting meaning in the risk triplet and (b) exposure spaces are typically attribute *targets* imposed on the generator inputs, whereas hazard space coordinates are *measured* on realized sequences.
+**Search ensemble.** The staged ensemble every candidate policy is evaluated on during search: `config.SEARCH_ENSEMBLE_SPEC`, slug `fixprob_10yr_n{N}_d{k}` for the MC design and `hazfill_stat_abs_10yr_n{N}_d{k}` for the HF design, staged by workflow steps 02–04.
 
-**Outcome space** (synonym, "performance space" or "objective space"). Reserved strictly for simulation outputs, i.e., objective values and performance metrics of a candidate policy under a scenario. Never use "outcome" to describe scenario flow characteristics. The hazard-vs-outcome distinction matters because hazard coordinates exist before any policy is evaluated, which is what makes hazard-space subsampling a pre-optimization design step.
+**Candidate ensemble.** The $P$ i.i.d. realizations the HF design selects from: slug `statpool_10yr_n{P}_d{k}`, size `NYCOPT_CANDIDATE_POOL_N`, built by `workflow/supplemental/gen_pool_*.sh`. Only its hazard image (`hazard_image.npz`) and seeds are stored, and the selected members are regenerated on demand. Slugs, variables and script names keep the word pool.
 
-## Scenarios and ensembles
+**Realization.** One generated or observed streamflow sequence, addressed by its global realization index (`regenerate_realization(root_seed, k)`); the unit of independence in every bootstrap and subsample. A **draw** `d{k}` is a design's construction re-run with a fresh seed, and a **seed** (`--array` of step 06) is one MM Borg trial on a fixed draw.
 
-**Scenario.** One streamflow sequence (here 10 years, all model inflow nodes) over which a candidate policy is simulated during one evaluation. Used in the stochastic-programming sense of a discrete realization supplied to the optimizer, not the narrative-futures sense.
+**Re-evaluation ensemble.** `E_test`, preset `etest_kn_50yr_n25000` (`src/etest.py`: `E_TEST_N_THETA` = 1,000 SOWs × `E_TEST_R` = 25 realizations × `E_TEST_YEARS` = 50), re-evaluated on its leading `E_TEST_REEVAL_N_THETA` = 500 SOWs, the preset `etest_kn_50yr_n25000_first25ch` returned by `campaign_reeval_preset()` and passed as `NYCOPT_REEVAL_ENSEMBLE_PRESET` on every re-evaluation submission. Identifiers keep the word test (`E_test`, `etest_*`, `generate_test_ensemble`).
 
-**Realization.** A single output sequence of a stochastic generator. Every scenario is a realization (or a window of one).
+**State of the world (SOW).** One Latin hypercube point of `E_test` with its realizations: column `sow_id` of `reeval_raw.csv.gz`, labels `sow_labels` in `reeval_raw_meta.json`, substrate `sow_annual_unit`.
 
-**Ensemble.** A finite set of realizations or scenarios. Always qualify which ensemble is meant.
+**Forcing space.** The CMIP6 harmonic change-factor box of `forcing_parameterization.md` (`src/etest.py` bounds and margin), sampled only by `E_test`; the generator is stationary in every search design.
 
-**Population.** The law from which a design's realizations are drawn. All search designs use the **stationary** population (Kirsch–Nowak fit to the historic record, forcing held at the historic fit). Deep uncertainty enters only in the test ensemble, which is built over the **DU-forced** forcing space (forcing parameters sampled from the CMIP6 harmonic hypercube); that forcing space is the construction basis of $E_{\text{test}}$, not a search population.
+## Hazard space
 
-**Candidate pool.** The pool of i.i.d. realizations that the hazard-filling design subsamples (P = 10⁶ per draw in the campaign). It **belongs to that design**, is generated with its own seed stream, and is disjoint from the test ensemble. Hazard-filling is the only design that needs one, because hazard coordinates cannot be prescribed at generation — they are measured on a realized sequence, so a hazard-space design must *select from* a pool rather than *generate to* a target. The Monte Carlo design faces no such constraint and generates its members directly.
+**Hazard metrics and selection axes.** `config.HAZARD_SELECTION_AXES` (env `NYCOPT_HAZARD_SELECTION_AXES`): `drought_magnitude`, `drought_severity`, `drought_development_rate`, `drought_termination_rate`, `flood_peak_discharge`, `flood_pulse_duration`. The supplement descriptors of every hazard image are reported only. A realization's hazard characteristics are its row of `hazard_image.npz`.
 
-**Evaluation ensemble** (synonym, "search ensemble"). The scenario set actually used inside `evaluation()` during MOEA search. The object this study designs. Enumerated by `src/scenario_designs.py`.
+**Target hazard characteristics.** The Latin hypercube sample of `scengen.subsample.lhs_nn_assignment`, seeded by `ScenarioDesign.selector_seed(draw)`; the pairing of each target with its nearest unused candidate is the selection step 03 stages.
 
-**Test ensemble** ($E_{\text{test}}$; synonym, "re-evaluation ensemble"). The large held-out ensemble on which workflow steps 08/09 stress-test Pareto-approximate policies out of sample (the MORDM re-evaluation step, Kasprzyk et al. 2013; Herman et al. 2015, *JWRPM*). It is **never the source of any search ensemble**, never hazard-subsampled, and never a control. It is an LHS design over the full DU-forced forcing space with many realizations per LHS point ($N_\theta = 1{,}000$ × $R = 25$ × $L_{\text{test}} = 50$ yr; the campaign re-evaluates its leading 500 SOWs), so a satisficing fraction over it is a coverage-weighted count over a designed exploration, never an expectation, and re-evaluation is a generalization test to conditions absent from search. Construction and sizing: `methods/scenario_design_methods.md` §5, `methods/campaign_design.md` §5, `src/etest.py`.
+**Target displacement.** The target-to-member distances of that pairing, per target in `hfm_points.csv` and summarized in `hfm_summary.csv` (`hf_design_metrics.md`); the selector-diagnostic columns keep the name `snap`.
 
-**State of the world (SOW).** One deeply-uncertain factor vector $\theta$ — one LHS point of $E_{\text{test}}$. Its $R$ realizations sample natural variability *within* that SOW. The SOW is the unit of robustness in the MORDM lineage (Herman et al. 2014; Trindade et al. 2017; Gold et al. 2022, 2023). Precision is governed by the number of SOWs ($N_\theta$), not by the total realization count.
+**Largest drought event.** The event `scengen.hazard_metrics` scores per window, the qualifying SSI-6 run with the largest accumulated deficit.
 
-## Sampling and subsampling
+**Effective sample size.** Of the nearest-member weights only: `ess` and `ess_over_n` in `hfm_summary.csv` (`hf_design_metrics_run.effective_sample_size`) and `ess_over_n` in the selector diagnostic. The serial-dependence statistic of the sizing diagnostic is the **effective number of independent annual units**: `n_eff_ratio` in `n_eff.csv` (`src/ensemble_size_stats.n_eff_ratio`).
 
-**Monte Carlo sampling.** The control design: *N* realizations drawn independently from the stationary generator and **held fixed across the search**, so each search objective is a sample estimate of its value under the fitted generator's distribution. The frozen sample is the sample average approximation of stochastic optimization (Kleywegt et al. 2002, *SIAM J. Optim.*; Homem-de-Mello & Bayraksan 2014, *Surv. Oper. Res. Manag. Sci.*), and the construction is the prevailing default of the water-supply policy-search literature (Kasprzyk et al. 2013; Herman et al. 2014; Quinn et al. 2017, *WRR*; Trindade et al. 2017; Zatarain Salazar et al. 2017, *AWR*). The reference against which designed selection is judged. Reserve "Monte Carlo" for this design only: the hazard-filling candidate pool is described as drawn independently (i.i.d.) from the generator, never as Monte Carlo, because the control's validity argument rests on that i.i.d. statement and the two terms must not collide; the test ensemble is described as *R* realizations of the stationary generator within each state of the world, and its estimator noise as sampling noise.
+## Objectives and robustness
 
-**Input stratification.** Latin hypercube sampling over the generator's forcing parameters, with realizations **generated at** each design point (Quinn et al. 2020, *Earth's Future*; Bartholomew & Kwakkel 2020, *EMS*). LHS alone — there is nothing to select from, because the parameters are a knob on the generator. Not a campaign design in this study; retained here as a vocabulary reference for the prevailing input-space practice.
+**Per-SOW objective value** $J_i(x,\theta)$. Each SOW's realizations' unit-years pooled through the objective's own unit operator: `reeval_core.sow_objective_matrix`, persisted as `reeval_raw.csv.gz` (`solution_id`, `sow_id`, `objective`, `value`). Every robustness and regret column of `src/robustness.py` is a transformation of it.
 
-**Hazard filling** (space-filling subsampling). Selecting evaluation scenarios from a candidate pool so their hazard coordinates cover the hazard space. Implemented as Latin hypercube anchors on the campaign selection axes snapped to the nearest unused pool member. The campaign selector fills the space in **absolute, range-scaled** magnitude units, which deliberately over-represents the severe (rare) hazard corners relative to their pool frequency; a rank-space (empirical-CDF) variant, which preserves the pool marginals and distorts only the joint dependence, is registered only as a non-campaign sensitivity. The nearest-neighbour step is **intrinsic, not an approximation**: hazard coordinates are emergent properties of a realized sequence, so no generator can be asked to produce a realization at a prescribed hazard point. Distinct from **representative-in-probability** subset selection (scenario reduction), which preserves the parent distribution rather than filling the space.
+**Current FFMP policy.** `get_baseline_values("ffmp")`; its step-05 re-evaluation cube sits under `baseline/` beside each run. Identifiers keep `incumbent` (`incumbent_advantage`, `incumbent_spread`, `include_incumbent`).
 
-**Distributional equivalence (the control).** A uniform random size-*N* subset of an i.i.d. pool has exactly the joint law of *N* fresh i.i.d. draws. This is what makes `monte_carlo` the *exact* statistical control for `hazard_filling_stationary` on the same stationary population: only the selection rule differs. It requires the pool to be sampled **i.i.d., not LHS** — a random subset of an LHS design is not i.i.d.
+**Regret** (against the current FFMP policy in the same SOW). Columns `regret_mean__`, `regret_q90__`, `regret_cond__` and `gain_mean__` (`robustness.regret_magnitudes`), in natural units; the **regret frequencies** `harm_freq__` and `party_harm_freq__` and the **low-regret frequency** $\Pi_\tau$, `no_harm_freq_tau` (`robustness.regret_frequencies`), with $\tau_i = k \cdot \max(\epsilon_i, \tau_i^{\mathrm{floor}})$ pinned as `NYCOPT_REGRET_TAU` in the production env files.
 
-**Scenario redundancy.** Overlap of two or more scenarios' coordinates in hazard space, regardless of whether they came from different input-space samples. Motivated by the redundancy framing of Olden & Poff (2003) applied to scenarios rather than indices. Quantify via maximin/minimax distances (Johnson et al. 1990) or effective sample size.
+**Satisficing robustness.** `sat_multivariate_sow` (every criterion of the set jointly) and `sat_uni_sow__`; criterion sets in `src/satisficing_criteria.py` (`CriterionSet`, variant `DEFAULT_CRITERIA_VARIANT`, all-axes reference `reference_all8`).
 
-**Coverage, diversity, and measure diagnostics.** Minimax distance relative to the candidate pool and per-axis Kolmogorov–Smirnov distance for coverage (Johnson et al. 1990; Pronzato & Müller 2012), minimum-spanning-tree edge lengths for diversity (Franco et al. 2009; Damblin et al. 2013), per-axis span for range, and the nearest-member redistribution with its effective sample size for the measure the ensemble represents (Dupačová et al. 2003; Kish 1965). Defined in `methods/hf_design_metrics.md`; the cube-based L2-star discrepancy survives only in the selector-comparison battery.
+**Laplace and maximin.** `laplace__` and `maximin__`, the mean and the worst per-SOW value.
 
-## Evaluation and robustness
-
-**In-sample / out-of-sample stability.** A scenario set is in-sample stable if replicate sets of the same size yield the same optimized values, and out-of-sample stable if performance estimated on the set matches performance on the true distribution (Kaut & Wallace 2007, *Pac. J. Optim.*). The ensemble-size estimator-stability diagnostic (`methods/ensemble_size_diagnostics.md`) and the SI draw-sensitivity re-evaluation operationalize these.
-
-**Robustness.** Performance of a policy across the re-evaluation ensemble, computed with explicitly named metrics (satisficing, regret, percentile), since metric choice changes rankings (Herman et al. 2015; McPhail et al. 2018, *Earth's Future*).
-
-**Per-SOW objective value** ($J_i(x,\theta)$). The study's single metric currency: the annual-unit search objective recomputed per E_test state of the world by pooling that state's realizations' unit-years through the objective's own unit operator. Every robustness and regret metric is a transformation of it; there is no separate re-evaluation metric set. Definition: `methods/objective_definitions.md` §3.
-
-**Regret.** Never write "regret" unqualified — it has four incompatible references in this literature. Use the qualified names (definitions and citations in `methods/objective_definitions.md` §3):
-
-- **Incumbent regret** (the one computed). The amount by which a candidate policy is worse than the **status-quo 2017 FFMP policy** evaluated *in the same state of the world*, per objective in natural units. Its unit-free companions are the **harm frequencies** and the **no-harm frequency** $\Pi_\tau$.
-- **Best-in-set regret** (excluded). Savage regret against the best policy in the evaluated set, per SOW — set-relative and design-coupled.
-- **Baseline-SOW regret** (not computed). Herman et al. (2015) R1 / Kasprzyk et al. (2013) percent deviation: the *same* policy's deviation from its own performance in a reference state of the world. A sensitivity measure, not a comparison against a policy.
-- **Perfect-foresight regret** (not computed). Cohen et al. (2021): the gap between a baseline policy and a per-scenario perfect-foresight optimum. Cited as motivation only.
-
-**No-harm frequency** ($\Pi_\tau$). The fraction of re-evaluation SOWs in which a policy degrades **no** objective by more than its tolerance $\tau_i = k \cdot \max(\epsilon_i, \tau_i^{\mathrm{floor}})$ relative to the incumbent. $\Pi_0$ is a weak Pareto improvement on the status quo. It is the literal operationalization of the first research question. Say "no-harm frequency", not "regret rate".
-
-**Price of robustness.** Bertsimas & Sim (2004), via Bartholomew & Kwakkel (2020): the performance given up in individual conditions in exchange for robustness across them. Use it for the trade-off itself; do not use it as a name for any metric.
-
-**Stress test.** Systematic evaluation of a policy across a designed condition space, per the bottom-up tradition (Brown et al. 2012, decision scaling, *WRR*; Fowler et al. 2024).
-
-**Deep uncertainty / well-characterized uncertainty.** Standard DMDU usage (Maier et al. 2016, *EMS*; Marchau et al. 2019). Input-space parameter ranges are treated as deeply uncertain. Within a single parameter set, generator output is well-characterized.
+**Epsilon-dominance precision.** `config.get_epsilons()`, the annual-unit ε vector pinned in the env files.
 
 ## Decision variables
 
-**Allocation reduction.** A diversion decision variable
-(`{nyc,nj}_allocation_reduction_*`): the *additional* fractional reduction of
-the party's Decree allocation applied on entry to a drought stage. Stage-wise
-increments, not absolute factors — the effective delivery factor at a stage is
-1 minus the running sum of reductions, so monotone curtailment across stages
-holds by construction.
+**Allocation reduction.** A diversion decision variable (`{nyc,nj}_allocation_reduction_*`): the additional fractional reduction of the party's Decree allocation applied on entry to a drought stage. Stage-wise increments, not absolute factors; the effective delivery factor at a stage is 1 minus the running sum of reductions, so monotone curtailment across stages holds by construction.
 
-**Delivery factor.** The absolute multiplier on the Decree allocation that the
-Pywr-DRB model consumes per drought level (model parameters
-`{level}_factor_delivery_{nyc,nj}`). A *decoded* quantity, never a decision
-variable: the simulation wrapper converts allocation reductions to delivery
-factors before handoff. Do not call the DVs "factors".
+**Delivery factor.** The absolute multiplier on the Decree allocation that the Pywr-DRB model consumes per drought level (model parameters `{level}_factor_delivery_{nyc,nj}`). A decoded quantity, never a decision variable: the simulation wrapper converts allocation reductions to delivery factors before handoff.
 
 ## Style rules
 
 1. All `_pct` quantities are 0-1 fractions (repo-wide rule).
-2. Never write "master ensemble". Write **candidate pool** (a hazard-filling design's own pool) or **test ensemble** (the held-out re-evaluation set).
-3. Say "evaluation ensemble" not "training set" in manuscripts, but the ML training/generalization analogy (Brodeur et al. 2020, *WRR*) may be invoked explicitly when discussing overfitting.
-4. Sequence length is stated in years, and window construction (disjoint vs overlapping, initialization of storages, handling of partial drought events at window edges) must be specified wherever scenarios are introduced.
-5. The units of the experimental comparison are called **scenario designs** (or experiments where the optimization run is meant). Avoid clinical-trial vocabulary such as "arm", "treatment", and "ablation". For a comparison that isolates a mechanism, write a controlled or diagnostic comparison.
+2. Sequence length is stated in years, and window construction (disjoint windows, initialization of storages, handling of drought events cut by window edges) is specified wherever realizations are introduced.
+3. Parallel computing language is nodes, cores, islands and service units; ranks, slugs and environment variables stay out of manuscript text.

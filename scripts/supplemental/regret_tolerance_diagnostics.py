@@ -1,6 +1,6 @@
 """regret_tolerance_diagnostics.py - Anchors for the regret-comparison tolerance.
 
-Measures the admissible anchors for the no-harm tolerance ``tau_i`` and the
+Measures the admissible anchors for the regret tolerance ``tau_i`` and the
 non-inferiority margin of the incumbent-relative regret comparison
 (``docs/notes/methods/regret_tolerance_diagnostics.md``), from persisted cubes
 only; zero simulation. Neither pass uses the between-design contrast.
@@ -15,7 +15,7 @@ Pass B (re-evaluated policy cubes): the discrimination band of ``k``
 SOW-level bootstrap SE of the between-design difference, the within-design
 seed-pair null (the campaign searches one draw per design, so the draw-pair
 null is empty), assay sensitivity against ``historic``, and the binding
-objective / co-occurrence decomposition of the joint no-harm frequency.
+objective / co-occurrence decomposition of the joint low-regret frequency.
 
 Run:
     python scripts/supplemental/regret_tolerance_diagnostics.py
@@ -159,8 +159,9 @@ def tolerance_floor(noise: pd.DataFrame, z: float = None) -> pd.DataFrame:
     """Per-objective tolerance floor in natural units, and the ladder rung that clears it.
 
     ``tau_floor = z * null_sd_unpaired`` is the smallest tolerance at which a
-    policy identical to the incumbent is flagged as harming that objective in at
-    most ``Phi(-z)`` of SOWs. Below it, ``harm_freq`` is measuring the estimator.
+    policy identical to the incumbent is flagged as incurring regret on that
+    objective in at most ``Phi(-z)`` of SOWs. Below it, ``harm_freq`` is
+    measuring the estimator.
 
     Returns the noise table plus ``eps`` (the objective's ANNUAL-UNIT
     just-noticeable difference from ``ENSEMBLE_OBJECTIVES``), ``tau_floor``,
@@ -190,7 +191,7 @@ def ladder_shape_table(floors: pd.DataFrame) -> pd.DataFrame:
                     below its objective's noise floor, because then even k = 1 is
                     inside the estimator's noise on that axis while being far
                     outside it on others.
-      - ``floor`` : the noise floor. Equalises the false-harm rate across
+      - ``floor`` : the noise floor. Equalises the false-regret rate across
                     objectives but throws away the resolution information.
       - ``max``   : ``max(eps_i, floor_i)``. Keeps epsilon where resolution binds
                     and the floor where noise binds, so one ``k`` means the same
@@ -250,7 +251,7 @@ def headline_k(floors: pd.DataFrame, grid=None) -> dict:
 def discrimination_band(profile: pd.DataFrame) -> pd.DataFrame:
     """Per tolerance rung: is the comparison starved, informative, or saturated?
 
-    A rung is SATURATED when every design's no-harm frequency exceeds
+    A rung is SATURATED when every design's low-regret frequency exceeds
     ``RTOL_SATURATION_HI`` — the non-inferiority claim is then trivially true and
     carries no information — and STARVED when every design falls below
     ``RTOL_SATURATION_LO``. Only the informative band can support the claim.
@@ -316,7 +317,7 @@ def paired_bootstrap_se(runs, design_a: str, design_b: str, k: float,
     pairing and gives a standard error smaller than differencing two independently
     bootstrapped margins would.
 
-    The statistic is the difference of each design's best-policy no-harm frequency,
+    The statistic is the difference of each design's best-policy low-regret frequency,
     which is the reported endpoint.
 
     Returns:
@@ -328,7 +329,7 @@ def paired_bootstrap_se(runs, design_a: str, design_b: str, k: float,
     floors = rob.adopted_floors()
 
     def _harm_free(design: str):
-        """(n_run, n_sow) boolean stacks of 'this policy harms nothing here'."""
+        """(n_run, n_sow) boolean stacks of 'this policy is low-regret here'."""
         stacks = []
         for r in runs:
             if r.design != design:
@@ -413,13 +414,13 @@ def assay_sensitivity(profile: pd.DataFrame,
 
 
 def joint_vs_independent(runs, k: float) -> pd.DataFrame:
-    """How much of the joint no-harm frequency is co-occurrence, not accumulation.
+    """How much of the joint low-regret frequency is co-occurrence, not accumulation.
 
-    With eight objectives, a small per-objective harm rate compounds: if harms were
-    independent across objectives the joint no-harm frequency would be
+    With eight objectives, a small per-objective regret rate compounds: if regrets
+    were independent across objectives the joint low-regret frequency would be
     ``prod_i (1 - phi_i)``. The gap between that product and the observed
     ``no_harm_freq_tau`` says whether the joint metric is dominated by one binding
-    objective (harms co-occur; observed >> independent) or by accumulation across
+    objective (regrets co-occur; observed >> independent) or by accumulation across
     many (observed ~ independent), which changes how it should be read entirely.
     """
     rows = []

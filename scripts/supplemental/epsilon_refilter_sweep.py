@@ -45,7 +45,7 @@ from config import get_epsilons
 OAT_GRIDS: dict[str, list[float]] = {
     "nyc_delivery_deficit_p99_pct":      [3.0, 5.0, 10.0],
     "montague_flow_deficit_p99_pct":     [3.0, 4.0, 5.0],
-    "trenton_flow_reliability_annual":   [0.01, 0.02],
+    "trenton_flow_deficit_p99_pct":      [2.0, 5.0],
     "downstream_flood_exceedance_annual": [0.3, 0.5],
     "nyc_storage_min_p01_pct":           [7.5, 10.0],
 }
@@ -78,7 +78,7 @@ CANDIDATES: dict[str, dict[str, float]] = {
         "montague_flow_deficit_p99_pct": 4.0,
         "downstream_flood_exceedance_annual": 0.3,
         "nyc_storage_min_p01_pct": 7.5,
-        "trenton_flow_reliability_annual": 0.01,
+        "trenton_flow_deficit_p99_pct": 2.0,
     },
 }
 

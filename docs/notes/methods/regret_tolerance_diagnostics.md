@@ -1,7 +1,7 @@
 # Regret-Tolerance Diagnostics
 
-Fixes the two free parameters of the incumbent-relative regret comparison
-(`objective_definitions.md` §3.2b): the no-harm tolerance
+Fixes the two free parameters of the regret comparison
+(`objective_definitions.md` §3.2b): the regret tolerance
 $\tau_i = k\,u_i$ with $u_i = \max(\epsilon_i, \tau_i^{\text{floor}})$, and the
 non-inferiority margin $\delta$ on `no_harm_freq_tau`. The substrate is the
 per-SOW annual-unit objective value, the search objective recomputed per
@@ -28,19 +28,19 @@ deliverable, as the satisficing criterion is reported as a sweep (Quinn et al.
 2020). One rung carries the headline sentence and is fixed by a rule that
 touches no campaign result.
 
-Admissible anchors. Tier A, estimator noise and measurement resolution of the
-incumbent's own cube, for both $\tau$ and $\delta$. Tier B, external decision
+Admissible bases. Tier A, estimator noise and measurement resolution of the
+current FFMP policy's own cube, for both $\tau$ and $\delta$. Tier B, external decision
 increments, for $\tau$ only. Tier C, the candidate-policy regret distribution,
 never. Tier D, within-design nuisance variance (seed pairs), for $\delta$ only,
 a least-significant-difference construction that fixes the scale of "no
 difference" and cannot flip the comparison's sign.
 
-## 2. Pass A, the noise floor (incumbent cube only)
+## 2. Pass A, the noise floor (current FFMP policy cube only)
 
-Under the null that a policy is operationally identical to the incumbent, the
+Under the null that a policy is operationally identical to the current FFMP policy, the
 per-SOW difference $D_i(x,\theta)$ is estimator noise, and any $\tau$ below its
 scale reports noise as harm. The cube carries one value per (SOW, objective),
-so the noise is bounded from the incumbent's per-SOW values. SOWs are sorted on
+so the noise is bounded from the current FFMP policy's per-SOW values. SOWs are sorted on
 the dominant forcing axis $m$ ($\theta$ joined on the SOW label), partitioned
 into consecutive bins of `RTOL_M_BIN_SIZE` = 10, and $\sigma_i$ is the median
 across bins of the within-bin standard deviation. Then
@@ -59,7 +59,7 @@ $k^{\text{floor}} = \tau^{\text{floor}}/\epsilon_i$), `rtol_ladder_shapes.csv`,
 `rtol_floors.json` (consumed by `robustness.tau_ladder(floors=...)`).
 
 **Paired floor.** Once policy cubes exist on $E_{\text{test}}$ the floor is
-re-estimated paired. For the policies nearest a tie with the incumbent in mean
+re-estimated paired. For the policies nearest a tie with the current FFMP policy in mean
 $D_i$, it is the median across those policies of the SD across SOWs of the
 per-SOW $D_i$, stable across 2/5/10 % near-tie sets
 (`rtolB_paired_floor_check.csv`). The paired floors are 0.017 to 0.024 on the
@@ -93,15 +93,13 @@ design ordering holds.
 `NYCOPT_REGRET_TAU` in the run env files (`NYCOPT_REGRET_TAU_K` = 1;
 `robustness.tau_ladder` scales the pinned vector by $k$ for the sweep, and a
 partial vector raises): reliabilities 0.02, deficit-P99s 2.0 pp, flood
-0.25 ft·d/yr, storage 5.0 pp. Each entry is a round value anchored on the
+0.25 ft·d/yr, storage 5.0 pp. Each entry is a round value set by the
 paired floor. Reliabilities sit at the floor (24.5× the 1/1225 metric
-granularity, 6 % of the incumbent's own q10–q90 spread). Deficits clear the
+granularity, 6 % of the current FFMP policy's own q10–q90 spread). Deficits clear the
 Montague floor (1.2 pp) while staying far below the degradations present, so
 the binding Montague harm is reported rather than hidden. Flood is 5.9× its
 floor and 0.83 ε (the rounder 0.10 starves the compromise panel). Storage is
-where ε and both floors agree. At the unpaired pass-A vector every design
-scored $\Pi_\tau = 1.000$ with a paired-bootstrap SE of zero and assay
-sensitivity failed, so that vector is rejected. The per-axis anchoring is in
+where ε and both floors agree. The per-axis basis is in
 the env-file comment block, evidence in `rtolB_*.csv`.
 
 ## 4. Pass B, is the comparison informative
@@ -151,7 +149,7 @@ SI panels: (A) $\tau^{\text{floor}}$ against $\epsilon_i$ and the rungs per
 objective, (B) $\Pi_\tau(k)$ per design and seed with the starved, informative
 and saturated bands shaded, (C) the seed-level null and the paired-bootstrap CI
 at $k_{\text{headline}}$ with $\delta$ marked, plus the two rules quoted
-verbatim from `supplemental_config`. Order: pass A on the step-05 incumbent
+verbatim from `supplemental_config`. Order: pass A on the step-05 current FFMP policy
 cube before any re-evaluated policy set is inspected, then the campaign and
 step 08, then pass B, which computes $\delta$ only when `RTOL_ADOPTED_K` is
 already set.
