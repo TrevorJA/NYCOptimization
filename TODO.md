@@ -161,10 +161,20 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   production scale (`diagnose_hazard_selectors.py` on `statpool_10yr_n1000000_d0`,
   N = 300: descriptor redundancy, axis-set comparison, truncation summary;
   `hazard_selector_diagnostics.md`) and fix the selection-axis set
-  (`config.HAZARD_SELECTION_AXES`) before step 03: adopt `four_axis` (magnitude,
-  severity, peak discharge, pulse duration) unless the campaign six reach an
-  attainment of 0.9 on drought magnitude in `axis_set_comparison.csv`. Then update
-  `scenario_design_methods.md` §3.3 and §6, the manuscript, and
+  (`config.HAZARD_SELECTION_AXES`) before step 03. Diagnostic DONE 2026-10-01
+  (array 20996434, both draws, ~6.5 SU): the campaign six attain 0.80/0.81 on
+  drought magnitude; `four_axis` 0.98. The "adopt `four_axis` unless attainment
+  ≥ 0.9" rule is SUPERSEDED 2026-10-08: the axis selection is being overhauled
+  into a data-driven method designed off-Anvil from the literature. Fixed for
+  that work: the 21 descriptors are the final candidates, n ∈ {4, 5, 6}, flow
+  characteristics only (no system outcomes), N = 300 and the window structure
+  frozen, `lhs_nn` provisional. Working package (images, historic windows,
+  diagnostic outputs, README with the decisions) at
+  `outputs/temp_git_additions/` (transferred by scp, not committed). Remaining:
+  adopt the chosen set in `config.HAZARD_SELECTION_AXES`, confirm on both full
+  pools with `workflow/supplemental/hazard_selector_diagnostics.sh` (~3 SU per
+  draw), then update `scenario_design_methods.md` §3.3 and §6,
+  `hazard_selector_diagnostics.md`, the manuscript, and
   `tests/test_hazard_selection_axes.py`.
 - [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–1: step 02
   (`monte_carlo`, `--array=0-1`), step 03 (`hazard_filling_stationary`,
