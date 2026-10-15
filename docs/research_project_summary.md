@@ -17,9 +17,9 @@ re-optimization itself but a controlled test of how the streamflow scenario ense
 used to evaluate candidate policies *during search* is constructed. The proposed design
 — **hazard filling** — selects realizations from a large candidate ensemble of short synthetic
 streamflow sequences so that the retained realizations cover a multi-dimensional **hazard
-space** (six selection axes computed on each sequence: drought magnitude, severity,
-development rate, and termination rate from SSI-6 run theory, plus flood peak discharge and pulse
-duration from peaks over threshold), deliberately over-representing the severe corners
+space** (selection axes chosen among 21 hazard metrics computed on each sequence by a
+pre-stated rule, `docs/notes/methods/hazard_axis_selection.md`; adopted set [value]),
+deliberately over-representing the severe corners
 where reservoir policies are decided. It is compared against the discipline's default,
 an independent and identically distributed sample from the same stochastic generator.
 Both designs' Pareto-approximate policies are re-evaluated on a common deeply
@@ -86,13 +86,17 @@ probability-preserving flow stratification).
    ensemble directly and the `hazard_filling_stationary` candidate ensemble (P = 10⁶ per
    draw). It is sampled i.i.d., and only its hazard image plus seeds are stored;
    realizations regenerate deterministically on demand (chunked storage for large pools).
-2. **Hazard metrics + redundancy handling** — drought and flood descriptors per
-   sequence; the screen (degenerate drop + near-duplicate prune at |ρ_S| ≥ 0.95)
-   retains all eight candidates, with rank-correlation structure reported as a
-   diagnostic. The campaign **selection axes** are a fixed six-descriptor subset
-   (drought magnitude, severity, development rate, termination rate; flood peak discharge, pulse
-   duration — `config.HAZARD_SELECTION_AXES`); drought duration and flood rise rate stay
-   computed and reported but do not enter the selection distance.
+2. **Hazard metrics + selection axes** — 21 drought, low-flow, flood, high-flow and
+   regime metrics per sequence, with their rank-correlation structure reported as a
+   diagnostic. The **selection axes** are chosen among the continuous metrics by a
+   pre-stated rule: a set of four to six metrics is admissible when no pair has
+   |ρ_S| ≥ 0.7 and it holds at least two dry-side and two wet-side metrics; every
+   admissible set is scored under the selector itself by how uniformly its selected
+   members cover the scaled range of every continuous metric (the cluster-averaged
+   Kolmogorov–Smirnov distance to uniform), and the smallest set within two standard
+   errors of the best is adopted (`hazard_axis_selection.md`); adopted: [value]
+   (`config.HAZARD_SELECTION_AXES`, to be set). The other metrics stay computed and
+   reported but do not enter the selection distance.
 3. **Selection (hazard filling only)** — Latin hypercube targets in absolute
    range-scaled hazard space, assigned to the nearest unused candidate member. The assignment is
    intrinsic: hazard characteristics are emergent properties of a realized sequence, so a
@@ -246,7 +250,7 @@ size at which the i.i.d. control resolves every objective's paired difference wi
 reported from its runtime archive at 500k (the comparison is recomputable at earlier
 budgets); the production MM Borg geometry (12 Anvil nodes, 4 islands × 382 workers,
 1,533 ranks, 128 per node with a 150-realization batch); one searched draw × S = 2 seeds;
-absolute range-scaled hazard-space selection on the six campaign selection axes from a
+absolute range-scaled hazard-space selection on the campaign selection axes from a
 P = 10⁶ candidate ensemble; E_test generated at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr
 and re-evaluated on its leading 500 SOWs (trimmed-model re-evaluation); the calibrated
 annual-unit epsilon vector; comparison metrics = multivariate Starr satisficing

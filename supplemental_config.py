@@ -2037,7 +2037,7 @@ def hfm_figure_path(name: str) -> Path:
 
 
 ###############################################################################
-# Hazard-selector diagnostics: descriptor redundancy, axis-set comparison and
+# Hazard-selector diagnostics: metric redundancy, selection-set profile and
 # truncation summary (SELDIAG)
 # (docs/notes/methods/hazard_selector_diagnostics.md; driver
 #  scripts/supplemental/diagnose_hazard_selectors.py)
@@ -2077,29 +2077,162 @@ SELDIAG_TAIL_PCT: float = 90.0
 SELDIAG_FAR_TARGET_DISTANCE: float = 0.25
 
 
-def seldiag_axis_sets(campaign, retained) -> dict:
-    """The named selection-axis sets compared by the axis-set block, in order.
+###############################################################################
+# Hazard-axis selection (HAXSEL)
+# (docs/notes/methods/hazard_axis_selection.md; drivers
+#  scripts/supplemental/hazard_axis_selection_run.py and
+#  hazard_axis_selection_figures.py; wrapper workflow/supplemental/hazard_axis_selection.sh)
+#
+# Chooses the hazard-filling selection axes among the admissible subsets of the
+# continuous candidate hazard metrics by how uniformly the lhs_nn selection
+# covers the scaled range of every continuous metric (the cluster-averaged
+# Kolmogorov-Smirnov distance to uniform, lower is better), with the covering
+# distance of the pool and the spanning-tree statistics reported against random
+# same-N subsets. Every admissible set is scored on the full candidate pools of
+# both draws (hazard images alone, no simulation). The decision rule is
+# pre-stated in the methods note; nothing here is tuned to the outcome.
+###############################################################################
 
-    Args:
-        campaign: The campaign selection axes (``config.HAZARD_SELECTION_AXES``;
-            this module never imports ``config``).
-        retained: The axes the live screen retains on the pool image.
 
-    Returns:
-        ``{name: [axis, ...]}``: ``campaign``; ``full`` (the retained set);
-        ``four_axis`` (magnitude, severity, peak discharge, pulse duration);
-        ``four_axis_rate`` (magnitude, development rate, peak discharge, pulse
-        duration); ``five_axis`` (the campaign set without severity).
+def configure_haxsel_env() -> None:
+    """Apply env knobs for the hazard-axis selection (pure post-processing).
+
+    Salinity and temperature LSTMs off; the scenario design defaults to
+    ``historic`` so importing ``config`` never requires a staged search ensemble.
     """
-    return {
-        "campaign": list(campaign),
-        "full": list(retained),
-        "four_axis": ["drought_magnitude", "drought_severity",
-                      "flood_peak_discharge", "flood_pulse_duration"],
-        "four_axis_rate": ["drought_magnitude", "drought_development_rate",
-                           "flood_peak_discharge", "flood_pulse_duration"],
-        "five_axis": [a for a in campaign if a != "drought_severity"],
-    }
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+# ---------------------------------------------------------------------------
+# Mode switch
+# ---------------------------------------------------------------------------
+#: HAXSEL_SMOKE=1 runs on the P=2,000 pools of both draws at N=40 with 2 seeds
+#: (under a minute); artifacts carry the ``smoke_`` prefix. The production run
+#: uses the P=1e6 images at N=300.
+HAXSEL_SMOKE: bool = os.environ.get("NYCOPT_HAXSEL_SMOKE", "0") == "1"
+
+# ---------------------------------------------------------------------------
+# Inputs (persisted pool hazard images; nothing here triggers generation)
+# ---------------------------------------------------------------------------
+#: Directory holding ``{pool_slug}/hazard_image.npz``; empty = the staged
+#: ensemble directory (resolved by the driver; this module never imports
+#: ``config``).
+HAXSEL_POOL_ROOT: str = os.environ.get("NYCOPT_HAXSEL_POOL_ROOT", "").strip()
+HAXSEL_POOL_P: int = 2000 if HAXSEL_SMOKE else int(os.environ.get("NYCOPT_CANDIDATE_POOL_N", "1000000"))
+HAXSEL_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
+HAXSEL_DRAWS: tuple = (0, 1)
+#: Selection size of the campaign selector; every selection is scored at this N.
+HAXSEL_N: int = 40 if HAXSEL_SMOKE else int(os.environ.get("NYCOPT_SEARCH_N", "300"))
+
+
+def haxsel_pool_slug(draw: int) -> str:
+    """Candidate-pool slug of ``draw`` (registry grammar ``statpool_*``)."""
+    return f"statpool_{HAXSEL_YEARS}yr_n{HAXSEL_POOL_P}_d{draw}"
+
+
+# ---------------------------------------------------------------------------
+# Candidate axes and admissibility (pre-registered; methods note section 3)
+# ---------------------------------------------------------------------------
+#: Only continuous metrics are candidate axes: an integer-valued metric (a
+#: count, or a duration in whole months or days) cannot carry the N Latin
+#: hypercube strata. Detected on the images; every metric stays in the scoring.
+#: Set sizes considered.
+HAXSEL_SIZES: tuple = (4, 5, 6)
+#: A set is inadmissible when any two of its metrics have Spearman |rho| at or
+#: above this level on either draw (Dormann et al. 2013).
+HAXSEL_PAIR_RHO: float = 0.7
+#: Minimum dry-side and wet-side metrics per set; the two regime metrics
+#: (annual_cv, flashiness) count as neither.
+HAXSEL_MIN_DRY: int = 2
+HAXSEL_MIN_WET: int = 2
+HAXSEL_DRY_PREFIXES: tuple = ("drought_", "lowflow_")
+HAXSEL_WET_PREFIXES: tuple = ("flood_", "highflow_")
+#: Spearman |rho| of the metric clusters over which the decision statistic
+#: averages (one vote per non-redundant hazard concept; the admissibility level).
+HAXSEL_CLUSTER_RHO: float = SELDIAG_CLUSTER_RHO
+#: Hydrological facet of each metric (Olden & Poff 2003 flow-regime facets by
+#: hazard): reported as the reading of the adopted set, never a constraint.
+HAXSEL_FACETS: dict = {
+    "drought_magnitude": "drought deficit volume", "drought_duration": "drought duration",
+    "drought_severity": "drought intensity", "drought_development_rate": "drought rate of change",
+    "drought_termination_rate": "drought rate of change", "drought_event_count": "drought frequency",
+    "drought_total_deficit": "drought deficit volume", "lowflow_min_7day": "low-flow intensity",
+    "lowflow_min_12month": "low-flow intensity", "lowflow_min_24month": "low-flow intensity",
+    "lowflow_min_year": "low-flow intensity", "flood_peak_discharge": "flood peak magnitude",
+    "flood_pulse_duration": "flood duration", "flood_rise_rate": "flood rate of rise",
+    "flood_pulse_count": "flood frequency", "flood_days_above": "flood duration",
+    "flood_max_3day": "flood peak magnitude", "flood_pulse_volume": "flood volume",
+    "highflow_max_year": "high-flow magnitude", "annual_cv": "interannual variability",
+    "flashiness": "daily variability",
+}
+
+# ---------------------------------------------------------------------------
+# Scoring (every admissible set on the full pools of both draws)
+# ---------------------------------------------------------------------------
+HAXSEL_SEEDS: int = 2 if HAXSEL_SMOKE else 10
+HAXSEL_SEED_BASE: int = 0
+#: Scaling bounds of the common space (the selector's p1/p99 range scaling).
+HAXSEL_BOUND_PCT: tuple = (1.0, 99.0)
+#: Covering distance (pool to nearest selected member, in the common space of
+#: the continuous metrics): measured on a fixed i.i.d. subsample of each pool
+#: for every set and on the full pool for the leading sets; the percentile
+#: reported beside the maximum and the mean.
+HAXSEL_COVER_SUBSAMPLE: int = 100_000
+HAXSEL_COVER_SEED_BASE: int = 500
+HAXSEL_COVER_Q: float = 99.0
+#: Random same-N subsets of each pool scored on the selector-free statistics
+#: (the null reference for the reported z-scores and ratios).
+HAXSEL_NULL_DRAWS: int = 20 if HAXSEL_SMOKE else 200
+HAXSEL_NULL_SEED_BASE: int = 1000
+#: Hazard-direction tail of the reported tail-share profile (share beyond the
+#: pool p90, i.i.d. 0.10) and the far-target distance: the selector-diagnostic
+#: definitions; reported, never deciding.
+HAXSEL_TAIL_PCT: float = SELDIAG_TAIL_PCT
+HAXSEL_FAR_TARGET_DISTANCE: float = SELDIAG_FAR_TARGET_DISTANCE
+#: Equivalence class: sets whose difference from the leader is under this many
+#: standard errors of the difference (replicate SDs over draws x seeds).
+HAXSEL_TIE_SE_MULTIPLIER: float = 2.0
+#: Leading sets (by rank) given the nearest-member effective sample size and
+#: the full-pool covering distance in a second pass and shown in the figures.
+HAXSEL_LEADERS: int = 30
+HAXSEL_RANKING_TOP: int = 30
+HAXSEL_PROFILE_TOP: int = 10
+
+# ---------------------------------------------------------------------------
+# Execution
+# ---------------------------------------------------------------------------
+#: Worker processes (each holds one scaled pool image, about 0.4 GB at P=1e6);
+#: 0 = min(8, cpu_count - 2); 1 = in-process (the smoke default).
+HAXSEL_WORKERS: int = int(os.environ.get("NYCOPT_HAXSEL_WORKERS", "1" if HAXSEL_SMOKE else "0"))
+HAXSEL_CHUNK: int = 4
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable)
+# ---------------------------------------------------------------------------
+HAXSEL_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "hazard_axis_selection"
+HAXSEL_TABLES_DIR: Path = HAXSEL_OUTPUT_ROOT / "tables"
+HAXSEL_FIGURES_DIR: Path = HAXSEL_OUTPUT_ROOT / "figures"
+
+
+def haxsel_prefix() -> str:
+    """Artifact-name prefix: ``smoke_`` under HAXSEL_SMOKE, else empty."""
+    return "smoke_" if HAXSEL_SMOKE else ""
+
+
+def haxsel_table_path(name: str) -> Path:
+    """Path of a named CSV table (smoke-prefixed under HAXSEL_SMOKE)."""
+    return HAXSEL_TABLES_DIR / f"{haxsel_prefix()}{name}.csv"
+
+
+def haxsel_json_path(name: str) -> Path:
+    """Path of a named JSON artifact (smoke-prefixed under HAXSEL_SMOKE)."""
+    return HAXSEL_TABLES_DIR / f"{haxsel_prefix()}{name}.json"
+
+
+def haxsel_figure_path(name: str) -> Path:
+    """Path stub of a named figure (extension added by ``save_figure``)."""
+    return HAXSEL_FIGURES_DIR / f"{haxsel_prefix()}{name}"
 
 
 ###############################################################################

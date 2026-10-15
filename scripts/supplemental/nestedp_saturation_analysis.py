@@ -5,7 +5,7 @@ Consumes the per-rung outputs of ``diagnose_hazard_selectors.py`` run in prefix 
 records how the hazard-filling selector's tail enrichment — minimum per-axis tail
 share above the pool P90 at N = 100, seed-mean convention (within-seed minimum,
 averaged over selector seeds; ``hazard_selector_diagnostics.md`` §4 block D) —
-saturates with pool size P on the campaign and full retained axis sets.
+saturates with pool size P on the campaign selection set.
 
 Each rung P' is scored from the first P' rows of the one staged image. Because
 realizations are keyed to a global index with per-realization child streams, a prefix
@@ -14,11 +14,10 @@ the ladder measures honest pools while generating only once.
 
 Fits (both vs log P):
 
-  * snap-concentration ratio (full m): log-log power law — the mechanism trend; the
-    expected anchor-to-nearest-member distance scales as P^(-1/m_eff), so the fitted
-    exponent is read against the P^(-1/8)..P^(-1/5) bracket from the intrinsic
-    dimension (~5.1) of the 8-axis image.
-  * min per-axis tail share (full m): saturating form  tail(P) = A - B * P^(-beta);
+  * snap-concentration ratio: log-log power law — the mechanism trend; the
+    expected target-to-nearest-member distance scales as P^(-1/m) on m axes, so
+    the fitted exponent is read against 1/m for the selection set's m.
+  * min per-axis tail share: saturating form  tail(P) = A - B * P^(-beta);
     the asymptote A, the exponent beta, and the P at which the fit comes within
     ``SATURATION_TOL`` of A state where enrichment saturates.
 
@@ -66,14 +65,9 @@ TAIL_NULL_SHARE = 0.10
 #: saturated (the seed-level spread of the statistic is ~0.02).
 SATURATION_TOL = 0.01
 
-#: Theoretical scaling bracket for the improvement exponent: P^(-1/m) with m the
-#: nominal (8) and intrinsic (~5.1 -> 1/5 used as the round bracket edge) dimension.
-EXPONENT_BRACKET = (1.0 / 8.0, 1.0 / 5.0)
-
-#: Axis sets scored across rungs: the campaign selection set and the full
-#: retained set (the sets the live battery emits).
-_MSETS = ("campaign", "full")
-_MSET_COLORS = {"campaign": "#7d3f9b", "full": "#1f6fb4"}
+#: The axis set scored across rungs (the set the live battery emits).
+_MSET = "campaign"
+_SET_COLOR = "#7d3f9b"
 
 
 def _rung_dir(p: int) -> Path:
@@ -83,12 +77,10 @@ def _rung_dir(p: int) -> Path:
 def _load_rung(p: int) -> dict:
     """Extract one rung's tail-share metrics from its diagnostics outputs.
 
-    Full-battery rungs (no ``saturation_mode`` in summary.json) carry the full-set
-    per-axis table in ``per_axis_coverage.csv`` (no ``m_set`` column) and the
-    campaign-set numbers in ``n_sweep.csv`` at N = 100; saturation rungs carry
-    every axis set in ``per_axis_coverage.csv`` keyed by ``m_set``. Both are
-    reduced with the same block-D convention (within-seed min, averaged over
-    seeds).
+    Full-battery rungs (no ``saturation_mode`` in summary.json) carry the
+    selection set's per-axis table in ``per_axis_coverage.csv`` (no ``m_set``
+    column); saturation rungs carry it keyed by ``m_set``. Both are reduced
+    with the same block-D convention (within-seed min, averaged over seeds).
     """
     out = _rung_dir(p)
     summary = json.loads((out / "summary.json").read_text())
@@ -123,39 +115,20 @@ def _load_rung(p: int) -> dict:
                 "snap_mean": adq["snap_mean"],
             }
     else:
-        nsw = pd.read_csv(out / "n_sweep.csv")
-        n_sel = int(summary["n_select"])
-        for mset in dict.fromkeys(dim["m_set"]):
-            m = int(dim.loc[dim.m_set == mset, "m"].iloc[0])
-            conc = float(dim.loc[dim.m_set == mset, "concentration_ratio"].mean())
-            snap = float(dim.loc[dim.m_set == mset, "snap_mean"].mean())
-            if mset == "full":
-                sel = per_axis.loc[per_axis.selector == "lhs_nn"]
-                by_seed = sel.groupby("seed")["tail_share_p90"]
-                axis_means = sel.groupby("axis")["tail_share_p90"].mean()
-                rung["msets"][mset] = {
-                    "m": m,
-                    "tail_min": float(by_seed.min().mean()),
-                    "tail_mean": float(by_seed.mean().mean()),
-                    "worst_axis": str(axis_means.idxmin()),
-                    "worst_axis_seed_mean": float(axis_means.min()),
-                    "per_axis": {str(a): float(v) for a, v in axis_means.items()},
-                    "conc_ratio": conc,
-                    "snap_mean": snap,
-                }
-            else:
-                sel = nsw.loc[(nsw.m_set == mset) & (nsw.selector == "lhs_nn")
-                              & (nsw.n == n_sel)]
-                rung["msets"][mset] = {
-                    "m": m,
-                    "tail_min": float(sel["tail_share_min"].mean()),
-                    "tail_mean": float(sel["tail_share_mean"].mean()),
-                    "worst_axis": None,
-                    "worst_axis_seed_mean": None,
-                    "per_axis": None,
-                    "conc_ratio": conc,
-                    "snap_mean": snap,
-                }
+        m = int(dim.loc[dim.m_set == _MSET, "m"].iloc[0])
+        sel = per_axis.loc[per_axis.selector == "lhs_nn"]
+        by_seed = sel.groupby("seed")["tail_share_p90"]
+        axis_means = sel.groupby("axis")["tail_share_p90"].mean()
+        rung["msets"][_MSET] = {
+            "m": m,
+            "tail_min": float(by_seed.min().mean()),
+            "tail_mean": float(by_seed.mean().mean()),
+            "worst_axis": str(axis_means.idxmin()),
+            "worst_axis_seed_mean": float(axis_means.min()),
+            "per_axis": {str(a): float(v) for a, v in axis_means.items()},
+            "conc_ratio": float(dim.loc[dim.m_set == _MSET, "concentration_ratio"].mean()),
+            "snap_mean": float(dim.loc[dim.m_set == _MSET, "snap_mean"].mean()),
+        }
     return rung
 
 
@@ -192,15 +165,14 @@ def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
     P = np.array([r["P"] for r in rungs], dtype=float)
     fig, (a, a2) = plt.subplots(1, 2, figsize=(9.6, 3.8))
 
-    for mset in [m for m in _MSETS if m in rungs[0]["msets"]]:
-        tail = [r["msets"][mset]["tail_min"] for r in rungs]
-        m = rungs[0]["msets"][mset]["m"]
-        a.plot(P, tail, "o-", color=_MSET_COLORS[mset], label=f"{mset} (m={m})")
-    fit = fits.get("tail_full")
+    m = rungs[0]["msets"][_MSET]["m"]
+    tail = [r["msets"][_MSET]["tail_min"] for r in rungs]
+    a.plot(P, tail, "o-", color=_SET_COLOR, label=f"selection set (m={m})")
+    fit = fits.get("tail")
     if fit is not None:
         Pg = np.geomspace(P.min(), P.max(), 200)
         a.plot(Pg, fit["A"] - fit["B"] * Pg ** (-fit["beta"]), "--", lw=1,
-               color=_MSET_COLORS["full"], alpha=0.7,
+               color=_SET_COLOR, alpha=0.7,
                label=f"fit: {fit['A']:.2f} − {fit['B']:.2f}·P^(−{fit['beta']:.3f})")
     a.axhline(TAIL_NULL_SHARE, color="0.5", lw=1, ls="--",
               label=f"i.i.d. reference ({TAIL_NULL_SHARE:g})")
@@ -211,17 +183,14 @@ def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
     a.set_title("Tail enrichment vs pool size (N = 100)")
     a.legend(fontsize=6.5)
 
-    for mset in [m for m in _MSETS if m in rungs[0]["msets"]]:
-        conc = [r["msets"][mset]["conc_ratio"] for r in rungs]
-        m = rungs[0]["msets"][mset]["m"]
-        a2.plot(P, conc, "o-", color=_MSET_COLORS[mset], label=f"{mset} (m={m})")
-    fit = fits.get("conc_full")
+    conc = [r["msets"][_MSET]["conc_ratio"] for r in rungs]
+    a2.plot(P, conc, "o-", color=_SET_COLOR, label=f"selection set (m={m})")
+    fit = fits.get("conc")
     if fit is not None:
         Pg = np.geomspace(P.min(), P.max(), 200)
         a2.plot(Pg, fit["c"] * Pg ** (-fit["beta"]), "--", lw=1,
-                color=_MSET_COLORS["full"], alpha=0.7,
-                label=f"fit ∝ P^(−{fit['beta']:.3f}) "
-                      f"(bracket {EXPONENT_BRACKET[0]:.3f}–{EXPONENT_BRACKET[1]:.3f})")
+                color=_SET_COLOR, alpha=0.7,
+                label=f"fit ∝ P^(−{fit['beta']:.3f}) (covering bound 1/m = {1 / m:.3f})")
     a2.set_xscale("log")
     a2.set_yscale("log")
     a2.set_xlabel("candidate pool size P")
@@ -248,46 +217,30 @@ def _markdown(rungs: list[dict], fits: dict) -> str:
         "share above the pool P90, averaged over seeds (block-D convention),",
         f"reported against the {TAIL_NULL_SHARE:g} share of an i.i.d. selection.*",
         "",
-        "## Per-rung results (full retained set, m = 8)",
+        f"## Per-rung results (selection set, m = {rungs[0]['msets'][_MSET]['m']})",
         "",
         "| P | screen retained | max abs rho_S | tail share min | tail share mean |"
         " worst axis | conc. ratio |",
         "|---|---|---|---|---|---|---|",
     ]
+    m = rungs[0]["msets"][_MSET]["m"]
     for r in rungs:
-        f = r["msets"]["full"]
+        f = r["msets"][_MSET]
         lines.append(
-            f"| {r['P']:,} | {r['n_retained']}/8 | {r['max_abs_rho']:.2f} "
+            f"| {r['P']:,} | {r['n_retained']}/{m} | {r['max_abs_rho']:.2f} "
             f"| {f['tail_min']:.3f} | {f['tail_mean']:.3f} "
             f"| {f['worst_axis']} ({f['worst_axis_seed_mean']:.3f}) "
             f"| {f['conc_ratio']:.3f} |"
         )
 
-    if all("campaign" in r["msets"] for r in rungs):
-        lines += [
-            "",
-            "## Tail share at the campaign selection set",
-            "",
-            "| P | campaign tail min | campaign tail mean |",
-            "|---|---|---|",
-        ]
-        for r in rungs:
-            c = r["msets"]["campaign"]
-            lines.append(
-                f"| {r['P']:,} | {c['tail_min']:.3f} | {c['tail_mean']:.3f} |"
-            )
-
-    lines += ["", "## Fitted scaling (full set)", ""]
-    fit = fits.get("conc_full")
+    lines += ["", "## Fitted scaling", ""]
+    fit = fits.get("conc")
     if fit is not None:
-        lo, hi = EXPONENT_BRACKET
-        verdict = "inside" if lo <= fit["beta"] <= hi else "outside"
         lines.append(
             f"- Snap-concentration ratio: c · P^(−beta) with beta = "
-            f"{fit['beta']:.3f} ({verdict} the P^(−1/8)..P^(−1/5) bracket "
-            f"[{lo:.3f}, {hi:.3f}])."
+            f"{fit['beta']:.3f} (covering-bound exponent 1/m = {1 / m:.3f})."
         )
-    fit = fits.get("tail_full")
+    fit = fits.get("tail")
     if fit is not None:
         lines.append(
             f"- Min per-axis tail share: A − B·P^(−beta) with A = "
@@ -298,18 +251,12 @@ def _markdown(rungs: list[dict], fits: dict) -> str:
 
     top = rungs[-1]
     lines += ["", "## Saturation", ""]
+    c = top["msets"][_MSET]
     lines.append(
-        f"- Full retained set (m = 8, N = 100) at the largest rung P = {top['P']:,}: "
-        f"min per-axis tail share {top['msets']['full']['tail_min']:.3f} "
-        f"(i.i.d. reference {TAIL_NULL_SHARE:g}; worst axis "
-        f"{top['msets']['full']['worst_axis']})."
+        f"- Selection set (m = {c['m']}, N = 100) at the largest rung P = {top['P']:,}: "
+        f"min per-axis tail share {c['tail_min']:.3f}, mean {c['tail_mean']:.3f} "
+        f"(i.i.d. reference {TAIL_NULL_SHARE:g}; worst axis {c['worst_axis']})."
     )
-    if "campaign" in top["msets"]:
-        c = top["msets"]["campaign"]
-        lines.append(
-            f"- Campaign selection set (m = {c['m']}, N = 100) at P = {top['P']:,}: "
-            f"min per-axis tail share {c['tail_min']:.3f}, mean {c['tail_mean']:.3f}."
-        )
     lines += [
         "",
         f"- SU spent on pool generation: {GEN_SU}.",
@@ -327,11 +274,11 @@ def main() -> None:
     P = np.array([r["P"] for r in rungs], dtype=float)
 
     fits = {
-        "conc_full": _fit_powerlaw(
-            P, np.array([r["msets"]["full"]["conc_ratio"] for r in rungs])
+        "conc": _fit_powerlaw(
+            P, np.array([r["msets"][_MSET]["conc_ratio"] for r in rungs])
         ),
-        "tail_full": _fit_saturating(
-            P, np.array([r["msets"]["full"]["tail_min"] for r in rungs])
+        "tail": _fit_saturating(
+            P, np.array([r["msets"][_MSET]["tail_min"] for r in rungs])
         ),
     }
 

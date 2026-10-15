@@ -4,13 +4,14 @@ Supplemental (SI) experiment characterizing the hazard-filling selection
 machinery on a staged candidate pool at the selection level (no simulation);
 design and findings in ``docs/notes/methods/hazard_selector_diagnostics.md``.
 
-Analysis blocks:
+The axis set under test is the campaign selection set
+(``config.HAZARD_SELECTION_AXES``), screened on the pool image; the candidate
+metrics are the 21 metrics of the hazard image. Analysis blocks:
 
-  A. Retained-set report (axis screen + Spearman redundancy diagnostic), and
-     the descriptor redundancy of the 8 candidate axes plus the 13 supplement
-     descriptors: Spearman matrix, |rho| >= 0.7 clusters, and PCA on normal
+  A. Selection-axis screen report, and the redundancy of the 21 candidate
+     metrics: Spearman matrix, |rho| >= 0.7 clusters, and PCA on normal
      scores (eigenvalues, participation ratio, components for 90% of variance,
-     highest-loading descriptor per leading component). SSI fit check: the
+     highest-loading metric per leading component). SSI fit check: the
      historical record's SSI under the reference fit, by calendar month
      (standard deviation, count at or below the qualifying level and the
      count a standard normal gives).
@@ -18,22 +19,21 @@ Analysis blocks:
   2. Normalization-bounds sweep.
   3. Sub-pool draw stability (disjoint random halves of the pool).
   B. Per-axis marginal coverage + tail enrichment vs the null.
-  C. Snap behavior vs dimension and the axis-set comparison over the named
-     sets (supplemental_config.seldiag_axis_sets: campaign, full, four_axis,
-     four_axis_rate, five_axis): hazard-direction tail share on every
-     descriptor, minimum own-axis tail share and attainment (share over the
-     exact-snap limit), mean target displacement, the share of targets far
-     from every pool member, and the n_eff / N of the nearest-member weights;
-     lhs_nn vs lhs_assign order-dependence at the campaign and full sets.
-  D. N-sweep: N x axis-set surface (campaign vs full) vs the matched random null.
+  C. Selection-set profile: per seed, one lhs_nn selection gives the snap
+     statistics (mean target displacement, the share of targets far from every
+     pool member, lhs_nn vs lhs_assign order-dependence), the hazard-direction
+     tail share on every candidate metric, the minimum own-axis tail share and
+     attainment (share over the exact-snap limit), and the n_eff / N of the
+     nearest-member weights.
+  D. N-sweep: tail enrichment and coverage vs N against the matched random null.
   E. Selection invariance / implicit weighting (leave-one-axis-out,
-     add-one-axis-back, per-axis snap-distance contributions).
-  Truncation summary: the pool, selected-member and drought-axis top-decile
+     add-one-metric-back from the other candidate metrics, per-axis
+     snap-distance contributions).
+  Truncation summary: the pool, selected-member and drought-metric top-decile
   fractions of controlling events truncated at the window's onset or end.
 
 Descriptor settings (tail direction, cluster level, variance share, far-target
-distance, named axis sets) are the ``SELDIAG_*`` entries of
-``supplemental_config.py``.
+distance) are the ``SELDIAG_*`` entries of ``supplemental_config.py``.
 
 Configuration via environment variables (no CLI value flags). Defaults are
 the dev scale; the campaign values (P=1e6 pools, N=300) come from the env.
@@ -47,8 +47,8 @@ the dev scale; the campaign values (P=1e6 pools, N=300) come from the env.
                                       pool of its size (global-index child
                                       streams); outputs go to {pool_slug}_prefix{P'}
     NYCOPT_SELDIAG_SATURATION         1 = lean mode: axis screen, per-axis
-                                      coverage and snap block only (lhs_nn), at
-                                      the campaign and full axis sets; no figures
+                                      coverage and snap block only (lhs_nn);
+                                      no figures
     NYCOPT_SELDIAG_N_SWEEP            N ladder for block D (default "100 150 200 300")
     NYCOPT_SELDIAG_SATURATION_NSWEEP  1 = also run block D inside saturation mode
 
@@ -78,17 +78,12 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from scipy.spatial import cKDTree  # noqa: E402
-from scipy.stats import norm, rankdata  # noqa: E402
 
 import config  # noqa: E402
 import supplemental_config as scfg  # noqa: E402
 from scengen import selector_diagnostics as sd  # noqa: E402
 from scengen import subsample as ss  # noqa: E402
-from scengen.diagnostics import (  # noqa: E402
-    load_hazard_image,
-    pca_effective_dimension,
-    spearman_clusters,
-)
+from scengen.diagnostics import load_hazard_image  # noqa: E402
 from scengen.hazard_filling import screen_hazard_axes  # noqa: E402
 from src.plotting.style import apply_style, save_figure  # noqa: E402
 
@@ -141,16 +136,14 @@ TAIL_UPPER_PCT: float = 99.0
 #: the minimum per-axis tail share of the designed selectors is reported.
 TAIL_NULL_SHARE: float = 0.10
 
-#: The two diagnostic axis sets of blocks D and E and of saturation mode; the
-#: other named sets enter block C (the axis-set comparison) only.
-_CORE_SETS: tuple[str, ...] = ("campaign", "full")
+#: The one axis set of blocks C, D and E: the campaign selection axes.
+_SET_NAME = "campaign"
 
 _COLORS = {
     "random": "0.55", "lhs_nn": "#1f6fb4", "lhs_assign": "#7db3d9",
     "maximin": "#2c8c5a", "eps_cell": "#c1272d",
 }
-_MSET_COLORS = {"campaign": "#7d3f9b", "full": "#1f6fb4", "four_axis": "#eb6834",
-                "four_axis_rate": "#1baf7a", "five_axis": "#eda100"}
+_SET_COLOR = "#7d3f9b"
 
 
 def _out_dir() -> Path:
@@ -160,8 +153,8 @@ def _out_dir() -> Path:
     return out
 
 
-def _load_pool() -> tuple[np.ndarray, list[str], dict, dict]:
-    """Load the staged pool hazard image (optionally a prefix) and screen it.
+def _load_pool() -> tuple[dict, dict]:
+    """Load the staged pool hazard image (optionally a prefix) and screen the selection axes.
 
     With ``NYCOPT_SELDIAG_PREFIX_P`` set, only the first P' rows are analyzed;
     the screen and every downstream bound (robust p1/p99, pool P90s) are then
@@ -169,8 +162,9 @@ def _load_pool() -> tuple[np.ndarray, list[str], dict, dict]:
     pool of size P' would be.
 
     Returns:
-        ``(H_full, candidate_axes, screen, descriptors)``; ``descriptors`` is
-        :func:`descriptor_image` of the same rows.
+        ``(descriptors, screen)``: the 21-metric matrix of the rows
+        (:func:`descriptor_image`) and the live screen of
+        ``config.HAZARD_SELECTION_AXES`` on it.
     """
     path = config.STAGED_ENSEMBLE_DIR / POOL_SLUG / "hazard_image.npz"
     if not path.exists():
@@ -180,17 +174,21 @@ def _load_pool() -> tuple[np.ndarray, list[str], dict, dict]:
             f"NYCOPT_CANDIDATE_POOL_N=<P>, NYCOPT_ENSEMBLE_MASTER_STREAM_ONLY=1) first."
         )
     img = load_hazard_image(path)
-    H_full, candidate_axes, S = img["H"], list(img["hazard_axes"]), img["supplement"]
+    H, S = img["H"], img["supplement"]
     if PREFIX_P:
-        if PREFIX_P > len(H_full):
+        if PREFIX_P > len(H):
             raise SystemExit(
                 f"[seldiag] NYCOPT_SELDIAG_PREFIX_P={PREFIX_P} exceeds the staged "
-                f"image size P={len(H_full)} ({path})."
+                f"image size P={len(H)} ({path})."
             )
-        H_full, S = H_full[:PREFIX_P], S[:PREFIX_P]
-    screen = screen_hazard_axes(H_full, candidate_axes)
-    return H_full, candidate_axes, screen, descriptor_image(
-        H_full, candidate_axes, S, img["supplement_names"])
+        H, S = H[:PREFIX_P], S[:PREFIX_P]
+    descriptors = descriptor_image(H, list(img["hazard_axes"]), S, img["supplement_names"])
+    axes = list(config.HAZARD_SELECTION_AXES)
+    missing = [a for a in axes if a not in descriptors["names"]]
+    if missing:
+        raise SystemExit(f"[seldiag] selection axes absent from the image's metrics: {missing}")
+    screen = screen_hazard_axes(_sub(descriptors["D"], descriptors["names"], axes), axes)
+    return descriptors, screen
 
 
 def _reference_ssi() -> pd.Series:
@@ -209,206 +207,25 @@ def _reference_ssi() -> pd.Series:
     return dry_calc.transform(flows_to_series(reference_monthly, start_date=_REFERENCE_START))
 
 
-def _sub(H_full: np.ndarray, candidate_axes: list[str], axes: list[str]) -> np.ndarray:
-    return H_full[:, [candidate_axes.index(a) for a in axes]]
+def _sub(D: np.ndarray, names: list[str], axes: list[str]) -> np.ndarray:
+    return D[:, [names.index(a) for a in axes]]
 
 
 def _seeds(k: int, offset: int = 0) -> list[int]:
     return [offset + i for i in range(k)]
 
 
-def _axis_sets(retained: list[str]) -> dict[str, list[str]]:
-    """The named axis sets (``supplemental_config.seldiag_axis_sets``), screened.
-
-    ``campaign`` is the committed selection axis set (config.HAZARD_SELECTION_AXES)
-    — the set whose per-axis tail enrichment the production-pool check records.
-    ``full`` is the retained set of the live screen; its role is the evidence
-    for restricting selection (full-set enrichment is geometry-limited). The
-    fixed sets (``four_axis``, ``four_axis_rate``, ``five_axis``) enter the
-    block-C axis-set comparison. Every set keeps only retained axes;
-    ``campaign`` is omitted when identical to ``full``, any other set when
-    identical to an earlier one, and sets of fewer than 3 axes are dropped.
-    """
-    named = {name: [a for a in axes if a in retained]
-             for name, axes in scfg.seldiag_axis_sets(config.HAZARD_SELECTION_AXES,
-                                                      retained).items()}
-    if named["campaign"] == named["full"]:
-        del named["campaign"]
-    sets: dict[str, list[str]] = {}
-    for name, axes in named.items():
-        if len(axes) >= 3 and axes not in sets.values():
-            sets[name] = axes
-    return sets
-
-
 ###############################################################################
-# Descriptor helpers (pure; tested in tests/test_hazard_selector_descriptors.py)
+# Pure image helpers live in src/hazard_metric_image.py (re-exported here so the
+# descriptor blocks and their tests keep their names)
 ###############################################################################
 
-def descriptor_image(
-    H: np.ndarray, hazard_axes: list[str], supplement: np.ndarray, supplement_names,
-) -> dict:
-    """The descriptor matrix: candidate axes plus the supplement minus its flags.
-
-    Args:
-        H: ``(M, 8)`` candidate-axis image.
-        hazard_axes: Candidate-axis names.
-        supplement: ``(M, 15)`` supplement aligned with ``H``.
-        supplement_names: Supplement column names.
-
-    Returns:
-        Dict with ``D`` ``(M, k)``, ``names``, ``sign`` (+1 where high values are
-        hazardous, -1 for ``SELDIAG_LOW_TAIL_DESCRIPTORS``), and the truncation
-        flags ``flags`` ``(M, 2)`` with ``flag_names``.
-    """
-    names = [str(a) for a in supplement_names]
-    flag_idx = [names.index(f) for f in scfg.SELDIAG_TRUNCATION_FLAGS]
-    keep = [i for i in range(len(names)) if i not in flag_idx]
-    all_names = list(hazard_axes) + [names[i] for i in keep]
-    return {
-        "D": np.hstack([np.asarray(H, dtype=float), np.asarray(supplement, dtype=float)[:, keep]]),
-        "names": all_names,
-        "sign": np.array([-1.0 if a in scfg.SELDIAG_LOW_TAIL_DESCRIPTORS else 1.0
-                          for a in all_names]),
-        "flags": np.asarray(supplement, dtype=float)[:, flag_idx],
-        "flag_names": list(scfg.SELDIAG_TRUNCATION_FLAGS),
-    }
+from src.hazard_metric_image import (  # noqa: E402,F401
+    descriptor_image, descriptor_redundancy, exact_snap_limit, hazard_tail_mask,
+    nearest_member_ess_ratio, normal_scores, ssi_fit_check,
+)
 
 
-def normal_scores(D: np.ndarray) -> np.ndarray:
-    """Rank-to-normal transform of every column (average ranks for ties)."""
-    D = np.asarray(D, dtype=float)
-    M = D.shape[0]
-    return np.column_stack([norm.ppf((rankdata(D[:, k]) - 0.5) / M) for k in range(D.shape[1])])
-
-
-def descriptor_redundancy(
-    D: np.ndarray, names: list[str], *, threshold: float, variance_share: float,
-) -> dict:
-    """Spearman clusters and normal-score PCA of a descriptor set.
-
-    Clusters are ``scengen.diagnostics.spearman_clusters`` (average linkage on
-    ``1 - |rho_S|``, cut so every pair at ``|rho_S| >= threshold`` shares a
-    cluster). The PCA is on the correlation matrix of the normal scores
-    (``scengen.diagnostics.pca_effective_dimension`` for the spectrum and the
-    participation ratio ``(sum lambda)^2 / sum lambda^2``). Constant columns
-    carry no rank information and are left out (listed in ``constant``).
-
-    Args:
-        D: ``(M, k)`` descriptor values.
-        names: Descriptor names (columns of ``D``).
-        threshold: Spearman ``|rho|`` of the cluster cut.
-        variance_share: Share of variance the reported leading components reach.
-
-    Returns:
-        Dict with ``names`` (non-constant descriptors), ``constant``, ``rho``,
-        ``clusters``, ``eigenvalues``, ``explained``, ``participation_ratio``,
-        ``n_components`` (the leading count reaching ``variance_share``), and
-        ``top_loadings`` (``(component, descriptor, loading)`` of each leading
-        component's highest-``|loading|`` descriptor).
-    """
-    D = np.asarray(D, dtype=float)
-    varying = D.std(axis=0) > 0
-    kept = [n for n, v in zip(names, varying) if v]
-    D = D[:, varying]
-    cl = spearman_clusters(D, kept, threshold=threshold)
-    Z = normal_scores(D)
-    pca = pca_effective_dimension(Z)
-    evr = np.asarray(pca["explained_variance_ratio"], dtype=float)
-    n_comp = int(min(np.searchsorted(np.cumsum(evr), variance_share - 1e-12) + 1, len(evr)))
-    evals, evecs = np.linalg.eigh(np.corrcoef(Z, rowvar=False))
-    order = np.argsort(evals)[::-1]
-    evals = np.clip(evals[order], 0.0, None)
-    loadings = evecs[:, order] * np.sqrt(evals)
-    top = []
-    for c in range(n_comp):
-        i = int(np.argmax(np.abs(loadings[:, c])))
-        top.append((c + 1, kept[i], float(loadings[i, c])))
-    return {
-        "names": kept,
-        "constant": [n for n, v in zip(names, varying) if not v],
-        "rho": np.atleast_2d(cl["rho"]),
-        "clusters": cl["clusters"],
-        "eigenvalues": evals,
-        "explained": evr,
-        "participation_ratio": float(pca["participation_ratio"]),
-        "n_components": n_comp,
-        "top_loadings": top,
-    }
-
-
-def ssi_fit_check(ssi: pd.Series, *, level: float) -> pd.DataFrame:
-    """Spread and lower-tail count of an SSI series by calendar month.
-
-    Under a well-fitted distribution every calendar month's SSI is standard
-    normal: its standard deviation is 1 and ``n * Phi(level)`` of its ``n``
-    values lie at or below ``level``.
-
-    Args:
-        ssi: SSI series on a DatetimeIndex.
-        level: SSI level of the lower-tail count.
-
-    Returns:
-        One row per calendar month: ``month``, ``n``, ``sd`` (``ddof=0``, the
-        spread about the month's mean with no sample correction),
-        ``n_at_or_below`` and ``n_expected``.
-    """
-    months = ssi.groupby(ssi.index.month)
-    n = months.size()
-    return pd.DataFrame({
-        "month": n.index.to_numpy(),
-        "n": n.to_numpy(),
-        "sd": months.std(ddof=0).to_numpy(),
-        "n_at_or_below": months.apply(lambda v: int((v <= level).sum())).to_numpy(),
-        "n_expected": n.to_numpy() * norm.cdf(level),
-    })
-
-
-def hazard_tail_mask(D: np.ndarray, sign: np.ndarray, *, pct: float) -> np.ndarray:
-    """Members in each descriptor's hazard-direction pool tail.
-
-    Above the pool ``pct`` percentile where ``sign`` is +1, below the pool
-    ``100 - pct`` percentile where it is -1 (strict inequalities).
-
-    Returns:
-        ``(M, k)`` boolean mask.
-    """
-    Do = np.asarray(D, dtype=float) * np.asarray(sign, dtype=float)
-    return Do > np.percentile(Do, pct, axis=0)
-
-
-def exact_snap_limit(
-    H: np.ndarray, *, tail_pct: float,
-    lo_pct: float = ss.ROBUST_LO_PCT, hi_pct: float = ss.ROBUST_HI_PCT,
-) -> np.ndarray:
-    """Tail share an exact snap to uniform targets on the clipped box would give.
-
-    Uniform targets on the ``[p_lo, p_hi]`` scaled axis land above the pool
-    ``tail_pct`` percentile with probability ``(p_hi - p_tail) / (p_hi - p_lo)``.
-
-    Returns:
-        Length-``d`` limits in ``[0, 1]``.
-    """
-    H = np.asarray(H, dtype=float)
-    lo, hi = ss.robust_range_bounds(H, lo_pct=lo_pct, hi_pct=hi_pct)
-    tail = np.percentile(H, tail_pct, axis=0)
-    return np.clip((hi - tail) / (hi - lo), 0.0, 1.0)
-
-
-def nearest_member_ess_ratio(X: np.ndarray, rows: np.ndarray) -> float:
-    """``n_eff / N`` of the nearest-member (Voronoi) weights of a selection.
-
-    Reuses the HF design-metric helpers (``hf_design_metrics_run``): every pool
-    row's mass goes to its nearest selected member, and ``n_eff`` is the Kish
-    effective sample size of those weights.
-    """
-    from scripts.supplemental.hf_design_metrics_run import (
-        effective_sample_size, nearest_member, voronoi_masses,
-    )
-
-    rows = np.asarray(rows, dtype=int)
-    _, idx = nearest_member(X, X[rows])
-    return effective_sample_size(voronoi_masses(idx, len(rows))) / len(rows)
 
 
 def _main_comparison(H: np.ndarray, axes: list[str]) -> tuple[pd.DataFrame, dict]:
@@ -469,20 +286,19 @@ def _per_axis_coverage(H: np.ndarray, axes: list[str]) -> pd.DataFrame:
 
 
 def _dimension_sweep(
-    H_full: np.ndarray, candidate_axes: list[str], axis_sets: dict[str, list[str]],
+    D: np.ndarray, names: list[str], axis_sets: dict[str, list[str]],
     *, include_assign: bool = True, descriptors: dict | None = None,
 ) -> pd.DataFrame:
-    """Block C: snap behavior per axis set, order-dependence, and the axis-set comparison.
+    """Block C: the selection-set profile (snap statistics, order-dependence, tails).
 
     One ``lhs_nn`` selection per (set, seed) (``subsample.lhs_nn_assignment``,
-    so the targets are kept). The Hungarian comparator runs at the campaign and
-    full sets only; ``include_assign=False`` (saturation mode) skips it, since
-    its anchor-by-pool cost matrix is memory-heavy at large P and contributes
-    nothing to the tail-share record.
+    so the targets are kept). ``include_assign=False`` (saturation mode) skips
+    the Hungarian comparator, since its anchor-by-pool cost matrix is
+    memory-heavy at large P and contributes nothing to the tail-share record.
 
     With ``descriptors`` (:func:`descriptor_image`), each record also carries
-    the axis-set comparison: the hazard-direction tail share of the selection
-    on every descriptor (``tail__{name}``), the minimum own-axis tail share and
+    the hazard-direction tail share of the selection on every candidate
+    metric (``tail__{name}``), the minimum own-axis tail share and
     attainment (share over :func:`exact_snap_limit`), the share of targets
     farther than ``SELDIAG_FAR_TARGET_DISTANCE`` from every pool member, the
     ``n_eff / N`` of the nearest-member weights, and the selected members'
@@ -492,11 +308,11 @@ def _dimension_sweep(
     if descriptors is not None:
         tail_mask = hazard_tail_mask(descriptors["D"], descriptors["sign"],
                                      pct=scfg.SELDIAG_TAIL_PCT)
-        limits = dict(zip(candidate_axes,
-                          exact_snap_limit(H_full, tail_pct=scfg.SELDIAG_TAIL_PCT)))
+        limits = dict(zip(names,
+                          exact_snap_limit(D, tail_pct=scfg.SELDIAG_TAIL_PCT)))
     records = []
     for mset, axes in axis_sets.items():
-        H = _sub(H_full, candidate_axes, axes)
+        H = _sub(D, names, axes)
         X = ss.minmax_normalize(H)
         tree = cKDTree(X) if descriptors is not None else None
         for seed in _seeds(N_SEEDS):
@@ -506,7 +322,7 @@ def _dimension_sweep(
             lb, ub = np.zeros(X.shape[1]), np.ones(X.shape[1])
             cov = ss.coverage_metrics(X[rows], lb, ub)
             jac = np.nan
-            if include_assign and mset in _CORE_SETS:
+            if include_assign:
                 res_as = sd.select_lhs_assign(X, N_SELECT, seed=seed)
                 jac = sd.jaccard(rows, res_as.rows)
             rec = {
@@ -538,11 +354,11 @@ def _dimension_sweep(
     return pd.DataFrame.from_records(records)
 
 
-def _axis_set_comparison(
-    dim: pd.DataFrame, axis_sets: dict[str, list[str]], H_full: np.ndarray,
-    candidate_axes: list[str], descriptor_names: list[str],
+def _selection_set_profile(
+    dim: pd.DataFrame, axis_sets: dict[str, list[str]], D: np.ndarray,
+    names: list[str], descriptor_names: list[str],
 ) -> pd.DataFrame:
-    """The axis-set comparison as one tidy table (seed means and SDs of block C).
+    """The selection-set profile as one tidy table (seed means and SDs of block C).
 
     Rows: per (set, descriptor) the hazard-direction ``tail_share``; per (set,
     own axis) the ``attainment`` and its ``exact_snap_limit``; per set the
@@ -550,7 +366,7 @@ def _axis_set_comparison(
     ``displacement_mean`` (mean target displacement), ``frac_targets_far`` and
     ``ess_over_n``.
     """
-    limits = dict(zip(candidate_axes, exact_snap_limit(H_full, tail_pct=scfg.SELDIAG_TAIL_PCT)))
+    limits = dict(zip(names, exact_snap_limit(D, tail_pct=scfg.SELDIAG_TAIL_PCT)))
     rows = []
     for mset, axes in axis_sets.items():
         g = dim.loc[dim.m_set == mset]
@@ -579,28 +395,28 @@ def _axis_set_comparison(
 
 
 def _truncation_summary(
-    H_full: np.ndarray, candidate_axes: list[str], descriptors: dict, dim: pd.DataFrame,
+    D: np.ndarray, names: list[str], descriptors: dict, dim: pd.DataFrame,
 ) -> pd.DataFrame:
     """Fractions of controlling events truncated at the window onset or end.
 
     Rows: the pool; the selected members of each axis set (seed mean, block C);
-    the pool members above the p90 of each drought axis (its top decile).
+    the pool members above the p90 of each drought metric (its top decile).
     """
-    flags, names = descriptors["flags"], descriptors["flag_names"]
+    flags, flag_names = descriptors["flags"], descriptors["flag_names"]
     rows = [{"population": "pool", "m_set": "", "axis": "", "n": int(len(flags)),
-             **dict(zip(names, flags.mean(axis=0).tolist()))}]
+             **dict(zip(flag_names, flags.mean(axis=0).tolist()))}]
     for mset in dict.fromkeys(dim["m_set"]):
         g = dim.loc[dim.m_set == mset]
         rows.append({"population": "selected", "m_set": mset, "axis": "", "n": N_SELECT,
-                     **{f: float(g[f"selected__{f}"].mean()) for f in names}})
-    for k, axis in enumerate(candidate_axes):
+                     **{f: float(g[f"selected__{f}"].mean()) for f in flag_names}})
+    for k, axis in enumerate(names):
         if not axis.startswith("drought_"):
             continue
-        top = H_full[:, k] > np.percentile(H_full[:, k], scfg.SELDIAG_TAIL_PCT)
+        top = D[:, k] > np.percentile(D[:, k], scfg.SELDIAG_TAIL_PCT)
         rows.append({"population": "top_decile", "m_set": "", "axis": axis,
                      "n": int(top.sum()),
-                     **dict(zip(names, (flags[top].mean(axis=0) if top.any()
-                                        else np.full(len(names), np.nan)).tolist()))})
+                     **dict(zip(flag_names, (flags[top].mean(axis=0) if top.any()
+                                             else np.full(len(flag_names), np.nan)).tolist()))})
     return pd.DataFrame.from_records(rows)
 
 
@@ -683,12 +499,12 @@ def n_sweep_record(
 
 
 def _n_sweep(
-    H_full: np.ndarray, candidate_axes: list[str], axis_sets: dict[str, list[str]]
+    D: np.ndarray, names: list[str], axis_sets: dict[str, list[str]]
 ) -> pd.DataFrame:
     """Block D: the (axis set × N) sizing decision surface, vs matched random nulls."""
     records = []
     for mset, axes in axis_sets.items():
-        H = _sub(H_full, candidate_axes, axes)
+        H = _sub(D, names, axes)
         X = ss.minmax_normalize(H)
         for n in N_SWEEP:
             for selector, seeds in (
@@ -708,35 +524,33 @@ def _n_sweep(
 
 
 def _invariance(
-    H_full: np.ndarray, candidate_axes: list[str], axis_sets: dict[str, list[str]]
+    D: np.ndarray, names: list[str], axis_sets: dict[str, list[str]]
 ) -> tuple[pd.DataFrame, dict]:
-    """Block E: LOO / add-one-back selection overlap + per-axis snap contributions."""
-    retained = axis_sets["full"]
-    H_ret = _sub(H_full, candidate_axes, retained)
+    """Block E: LOO / add-one-metric-back overlap + per-axis snap contributions."""
+    retained = axis_sets[_SET_NAME]
+    H_ret = _sub(D, names, retained)
     full_rows = {s: ss.absolute_filling_subsample(H_ret, N_SELECT, seed=s)
                  for s in _seeds(N_SEEDS)}
 
     records = []
     for axis in retained:  # leave-one-axis-out
         axes = [a for a in retained if a != axis]
-        H = _sub(H_full, candidate_axes, axes)
+        H = _sub(D, names, axes)
         for seed in _seeds(N_SEEDS):
             rows = ss.absolute_filling_subsample(H, N_SELECT, seed=seed)
             records.append({
                 "variant": "loo", "axis": axis, "m": len(axes), "seed": seed,
-                "jaccard_vs_full": sd.jaccard(rows, full_rows[seed]),
+                "jaccard_vs_set": sd.jaccard(rows, full_rows[seed]),
             })
-    base = axis_sets.get("campaign")
-    if base:  # add-one-axis-back from the campaign selection set
-        for axis in [a for a in retained if a not in base]:
-            axes = base + [axis]
-            H = _sub(H_full, candidate_axes, axes)
-            for seed in _seeds(N_SEEDS):
-                rows = ss.absolute_filling_subsample(H, N_SELECT, seed=seed)
-                records.append({
-                    "variant": "add_one", "axis": axis, "m": len(axes), "seed": seed,
-                    "jaccard_vs_full": sd.jaccard(rows, full_rows[seed]),
-                })
+    for axis in [m for m in names if m not in retained]:  # add-one-metric-back
+        axes = retained + [axis]
+        H = _sub(D, names, axes)
+        for seed in _seeds(N_SEEDS):
+            rows = ss.absolute_filling_subsample(H, N_SELECT, seed=seed)
+            records.append({
+                "variant": "add_one", "axis": axis, "m": len(axes), "seed": seed,
+                "jaccard_vs_set": sd.jaccard(rows, full_rows[seed]),
+            })
 
     # Per-axis contribution to the snap distance (and dry/wet group shares).
     X = ss.minmax_normalize(H_ret)
@@ -888,11 +702,11 @@ def _fig_bounds_sweep(sweep, out) -> None:
     plt.close(fig)
 
 
-def _fig_axis_screen(red: dict, screen: dict, candidate_axes: list[str], out: Path) -> None:
-    """F6: descriptor redundancy — |rho| heatmap, cluster tree, normal-score PCA spectrum.
+def _fig_axis_screen(red: dict, screen: dict, selection_axes: list[str], out: Path) -> None:
+    """F6: metric redundancy — |rho| heatmap, cluster tree, normal-score PCA spectrum.
 
-    Covers the candidate axes and the supplement descriptors (supplement labels
-    in gray), ordered by the cluster tree; the tree carries the axis screen's
+    Covers the 21 candidate metrics (selection axes in black, the others in
+    gray), ordered by the cluster tree; the tree carries the axis screen's
     near-duplicate cut and the cluster cut.
     """
     from scipy.cluster.hierarchy import dendrogram, linkage
@@ -913,14 +727,14 @@ def _fig_axis_screen(red: dict, screen: dict, candidate_axes: list[str], out: Pa
     a.set_xticklabels(labels, rotation=90, fontsize=6)
     a.set_yticklabels(labels, fontsize=6)
     for tick in a.get_xticklabels() + a.get_yticklabels():
-        tick.set_color("black" if tick.get_text() in candidate_axes else "0.45")
-    a.set_title("|Spearman ρ| (candidate axes black, supplement gray)", fontsize=9)
+        tick.set_color("black" if tick.get_text() in selection_axes else "0.45")
+    a.set_title("|Spearman ρ| (selection axes black, other metrics gray)", fontsize=9)
     fig.colorbar(im, ax=a, fraction=0.046)
 
     dendrogram(Z, labels=names, ax=a2, color_threshold=0.0,
                above_threshold_color="0.3", leaf_rotation=90, leaf_font_size=6)
     for tick in a2.get_xticklabels():
-        tick.set_color("black" if tick.get_text() in candidate_axes else "0.45")
+        tick.set_color("black" if tick.get_text() in selection_axes else "0.45")
     dup = 1.0 - screen["dedupe_threshold"]
     cut = 1.0 - scfg.SELDIAG_CLUSTER_RHO
     a2.axhline(dup, color="#c1272d", lw=1.2, ls="--",
@@ -949,58 +763,50 @@ def _fig_axis_screen(red: dict, screen: dict, candidate_axes: list[str], out: Pa
     plt.close(fig)
 
 
-def _fig_axis_set_comparison(table: pd.DataFrame, dim: pd.DataFrame,
-                             axis_sets: dict[str, list[str]], out: Path) -> None:
-    """F11: the axis-set comparison — descriptor tail shares and the set scalars.
+def _fig_selection_set_profile(table: pd.DataFrame, dim: pd.DataFrame,
+                               axis_sets: dict[str, list[str]], out: Path) -> None:
+    """F11: the selection-set profile — tail share on every metric and the set scalars.
 
-    Top: seed-mean hazard-direction tail share of every set's selection on every
-    descriptor (outlined cells are the set's own axes; the i.i.d. share is 0.10).
-    Bottom: one small panel per set scalar, seeds as dots and the mean as a bar.
+    Left: seed-mean hazard-direction tail share of the selection on every
+    candidate metric (own axes in the set colour; the i.i.d. share is 0.10).
+    Right: one small panel per set scalar, seeds as dots and the mean as a bar.
     """
-    msets = list(axis_sets)
-    ts = table.loc[table.statistic == "tail_share"]
+    axes = axis_sets[_SET_NAME]
+    ts = table.loc[(table.statistic == "tail_share") & (table.m_set == _SET_NAME)]
     names = list(dict.fromkeys(ts["descriptor"]))
-    grid = ts.pivot(index="m_set", columns="descriptor", values="mean").loc[msets, names]
     scalars = (("tail_share_min", "min own-axis tail share"),
                ("attainment_min", "min own-axis attainment"),
                ("snap_mean", "mean target displacement"),
                ("frac_targets_far", f"targets > {scfg.SELDIAG_FAR_TARGET_DISTANCE:g} "
                                     "from the pool"),
                ("ess_over_n", "n_eff / N (nearest-member weights)"))
-    fig = plt.figure(figsize=(15.0, 8.2))
-    gs = fig.add_gridspec(2, len(scalars), height_ratios=(1.25, 1.0), hspace=0.8,
-                          wspace=0.45, left=0.09, right=0.97, top=0.93, bottom=0.08)
-    a = fig.add_subplot(gs[0, :])
-    im = a.imshow(grid.to_numpy(), aspect="auto", cmap="Blues", vmin=0.0,
-                  vmax=max(0.5, float(np.nanmax(grid.to_numpy()))))
-    for i, mset in enumerate(msets):
-        for j, name in enumerate(names):
-            v = grid.iat[i, j]
-            a.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=6,
-                   color="white" if v > 0.35 else "black")
-            if name in axis_sets[mset]:
-                a.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
-                                          ec="black", lw=1.4))
-    a.set_xticks(range(len(names)))
+    fig = plt.figure(figsize=(15.0, 4.6))
+    gs = fig.add_gridspec(1, 2 + len(scalars), width_ratios=[6.0, 0.4] + [1.0] * len(scalars),
+                          wspace=0.6, left=0.05, right=0.98, top=0.86, bottom=0.3)
+    a = fig.add_subplot(gs[0, 0])
+    x = np.arange(len(names))
+    colors = [_SET_COLOR if n in axes else "0.6" for n in names]
+    a.bar(x, ts["mean"].to_numpy(), yerr=2 * ts["sd"].to_numpy(), color=colors, width=0.7,
+          capsize=2)
+    a.axhline(TAIL_NULL_SHARE, color="0.4", lw=1, ls="--", label="i.i.d. share")
+    a.set_xticks(x)
     a.set_xticklabels(names, rotation=40, ha="right", fontsize=7)
-    a.set_yticks(range(len(msets)))
-    a.set_yticklabels([f"{m} (m={len(axis_sets[m])})" for m in msets], fontsize=8)
-    a.set_title(f"Share of selected members in each descriptor's hazard-direction pool "
-                f"tail (N={N_SELECT}, {N_SEEDS} seeds; i.i.d. 0.10; outlined = own axes)",
+    a.set_ylabel("share in the hazard-direction pool tail")
+    a.set_title(f"Selection set (m={len(axes)}): tail share on every candidate metric "
+                f"(N={N_SELECT}, {N_SEEDS} seeds; own axes coloured; whisker = 2 seed SD)",
                 fontsize=9)
-    fig.colorbar(im, ax=a, fraction=0.02, pad=0.01)
+    a.legend(fontsize=7)
+    g = dim.loc[dim.m_set == _SET_NAME]
     for p, (column, label) in enumerate(scalars):
-        b = fig.add_subplot(gs[1, p])
-        for i, mset in enumerate(msets):
-            vals = dim.loc[dim.m_set == mset, column]
-            b.scatter(np.full(len(vals), i), vals, s=12, c=_MSET_COLORS.get(mset, "0.4"))
-            b.scatter([i], [vals.mean()], marker="_", s=300, c="black")
+        b = fig.add_subplot(gs[0, 2 + p])
+        vals = g[column]
+        b.scatter(np.zeros(len(vals)), vals, s=12, c=_SET_COLOR)
+        b.scatter([0], [vals.mean()], marker="_", s=300, c="black")
         if column == "tail_share_min":
             b.axhline(TAIL_NULL_SHARE, color="0.5", lw=1, ls="--")
-        b.set_xticks(range(len(msets)))
-        b.set_xticklabels(msets, rotation=40, ha="right", fontsize=7)
-        b.set_title(label, fontsize=8)
-    save_figure(fig, out / "figures" / "F11_axis_set_comparison")
+        b.set_xticks([])
+        b.set_title(label, fontsize=7.5)
+    save_figure(fig, out / "figures" / "F11_selection_set_profile")
     plt.close(fig)
 
 
@@ -1029,41 +835,10 @@ def _fig_per_axis_coverage(per_axis, axes, out) -> None:
         a.set_xticklabels(axes, rotation=40, ha="right", fontsize=7)
         a.set_ylabel(label)
         a.legend(fontsize=7)
-    fig.suptitle(f"Per-axis marginal coverage + tail enrichment at the full retained set "
+    fig.suptitle(f"Per-axis marginal coverage + tail enrichment on the selection axes "
                  f"(N={N_SELECT})")
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     save_figure(fig, out / "figures" / "F7_per_axis_coverage")
-    plt.close(fig)
-
-
-def _fig_dimension_sweep(dim, out) -> None:
-    """F8: snap behavior vs dimension (campaign vs full retained axis set)."""
-    fig, ax = plt.subplots(1, 3, figsize=(11.4, 3.6))
-    msets = list(dict.fromkeys(dim["m_set"]))
-    for p, (metric, label) in enumerate((
-        ("snap_mean", "mean anchor→selected distance"),
-        ("concentration_ratio", "snap / random-pair distance ratio"),
-        ("nn_min_abs", "min pairwise separation"),
-    )):
-        a = ax[p]
-        for i, mset in enumerate(msets):
-            sel = dim.loc[dim.m_set == mset]
-            vals = sel[metric]
-            a.scatter(np.full(len(vals), i), vals, s=16, c=_MSET_COLORS[mset])
-            a.scatter([i], [vals.mean()], marker="_", s=450, c="black")
-        a.set_xticks(range(len(msets)))
-        a.set_xticklabels([f"{m} (m={dim.loc[dim.m_set == m, 'm'].iloc[0]})" for m in msets],
-                          rotation=30, ha="right", fontsize=7)
-        a.set_ylabel(label)
-    jac = dim.groupby("m_set")["jaccard_nn_vs_assign"].mean().dropna()
-    ax[0].set_title("snap cost")
-    ax[1].set_title("distance concentration")
-    ax[2].set_title(f"separation (nn vs assign Jaccard: "
-                    f"{', '.join(f'{m}={jac[m]:.2f}' for m in msets if m in jac)})",
-                    fontsize=8)
-    fig.suptitle(f"Snap behavior vs hazard dimension (N={N_SELECT})")
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
-    save_figure(fig, out / "figures" / "F8_snap_vs_dimension")
     plt.close(fig)
 
 
@@ -1080,11 +855,11 @@ def _fig_n_sweep(nsw, out) -> None:
         for mset in msets:
             sel = nsw.loc[(nsw.m_set == mset) & (nsw.selector == "lhs_nn")]
             means = sel.groupby("n")[metric].mean()
-            a.plot(means.index, means.values, "o-", color=_MSET_COLORS[mset],
+            a.plot(means.index, means.values, "o-", color=_SET_COLOR,
                    label=f"lhs_nn {mset}")
             null = nsw.loc[(nsw.m_set == mset) & (nsw.selector == "random")]
             nmeans = null.groupby("n")[metric].mean()
-            a.plot(nmeans.index, nmeans.values, "--", lw=1, color=_MSET_COLORS[mset],
+            a.plot(nmeans.index, nmeans.values, "--", lw=1, color=_SET_COLOR,
                    alpha=0.55, label=f"null {mset}")
         if metric == "tail_share_min":
             a.axhline(TAIL_NULL_SHARE, color="0.5", lw=1, ls="--",
@@ -1093,7 +868,8 @@ def _fig_n_sweep(nsw, out) -> None:
         a.set_ylabel(label)
         if p == 0:
             a.legend(fontsize=6.5)
-    fig.suptitle("Tail enrichment and coverage: N × axis set (dashed = matched random null)")
+    fig.suptitle("Tail enrichment and coverage vs N on the selection axes "
+                 "(dashed = matched random null)")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     save_figure(fig, out / "figures" / "F9_n_sweep")
     plt.close(fig)
@@ -1103,20 +879,20 @@ def _fig_invariance(inv, contributions, out) -> None:
     """F10: selection invariance (LOO / add-one-back) + snap-distance weighting."""
     fig, ax = plt.subplots(1, 2, figsize=(11.4, 3.9))
     a = ax[0]
-    loo = inv.loc[inv.variant == "loo"].groupby("axis")["jaccard_vs_full"]
+    loo = inv.loc[inv.variant == "loo"].groupby("axis")["jaccard_vs_set"]
     order = list(loo.mean().sort_values().index)
     a.barh(range(len(order)), [loo.mean()[x] for x in order],
            xerr=[2 * loo.std()[x] for x in order], color="#1f6fb4", height=0.55,
            label="leave-one-axis-out")
-    add = inv.loc[inv.variant == "add_one"].groupby("axis")["jaccard_vs_full"].mean()
+    add = inv.loc[inv.variant == "add_one"].groupby("axis")["jaccard_vs_set"].mean()
     for i, axis in enumerate(order):
         if axis in add.index:
             a.plot([add[axis]], [i], "d", color="#c1272d", ms=6,
-                   label="add-one-back (from campaign)" if i == min(
+                   label="add-one-metric-back" if i == min(
                        j for j, x in enumerate(order) if x in add.index) else None)
     a.set_yticks(range(len(order)))
     a.set_yticklabels(order, fontsize=7)
-    a.set_xlabel("Jaccard overlap with full-set selection")
+    a.set_xlabel("Jaccard overlap with the selection-set selection")
     a.set_xlim(0, 1)
     a.legend(fontsize=7)
     a.set_title("Selection invariance to single axes")
@@ -1143,12 +919,12 @@ def _fig_invariance(inv, contributions, out) -> None:
 ###############################################################################
 
 def _run_saturation(
-    out: Path, H_full: np.ndarray, candidate_axes: list[str], screen: dict,
+    out: Path, D: np.ndarray, names: list[str], screen: dict,
     axis_sets: dict[str, list[str]],
 ) -> None:
     """Lean saturation mode: only the metrics the nested-P tail-share record needs.
 
-    Per axis set (campaign / full): per-axis marginal coverage + tail enrichment
+    On the selection set: per-axis marginal coverage + tail enrichment
     (lhs_nn seeds vs the random null) and the snap/concentration block (lhs_nn
     only). The tail statistic follows the block-D convention: within-seed
     minimum per-axis tail share, averaged over selector seeds, reported against
@@ -1156,16 +932,16 @@ def _run_saturation(
     """
     frames = []
     for mset, axes in axis_sets.items():
-        t = _per_axis_coverage(_sub(H_full, candidate_axes, axes), axes)
+        t = _per_axis_coverage(_sub(D, names, axes), axes)
         t.insert(0, "m_set", mset)
         frames.append(t)
     per_axis = pd.concat(frames, ignore_index=True)
-    dim = _dimension_sweep(H_full, candidate_axes, axis_sets, include_assign=False)
+    dim = _dimension_sweep(D, names, axis_sets, include_assign=False)
 
     per_axis.to_csv(out / "per_axis_coverage.csv", index=False)
     dim.to_csv(out / "dimension_sweep.csv", index=False)
     if SATURATION_NSWEEP:
-        _n_sweep(H_full, candidate_axes, axis_sets).to_csv(
+        _n_sweep(D, names, axis_sets).to_csv(
             out / "n_sweep.csv", index=False)
 
     adequacy = {}
@@ -1187,13 +963,13 @@ def _run_saturation(
 
     summary = {
         "pool_slug": POOL_SLUG, "prefix_p": PREFIX_P or None, "out_slug": OUT_SLUG,
-        "P": int(len(H_full)), "n_select": N_SELECT,
+        "P": int(len(D)), "n_select": N_SELECT,
         "seeds": N_SEEDS, "null_seeds": N_NULL_SEEDS,
         "saturation_mode": True,
         "saturation_nsweep": SATURATION_NSWEEP,
         "n_sweep": list(N_SWEEP) if SATURATION_NSWEEP else None,
         "axis_screen": {k: v for k, v in screen.items() if k != "spread"},
-        "axis_sets": {k: list(v) for k, v in axis_sets.items()},
+        "selection_axes": list(axis_sets[_SET_NAME]),
         "tail_null_share": TAIL_NULL_SHARE,
         "adequacy": adequacy,
     }
@@ -1206,20 +982,20 @@ def main() -> None:
     """Run all analysis blocks and write tables, summary, and SI figures."""
     apply_style()
     out = _out_dir()
-    H_full, candidate_axes, screen, descriptors = _load_pool()
+    descriptors, screen = _load_pool()
+    D, names = descriptors["D"], descriptors["names"]
     retained = screen["retained"]
-    H_ret = _sub(H_full, candidate_axes, retained)
-    axis_sets = _axis_sets(retained)
-    core_sets = {k: v for k, v in axis_sets.items() if k in _CORE_SETS}
-    print(f"[seldiag] pool '{POOL_SLUG}': P={len(H_full)}"
+    H_ret = _sub(D, names, retained)
+    axis_sets = {_SET_NAME: list(retained)}
+    print(f"[seldiag] pool '{POOL_SLUG}': P={len(D)}"
           + (f" (prefix of first {PREFIX_P} rows)" if PREFIX_P else "")
-          + f", retained axes (m={len(retained)})={retained}, "
+          + f", selection axes (m={len(retained)})={retained}, "
           f"dropped={list(screen['dropped'])}, "
           f"N={N_SELECT}, seeds={N_SEEDS} (+{N_NULL_SEEDS} null)"
           + (", saturation mode" if SATURATION else ""))
 
     if SATURATION:
-        _run_saturation(out, H_full, candidate_axes, screen, core_sets)
+        _run_saturation(out, D, names, screen, axis_sets)
         return
 
     redundancy = descriptor_redundancy(
@@ -1231,12 +1007,12 @@ def main() -> None:
     sweep = _bounds_sweep(H_ret, retained)
     halves = _subpool_stability(H_ret, retained)
     per_axis = _per_axis_coverage(H_ret, retained)
-    dim = _dimension_sweep(H_full, candidate_axes, axis_sets, descriptors=descriptors)
-    comparison = _axis_set_comparison(dim, axis_sets, H_full, candidate_axes,
-                                      descriptors["names"])
-    truncation = _truncation_summary(H_full, candidate_axes, descriptors, dim)
-    nsw = _n_sweep(H_full, candidate_axes, core_sets)
-    inv, contributions = _invariance(H_full, candidate_axes, core_sets)
+    dim = _dimension_sweep(D, names, axis_sets, descriptors=descriptors)
+    comparison = _selection_set_profile(dim, axis_sets, D, names,
+                                        descriptors["names"])
+    truncation = _truncation_summary(D, names, descriptors, dim)
+    nsw = _n_sweep(D, names, axis_sets)
+    inv, contributions = _invariance(D, names, axis_sets)
 
     table.to_csv(out / "selector_comparison.csv", index=False)
     sweep.to_csv(out / "normalization_sweep.csv", index=False)
@@ -1247,12 +1023,12 @@ def main() -> None:
     inv.to_csv(out / "selection_invariance.csv", index=False)
     _redundancy_table(redundancy).to_csv(out / "descriptor_redundancy.csv", index=False)
     fit_check.to_csv(out / "ssi_fit_check.csv", index=False)
-    comparison.to_csv(out / "axis_set_comparison.csv", index=False)
+    comparison.to_csv(out / "selection_set_profile.csv", index=False)
     truncation.to_csv(out / "truncation_summary.csv", index=False)
 
     # Tail-share record: min per-axis tail share (seed mean) at each N per axis set.
     adequacy = {}
-    for mset in core_sets:
+    for mset in axis_sets:
         sel = nsw.loc[(nsw.m_set == mset) & (nsw.selector == "lhs_nn")]
         means = sel.groupby("n")["tail_share_min"].mean()
         adequacy[mset] = {
@@ -1261,10 +1037,10 @@ def main() -> None:
 
     summary = {
         "pool_slug": POOL_SLUG, "prefix_p": PREFIX_P or None, "out_slug": OUT_SLUG,
-        "P": int(len(H_full)), "n_select": N_SELECT,
+        "P": int(len(D)), "n_select": N_SELECT,
         "seeds": N_SEEDS, "null_seeds": N_NULL_SEEDS,
         "axis_screen": {k: v for k, v in screen.items() if k != "spread"},
-        "axis_sets": {k: list(v) for k, v in axis_sets.items()},
+        "selection_axes": list(retained),
         "tail_null_share": TAIL_NULL_SHARE,
         "adequacy": adequacy,
         "snap_contributions": contributions,
@@ -1294,7 +1070,7 @@ def main() -> None:
                                    float(fit_check[column].max())]
                for column in ("sd", "n_at_or_below", "n_expected")},
         },
-        "axis_set_comparison": {
+        "selection_set_profile": {
             mset: {
                 row.statistic: row.mean for row in comparison.loc[
                     (comparison.m_set == mset) & (comparison.descriptor == "")
@@ -1312,14 +1088,13 @@ def main() -> None:
     _fig_tail_and_atom(table, out)
     _fig_snap_and_separation(table, details, out)
     _fig_bounds_sweep(sweep, out)
-    _fig_axis_screen(redundancy, screen, candidate_axes, out)
+    _fig_axis_screen(redundancy, screen, retained, out)
     _fig_per_axis_coverage(per_axis, retained, out)
-    _fig_dimension_sweep(dim, out)
     _fig_n_sweep(nsw, out)
     _fig_invariance(inv, contributions, out)
-    _fig_axis_set_comparison(comparison, dim, axis_sets, out)
+    _fig_selection_set_profile(comparison, dim, axis_sets, out)
 
-    print(f"[seldiag] wrote 11 tables + summary.json + 11 figures -> {out}")
+    print(f"[seldiag] wrote 11 tables + summary.json + 10 figures -> {out}")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 # Hydrologic hazard metrics
 
-*Paper 3 literature note. Annotated summaries of items in the Zotero collection "Paper 3 NYC Reoptimization" (`ISYGLK35`). Last updated 2026-09-30.*
+*Paper 3 literature note. Annotated summaries of items in the Zotero collection "Paper 3 NYC Reoptimization" (`ISYGLK35`). Last updated 2026-10-08.*
 
-Scope: the definition and selection of the **hazard-space axes** themselves — drought and flow indices, threshold-based drought events, and the redundancy screening needed to pick a parsimonious, non-redundant set. Directly supports the hazard-metric-axis decision. The metrics here are computed on the output of the generators in [stochastic streamflow generation](stochastic_streamflow_generation.md). Foundational index references not yet in the collection (Vicente-Serrano SSI, Yevjevich run theory, Richter IHA) are tracked in the [overview](scenario_design.md).
+Scope: the definition and selection of the **hazard-space axes** themselves — drought and flow indices, threshold-based drought events, the redundancy screening needed to pick a parsimonious, non-redundant set, and the choice of a metric subset under the selection procedure itself. Directly supports the selection-axis decision (`docs/notes/methods/hazard_axis_selection.md`). The metrics here are computed on the output of the generators in [stochastic streamflow generation](stochastic_streamflow_generation.md). Foundational index references not yet in the collection (Vicente-Serrano SSI, Yevjevich run theory, Richter IHA) are tracked in the [overview](scenario_design.md).
 
 ---
 
@@ -20,6 +20,18 @@ Scope: the definition and selection of the **hazard-space axes** themselves — 
 
 - **Brunner, M. I., Slater, L., Tallaksen, L. M. & Clark, M. (2021).** Challenges in modeling and predicting floods and droughts: A review. *WIREs Water*, 8(3), e1520. doi:10.1002/wat2.1520
   Review organizing flood/drought prediction challenges into four categories — data, process understanding, modeling, and human–water interactions — across forecasts, frequency estimates, and projections. Relevant subthemes: event definition (threshold/run-theory choices), the multivariate and spatial characterization of extremes, and non-stationarity. Argues for jointly assessing droughts and floods in one framework rather than treating them independently. Context for choosing hazard axes that span both low- and high-flow extremes in a single coordinate system and for being explicit about event-definition and time-scale choices when constructing those axes.
+
+- **McMillan, H., Westerberg, I. & Branger, F. (2017).** Five guidelines for selecting hydrological signatures. *Hydrological Processes*, 31(26), 4757-4761. doi:10.1002/hyp.11300
+  Short guideline paper on choosing streamflow signatures: identifiability, robustness (insensitivity to data error and to small changes in the record), consistency of meaning across catchments, representativeness of the process of interest, and discriminatory power between the cases compared. The selection-axis method maps onto these: every candidate metric is scored under one reference fit (consistency), the chosen set must represent both drought and flood hazard (representativeness), the decision statistic is measured on two independent candidate ensembles and ten selector seeds (robustness), and the enumeration keeps only sets whose members fall in distinct correlation groups (discriminatory power among metrics rather than among catchments).
+
+- **Guyon, I. & Elisseeff, A. (2003).** An introduction to variable and feature selection. *Journal of Machine Learning Research*, 3, 1157-1182.
+  The standard taxonomy of variable-selection methods: filters rank variables by a criterion computed on the data alone, wrappers score candidate subsets by running the procedure that will consume them, and embedded methods select during fitting. Cited for the design of the selection-axis method as a wrapper: the candidate sets are scored by running the hazard-filling selector itself on the candidate ensemble and measuring the coverage the delivered selection attains on every metric, because what the selector delivers on a set depends on the candidate ensemble's joint geometry and the snap, which no criterion on the metric correlation matrix sees.
+
+- **Hastie, T., Tibshirani, R. & Friedman, J. (2009).** The Elements of Statistical Learning: Data Mining, Inference, and Prediction (2nd ed.). Springer. doi:10.1007/978-0-387-84858-7
+  The one-standard-error rule (§7.10): among models whose estimated error lies within one standard error of the best, choose the most parsimonious, so that a more complex model is adopted only when it beats the simpler one by more than the noise of the estimate. Precedent for the selection-axis decision rule, which adopts the smallest set among those within two standard errors of the best coverage over candidate-ensemble draws and selector seeds. Also §2.5 on the curse of dimensionality for nearest-neighbour methods.
+
+- **Beyer, K., Goldstein, J., Ramakrishnan, R. & Shaft, U. (1999).** When is "nearest neighbor" meaningful? In C. Beeri & P. Buneman (Eds.), *Database Theory — ICDT'99*, Lecture Notes in Computer Science 1540, 217-235. Springer. doi:10.1007/3-540-49257-7_15
+  Shows that under broad conditions the distance from a query point to its nearest and farthest neighbours converge as the dimension grows, so nearest-neighbour queries lose contrast in high dimension at any fixed sample size. Cited with the covering-radius bound of Pronzato & Müller (2012) for the dimension limit of the target-to-member snap: at a fixed candidate-ensemble size each added selection axis increases the target displacement and pulls the selected members back toward the dense centre of the population, which is why the number of selection axes is decided by a measured statistic rather than by adding every available metric.
 
 ---
 

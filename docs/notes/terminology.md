@@ -22,7 +22,7 @@
 
 ## Hazard space
 
-**Hazard metrics and selection axes.** `config.HAZARD_SELECTION_AXES` (env `NYCOPT_HAZARD_SELECTION_AXES`): `drought_magnitude`, `drought_severity`, `drought_development_rate`, `drought_termination_rate`, `flood_peak_discharge`, `flood_pulse_duration`. The supplement descriptors of every hazard image are reported only. A realization's hazard characteristics are its row of `hazard_image.npz`.
+**Hazard metrics and selection axes.** `config.HAZARD_SELECTION_AXES` (env `NYCOPT_HAZARD_SELECTION_AXES`): `drought_magnitude`, `drought_severity`, `drought_development_rate`, `drought_termination_rate`, `flood_peak_discharge`, `flood_pulse_duration` (the value adopted by `hazard_axis_selection.md` replaces this list). The other metrics of every hazard image are reported only. A realization's hazard characteristics are its row of `hazard_image.npz`.
 
 **Target hazard characteristics.** The Latin hypercube sample of `scengen.subsample.lhs_nn_assignment`, seeded by `ScenarioDesign.selector_seed(draw)`; the pairing of each target with its nearest unused candidate is the selection step 03 stages.
 

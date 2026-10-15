@@ -157,15 +157,21 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   `statpool_10yr_n1000000_d0/hazard_image.npz`; writes `dryenv_production_{bins,reference}.csv`
   and figure `F2_dry_envelope_production`, the production confirmation of SI Figure S18 and
   the numbers quoted in SI Text S6). Minutes on `shared`.
-- [ ] **[HPC]** After the pools are regenerated, run the selector diagnostic at
-  production scale (`diagnose_hazard_selectors.py` on `statpool_10yr_n1000000_d0`,
-  N = 300: descriptor redundancy, axis-set comparison, truncation summary;
-  `hazard_selector_diagnostics.md`) and fix the selection-axis set
-  (`config.HAZARD_SELECTION_AXES`) before step 03: adopt `four_axis` (magnitude,
-  severity, peak discharge, pulse duration) unless the campaign six reach an
-  attainment of 0.9 on drought magnitude in `axis_set_comparison.csv`. Then update
-  `scenario_design_methods.md` §3.3 and §6, the manuscript, and
-  `tests/test_hazard_selection_axes.py`.
+- [ ] **[local → HPC]** Fix the selection-axis set from the hazard-axis selection
+  (`hazard_axis_selection.md` §7, run locally on the production images): set
+  `config.HAZARD_SELECTION_AXES` to the adopted set; if it holds a metric outside the
+  eight event metrics, make step 03 select on the full 21-metric image
+  (`scripts/main/select_hazard_filling.py` passes only `H`; `select_from_candidate_image`
+  raises for an unknown axis), update `tests/test_hazard_selection_axes.py` (asserts six
+  event metrics) and the readers that index the image by the selection axes
+  (`hf_design_metrics_run.py`, `ensemble_size_hazard.py`, `hazard_support_run.py`,
+  `hazard_examples_figures.py`, `plot_etest_hazard_overlay.py`,
+  `src/plotting/{ensemble_composition,hazard_examples}.py`), and verify on the 2,000-row
+  prefix that step 03 reproduces the diagnostic's member indices. Then run
+  `workflow/supplemental/hazard_axis_selection.sh` (Anvil confirmation) and the selector
+  diagnostic on the adopted axes (`diagnose_hazard_selectors.py`,
+  `hazard_selector_diagnostics.md` §5 placeholders), and update
+  `scenario_design_methods.md` §3.3 and §6, `terminology.md`, the manuscript and SI.
 - [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–1: step 02
   (`monte_carlo`, `--array=0-1`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line
@@ -346,17 +352,19 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
   displacement across axis counts, the tail shares at $P = 10^6$) were measured under
   the retired scoring; replace them from the production selector diagnostic.
 - [ ] **[local]** SI Text S3: the numbers in the redundancy-screen, selection-axes and
-  selection-invariance paragraphs were measured under the retired scoring; replace them
-  from the production selector diagnostic. SI Text S3 gives redundancy as the reason
-  for the axis count and `scenario_design_methods.md` §3.3 gives tail enrichment. State
-  one reason after the axis set is fixed.
+  selection-invariance paragraphs were measured under the retired scoring and the
+  previous axis set; replace the selection-axes paragraph with the method and result of
+  `hazard_axis_selection.md` (continuity requirement, pairwise rank-correlation rule,
+  dry/wet minimum, the measured statistic and the adopted set) and the other numbers from
+  the production selector diagnostic on the adopted axes.
 - [ ] **[local]** After the production selector diagnostic, add to the SI:
   - the truncation table (`truncation_summary.csv`: pool, selected-member and
     top-decile fractions of truncated onsets and terminations);
-  - the descriptor redundancy figure on the 8 axes and 13 supplement descriptors with
-    the participation ratio (`descriptor_redundancy.csv`, figure F6);
-  - the axis-set table with tail shares on every descriptor for the chosen set and a
-    random selection (`axis_set_comparison.csv`, figure F11);
+  - the metric redundancy figure on the 21 metrics with the participation ratio
+    (`descriptor_redundancy.csv`, figure F6);
+  - the selection-set profile with tail shares on every metric for the adopted set
+    (`selection_set_profile.csv`, figure F11) and the hazard-axis selection's ranking
+    and enrichment-profile figures (`hazard_axis_selection.md` §6);
   - one sentence on the single-event description: among windows with two or more
     qualifying events the controlling event is also the deepest in 65%, the fastest
     developing in 21% and the fastest terminating in 21% (local sample of 4,000

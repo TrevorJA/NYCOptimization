@@ -7,9 +7,8 @@ the descriptor matrix drops the truncation flags and orients the low-flow
 minima, the hazard-direction tail mask and the exact-snap limit match hand
 values, the redundancy summary clusters a correlated pair and counts
 components, the SSI fit check counts by calendar month, the nearest-member
-n_eff reproduces the Kish value, the named axis sets follow
-``supplemental_config.seldiag_axis_sets``, and the block-C records assemble
-into the tidy tables. Small synthetic inputs; no staged data.
+n_eff reproduces the Kish value, and the block-C records of the selection
+set assemble into the tidy tables. Small synthetic inputs; no staged data.
 """
 
 import sys
@@ -112,32 +111,20 @@ def test_nearest_member_ess_ratio_is_the_kish_value():
     assert ratio == pytest.approx(1.0 / (0.75 ** 2 + 0.25 ** 2) / 2)
 
 
-def test_axis_sets_follow_the_named_definition():
-    sets = dhs._axis_sets(AXES)
-    campaign = list(config.HAZARD_SELECTION_AXES)
-    assert list(sets) == ["campaign", "full", "four_axis", "four_axis_rate", "five_axis"]
-    assert sets["campaign"] == campaign and sets["full"] == AXES
-    assert sets["five_axis"] == [a for a in campaign if a != "drought_severity"]
-    assert sets["four_axis_rate"] == ["drought_magnitude", "drought_development_rate",
-                                      "flood_peak_discharge", "flood_pulse_duration"]
-    # A screened-out axis leaves every set.
-    reduced = dhs._axis_sets([a for a in AXES if a != "drought_severity"])
-    assert all("drought_severity" not in v for v in reduced.values())
-
-
 def test_block_c_records_assemble_into_the_tidy_tables(monkeypatch):
     monkeypatch.setattr(dhs, "N_SELECT", 20)
     monkeypatch.setattr(dhs, "N_SEEDS", 2)
     H, S = _image()
     desc = dhs.descriptor_image(H, AXES, S, SUPPLEMENT_METRICS)
-    sets = dhs._axis_sets(AXES)
-    dim = dhs._dimension_sweep(H, AXES, sets, include_assign=False, descriptors=desc)
+    sets = {dhs._SET_NAME: list(config.HAZARD_SELECTION_AXES)}
+    dim = dhs._dimension_sweep(desc["D"], desc["names"], sets, include_assign=False,
+                               descriptors=desc)
     assert len(dim) == 2 * len(sets)
     tails = dim[[f"tail__{n}" for n in desc["names"]]].to_numpy()
     assert ((tails >= 0) & (tails <= 1)).all()
     assert (dim["ess_over_n"] > 0).all() and (dim["ess_over_n"] <= 1).all()
 
-    table = dhs._axis_set_comparison(dim, sets, H, AXES, desc["names"])
+    table = dhs._selection_set_profile(dim, sets, desc["D"], desc["names"], desc["names"])
     for mset, axes in sets.items():
         g = table.loc[table.m_set == mset]
         assert (g.statistic == "tail_share").sum() == len(desc["names"])
@@ -149,9 +136,9 @@ def test_block_c_records_assemble_into_the_tidy_tables(monkeypatch):
         tmin = g.loc[g.statistic == "tail_share_min_own", "mean"].item()
         assert tmin <= own.min() + 1e-12
 
-    trunc = dhs._truncation_summary(H, AXES, desc, dim)
+    trunc = dhs._truncation_summary(desc["D"], desc["names"], desc, dim)
     pool = trunc.loc[trunc.population == "pool"].iloc[0]
     assert pool["drought_onset_truncated"] == pytest.approx(desc["flags"][:, 0].mean())
     assert (trunc.population == "selected").sum() == len(sets)
     assert set(trunc.loc[trunc.population == "top_decile", "axis"]) == {
-        a for a in AXES if a.startswith("drought_")}
+        a for a in desc["names"] if a.startswith("drought_")}
