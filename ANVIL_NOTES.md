@@ -29,10 +29,11 @@ node-scaling factor, 605k model basis, against ~600k remaining.
 | Job family | Per unit | Runtime | Notes |
 |---|---|---|---|
 | Matched-design search, N=100, 500k NFE, 8 nodes | 21.6–23.1k SU | 21.3 h | two production runs; scale by (N/100)^0.951 and NFE/500k |
-| `historic` search, 500k NFE | 4.2k SU | | single trace |
+| `historic` search, 500k NFE, 8 nodes | 4,172 SU | 4.07 h | job 19770937_1 (`prod_hist`, 2026-08-10), 1,024 ranks, one seed; ≈8.35 SU per 1,000 NFE, within 3 % of 31 s × NFE, so SU is linear in NFE and seeds and node count sets only the wall |
 | P=10⁶ candidate pool, one draw, 50 shards | 1.85–1.9k SU | 12.4 h median shard (11.8–15.1 h) | 3 cores billed per shard at 4 GB; one shard OOM at 4 GB in Aug |
 | P=10⁶ candidate pool, one draw, 100 shards | 1.85–1.87k SU | 6.15 h median shard (5.9–7.3 h) | 2026-10-01; same SU, half the wall; peak RSS 1.6 GB |
 | Pool merge + verify | ~10 SU | 1–2 min | 9 cores billed |
+| Selector diagnostic, full battery, P=10⁶, N=300 | 3–3.6 SU per draw | 35–43 min | 2026-10-01; 4 cpus / 8 GB header bills 5 cores; `hazard_selector_diagnostics.sh` |
 | P=2,000 smoke pool | ~18 SU | ~1 h | 8 cpus / 32 GB header |
 | E_test generation, 100 shards | 1.4k SU | | `gen_etest_shard` |
 | E_test presim chunks, 100 tasks | 1.6k SU | | `prep_etest_chunk` |
@@ -60,3 +61,6 @@ node-scaling factor, 605k model basis, against ~600k remaining.
   merge 20987595 (afterok). 100 tasks per array, 3 cores each.
 - 2026-10-01: all 200 shards completed (5.9–7.3 h each); both merges and
   verifiers passed by 03:16 EDT. Total 3,769 SU; balance 591,772 after.
+- 2026-10-01: production selector diagnostic, array 20996434 (d0 43 min, d1
+  35 min, 5 cores each, ~6.5 SU). Outputs under
+  `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n1000000_d{0,1}/`.
