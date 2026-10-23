@@ -25,9 +25,10 @@ here so you know what to expect):
   `wholenode` (node-exclusive billing); the smoke test uses `debug` (2 nodes,
   2 h max). These are set in each script's `#SBATCH --partition` line.
 - **96-hour wall-time cap.** Anvil's `wholenode` maximum is 96 h per job.
-  There is no resume: the runtime files (`outputs/{scenario}/{slug}/runtime/`)
-  are diagnostic dumps and the Borg checkpoint is disabled, so every search is
-  sized to finish inside one job (`docs/notes/methods/campaign_design.md`).
+  There is no resume: the island runtime files
+  (`outputs/{scenario}/{slug}/runtime/`) are diagnostic dumps and the Borg
+  checkpoint is disabled, so every search is sized to finish inside one job
+  (`docs/notes/methods/campaign_design.md`).
 
 Everything submittable lives in `workflow/` (numbered steps `00`–`14`, plus
 `09b`). A run's identity — scenario design, MOEA config, objectives, physics
@@ -248,7 +249,15 @@ only on leftover allocation; it is not part of the manuscript campaign.
 
 After both seeds of a design finish, build the equal-NFE reference set, run the
 runtime diagnostics, re-evaluate on E_test (chunked, metrics-only), merge, then
-compare designs and render figures:
+compare designs and render figures. Convergence diagnostics are read from the
+MM Borg coordinator archive, one trace per seed on total NFE: the controller
+writes no runtime file, so step 07 reconstructs its archive at every snapshot
+as the epsilon-box merge of the island runtime files (the project's one
+epsilon-archive implementation, `src/sensitivity_common.py`; MOEAFramework's
+v5.0 mergers do not honour the epsilon vector) and scores that series with
+MOEAFramework's `MetricsEvaluator`. Step 07 writes its own
+reference set (`{slug}_diagnostics_reference.set`) and never the campaign
+`{slug}_merged.set`, so the two commands below can run in either order:
 
 ```bash
 # Equal-NFE cross-seed reference set (installs {slug}_merged.set, the step-08/09 reference)
@@ -256,7 +265,7 @@ set -a; source workflow/envs/ffmp_obj8_mc_production.env; set +a
 python3 scripts/main/extract_runtime_archive.py --seed 1
 python3 scripts/main/extract_runtime_archive.py --merge --install
 
-# MOEAFramework runtime diagnostics (hypervolume, generational distance), per seed
+# MOEAFramework runtime diagnostics on the per-seed coordinator archive (six indicators vs total NFE)
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env workflow/07_run_diagnostics.sh
 
 # Chunked E_test re-evaluation of the reference set (shared partition, 16 ranks x 8 cpus, batch 50), then merge

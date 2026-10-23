@@ -1,10 +1,19 @@
 #!/bin/bash
-# Step 7: MOEAFramework runtime diagnostics. Builds the cross-seed reference
-# set {slug}_merged.set (epsilon-box filtered under the campaign epsilons; the
-# raw plain-dominance union is kept as *_raw.set, src/diagnostics.py), the
-# per-seed sets and per-island runtime metrics, and renders the search figures
-# under figures/{scenario}/{slug}/. The filtered merged set is the reference
-# set of the step 08/09 re-evaluation, so this step runs between 06 and 08.
+# Step 7: MOEAFramework runtime diagnostics on the coordinator archive. Per
+# seed, rebuilds the MM Borg coordinator archive at every runtime snapshot as
+# the epsilon-box merge of the island runtime files
+# (runtime_coordinator/seed_SS_{slug}.runtime; final entry checked against the
+# seed's controller .set), builds the diagnostics reference set
+# sets/{slug}_diagnostics_reference.set as the epsilon-box merge of every
+# coordinator snapshot of every seed, scores one metrics/seed_SS_{slug}.metrics
+# per seed with MOEAFramework's MetricsEvaluator, and renders the search figures
+# under figures/{scenario}/{slug}/ (one line per seed on total NFE;
+# src/diagnostics.py). All merges use the one epsilon-archive implementation in
+# src/sensitivity_common.py; MOEAFramework's mergers are not used.
+# The campaign reference set {slug}_merged.set of the step 08/09 re-evaluation
+# is written only by scripts/main/extract_runtime_archive.py --merge --install;
+# this step never touches it, so it may run before or after that script. The
+# search_01 figure needs the seed-1 extraction (--seed 1) to exist.
 #
 # Env inputs: NYCOPT_ENV_FILE (optional; picks design + MOEA config) and DRAW=k
 # (default 0), as in step 06. With no positional args the targets are the
@@ -16,7 +25,7 @@
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<file>.env workflow/07_run_diagnostics.sh
 #   bash workflow/07_run_diagnostics.sh --serial ffmp_obj8      # explicit slug, serial
 #
-# Outputs: outputs/{scenario}/{slug}/sets/*.set, runtime metrics, figures.
+# Outputs: outputs/{scenario}/{slug}/{runtime_coordinator,sets,metrics}/, figures.
 #
 #SBATCH --job-name=diagnostics
 #SBATCH --account=ees260021

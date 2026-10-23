@@ -38,7 +38,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs (MPI across realizations); `--preset NAME` stages an arbitrary ensemble |
 | 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Evaluate the default (unoptimized) FFMP policy + persist its per-SOW E_test matrix for the incumbent-relative regret family; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble |
 | 06 | `06_run_mmborg.sh` | `wholenode`; header 4×128 (`mm_moderate`); production passes `--nodes=12 --ntasks-per-node=128` (1,533 ranks) and a per-seed `--time` | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed, `DRAW=k` = ensemble draw (default 0; the campaign searches d0 only); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
-| 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics (hypervolume, generational distance, reference set); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
+| 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics on the per-seed coordinator archive (island runtime files merged snapshot by snapshot with the project's epsilon archive; six MOEAFramework indicators vs total NFE; diagnostics reference set `{slug}_diagnostics_reference.set`, never the campaign `{slug}_merged.set`); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
 | 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Unchunked re-evaluation of Pareto policies on the common held-out ensemble with the trimmed model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
 | 09 | `09_simulate_test_chunks.sh` | header `wholenode` 4×16, 12 h; campaign runs `shared`, 16 ranks × 8 cpus, batch 50 | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`, `NYCOPT_CHUNK_POLICIES`) | Chunked, metrics-only E_test re-evaluation (MPI chunk-and-aggregate, resumable); the campaign path, with `NYCOPT_CHUNK_MERGE=off` |
 | 09b | `09b_merge_test_chunks.sh` | `shared`, 8 cpu, 128 G, 4 h | **required** (same identity as the 09 submission) | Merge the per-(solution, chunk) units into the re-eval cube + robustness scorecards |
@@ -57,7 +57,7 @@ is sized to finish inside one job (`docs/notes/methods/campaign_design.md`).
 
 Step order: `01` before `05`/`06`; `02`→`04` (with `03` for hazard filling)
 before `06` (`historic` skips `02`–`04`); `06`→`extract_runtime_archive.py
---merge --install`→`07`→`09`→`09b`→`10`/`11`/`13`/`14`. Chain with
+--seed 1` and `--merge --install`→`07` (either order)→`09`→`09b`→`10`/`11`/`13`/`14`. Chain with
 `sbatch --dependency=afterok:<jobid>`.
 
 `12` (or the sharded pair) builds E_test and is independent of `02`–`07` (it is

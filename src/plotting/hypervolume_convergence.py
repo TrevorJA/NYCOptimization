@@ -1,11 +1,38 @@
 """
-hypervolume_convergence.py - Plot hypervolume vs NFE across seeds.
+hypervolume_convergence.py - Hypervolume vs total NFE, one line per seed.
+
+Reads the per-seed coordinator-series metrics written by step 07
+(``metrics/seed_SS_{slug}.metrics``, MOEAFramework MetricsEvaluator) and the
+``//NFE=`` markers of the sibling coordinator series
+(``runtime_coordinator/seed_SS_{slug}.runtime``), which carry total NFE
+(per-island NFE x islands).
 """
 
-import numpy as np
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
 import pandas as pd
 import matplotlib.pyplot as plt
-from pathlib import Path
+
+#: Per-seed line colors (CVD-safe as adjacent pairs).
+SEED_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+
+
+def seed_metrics_files(metrics_dir: Path, slug: str) -> list[tuple[int, Path]]:
+    """``[(seed, path)]`` of the per-seed metrics files, sorted by seed.
+
+    Matches ``seed_SS_{slug}.metrics`` exactly, so per-island files of the
+    retired workflow (``seed_SS_{slug}_{i}.metrics``) are never picked up.
+    """
+    pattern = re.compile(rf"^seed_(\d+)_{re.escape(slug)}\.metrics$")
+    found = []
+    for f in Path(metrics_dir).glob("*.metrics"):
+        m = pattern.match(f.name)
+        if m:
+            found.append((int(m.group(1)), f))
+    return sorted(found)
 
 
 def _load_metrics_file(path: Path):
@@ -31,18 +58,21 @@ def _load_metrics_file(path: Path):
 
 
 def _read_runtime_nfe(metrics_file: Path, n_rows: int):
-    """Return per-snapshot NFE for a .metrics file from its sibling .runtime.
+    """Return per-snapshot NFE for a .metrics file from its sibling series.
 
-    MOEAFramework .metrics files carry one row per runtime snapshot but no NFE
-    column, so the snapshot index alone is a poor x-axis. The matching Borg
-    .runtime file (same stem, under ``../runtime/``) lists one ``//NFE=<n>``
-    marker per snapshot — these are the true (per-island) evaluation counts,
-    and the final marker lands on ``max_evaluations`` rather than a clean
-    multiple of the runtime frequency. Returns the list of ints when the marker
-    count matches ``n_rows``; otherwise None (caller falls back to the index).
+    MOEAFramework .metrics files carry one row per entry but no NFE column.
+    The matching series file (same stem) is looked up first under
+    ``../runtime_coordinator/`` (total NFE across islands) and then under
+    ``../runtime/`` (per-island NFE of a retired per-island metrics file).
+    Returns the list of ints when the marker count matches ``n_rows``;
+    otherwise None (caller falls back to the index).
     """
-    runtime_file = metrics_file.parent.parent / "runtime" / f"{metrics_file.stem}.runtime"
-    if not runtime_file.exists():
+    base = Path(metrics_file).parent.parent
+    for sub in ("runtime_coordinator", "runtime"):
+        runtime_file = base / sub / f"{Path(metrics_file).stem}.runtime"
+        if runtime_file.exists():
+            break
+    else:
         return None
     nfe = []
     with open(runtime_file) as fh:
@@ -57,60 +87,53 @@ def _read_runtime_nfe(metrics_file: Path, n_rows: int):
 
 def plot_hypervolume_convergence(
     metrics_dir: Path,
-    formulation: str,
+    slug: str,
     output_file: Path = None,
     figsize: tuple = (8, 5),
+    reporting_nfe: int | None = None,
 ):
-    """Plot hypervolume convergence across NFE for all seeds.
-
-    Loads .metrics files produced by MOEAFramework MetricsEvaluator.
-    Each file is tab/whitespace-delimited with columns including
-    NFE and Hypervolume.
+    """Plot coordinator-archive hypervolume vs total NFE, one line per seed.
 
     Args:
-        metrics_dir: Directory containing .metrics files.
-        formulation: Formulation name (for title and file filtering).
+        metrics_dir: Directory containing ``seed_SS_{slug}.metrics``.
+        slug: Run moea slug (selects the files and titles the figure).
         output_file: Path to save figure. If None, displays interactively.
         figsize: Figure size in inches.
+        reporting_nfe: Total NFE of the campaign reporting budget, drawn as a
+            vertical reference line when given.
     """
-    metrics_files = sorted(metrics_dir.glob(f"*_{formulation}*.metrics"))
-    if not metrics_files:
-        print(f"No metrics files found in {metrics_dir}")
+    files = seed_metrics_files(metrics_dir, slug)
+    if not files:
+        print(f"No per-seed metrics files for {slug} in {metrics_dir}")
         return
 
     fig, ax = plt.subplots(figsize=figsize)
 
     used_nfe_axis = False
-    for mf in metrics_files:
+    for i, (seed, mf) in enumerate(files):
         df = _load_metrics_file(mf)
         if df is None or df.empty:
             print(f"Warning: empty metrics file {mf.name}")
             continue
         if "Hypervolume" not in df.columns:
             continue
-
-        # MOEAFramework .metrics files have no NFE column. Prefer the true
-        # per-island NFE read from the sibling .runtime file; fall back to the
-        # bare snapshot index only when those markers are unavailable.
         nfe = _read_runtime_nfe(mf, len(df))
         if nfe is not None:
             x = nfe
             used_nfe_axis = True
         else:
             x = df.index.values
-        ax.plot(
-            x, df["Hypervolume"],
-            alpha=0.6, linewidth=1.0,
-            label=f"{mf.stem}",
-        )
+        ax.plot(x, df["Hypervolume"], color=SEED_COLORS[i % len(SEED_COLORS)],
+                linewidth=1.6, label=f"seed {seed:02d}")
 
-    ax.set_xlabel(
-        "Number of Function Evaluations (per island)"
-        if used_nfe_axis else "Runtime snapshot index"
-    )
+    if reporting_nfe is not None and used_nfe_axis:
+        ax.axvline(reporting_nfe, color="0.4", lw=1.0, ls="--",
+                   label="reporting budget")
+    ax.set_xlabel("Function evaluations (total across islands)"
+                  if used_nfe_axis else "Runtime snapshot index")
     ax.set_ylabel("Hypervolume")
-    ax.set_title(f"Hypervolume Convergence ({formulation})")
-    ax.legend(fontsize=7, ncol=2, loc="lower right")
+    ax.set_title(f"Coordinator-archive hypervolume ({slug})")
+    ax.legend(fontsize=9, loc="lower right")
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()

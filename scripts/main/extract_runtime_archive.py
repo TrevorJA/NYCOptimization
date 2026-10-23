@@ -20,14 +20,20 @@ selects the draw):
 
 ``--merge`` takes, for every seed 1..n_seeds, the snapshot file above when the
 seed's budget exceeds the reporting NFE and the final ``seed_SS_{slug}.set``
-when it equals it, unions them, and epsilon-box filters the union under the
-campaign vector. ``--install`` additionally copies the result to
-``{slug}_merged.set`` (backing up an existing one as
+when it equals it (``src.runtime_archive.equal_nfe_seed_set``, the same
+resolver the step-07 figures use), unions them, and epsilon-box filters the
+union under the campaign vector. ``--install`` additionally copies the result
+to ``{slug}_merged.set`` (backing up an existing one as
 ``{slug}_merged_pre_install.set``) so the step-08/09 re-evaluation, which
 resolves ``{slug}_merged.set`` first, consumes the equal-NFE front without
-any change to the pipeline. Step 07's own ``{slug}_merged.set`` is built from
-EVERY runtime snapshot, including seed 1's tail beyond the reporting NFE, so
-it is not the campaign reference set.
+any change to the pipeline. ``{slug}_merged.set`` is written by this script
+only. Step 07's diagnostics reference set is the separate
+``{slug}_diagnostics_reference.set``, built from EVERY coordinator snapshot,
+including seed 1's tail beyond the reporting NFE, so the two never collide
+and the step order between this script and step 07 does not matter. Step 07
+builds its per-seed coordinator series with the same epsilon merge used here,
+so the snapshot extracted for seed 1 is entry ``nfe / runtime_frequency`` of
+that series (``src.diagnostics``).
 """
 
 from __future__ import annotations
@@ -50,11 +56,9 @@ from config import (  # noqa: E402
 )
 from src.formulations import get_obj_names, get_var_names  # noqa: E402
 from src.load.reference_set import load_set_file  # noqa: E402
-from src.runtime_archive import epsilon_merge, snapshot_at, write_set_file  # noqa: E402
-
-
-def _snapshot_set_path(sets_dir: Path, slug: str, seed: int, nfe: int) -> Path:
-    return sets_dir / f"seed_{seed:02d}_{slug}_nfe{nfe}.set"
+from src.runtime_archive import (  # noqa: E402
+    epsilon_merge, equal_nfe_seed_set, snapshot_at, write_set_file,
+)
 
 
 def extract_seed(seed: int, formulation: str, nfe: int) -> Path:
@@ -70,7 +74,7 @@ def extract_seed(seed: int, formulation: str, nfe: int) -> Path:
     rows = snapshot_at(files, nfe)
     n_raw = len(rows)
     rows = epsilon_merge(rows, len(var_names), get_epsilons())
-    out = _snapshot_set_path(sets_dir, slug, seed, nfe)
+    out = sets_dir / f"seed_{seed:02d}_{slug}_nfe{nfe}.set"
     write_set_file(out, rows, var_names, get_obj_names(), header_lines=[
         f"Formulation: {formulation}, Seed: {seed}",
         f"Runtime snapshot at NFE/island={nfe} from {len(files)} island file(s); "
@@ -91,10 +95,9 @@ def merge_equal_nfe(formulation: str, nfe: int, install: bool) -> Path:
     parts, provenance = [], []
     for seed in range(1, (cfg.n_seeds or 1) + 1):
         budget = cfg.max_evaluations_for_seed(seed)
-        if budget is None or budget < nfe:
-            raise ValueError(f"seed {seed} budget {budget} is below the reporting NFE {nfe}")
-        src = (_snapshot_set_path(sets_dir, slug, seed, nfe) if budget > nfe
-               else sets_dir / f"seed_{seed:02d}_{slug}.set")
+        if budget is None:
+            raise ValueError(f"seed {seed} has no NFE budget in config {cfg.name!r}")
+        src = equal_nfe_seed_set(sets_dir, slug, seed, budget, nfe)
         if not src.exists():
             raise FileNotFoundError(
                 f"{src} missing (seed {seed} budget {budget}); run --seed {seed} first"

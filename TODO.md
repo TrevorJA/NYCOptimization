@@ -5,6 +5,43 @@ The method and its justification live in `docs/notes/methods/` (campaign at
 scale: `campaign_design.md`). Delete items as they land. Venue: **[HPC]**
 cluster, **[local]** laptop.
 
+## 0. Coordinator-archive search diagnostics (2026-10-23)
+
+Reed (2026-10-23): convergence must be read from the MM Borg coordinator
+archive, one trace per seed, never one line per island. The controller writes
+no runtime file (`BORG_Controller_run`, lib/borg/borgmm.c) and the library
+source is not to be modified, so step 07 reconstructs the coordinator archive at
+every snapshot as the epsilon-box merge of the seed's island runtime files and
+scores that series with MOEAFramework's `MetricsEvaluator`. One epsilon-archive
+implementation (`src/sensitivity_common.py`, validated against Borg's archive)
+serves every merge; MOEAFramework's mergers are not used (v5.0
+`ResultFileMerger` ignores `--epsilon`; `ResultFileSeedMerger` kept boxes Borg's
+rule rejects when tried on 2026-10-23). Epsilon-progress is dropped (the
+controller has no improvement counter); the six MOEAFramework indicators of the
+coordinator series are the diagnostics. The ensemble-size supplement
+(`ensemble_size_figures.py`) is left as is.
+
+- [x] `src/runtime_archive.py`: result-file parser and writer, island NFE-grid
+  check, series builder (`//NFE=` = island NFE x islands), epsilon-box
+  comparison, equal-NFE per-seed set resolver.
+- [x] `src/diagnostics.py`: per-seed coordinator series under
+  `outputs/{scenario}/{slug}/runtime_coordinator/`, final entry checked box by
+  box against the seed's controller `.set` (Borg ground truth), reference set
+  renamed `{slug}_diagnostics_reference.set` so step 07 never writes the
+  campaign `{slug}_merged.set`, one `.metrics` per seed.
+- [x] Figures: one line per seed on total NFE with the reporting-budget marker
+  (search_02, search_03, SI search_convergence, run02); search_01 reads the
+  per-seed equal-NFE sets; per-island plotting and `seed_reliability.py`
+  removed.
+- [x] `extract_runtime_archive.py`, workflow step 07, README, workflow/README,
+  campaign_design.md, scenario_design_methods.md, manuscript 3.3, Text S7.
+- [x] Tests: pure tests on synthetic text plus a Java-gated integration test
+  that MetricsEvaluator scores the files the pipeline writes.
+- [ ] **[HPC]** Validate on `outputs/monte_carlo/ffmp_obj8` (seed 1 only):
+  `extract_runtime_archive.py --seed 1`, then step 07; the series self-check
+  must pass and `figures/monte_carlo/ffmp_obj8/search_0*.png` must show one
+  line per seed.
+
 ## 1. Anvil HPC rename for the Monte Carlo design
 
 Path renames DONE on the cluster 2026-08-30: pull, env files, and every
@@ -197,20 +234,18 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Batched-search memory smoke: `bash workflow/submit_search_memory_smoke.sh`.
   Go if peak node memory ≤ ~217,000 MB and warm per-evaluation time ≤ 540 s + 20 %;
   otherwise batch 100 (memory miss) or re-price `campaign_design.md` §6 (time miss).
-- [ ] **[HPC]** Before seed 1: run `extract_runtime_archive.py --seed 1` against an
-  existing go/no-go runtime set (`outputs/monte_carlo/ffmp_obj8/runtime/`)
-  and check the row count against its `.set`; it is unit-tested on synthetic
-  runtime text only.
 - [ ] **[HPC]** Seed 1 per design (750k NFE; submit lines in the `*_production.env`
-  headers). After ~12 h read SU/NFE and runtime HV at 125k/island; hold seed 2 if
-  SU/NFE exceeds the model basis or HV still rises > 5 % per 25k on any island.
+  headers). After ~12 h read SU/NFE and the seed's coordinator-archive HV at
+  500k total NFE (step 07 on the partial runtime files); hold seed 2 if SU/NFE
+  exceeds the model basis or HV still rises > 5 % per 100k total NFE.
 - [ ] **[HPC]** Per design: `extract_runtime_archive.py --seed 1` (writes
   `seed_01_ffmp_obj8_nfe125000.set`), then the ε cardinality re-filter
   (`epsilon_ensemble_refilter.py`); apply the §5 cap rule if the merged union
   exceeds ~2,000.
 - [ ] **[HPC]** Seed 2 per design (500k NFE), then
   `extract_runtime_archive.py --merge --install` (installs `ffmp_obj8_merged.set`,
-  the step-08/09 reference) and step 07 per seed.
+  the step-08/09 reference) and step 07 (coordinator-archive diagnostics; writes
+  only `ffmp_obj8_diagnostics_reference.set`, either order).
 - [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b on `shared`, 16 ranks × 8 cpus,
   batch 50, `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` on every
   05/08/09/09b/10 line (deliberately not in the env files). ~66k SU at the

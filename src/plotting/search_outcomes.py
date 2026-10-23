@@ -1,9 +1,9 @@
 """
 search_outcomes.py - SI figure: per-design MOEA search convergence.
 
-One panel per scenario design: the runtime hypervolume indicator vs runtime
-snapshot, one thin line per seed x island. This is a PER-DESIGN convergence
-diagnostic only -- "each search ran to convergence before its archive was
+One panel per scenario design: the coordinator-archive hypervolume vs total
+NFE, one line per seed (never per island; src/diagnostics.py). This is a
+PER-DESIGN convergence diagnostic only -- "each search ran to convergence before its archive was
 re-evaluated" -- and deliberately nothing more.
 
 **Search-time values are never compared across designs.** Each design's
@@ -14,14 +14,14 @@ y-scale. The one common basis of comparison is the held-out E_test
 re-evaluation, where the cross-design figures live (criteria robustness,
 regret, factor maps).
 
-Data contract (per design, under ``outputs/{design}/{slug}/``): runtime
-metrics ``metrics/seed_XX_{formulation}_{island}.metrics`` (MOEAFramework
-MetricsEvaluator; NFE via the sibling ``runtime/`` files when present).
+Data contract (per design, under ``outputs/{design}/{slug}/``): per-seed
+coordinator-series metrics ``metrics/seed_XX_{slug}.metrics`` (MOEAFramework
+MetricsEvaluator, step 07; total NFE via the sibling
+``runtime_coordinator/`` series).
 """
 
 from __future__ import annotations
 
-import re
 import warnings
 from pathlib import Path
 
@@ -31,7 +31,8 @@ import pandas as pd
 import config
 from src.plotting import style
 from src.plotting.hypervolume_convergence import (_load_metrics_file,
-                                                  _read_runtime_nfe)
+                                                  _read_runtime_nfe,
+                                                  seed_metrics_files)
 from src.plotting.layout import panel_grid, panel_label
 from src.plotting.style import DESIGN_ORDER, design_color, design_label
 
@@ -39,27 +40,20 @@ from src.plotting.style import DESIGN_ORDER, design_color, design_label
 #: in the metrics files is used when it is absent.
 PREFERRED_INDICATOR = "Hypervolume"
 
-#: Metrics filename grammar: ``seed_XX_{formulation}_{island}.metrics``.
-_METRICS_STEM = re.compile(r"seed_(\d+)_(.+)_(\d+)$")
-
-
-def _design_metrics(run_dir: Path) -> list[tuple[int, int, pd.DataFrame, list]]:
-    """Every (seed, island, metrics frame, NFE marks) under one run dir."""
+def _design_metrics(run_dir: Path, slug: str) -> list[tuple[int, pd.DataFrame, list]]:
+    """Every (seed, metrics frame, total-NFE marks) under one run dir."""
     out = []
     metrics_dir = run_dir / "metrics"
     if not metrics_dir.is_dir():
         return out
-    for path in sorted(metrics_dir.glob("*.metrics")):
-        m = _METRICS_STEM.match(path.stem)
-        if not m:
-            continue
+    for seed, path in seed_metrics_files(metrics_dir, slug):
         try:
             frame = _load_metrics_file(path)
         except Exception as exc:  # noqa: BLE001 - a bad file is a warning
             warnings.warn(f"unreadable metrics file {path}: {exc}")
             continue
         nfe = _read_runtime_nfe(path, len(frame))
-        out.append((int(m.group(1)), int(m.group(3)), frame, nfe))
+        out.append((seed, frame, nfe))
     return out
 
 
@@ -70,8 +64,8 @@ def fig_search_outcomes(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
         ctx: Figure context; only ``ctx.slug`` is consumed (no cubes needed).
         out_stub: Output path without extension.
         table_dir: Directory for the companion CSV
-            (``search_convergence.csv``: design, seed, island, final NFE,
-            final indicator per metrics file).
+            (``search_convergence.csv``: design, seed, final total NFE,
+            final indicator per seed).
 
     Returns:
         The written figure paths.
@@ -82,7 +76,7 @@ def fig_search_outcomes(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
     """
     per_design = {}
     for design in DESIGN_ORDER:
-        rows = _design_metrics(config.OUTPUTS_DIR / design / ctx.slug)
+        rows = _design_metrics(config.OUTPUTS_DIR / design / ctx.slug, ctx.slug)
         if rows:
             per_design[design] = rows
         else:
@@ -102,7 +96,7 @@ def fig_search_outcomes(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
     for i, (ax, design) in enumerate(zip(axes, designs)):
         color = design_color(design)
         indicator = None
-        for seed, island, frame, nfe in per_design[design]:
+        for seed, frame, nfe in per_design[design]:
             if indicator is None:
                 indicator = (PREFERRED_INDICATOR
                              if PREFERRED_INDICATOR in frame.columns
@@ -111,17 +105,17 @@ def fig_search_outcomes(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
             x = (np.asarray(nfe, dtype=float)[:len(y)]
                  if nfe is not None and len(nfe) >= len(y)
                  else np.arange(len(y)))
-            ax.plot(x, y, color=color, lw=0.9, alpha=0.8)
+            ax.plot(x, y, color=color, lw=1.2, alpha=0.9)
             csv_rows.append({
-                "design": design, "seed": seed, "island": island,
+                "design": design, "seed": seed,
                 "indicator": indicator,
                 "final_nfe": float(x[-1]) if len(x) else np.nan,
                 "final_value": float(y[-1]) if len(y) else np.nan,
             })
         ax.set_title(design_label(design), fontsize=9)
         panel_label(ax, chr(ord("a") + i))
-        ax.set_xlabel("NFE" if any(n is not None and len(n)
-                                   for *_, n in per_design[design])
+        ax.set_xlabel("NFE (total)" if any(n is not None and len(n)
+                                           for *_, n in per_design[design])
                       else "Runtime snapshot")
         if i == 0:
             ax.set_ylabel(f"{indicator} (per-design scale;\n"

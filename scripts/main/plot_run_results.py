@@ -10,7 +10,8 @@ reliability >= 0.5 -- see :mod:`src.pareto_filter`):
      lower-triangle matrix), colored by NYC delivery reliability, baseline starred.
   1d. Bound-normalized decision-variable ranges of criterion-satisfying subsets
      (baseline dominance, NYC-storage floors) against the full front.
-  2. Hypervolume convergence vs NFE (from step-07 .metrics).
+  2. Coordinator-archive hypervolume vs total NFE, one line per seed (from
+     the step-07 per-seed .metrics).
   3. DU performance distributions: each objective's DU-expected value across the
      acceptable policies vs the baseline and its satisficing threshold (the raw
      magnitudes co-reported alongside robustness, per Huang et al. 2025).
@@ -142,14 +143,17 @@ def fig_dv_ranges(filt, formulation, out_dir, scenario):
 # --------------------------------------------------------------------------- #
 # Fig 2: hypervolume convergence
 # --------------------------------------------------------------------------- #
-def fig_hypervolume(run_dir, formulation, out_dir):
-    from src.plotting.hypervolume_convergence import plot_hypervolume_convergence
+def fig_hypervolume(run_dir, slug, out_dir):
+    from src.plotting.hypervolume_convergence import (
+        plot_hypervolume_convergence, seed_metrics_files)
+    from src.plotting.search_diagnostics import reporting_total_nfe
     metrics_dir = run_dir / "metrics"
-    if not metrics_dir.exists() or not any(metrics_dir.glob("*.metrics")):
-        print("[fig2] no metrics dir/files"); return
-    plot_hypervolume_convergence(metrics_dir, formulation,
+    if not metrics_dir.exists() or not seed_metrics_files(metrics_dir, slug):
+        print("[fig2] no per-seed metrics files (step 07)"); return
+    plot_hypervolume_convergence(metrics_dir, slug,
                                  out_dir / "run02_hypervolume_convergence.png",
-                                 figsize=(8, 5))
+                                 figsize=(8, 5),
+                                 reporting_nfe=reporting_total_nfe())
     print("[fig2] -> 02_hypervolume_convergence.png")
 
 
@@ -353,7 +357,7 @@ def main():
         ("parallel_coords", lambda: fig_parallel_coords(ref_set, args.formulation, filt, out_dir, args.scenario)),
         ("tradeoff_scatter", lambda: fig_tradeoff_scatter(filt, args.formulation, out_dir, args.scenario)),
         ("dv_ranges", lambda: fig_dv_ranges(filt, args.formulation, out_dir, args.scenario)),
-        ("hypervolume", lambda: fig_hypervolume(run_dir, args.formulation, out_dir)),
+        ("hypervolume", lambda: fig_hypervolume(run_dir, args.slug, out_dir)),
         ("du_distributions", lambda: fig_du_distributions(reeval_dir, filt, out_dir)),
         ("robustness", lambda: fig_robustness(reeval_dir, filt, most_robust_id, out_dir)),
         ("regret", lambda: fig_regret(reeval_dir, filt, out_dir)),

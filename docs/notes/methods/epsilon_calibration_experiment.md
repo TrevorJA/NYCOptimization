@@ -87,7 +87,7 @@ under a new vector to new filenames, never over production artifacts.
 
 MOEAFramework v5 `ResultFileMerger` merges by plain Pareto dominance regardless
 of `--epsilon`, so step 07 ε-box-filters the cross-seed `{slug}_merged.set` in
-place under the campaign vector (`src/diagnostics.py::epsilon_box_filter_set`,
+place under the campaign vector (`src/diagnostics.py::epsilon_box_filter_set` at the time; since 2026-10-23 step 07 builds its reference set directly with the same filter,
 plain union kept as `*_raw.set`) before computing metrics, and that filtered
 file is the reference set the step 08/09 re-evaluation consumes. The merge,
 ε-filter, re-evaluate ordering therefore holds for every configuration by

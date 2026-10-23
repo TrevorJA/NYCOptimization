@@ -1,10 +1,44 @@
 """
 diagnostics.py - MOEA runtime diagnostics using MOEAFramework v5.0 CLI.
 
-Three-step workflow for computing runtime metrics from Borg output:
+Convergence is read from the MM Borg coordinator archive, one trace per seed
+(Reed, 2026-10-23), never from the island archives individually: islands
+exchange solutions through the controller (periodic updates, guidance after
+stagnation), so their archives are coupled and a line per island overstates
+the number of convergence trajectories. The controller writes no runtime
+file (``BORG_Controller_run`` in lib/borg/borgmm.c only returns its archive
+at shutdown), so step 07 reconstructs the coordinator archive at every
+snapshot from the island runtime files, which all record the same NFE grid.
 
-    1. ResultFileMerger:     runtime files -> merged reference set (.set)
-    2. MetricsEvaluator:     runtime files + .set -> per-snapshot metrics
+Workflow (``run_full_diagnostics``):
+
+    1. Coordinator series per seed: the seed's island runtime files ->
+       ``runtime_coordinator/seed_SS_{slug}.runtime``, whose entry k is the
+       epsilon-box merge of every island's archive at snapshot k
+       (``src.runtime_archive.coordinator_series``), annotated with
+       ``//NFE=`` (total NFE = per-island NFE x islands) and ``//IslandNFE=``.
+       When the seed's controller ``.set`` exists, the final entry is checked
+       against it box by box: the controller's archive is the ground truth
+       for the merge, and the two must agree exactly.
+    2. Diagnostics reference set ``sets/{slug}_diagnostics_reference.set``:
+       the epsilon-box merge of every coordinator snapshot of every seed. This
+       is the best-known front of the design's own runs, including seed 1's
+       tail beyond the reporting NFE, and it is distinct from the campaign
+       reference set ``{slug}_merged.set`` that
+       ``scripts/main/extract_runtime_archive.py --merge --install`` writes
+       for the step 08/09 re-evaluation; step 07 never writes that name.
+    3. MetricsEvaluator: coordinator series + reference set -> one
+       ``metrics/seed_SS_{slug}.metrics`` per seed (hypervolume, generational
+       distance, inverted generational distance, spacing, additive
+       epsilon-indicator, maximum Pareto-front error per snapshot).
+    4. The search-diagnostics figure suite (``src.plotting.search_diagnostics``).
+
+One epsilon-box archive implementation serves every merge in the project
+(``src.sensitivity_common.epsilon_nondominated``, validated against Borg's
+own archive membership); MOEAFramework's mergers are deliberately not used
+(in v5.0 ``ResultFileMerger`` ignores ``--epsilon`` and
+``ResultFileSeedMerger`` retains boxes Borg's rule rejects), so MOEAFramework
+only scores.
 
 MOEAFramework v5.0 requires a registered problem definition (JAR in lib/)
 to parse runtime files correctly (knowing #DVs vs #objectives). The JARs
@@ -19,16 +53,32 @@ writer (BORG_Archive_append) strips constraint violators and never writes
 constraint columns. See the header of 00_setup_borg_jars.sh.
 """
 
+from __future__ import annotations
+
+import re
 import subprocess
 from pathlib import Path
 
 from config import (
+    ACTIVE_MOEA_CONFIG,
     get_epsilons,
     DIAGNOSTICS_SETTINGS,
     FFMP_VR_N_SWEEP,
     active_scenario_name,
     run_output_dir,
 )
+from src.runtime_archive import (
+    compare_archives,
+    coordinator_series,
+    epsilon_merge,
+    moea_result_header,
+    parse_result_file,
+    write_result_file,
+)
+
+#: Artifact subdirectory of the per-seed coordinator series (kept apart from
+#: ``runtime/`` so the ``seed_SS_{slug}_*`` island globs never match it).
+COORDINATOR_ARTIFACT = "runtime_coordinator"
 
 # Per-formulation MOEAFramework problem registrations. Each is built as a
 # separate JAR in MOEAFramework-5.0/lib/ with the correct (nvars, nobjs).
@@ -74,230 +124,83 @@ def problem_name_for(slug: str) -> str:
     )
 
 
+def formulation_for(slug: str) -> str:
+    """The formulation name behind a slug (``problem_name_for`` without ``drb_``)."""
+    return problem_name_for(slug).removeprefix("drb_")
+
 
 def get_cli_path() -> str:
     """Return path to MOEAFramework CLI executable."""
     return DIAGNOSTICS_SETTINGS["moea_framework_jar"]
 
 
-def merge_reference_set(
-    slug: str,
-    seed: int = None,
-    runtime_dir: Path = None,
-    output_file: Path = None,
-    scenario: str = None,
-) -> Path:
-    """Merge runtime files into an epsilon-dominated reference set.
+def _epsilon_arg() -> str:
+    return ",".join(str(e) for e in get_epsilons())
 
-    Uses ResultFileMerger to combine all snapshots across islands
-    into a single non-dominated set.
 
-    Args:
-        slug: Run moea slug (inner output subdirectory + filename prefix).
-        seed: Seed number (if None, merges all seeds).
-        runtime_dir: Directory containing .runtime files.
-        output_file: Output .set file path.
-        scenario: Scenario-design name (top-level output partition). Defaults
-            to the active scenario design.
+# ---------------------------------------------------------------------------
+# Paths and discovery
+# ---------------------------------------------------------------------------
 
-    Returns:
-        Path to the merged .set file.
-    """
+def island_runtime_files(slug: str, seed: int, runtime_dir: Path = None,
+                         scenario: str = None) -> list[Path]:
+    """The seed's island runtime files, ordered by island index."""
     if scenario is None:
         scenario = active_scenario_name()
     if runtime_dir is None:
         runtime_dir = run_output_dir(scenario, slug, "runtime")
-    if output_file is None:
-        sets_dir = run_output_dir(scenario, slug, "sets")
-        suffix = f"_seed{seed:02d}" if seed else ""
-        output_file = sets_dir / f"{slug}{suffix}_merged.set"
-
-    epsilons = ",".join(str(e) for e in get_epsilons())
-
-    # Find runtime files (filter by seed if specified)
-    if seed is not None:
-        pattern = f"seed_{seed:02d}_{slug}_*.runtime"
-    else:
-        pattern = f"*_{slug}_*.runtime"
-    runtime_files = sorted(runtime_dir.glob(pattern))
-
-    if not runtime_files:
-        raise FileNotFoundError(
-            f"No runtime files matching {pattern} in {runtime_dir}"
-        )
-
-    cmd = [
-        get_cli_path(), "ResultFileMerger",
-        "--problem", problem_name_for(slug),
-        "--epsilon", epsilons,
-        "--output", str(output_file),
-    ] + [str(f) for f in runtime_files]
-
-    print(f"  Merging {len(runtime_files)} runtime files -> {output_file.name}")
-    subprocess.run(cmd, check=True)
-    return output_file
+    pattern = re.compile(rf"^seed_{seed:02d}_{re.escape(slug)}_(\d+)\.runtime$")
+    found = []
+    for f in Path(runtime_dir).iterdir():
+        m = pattern.match(f.name)
+        if m:
+            found.append((int(m.group(1)), f))
+    return [f for _, f in sorted(found)]
 
 
-def compute_metrics(
-    runtime_file: Path,
-    reference_file: Path,
-    slug: str,
-    output_file: Path = None,
-) -> Path:
-    """Compute runtime metrics for a single runtime file.
-
-    Uses MetricsEvaluator to compute hypervolume, generational distance,
-    inverted generational distance, spacing, epsilon indicator, and
-    maximum Pareto front error at each NFE snapshot.
-
-    Args:
-        runtime_file: Input .runtime file.
-        reference_file: Reference set (.set or .ref file).
-        slug: Run slug (picks the MOEAFramework problem registration).
-        output_file: Output .metrics file.
-
-    Returns:
-        Path to the .metrics file.
-    """
-    if output_file is None:
-        metrics_dir = runtime_file.parent.parent / "metrics"
-        metrics_dir.mkdir(parents=True, exist_ok=True)
-        output_file = metrics_dir / f"{runtime_file.stem}.metrics"
-
-    epsilons = ",".join(str(e) for e in get_epsilons())
-
-    cmd = [
-        get_cli_path(), "MetricsEvaluator",
-        "--problem", problem_name_for(slug),
-        "--epsilon", epsilons,
-        "--input", str(runtime_file),
-        "--reference", str(reference_file),
-        "--output", str(output_file),
-        "--force",
-    ]
-
-    print(f"  Computing metrics: {runtime_file.name} -> {output_file.name}")
-    subprocess.run(cmd, check=True)
-    return output_file
+def coordinator_series_path(slug: str, seed: int, scenario: str = None) -> Path:
+    """``outputs/{scenario}/{slug}/runtime_coordinator/seed_SS_{slug}.runtime``."""
+    if scenario is None:
+        scenario = active_scenario_name()
+    return run_output_dir(scenario, slug, COORDINATOR_ARTIFACT) / f"seed_{seed:02d}_{slug}.runtime"
 
 
-def epsilon_box_filter_set(set_file: Path, slug: str) -> tuple[int, int]:
-    """Rewrite a merged .set file as its ε-box nondominated archive, in place.
-
-    MOEAFramework v5's ResultFileMerger merges by PLAIN Pareto dominance and
-    ignores ``--epsilon`` for archiving (measured: identical
-    output under two vectors), so its union overstates the front at archive
-    resolution. This applies the Borg box convention
-    (``sensitivity_common.epsilon_nondominated`` — validated to reproduce
-    Borg's own seed-archive membership exactly) under the campaign vector
-    and rewrites the file: header comments preserved, only retained rows,
-    trailing ``#`` terminator kept, and the plain union saved alongside as
-    ``*_raw.set``. Downstream consumers (step 08/09 re-evaluation, result
-    figures) all resolve ``{slug}_merged.set``, so they consume the ε-front
-    automatically.
-
-    Returns:
-        (n_before, n_after) data-row counts.
-    """
-    import numpy as np
-    from src.formulations import get_n_vars, get_n_objs
-    from src.load.reference_set import load_reference_set
-    from src.sensitivity_common import epsilon_nondominated
-
-    formulation = problem_name_for(slug).removeprefix("drb_")
-    _, objs = load_reference_set(set_file, get_n_vars(formulation),
-                                 n_objs=get_n_objs())
-    keep = set(epsilon_nondominated(objs, get_epsilons()).tolist())
-
-    lines = set_file.read_text().splitlines(keepends=True)
-    header = [l for l in lines if l.startswith("#")]
-    data = [l for l in lines if not l.startswith("#") and l.strip()]
-    if len(data) != len(objs):
-        raise RuntimeError(
-            f"{set_file}: parsed {len(objs)} rows but found {len(data)} "
-            f"data lines — refusing to rewrite")
-
-    raw_copy = set_file.with_name(set_file.stem + "_raw.set")
-    raw_copy.write_text("".join(lines))
-    filtered = [l for i, l in enumerate(data) if i in keep]
-    # Trailing '#' terminates the entry; interior header comments lead it.
-    body = header[:-1] if header and header[-1].strip() == "#" else header
-    tail = ["#\n"] if body is not header else [header[-1]]
-    set_file.write_text("".join(body + filtered + tail))
-    return len(data), len(filtered)
+def coordinator_series_files(slug: str, scenario: str = None) -> list[Path]:
+    """Every seed's coordinator series under the run, sorted by seed."""
+    if scenario is None:
+        scenario = active_scenario_name()
+    d = run_output_dir(scenario, slug, COORDINATOR_ARTIFACT)
+    pattern = re.compile(rf"^seed_(\d+)_{re.escape(slug)}\.runtime$")
+    return [f for f in sorted(d.iterdir()) if pattern.match(f.name)]
 
 
-def run_diagnostics(
-    slug: str,
-    seed: int = 1,
-    runtime_dir: Path = None,
-    scenario: str = None,
-    reference_file: Path = None,
-):
-    """Run the full diagnostics workflow for a single seed.
+def diagnostics_reference_set_path(slug: str, scenario: str = None) -> Path:
+    """``sets/{slug}_diagnostics_reference.set``, the step-07 reference set.
 
-    Steps:
-        1. Merge all island runtime files into a per-seed reference set
-        2. Compute metrics for each island's runtime file
-
-    Args:
-        slug: Run moea slug (inner output subdirectory + filename prefix).
-        seed: Seed number.
-        runtime_dir: Directory containing .runtime files.
-        scenario: Scenario-design name (top-level output partition). Defaults
-            to the active scenario design.
-        reference_file: Reference set the metrics are computed against. When
-            None (single-seed / ad-hoc use) each seed is scored against its
-            own merged set; ``run_full_diagnostics`` passes the cross-seed
-            merged set so indicator values are comparable across seeds.
-
-    Returns:
-        Tuple of (per_seed_reference_set_path, list_of_metrics_paths).
+    Never the campaign reference set ``{slug}_merged.set`` (written only by
+    ``extract_runtime_archive.py --merge --install`` and consumed by step
+    08/09); the two names are asserted distinct.
     """
     if scenario is None:
         scenario = active_scenario_name()
-    if runtime_dir is None:
-        runtime_dir = run_output_dir(scenario, slug, "runtime")
-
-    print(f"\n=== MOEAFramework Diagnostics: {scenario}/{slug}, seed {seed} ===\n")
-
-    # Step 1: Merge runtime files into reference set
-    print("Step 1: Merging reference set...")
-    ref_file = merge_reference_set(
-        slug, seed=seed, runtime_dir=runtime_dir, scenario=scenario,
-    )
-
-    # Step 2: Compute metrics for each island runtime file
-    print("\nStep 2: Computing runtime metrics...")
-    pattern = f"seed_{seed:02d}_{slug}_*.runtime"
-    runtime_files = sorted(runtime_dir.glob(pattern))
-
-    metrics_ref = reference_file if reference_file is not None else ref_file
-    metrics_files = []
-    for rf in runtime_files:
-        mf = compute_metrics(rf, metrics_ref, slug=slug)
-        metrics_files.append(mf)
-
-    print(f"\n=== Complete ===")
-    print(f"  Reference set: {ref_file}")
-    print(f"  Metrics files: {[f.name for f in metrics_files]}")
-
-    return ref_file, metrics_files
+    sets_dir = run_output_dir(scenario, slug, "sets")
+    out = sets_dir / f"{slug}_diagnostics_reference.set"
+    assert out.name != f"{slug}_merged.set"
+    return out
 
 
 def discover_seeds(slug: str, runtime_dir: Path = None, scenario: str = None) -> list[int]:
     """Return sorted list of seed numbers found in the slug's runtime directory.
 
-    Looks for files matching ``seed_NN_{slug}_*.runtime`` and extracts NN.
+    Looks for island files matching ``seed_NN_{slug}_{i}.runtime`` and
+    extracts NN.
     """
-    import re
-
     if scenario is None:
         scenario = active_scenario_name()
     if runtime_dir is None:
         runtime_dir = run_output_dir(scenario, slug, "runtime")
 
-    pattern = re.compile(rf"^seed_(\d+)_{re.escape(slug)}_.*\.runtime$")
+    pattern = re.compile(rf"^seed_(\d+)_{re.escape(slug)}_\d+\.runtime$")
     seeds = set()
     if runtime_dir.exists():
         for f in runtime_dir.iterdir():
@@ -307,10 +210,215 @@ def discover_seeds(slug: str, runtime_dir: Path = None, scenario: str = None) ->
     return sorted(seeds)
 
 
+# ---------------------------------------------------------------------------
+# Step 1: coordinator series per seed
+# ---------------------------------------------------------------------------
+
+def _problem_header(slug: str) -> list[str]:
+    from src.formulations import get_n_objs, get_n_vars
+    return moea_result_header(problem_name_for(slug),
+                              get_n_vars(formulation_for(slug)), get_n_objs())
+
+
+def check_series_against_set(series_rows, set_file: Path, n_vars: int,
+                             epsilons) -> dict:
+    """The final series entry must occupy exactly the controller's boxes.
+
+    ``set_file`` is the seed's controller archive at shutdown, the ground
+    truth for the merge of the island archives at the final snapshot. Box
+    representatives may differ only on distance ties, which is reported.
+
+    Raises:
+        RuntimeError: On any box-set difference.
+    """
+    from src.load.reference_set import load_set_file
+
+    set_rows = load_set_file(set_file)
+    cmp = compare_archives(series_rows, set_rows, n_vars, epsilons)
+    if cmp["boxes_only_a"] or cmp["boxes_only_b"]:
+        raise RuntimeError(
+            f"final coordinator entry ({cmp['n_a']} rows) and the controller "
+            f"archive {set_file.name} ({cmp['n_b']} rows) occupy different "
+            f"epsilon boxes: {len(cmp['boxes_only_a'])} only in the series, "
+            f"{len(cmp['boxes_only_b'])} only in the controller archive; "
+            + _box_mismatch_detail(cmp, series_rows, set_rows, n_vars, epsilons))
+    return cmp
+
+
+def _box_mismatch_detail(cmp: dict, rows_a, rows_b, n_vars: int, epsilons) -> str:
+    """Name the mismatched boxes and, for each, the box that dominates it."""
+    import numpy as np
+    from src.runtime_archive import epsilon_boxes
+
+    boxes_a = epsilon_boxes(rows_a, n_vars, epsilons)
+    boxes_b = epsilon_boxes(rows_b, n_vars, epsilons)
+    parts = []
+    for label, extra, other in (("series", cmp["boxes_only_a"], boxes_b),
+                                ("controller", cmp["boxes_only_b"], boxes_a)):
+        for box in extra[:5]:
+            b = np.asarray(box)
+            dominators = [o for o in other
+                          if (np.asarray(o) <= b).all() and (np.asarray(o) < b).any()]
+            parts.append(f"only-in-{label} box {box}: dominated by "
+                         f"{dominators[:3] if dominators else 'no box of the other archive'}")
+    return "; ".join(parts)
+
+
+def build_coordinator_series(slug: str, seed: int, runtime_dir: Path = None,
+                             scenario: str = None,
+                             output_file: Path = None,
+                             set_file: Path = None) -> Path:
+    """Reconstruct one seed's coordinator archive at every runtime snapshot.
+
+    Entry k of the written series is the epsilon-box merge, under the
+    campaign epsilons, of every island's archive at the k-th snapshot
+    (``src.runtime_archive.coordinator_series``); each entry carries
+    ``//NFE=`` (total: per-island NFE x islands), ``//IslandNFE=`` and
+    ``//Islands=``. When the seed's controller ``.set`` exists, the final
+    entry is checked against it (``check_series_against_set``).
+
+    Args:
+        slug: Run moea slug.
+        seed: Seed number.
+        runtime_dir: Directory holding the island ``.runtime`` files.
+        scenario: Scenario-design name; defaults to the active one.
+        output_file: Override of the series path (tests).
+        set_file: Override of the controller ``.set`` path (tests); defaults
+            to ``sets/seed_SS_{slug}.set`` and is skipped when absent (a
+            seed still running).
+
+    Returns:
+        Path of the coordinator series.
+    """
+    from src.formulations import get_n_vars
+
+    if scenario is None:
+        scenario = active_scenario_name()
+    files = island_runtime_files(slug, seed, runtime_dir=runtime_dir, scenario=scenario)
+    if not files:
+        raise FileNotFoundError(f"no island runtime files for seed {seed} of {scenario}/{slug}")
+    n_vars = get_n_vars(formulation_for(slug))
+    epsilons = get_epsilons()
+    series = coordinator_series(files, n_vars, epsilons)
+    n_islands = len(files)
+    out = (Path(output_file) if output_file is not None
+           else coordinator_series_path(slug, seed, scenario=scenario))
+    write_result_file(out, [
+        ({"NFE": nfe * n_islands, "IslandNFE": nfe, "Islands": n_islands}, rows)
+        for nfe, rows in series
+    ], header_lines=_problem_header(slug))
+    print(f"  Coordinator series: {n_islands} islands x {len(series)} snapshots "
+          f"({series[-1][0] * n_islands} total NFE, {len(series[-1][1])} rows at the end) "
+          f"-> {out}")
+
+    if set_file is None:
+        set_file = run_output_dir(scenario, slug, "sets") / f"seed_{seed:02d}_{slug}.set"
+    if Path(set_file).exists():
+        cmp = check_series_against_set(series[-1][1], Path(set_file), n_vars, epsilons)
+        print(f"  verified against {Path(set_file).name}: boxes identical, "
+              f"{cmp['representatives_differ']} tie-broken representatives differ")
+    else:
+        print(f"  {Path(set_file).name} absent (seed still running): final entry unchecked")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Step 2: diagnostics reference set
+# ---------------------------------------------------------------------------
+
+def merge_reference_set(slug: str, scenario: str = None,
+                        series_files: list[Path] = None,
+                        output_file: Path = None) -> Path:
+    """Merge every coordinator snapshot of every seed into one reference set.
+
+    The epsilon-box merge of the union of all entries of all series, written
+    in the MOEAFramework result-file layout for ``MetricsEvaluator``.
+
+    Returns:
+        Path to the reference set.
+    """
+    import numpy as np
+    from src.formulations import get_n_vars
+
+    if scenario is None:
+        scenario = active_scenario_name()
+    if series_files is None:
+        series_files = coordinator_series_files(slug, scenario=scenario)
+    if not series_files:
+        raise FileNotFoundError(f"no coordinator series under {scenario}/{slug}")
+    if output_file is None:
+        output_file = diagnostics_reference_set_path(slug, scenario=scenario)
+
+    blocks = [rows for f in series_files
+              for _, rows in parse_result_file(Path(f).read_text()) if rows.size]
+    union = np.vstack(blocks) if blocks else np.empty((0, 0))
+    front = epsilon_merge(union, get_n_vars(formulation_for(slug)), get_epsilons())
+    write_result_file(output_file, [({}, front)], header_lines=_problem_header(slug))
+    print(f"  Reference set: {len(series_files)} series, {len(union)} rows unioned, "
+          f"{len(front)} retained under the campaign epsilons -> {output_file.name}")
+    return output_file
+
+
+# ---------------------------------------------------------------------------
+# Step 3: metrics per seed
+# ---------------------------------------------------------------------------
+
+def compute_metrics(series_file: Path, reference_file: Path, slug: str,
+                    output_file: Path = None) -> Path:
+    """Score one coordinator series against the reference set.
+
+    Uses MetricsEvaluator to compute hypervolume, generational distance,
+    inverted generational distance, spacing, additive epsilon-indicator, and
+    maximum Pareto-front error at each snapshot.
+
+    Args:
+        series_file: Input coordinator series (``.runtime``).
+        reference_file: Reference set (.set or .ref file).
+        slug: Run slug (picks the MOEAFramework problem registration).
+        output_file: Output .metrics file; defaults to
+            ``metrics/{series stem}.metrics`` beside the series directory.
+
+    Returns:
+        Path to the .metrics file.
+    """
+    series_file = Path(series_file)
+    if output_file is None:
+        metrics_dir = series_file.parent.parent / "metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        output_file = metrics_dir / f"{series_file.stem}.metrics"
+
+    cmd = [
+        get_cli_path(), "MetricsEvaluator",
+        "--problem", problem_name_for(slug),
+        "--epsilon", _epsilon_arg(),
+        "--input", str(series_file),
+        "--reference", str(reference_file),
+        "--output", str(output_file),
+        "--force", "--overwrite",
+    ]
+    print(f"  Computing metrics: {series_file.name} -> {output_file.name}")
+    subprocess.run(cmd, check=True)
+    return output_file
+
+
+# ---------------------------------------------------------------------------
+# Driver
+# ---------------------------------------------------------------------------
+
+def _notice_retired_artifacts(slug: str, scenario: str) -> None:
+    """Point out leftovers of the per-island workflow; nothing is deleted."""
+    run_dir = run_output_dir(scenario, slug, "metrics").parent
+    legacy = sorted((run_dir / "metrics").glob(f"seed_*_{slug}_[0-9]*.metrics"))
+    legacy += sorted((run_dir / "sets").glob(f"{slug}_seed*_merged.set"))
+    if legacy:
+        print(f"[{scenario}/{slug}] {len(legacy)} per-island artifact(s) from the "
+              f"retired workflow are present and ignored (e.g. {legacy[0].name}).")
+
+
 def run_full_diagnostics(
     slug: str, seeds: list = None, runtime_dir: Path = None, scenario: str = None,
 ):
-    """Run per-seed diagnostics for every seed present in the slug's output.
+    """Run the coordinator-archive diagnostics for every seed of one run.
 
     Args:
         slug: Run moea slug (inner output subdirectory + filename prefix).
@@ -321,7 +429,7 @@ def run_full_diagnostics(
             to the active scenario design.
 
     Returns:
-        Dict of {seed: (ref_file, metrics_files)}.
+        Dict of {seed: metrics_path}; empty when no runtime files exist.
     """
     if scenario is None:
         scenario = active_scenario_name()
@@ -331,28 +439,27 @@ def run_full_diagnostics(
         print(f"[{scenario}/{slug}] no runtime files found; skipping.")
         return {}
 
-    # Cross-seed merged reference set (sets/{slug}_merged.set): the best-known
-    # front over all seeds, ε-box filtered to archive resolution (the merger
-    # itself is plain-dominance; see epsilon_box_filter_set). Metrics are
-    # computed against it so indicator values are comparable across seeds
-    # (Reed et al. 2013 diagnostics convention), and it is the reference set
-    # step 08/09 re-evaluates — the filter caps re-evaluation cost for every
-    # optimization configuration.
-    print(f"[{scenario}/{slug}] merging cross-seed reference set...")
-    global_ref = merge_reference_set(slug, runtime_dir=runtime_dir, scenario=scenario)
-    n_union, n_front = epsilon_box_filter_set(global_ref, slug)
-    print(f"[{scenario}/{slug}] ε-box filtered reference set: "
-          f"{n_union} -> {n_front} (union kept as *_raw.set)")
+    print(f"\n=== MOEAFramework Diagnostics: {scenario}/{slug}, seeds {seeds} ===\n")
+    _notice_retired_artifacts(slug, scenario)
+
+    reporting_nfe = ACTIVE_MOEA_CONFIG.max_evaluations
+    series = {}
+    for seed in seeds:
+        print(f"[{scenario}/{slug}] seed {seed}: coordinator series")
+        series[seed] = build_coordinator_series(
+            slug, seed, runtime_dir=runtime_dir, scenario=scenario,
+            reporting_nfe=reporting_nfe)
+
+    print(f"[{scenario}/{slug}] diagnostics reference set")
+    reference = merge_reference_set(
+        slug, scenario=scenario, series_files=[series[s] for s in seeds])
 
     results = {}
     for seed in seeds:
-        results[seed] = run_diagnostics(
-            slug, seed=seed, runtime_dir=runtime_dir, scenario=scenario,
-            reference_file=global_ref,
-        )
+        results[seed] = compute_metrics(series[seed], reference, slug=slug)
 
-    # Standard post-search figure suite (parallel axes + hypervolume +
-    # runtime-indicator panel); a figure failure never fails the diagnostics.
+    # Standard post-search figure suite; a figure failure never fails the
+    # diagnostics.
     try:
         from src.plotting.search_diagnostics import render_search_diagnostics
         print(f"[{scenario}/{slug}] rendering search-diagnostics figures...")
@@ -360,4 +467,6 @@ def run_full_diagnostics(
     except Exception as e:
         print(f"[{scenario}/{slug}] figure suite FAILED "
               f"(metrics/sets unaffected): {e}")
+    print(f"\n=== Complete: reference {reference.name}; metrics "
+          f"{[p.name for p in results.values()]} ===")
     return results
