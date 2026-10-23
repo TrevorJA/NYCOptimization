@@ -39,7 +39,7 @@ from config import (active_scenario_name, baseline_objectives_csv,
                     run_output_dir)
 from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
-from src.plotting.style import apply_style, axis_label_for, FIGSIZE_WIDE
+from src.plotting.style import apply_style
 from src.plotting.hypervolume_convergence import (
     plot_hypervolume_convergence, _load_metrics_file, _read_runtime_nfe,
 )
@@ -58,14 +58,6 @@ INDICATORS = [
     ("EpsilonIndicator", "↓ better"),
     ("MaximumParetoFrontError", "↓ better"),
 ]
-
-
-def _format_value(v):
-    if abs(v) >= 100:
-        return f"{v:.0f}"
-    if abs(v) >= 1:
-        return f"{v:.2f}"
-    return f"{v:.4f}"
 
 
 def _seed_of(stem: str) -> int:
@@ -119,51 +111,31 @@ def plot_seed_parallel_axes(
         if set(obj_names) <= set(vals):
             baseline_raw = np.array([vals[n] for n in obj_names])
 
-    all_data = np.vstack(groups + ([baseline_raw] if baseline_raw is not None else []))
-    lo, hi = all_data.min(axis=0), all_data.max(axis=0)
-    rng_ = np.where(hi - lo == 0, 1.0, hi - lo)
-
-    def norm(a):
-        n = (np.atleast_2d(a) - lo) / rng_
-        n[:, directions == -1] = 1.0 - n[:, directions == -1]
-        return n
+    # One renderer for every parallel-axis figure in the repo. Seed draw order
+    # is interleaved (fixed permutation) so no seed systematically paints over
+    # another; the categorical legend carries each seed's set size.
+    import pandas as pd
+    from src.plotting.parallel_coordinates import (custom_parallel_coordinates,
+                                                   minmaxs_from_directions,
+                                                   wrap_axis_labels)
+    rows = np.vstack(groups)
+    which = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
+    order = np.random.default_rng(0).permutation(len(rows))
+    seed_labels = [f"{s} (n={len(g)})" for s, g in zip(seeds, groups)]
+    frame = pd.DataFrame(rows[order], columns=obj_names)
+    frame["seed"] = [seed_labels[i] for i in which[order]]
+    color_dict = {lab: SEED_COLORS[i % len(SEED_COLORS)]
+                  for i, lab in enumerate(seed_labels)}
 
     apply_style()
-    fig, ax = plt.subplots(figsize=FIGSIZE_WIDE)
-    x = np.arange(n_objs)
-
-    rows = np.vstack([norm(g) for g in groups])
-    which = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
-    for idx in np.random.default_rng(0).permutation(len(rows)):
-        ax.plot(x, rows[idx], color=SEED_COLORS[which[idx] % len(SEED_COLORS)],
-                alpha=0.06, linewidth=0.5, zorder=2)
-    for i, g in enumerate(groups):
-        ax.plot([], [], color=SEED_COLORS[i % len(SEED_COLORS)], lw=2,
-                label=f"{seeds[i]} (n={len(g)})")
-
-    if baseline_raw is not None:
-        ax.plot(x, norm(baseline_raw)[0], color=BASELINE_COLOR, linewidth=2.5,
-                marker="o", markersize=5, label="FFMP baseline", zorder=10)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels([
-        axis_label_for(n, "maximize" if d == 1 else "minimize")
-        for n, d in zip(obj_names, directions)
-    ], fontsize=8)
-    ax.set_ylabel("Preference Direction  (↑ better)")
+    fig, ax = custom_parallel_coordinates(
+        frame, columns_axes=obj_names, axis_labels=wrap_axis_labels(obj_names),
+        minmaxs=minmaxs_from_directions(directions),
+        color_by_categorical="seed", color_dict_categorical=color_dict,
+        alpha_base=0.06, lw_base=0.5, fontsize=13, figsize=(13.5, 5.5),
+        baseline=baseline_raw, baseline_label="FFMP baseline")
     ax.set_title(f"Pareto-approximate sets, {scenario}/{slug} "
-                 f"(per-seed merged reference sets)")
-    ax.set_ylim(-0.14, 1.12)
-    ax.grid(True, alpha=0.3, axis="x")
-    ax.legend(loc="lower right", fontsize=8)
-
-    for i in range(n_objs):
-        best, worst = (hi[i], lo[i]) if directions[i] == 1 else (lo[i], hi[i])
-        ax.text(i, 1.04, _format_value(best), ha="center", va="bottom",
-                fontsize=7, color="0.3")
-        ax.text(i, -0.04, _format_value(worst), ha="center", va="top",
-                fontsize=7, color="0.3")
-
+                 f"(per-seed merged reference sets)", loc="left", fontsize=14)
     fig.tight_layout()
     fig.savefig(output_file, dpi=200, bbox_inches="tight")
     plt.close(fig)

@@ -264,6 +264,14 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 4. Figures and manuscript
 
+- [ ] **[local]** `figures/historic/ffmp_obj8/` regenerated 2026-10-16 under the current
+  baseline (search-era objective names via NYCOPT_OBJECTIVES; highlighted rows 1947,
+  2205, 2013): explore suite incl. timeseries, search figures, and the dynamics
+  figures (`dynamics/`, 1960s and 2002 droughts). All parallel-axis figures now share
+  `custom_parallel_coordinates`. HDF5 runs under
+  `outputs/historic/ffmp_obj8/timeseries/selected_policies/` (job 21393749). Open:
+  decide which periods/panels go to the SI and whether to add panels (Trenton, NJ
+  diversion, drought level) via the `PANELS` registry.
 - [ ] **[local]** Figure 9: keep one of the three `number=9` registry entries
   (`regret_exposure` recommended; the two `regret_surfaces*` variants degenerate at
   the adopted τ) and delete the other two from `src/figures/registry.py`.

@@ -23,19 +23,20 @@ Tables (same directory):
     selected_dv_distances.csv  pairwise bound-normalized DV distance between the
                                highlighted policies
 
-Figures 05/06 need a cached simulation from
-``workflow/supplemental/sim_selected_policies.sh`` (``--simulate-timeseries``);
-baseline and candidates are simulated together in one model mode.
+Figures 05/06 read the full-model HDF5 runs written by
+``workflow/supplemental/sim_selected_policies.sh`` (``src.policy_simulation``)
+under ``outputs/{scenario}/{slug}/timeseries/selected_policies/``; the baseline
+and the highlighted representatives are simulated by that job in one model mode.
 
 Usage (from repo root, venv active):
-    python3 -m scripts.main.explore_results                       # cheap figures
-    python3 -m scripts.main.explore_results --skip-timeseries
-    sbatch workflow/supplemental/sim_selected_policies.sh         # + timeseries
+    python3 -m scripts.main.explore_results --slug <slug>     # selection, cheap figures
+    sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env> \
+        workflow/supplemental/sim_selected_policies.sh --slug <slug>   # HDF5 runs
+    python3 -m scripts.main.explore_results --slug <slug>     # adds figures 05/06
 """
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 from pathlib import Path
@@ -69,8 +70,7 @@ COMPROMISE_RULES = [
     ("Best worst-case", "maximin", "maximin", {}),
 ]
 
-#: Timeseries panels only need these results keys/columns; the cache stores
-#: exactly them so a re-render never needs another simulation.
+#: Timeseries panels only need these results keys/columns of the HDF5 runs.
 _CACHE_SPEC = {
     "res_storage": None,          # filled with config.NYC_RESERVOIRS
     "major_flow": ["delMontague", "delTrenton"],
@@ -78,9 +78,11 @@ _CACHE_SPEC = {
     "ibt_diversions": ["delivery_nyc"],
 }
 
-#: Drought of record on the historic trace — the window where the policies
-#: actually differ, so the full-record figure gets a companion zoom.
-DROUGHT_WINDOW = ("1961-01-01", "1970-01-01")
+#: Drought of record on the historic trace: the window where the policies
+#: differ most, so the full-record figure gets a companion zoom (shared with
+#: the policy-dynamics figures).
+from src.plotting.policy_dynamics import DROUGHT_PERIODS
+DROUGHT_WINDOW = DROUGHT_PERIODS["drought_1960s"]
 
 
 def _slugify(label: str) -> str:
@@ -188,19 +190,24 @@ def _build_selections(natural, directions, obj_names, dom_mask,
     return all_sel, highlighted
 
 
-def _write_selection_csv(path: Path, selections, natural, obj_names, baseline,
-                         directions) -> pd.DataFrame:
+def _write_selection_csv(path: Path, selections, highlighted, natural,
+                         obj_names, baseline, directions) -> pd.DataFrame:
     """Write one row per selection: index, rule, and natural objective vector.
 
-    The baseline-comparison columns are omitted when ``baseline`` is None
-    (no comparable baseline vector for ensemble-evaluated fronts).
+    ``highlighted`` flags the plotted (and simulated) subset so downstream
+    consumers (``src.policy_simulation.read_selection_labels``) can recover it
+    without re-running the selection. The baseline-comparison columns are
+    omitted when ``baseline`` is None (no comparable baseline vector for
+    ensemble-evaluated fronts).
     """
+    highlighted_rules = {sel.rule for sel in highlighted}
     if baseline is not None:
         beaten = n_objectives_beaten(natural, baseline, directions)
         dom = dominance_mask(natural, baseline, directions)
     rows = []
     for sel in selections:
-        row = {"row_index": sel.index, "rule": sel.rule, "label": sel.label}
+        row = {"row_index": sel.index, "rule": sel.rule, "label": sel.label,
+               "highlighted": sel.rule in highlighted_rules}
         if baseline is not None:
             row["dominates_baseline"] = bool(dom[sel.index])
             row["n_objectives_beaten"] = int(beaten[sel.index])
@@ -228,12 +235,8 @@ def _write_dv_distances(path: Path, dv, selections, formulation: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Timeseries cache (avoids re-simulating just to re-render)
+# Timeseries traces (full-model HDF5 runs written by src.policy_simulation)
 # --------------------------------------------------------------------------- #
-def _cache_dir(scenario: str, slug: str) -> Path:
-    return Path("outputs") / scenario / slug / "timeseries"
-
-
 def _reduce_results(data: dict) -> dict:
     """Keep only the columns the timeseries figure reads."""
     spec = dict(_CACHE_SPEC)
@@ -241,78 +244,48 @@ def _reduce_results(data: dict) -> dict:
     return {key: data[key][cols].copy() for key, cols in spec.items()}
 
 
-def _trace_key(index) -> str:
-    """Cache subdirectory for one trace.
+def _load_traces(run_dir: Path, selections, baseline_label: str) -> tuple:
+    """Load the baseline and highlighted traces from a policy-set run directory.
 
-    Keyed on the reference-set ROW INDEX (``"baseline"`` for the FFMP policy),
-    never the display label: the row index is the solution's identity, so
-    relabelling a selection must not silently orphan a simulated trace.
+    Policies are keyed by reference-set row (``row_{index}``; ``baseline`` for
+    the FFMP policy), so relabelling a selection never orphans a trace.
+
+    Returns:
+        ``(results, model_mode)`` with ``results`` ordered baseline first, or
+        ``({}, None)`` when the directory or any trace is missing.
     """
-    return "baseline" if index is None else f"row_{int(index)}"
+    from src.policy_simulation import (BASELINE_NAME, MANIFEST_NAME, PolicySet,
+                                       load_policy_runs)
 
-
-def _save_timeseries(cache: Path, index, data: dict, model_mode: str) -> None:
-    out = cache / _trace_key(index)
-    out.mkdir(parents=True, exist_ok=True)
-    for key, df in _reduce_results(data).items():
-        df.to_parquet(out / f"{key}.parquet")
-    (out / "model_mode.txt").write_text(f"{model_mode}\n")
-
-
-def _load_timeseries(cache: Path, traces: list) -> tuple:
-    """Load cached traces; returns ``(results, model_mode)`` or ``({}, None)``.
-
-    Args:
-        cache: Trace cache directory.
-        traces: Sequence of ``(label, index)`` where ``index`` is the
-            reference-set row (``None`` for the baseline).
-    """
-    results, modes = {}, set()
-    for label, index in traces:
-        d = cache / _trace_key(index)
-        if not (d / "res_storage.parquet").exists():
-            return {}, None
-        results[label] = {key: pd.read_parquet(d / f"{key}.parquet")
-                          for key in _CACHE_SPEC}
-        mode_file = d / "model_mode.txt"
-        modes.add(mode_file.read_text().strip() if mode_file.exists() else "unknown")
+    wanted = [(baseline_label, BASELINE_NAME)]
+    wanted += [(f"{s.label} (row {s.index})", PolicySet.row_name(s.index))
+               for s in selections]
+    if not (run_dir / MANIFEST_NAME).exists():
+        return {}, None
+    manifest, runs = load_policy_runs(run_dir, results_sets=list(_CACHE_SPEC),
+                                      policies=[name for _l, name in wanted])
+    missing = [name for _l, name in wanted if name not in runs]
+    if missing:
+        print(f"[timeseries] runs missing under {run_dir}: {missing}")
+        return {}, None
+    modes = set(manifest["model_mode"])
     if len(modes) > 1:
-        raise ValueError(f"cached traces mix model modes {sorted(modes)} — "
-                         f"re-run --simulate-timeseries so every trace shares one")
-    return results, modes.pop() if modes else None
+        raise ValueError(f"traces under {run_dir} mix model modes "
+                         f"{sorted(modes)}; re-run the policy-set job so every "
+                         f"trace shares one")
+    results = {label: _reduce_results(runs[name]) for label, name in wanted}
+    return results, modes.pop()
 
 
-def _simulate(dv, selections, formulation: str, use_trimmed: bool,
-              baseline_label: str) -> dict:
-    """Simulate the baseline and every highlighted policy in ONE process.
-
-    One process, one model mode, one set of cached model dicts — which is the
-    only way the baseline trace and the candidate traces are comparable.
-    """
-    import time
-
-    from src.formulations import get_baseline_values
-    from src.simulation import dvs_to_config, run_simulation_inmemory
-
-    jobs = [(baseline_label, None, get_baseline_values(formulation))]
-    jobs += [(f"{s.label} (row {s.index})", s.index, dv[s.index])
-             for s in selections]
-    mode = "trimmed" if use_trimmed else "full"
-    results = {}
-    for label, index, vector in jobs:
-        t0 = time.perf_counter()
-        results[label] = (index, run_simulation_inmemory(
-            dvs_to_config(np.asarray(vector, dtype=float), formulation),
-            use_trimmed=use_trimmed,
-        ))
-        print(f"[sim] {label}: {time.perf_counter() - t0:.1f}s ({mode} model)",
-              flush=True)
-    return results
+#: Figure names selected by ``--figures``; None renders the whole suite.
+_FIGURE_FILTER: set | None = None
 
 
 def _figure(name: str, fn, out_dir: Path) -> None:
     """Render one figure, reporting rather than aborting the suite on failure."""
     import matplotlib.pyplot as plt
+    if _FIGURE_FILTER is not None and name not in _FIGURE_FILTER:
+        return
     try:
         fn(out_dir / name)
         print(f"[figure] {out_dir / name}.png")
@@ -344,17 +317,19 @@ def main() -> int:
                          "scenarios that is the search-ensemble-scored vector "
                          "(step 05 --search-ensemble), never the historic-"
                          "record one.")
+    ap.add_argument("--figures", nargs="*", default=None,
+                    help="Render only these figure names (e.g. "
+                         "explore_01_baseline_dominance); default: all")
     ap.add_argument("--skip-timeseries", action="store_true",
                     help="Never render the simulation-dependent timeseries figures")
-    ap.add_argument("--simulate-timeseries", action="store_true",
-                    help="Simulate baseline + representatives and cache the traces "
-                         "(batch job only — see workflow/supplemental/)")
-    ap.add_argument("--full-model", action="store_true",
-                    help="Simulate with the FULL model instead of config.USE_TRIMMED_MODEL")
-    ap.add_argument("--force-local-sim", action="store_true",
-                    help="Allow --simulate-timeseries outside SLURM (login nodes "
-                         "must not run simulations; for laptops/interactive nodes)")
+    ap.add_argument("--timeseries-dir", default=None,
+                    help="Policy-set run directory holding the HDF5 traces "
+                         "(default outputs/{scenario}/{slug}/timeseries/"
+                         "selected_policies, written by "
+                         "workflow/supplemental/sim_selected_policies.sh)")
     args = ap.parse_args()
+    global _FIGURE_FILTER
+    _FIGURE_FILTER = set(args.figures) if args.figures else None
 
     from src.solution_selection import load_natural_front
 
@@ -387,8 +362,8 @@ def main() -> int:
         print(f"[selection] {s.rule:26s} -> row {s.index}")
     print()
 
-    _write_selection_csv(out_dir / "selected_solutions.csv", all_sel, natural,
-                         obj_names, baseline, directions)
+    _write_selection_csv(out_dir / "selected_solutions.csv", all_sel,
+                         highlighted, natural, obj_names, baseline, directions)
     _write_dv_distances(out_dir / "selected_dv_distances.csv", dv, highlighted,
                         args.formulation)
 
@@ -451,34 +426,16 @@ def main() -> int:
         return 0
 
     baseline_label = "FFMP baseline"
-    cache = _cache_dir(args.scenario, args.slug)
-    traces = ([(baseline_label, None)]
-              + [(f"{s.label} (row {s.index})", s.index) for s in highlighted])
-
-    if args.simulate_timeseries:
-        if not os.environ.get("SLURM_JOB_ID") and not args.force_local_sim:
-            print("\nERROR: --simulate-timeseries runs Pywr-DRB simulations, which "
-                  "must not run on a login node. Submit instead:\n"
-                  "  sbatch workflow/supplemental/sim_selected_policies.sh\n"
-                  "(or pass --force-local-sim if this really is a compute node).",
-                  file=sys.stderr)
-            return 2
-        use_trimmed = False if args.full_model else config.USE_TRIMMED_MODEL
-        results = _simulate(dv, highlighted, args.formulation, use_trimmed,
-                            baseline_label)
-        cache.mkdir(parents=True, exist_ok=True)
-        mode = "trimmed" if use_trimmed else "full"
-        for label, (index, data) in results.items():
-            _save_timeseries(cache, index, data, mode)
-        results = {k: _reduce_results(v) for k, (_i, v) in results.items()}
-        print(f"[timeseries] cached traces under {cache}")
-    else:
-        results, mode = _load_timeseries(cache, traces)
-        if not results:
-            print(f"\n[timeseries] no cached traces under {cache} for the current "
-                  f"selection — skipped.\n  Produce them with: "
-                  f"sbatch workflow/supplemental/sim_selected_policies.sh")
-            return 0
+    from src.policy_simulation import default_run_dir
+    run_dir = (Path(args.timeseries_dir) if args.timeseries_dir
+               else default_run_dir(args.scenario, args.slug))
+    results, mode = _load_traces(run_dir, highlighted, baseline_label)
+    if not results:
+        print(f"\n[timeseries] no complete trace set under {run_dir} for the "
+              f"current selection; skipped.\n  Produce it with: "
+              f"sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env> "
+              f"workflow/supplemental/sim_selected_policies.sh --slug {args.slug}")
+        return 0
 
     from src.plotting.historic_timeseries import plot_historic_timeseries
     _figure("explore_05_historic_timeseries",

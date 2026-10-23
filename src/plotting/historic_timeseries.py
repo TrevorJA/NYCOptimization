@@ -78,7 +78,7 @@ def _shade_spinup(ax, index, label: bool = False) -> None:
                 fontsize=7.5, color="0.35", clip_on=True)
 
 
-def _nyc_delivery_series(data: dict) -> tuple:
+def nyc_delivery_series(data: dict) -> tuple:
     """NYC daily delivery and its Decree entitlement, full (unwindowed) series.
 
     The running-average allowance behind the entitlement is path-dependent, so
@@ -158,7 +158,7 @@ def _panel_diversion(ax, results: dict, colors: dict, resample: str) -> None:
     """NYC diversion against the running-average Decree entitlement."""
     first = True
     for label, data in results.items():
-        delivery, entitlement = _nyc_delivery_series(data)
+        delivery, entitlement = nyc_delivery_series(data)
         d = delivery.resample(resample).mean()
         ax.plot(d.index, d.values, color=colors[label], lw=0.8, alpha=0.85,
                 label=label)
@@ -174,7 +174,7 @@ def _panel_diversion(ax, results: dict, colors: dict, resample: str) -> None:
 def _panel_shortage(ax, results: dict, colors: dict, resample: str) -> None:
     """NYC diversion shortfall below the Decree entitlement."""
     for label, data in results.items():
-        delivery, entitlement = _nyc_delivery_series(data)
+        delivery, entitlement = nyc_delivery_series(data)
         short = (entitlement - delivery).clip(lower=0).resample(resample).mean()
         ax.plot(short.index, short.values, color=colors[label], lw=0.8,
                 alpha=0.85, label=label)

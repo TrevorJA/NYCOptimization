@@ -1,32 +1,31 @@
 #!/bin/bash
-# Supplemental: simulate the selected policies (scripts/main/explore_results.py
-# picks them) plus the FFMP baseline on the historic trace in one job and one
-# model mode, and cache the traces under outputs/{scenario}/{slug}/timeseries/
-# so explore_results can re-render the timeseries figures on a login node.
+# Full-model HDF5 simulations of the policies highlighted by explore_results
+# (figures/{scenario}/{slug}/selected_solutions.csv) plus the incumbent FFMP
+# policy, on the historic trace. Driver: scripts/supplemental/
+# simulate_selected_policies.py (src.policy_simulation). Outputs under
+# outputs/{scenario}/{slug}/timeseries/selected_policies/ (symlink that
+# directory into projects space first; runs are ~140 MB each). Re-run
+# explore_results afterwards to render figures 05/06 from these traces.
 #
-# Env inputs: NYCOPT_ENV_FILE (optional); extra args pass through to
-# explore_results (e.g. --slug, --n-diverse).
-#
-# Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-#          workflow/supplemental/sim_selected_policies.sh
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \
+#       workflow/supplemental/sim_selected_policies.sh --slug ffmp_obj8 [--rows ...] [--all-rules]
 #
 #SBATCH --job-name=sim_selected
 #SBATCH --account=ees260021
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --time=01:00:00
+#SBATCH --cpus-per-task=2
+#SBATCH --time=00:30:00
 #SBATCH --output=logs/sim_selected_%j.out
 #SBATCH --error=logs/sim_selected_%j.err
-set -euo pipefail
 
+set -euo pipefail
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
 nycopt_source_env_file optional
 nycopt_pin_threads
 
-python3 -m scripts.main.explore_results --simulate-timeseries "$@"
-
+echo "=== Started: $(date) on $(hostname) ==="
+python3 scripts/supplemental/simulate_selected_policies.py "$@"
 echo "=== Completed: $(date) ==="

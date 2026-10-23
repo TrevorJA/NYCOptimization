@@ -14,7 +14,6 @@ not by robustness; robustness enters the sequence in later figures.
 from __future__ import annotations
 
 import os
-import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -22,21 +21,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import cm, colormaps
 from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle
 
 from src.plotting.layout import shared_legend
-from src.plotting.parallel_coordinates import custom_parallel_coordinates
+from src.plotting.parallel_coordinates import (custom_parallel_coordinates,
+                                               wrap_axis_labels)
 from src.plotting.robustness_comparison import (
     _incumbent_search_vector,
     _natural_front,
 )
 from src.plotting.satisficing_diagnostics import _designs
-from src.plotting.style import (
-    INCUMBENT_COLOR,
-    label_for,
-    save_figure,
-    short_label_for,
-)
+from src.plotting.style import INCUMBENT_COLOR, label_for, save_figure
 
 #: The objective whose value colors (and z-orders) every polyline. Edit here
 #: or set ``NYCOPT_PARALLEL_COLOR_OBJ`` to recolor without a code change.
@@ -63,15 +57,6 @@ DESIGN_TITLES = {
 #: panel's own search ensemble, so it is scenario-matched to that panel.
 INCUMBENT_LEGEND = "Current FFMP policy evaluated in each corresponding scenario"
 
-#: Character width the axis labels wrap to (eight axes across the panel).
-_AXIS_LABEL_WRAP = 11
-
-
-def _axis_label(name: str) -> str:
-    """Wrapped abbreviation; the preference arrow already gives direction."""
-    return textwrap.fill(short_label_for(name), _AXIS_LABEL_WRAP)
-
-
 def fig_pareto_parallel_axes(results: dict, out_stub: Path,
                              table_dir: Path) -> dict:
     """Each design's Pareto set on parallel axes, colored by one objective.
@@ -90,7 +75,7 @@ def fig_pareto_parallel_axes(results: dict, out_stub: Path,
                        f"search objective; expected one of {obj_names}")
     minmaxs = ["max" if first.directions[n] == "maximize" else "min"
                for n in obj_names]
-    labels = [_axis_label(n) for n in obj_names]
+    labels = wrap_axis_labels(obj_names)
     # Best values of the color objective draw on top either way.
     zorder_direction = ("ascending"
                         if first.directions[COLOR_BY_OBJECTIVE] == "maximize"
@@ -124,6 +109,9 @@ def fig_pareto_parallel_axes(results: dict, out_stub: Path,
             fontsize=FONTSIZE,
             baseline=baselines[d], baseline_label=INCUMBENT_LEGEND,
             ax=ax, axis_ranges=axis_ranges,
+            # Frame flush with the normalized axis extent; the end-value
+            # annotations sit just outside it.
+            frame=True,
             # The shared colorbar is drawn at FIGURE level below: an
             # ax-attached colorbar steals height from the last panel and
             # overprints its axis labels.
@@ -134,11 +122,6 @@ def fig_pareto_parallel_axes(results: dict, out_stub: Path,
                      f"{DESIGN_TITLES.get(d, d)} "
                      f"(n = {n} Pareto-approximate policies)",
                      loc="left", fontsize=FONTSIZE)
-        # Frame flush with the normalized axis extent (first axis to last,
-        # 0 to 1); the end-value annotations sit just outside it.
-        ax.add_patch(Rectangle((0, 0), len(obj_names) - 1, 1, fill=False,
-                               edgecolor="black", lw=1.2, zorder=60,
-                               clip_on=False))
         for sid, vec in zip(results[d].raw.solution_ids,
                             frames[d].to_numpy()):
             rows.append({"design": d, "solution_id": int(sid),

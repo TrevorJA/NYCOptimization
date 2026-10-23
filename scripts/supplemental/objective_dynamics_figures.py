@@ -51,12 +51,9 @@ from src.formulations import (  # noqa: E402
 from src.objectives import build_objective_set  # noqa: E402
 from src.plotting.policy_rules import plot_policy_rules  # noqa: E402
 from src.plotting.style import apply_style  # noqa: E402
-from src.simulation import (  # noqa: E402
-    compute_constraint_violations,
-    dvs_to_config,
-    run_simulation_to_disk,
-)
+from src.simulation import compute_constraint_violations  # noqa: E402
 from src.load.results import load_simulation_results  # noqa: E402
+from src.policy_simulation import simulate_or_load  # noqa: E402
 
 import objective_dynamics as od  # noqa: E402  (sibling module)
 
@@ -113,23 +110,11 @@ def _baseline_is_current(hdf5: Path) -> bool:
 
 
 def _get_or_simulate(dv: np.ndarray, cache_path: Path, tag: str) -> dict:
-    """Load a cached full-model simulation, or run + cache one, and return data.
-
-    Args:
-        dv: DV vector to simulate (ignored if ``cache_path`` already exists).
-        cache_path: HDF5 cache location.
-        tag: Short label for progress messages.
-
-    Returns:
-        pywrdrb results dict (results-set name -> daily DataFrame).
-    """
-    if cache_path.exists():
-        print(f"[{tag}] reusing cached simulation: {cache_path.name}")
-        return load_simulation_results(cache_path, results_sets=config.RESULTS_SETS)
-    print(f"[{tag}] simulating full model (historical, {config.START_DATE}"
-          f" -> {config.END_DATE}) -> {cache_path.name} ...")
-    cfg = dvs_to_config(dv, formulation_name=FORMULATION)
-    data = run_simulation_to_disk(cfg, cache_path, use_trimmed=False)
+    """Load a cached full-model simulation, or run and cache one (shared path
+    in ``src.policy_simulation``)."""
+    data, _simulated = simulate_or_load(
+        dv, cache_path, FORMULATION, use_trimmed=False,
+        log=lambda msg: print(f"[{tag}] {msg}"))
     return data
 
 

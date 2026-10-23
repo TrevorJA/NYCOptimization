@@ -20,6 +20,7 @@ extended for this project's conventions:
 already hold natural-unit objective arrays.
 """
 
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,7 @@ from matplotlib.patches import Rectangle
 
 from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
+from src.plotting.style import short_label_for
 
 #: Style for rows screened out by brushing / ``highlight_mask``: faint grey
 #: underneath the surviving lines, matching the rest of the repo's figures.
@@ -43,6 +45,16 @@ BASELINE_COLOR = "firebrick"
 def minmaxs_from_directions(directions) -> list:
     """Map per-objective direction ints (+1 maximize, -1 minimize) to 'max'/'min'."""
     return ["max" if int(d) == 1 else "min" for d in np.asarray(directions)]
+
+
+#: Character width the axis labels wrap to (eight axes across a panel).
+AXIS_LABEL_WRAP = 11
+
+
+def wrap_axis_labels(names, width: int = AXIS_LABEL_WRAP) -> list:
+    """Wrapped abbreviations for parallel-axis labels (direction is carried
+    by the preference arrow, so no (max)/(min) suffix)."""
+    return [textwrap.fill(short_label_for(n), width) for n in names]
 
 
 def _format_value(v: float, scale_max: float = 1.0) -> str:
@@ -95,6 +107,9 @@ def custom_parallel_coordinates(
     fontsize: int = 9,
     figsize: tuple = (13, 5.5),
     single_color: str = "steelblue",
+    single_label: str = None,
+    overlays=None,
+    frame: bool = False,
     baseline=None,
     baseline_label: str = "FFMP baseline",
     highlight_mask=None,
@@ -149,6 +164,15 @@ def custom_parallel_coordinates(
         fontsize: Base font size (labels; annotations use ``fontsize - 2``).
         figsize: Figure size in inches (ignored when ``ax`` is given).
         single_color: Line colour when no coloring scheme is given.
+        single_label: Legend entry for the single-colour rows (none by default).
+        overlays: Optional sequence of named polylines drawn ON TOP of every
+            row, each a dict with ``values`` (raw ``(n_axes,)`` vector aligned
+            to ``columns_axes``), ``label`` and ``color``, plus optional
+            ``lw``, ``marker``, ``markersize`` and ``alpha``. They share the
+            axis normalization (and widen it) and get one legend entry each.
+            Use for selected representative policies.
+        frame: Draw a black frame flush with the normalized axis extent
+            (first axis to last, 0 to 1), as the manuscript figures do.
         baseline: Optional ``(n_axes,)`` raw reference vector aligned to
             ``columns_axes``, drawn as a bold marked polyline and included in the
             axis ranges.
@@ -202,7 +226,10 @@ def custom_parallel_coordinates(
 
     # --- normalization: [0, 1] per axis, ideal_direction preferred on every axis
     baseline = None if baseline is None else np.asarray(baseline, dtype=float).ravel()
-    all_rows = data if baseline is None else np.vstack([data, baseline])
+    overlays = [dict(ov, values=np.asarray(ov["values"], dtype=float).ravel())
+                for ov in (overlays or [])]
+    all_rows = np.vstack([data] + ([baseline] if baseline is not None else [])
+                         + [ov["values"] for ov in overlays])
     col_min = np.nanmin(all_rows, axis=0)
     col_max = np.nanmax(all_rows, axis=0)
     if axis_ranges is not None:
@@ -285,6 +312,20 @@ def custom_parallel_coordinates(
         ax.plot(x, b_norm, c=BASELINE_COLOR, lw=2.5, marker="o",
                 markersize=5, zorder=4 + zorder_num_classes + 2)
 
+    # --- named overlay polylines (selected policies), above everything else
+    top_z = 4 + zorder_num_classes + 3
+    for ov in overlays:
+        o_norm = (ov["values"] - col_min) / col_rng
+        o_norm = np.where(flip, 1.0 - o_norm, o_norm)
+        ax.plot(x, o_norm, c=ov["color"], lw=ov.get("lw", 2.0),
+                marker=ov.get("marker", "o"), markersize=ov.get("markersize", 4),
+                alpha=ov.get("alpha", 0.95), zorder=top_z)
+
+    if frame:
+        ax.add_patch(Rectangle((0, 0), n_axes - 1, 1, fill=False,
+                               edgecolor="black", lw=1.2, zorder=60,
+                               clip_on=False))
+
     # --- axis furniture: vertical axes, raw end values, labels
     for j in range(n_axes):
         ax.plot([j, j], [0, 1], c="0.25", lw=1.0, zorder=3)
@@ -319,18 +360,24 @@ def custom_parallel_coordinates(
     n_keep, n_drop = int(satisfice.sum()), int((~satisfice).sum())
     screened = highlight_mask is not None or brushing_dict is not None
     if color_by_categorical is not None:
-        handles += [Line2D([0], [0], color=c, lw=3, alpha=min(1.0, alpha_base + 0.2),
-                           label=str(lab))
+        handles += [Line2D([0], [0], color=c, lw=3, label=str(lab))
                     for lab, c in color_dict_categorical.items()]
     elif screened and color_by_continuous is None:
         handles.append(Line2D([0], [0], color=single_color, lw=3,
                               label=f"{highlight_label} (n={n_keep})"))
+    elif single_label is not None and color_by_continuous is None:
+        handles.append(Line2D([0], [0], color=single_color, lw=3,
+                              label=single_label))
     if screened:
         handles.append(Line2D([0], [0], color=EXCLUDED_COLOR, lw=3,
                               label=f"{exclude_label} (n={n_drop})"))
     if baseline is not None:
         handles.append(Line2D([0], [0], color=BASELINE_COLOR, lw=2.5, marker="o",
                               markersize=5, label=baseline_label))
+    handles += [Line2D([0], [0], color=ov["color"], lw=ov.get("lw", 2.0),
+                       marker=ov.get("marker", "o"),
+                       markersize=ov.get("markersize", 4), label=ov["label"])
+                for ov in overlays]
     if handles and add_legend:
         kwargs = {"loc": legend_loc, "fontsize": fontsize - 1, "frameon": False,
                   "ncol": legend_ncol or min(4, len(handles))}

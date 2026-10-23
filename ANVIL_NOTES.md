@@ -64,3 +64,15 @@ node-scaling factor, 605k model basis, against ~600k remaining.
 - 2026-10-01: production selector diagnostic, array 20996434 (d0 43 min, d1
   35 min, 5 cores each, ~6.5 SU). Outputs under
   `outputs/supplemental/hazard_selector_diagnostics/statpool_10yr_n1000000_d{0,1}/`.
+- 2026-10-16: full-model historic HDF5 runs of the HIST `ffmp_obj8` representatives
+  (`sim_selected_policies.sh`, shared, 1 task, 2 cpus). Job 21392961 (all 13 table
+  rows + incumbent) cancelled after 2 min: home quota at 95% and ~140 MB per run;
+  `outputs/historic/ffmp_obj8/timeseries/selected_policies/` is now a symlink into
+  `/anvil/projects/x-ees260021/NYCOptimization/historic/...`. Resubmitted as job 21393031
+  with the three highlighted policies (rows 1393, 1682, 115) + incumbent. Measured:
+  one full-model historic run to HDF5 = 40 s. Balance before 591,766.
+- 2026-10-16: job 21393031 completed in 2 min 51 s (4 runs, ~40 s each, 2 cores;
+  ~0.1 SU). Outputs 4 x 140 MB HDF5 under projects space.
+- 2026-10-16: selection regenerated under the current baseline (rows 1947, 2205,
+  2013); job 21393749 simulated the three new rows (2 min 35 s, ~0.1 SU), baseline
+  reused; the superseded row_1393/1682/115 runs were deleted.
