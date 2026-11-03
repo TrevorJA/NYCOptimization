@@ -243,6 +243,25 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Batched-search memory smoke: `bash workflow/submit_search_memory_smoke.sh`.
   Go if peak node memory ≤ ~217,000 MB and warm per-evaluation time ≤ 540 s + 20 %;
   otherwise batch 100 (memory miss) or re-price `campaign_design.md` §6 (time miss).
+- [ ] **[HPC]** Before the HIST production search (it runs ahead of the matched
+  designs): verify the step-01 presim covers the current historic window, or re-run
+  it. `outputs/presim/presimulated_releases_mgd_metadata.json` must read `start_date`
+  1945-12-01 and `end_date` 2023-11-30; the window moved there in `a1e88bd`
+  (2026-08-18), after the August HIST run, and no presim rerun is logged in
+  `ANVIL_NOTES.md`. If stale: `sbatch workflow/01_generate_presim.sh` (shared, 1 core,
+  seconds, < 1 SU). A stale file fails at model build (pywr `dataframe` parameter
+  refuses an index that does not cover the run), so it cannot pass silently, but it
+  would waste the 12-node queue wait.
+- [ ] **[HPC]** Before the HIST production search: archive the pre-2026-11-03 HIST
+  outputs. Move `outputs/historic/ffmp_obj8/` (August job 19770937_1: `sets/`,
+  `runtime/`, `metrics/`, `runtime_coordinator/`, and the `timeseries/selected_policies`
+  symlink into projects space) to `outputs/_archive_pre_nov3/historic/ffmp_obj8/`;
+  `figures/historic/ffmp_obj8/` regenerates and may be archived alongside. Do NOT
+  relaunch in place with `NYCOPT_OVERWRITE=1`: Borg opens the island runtime files with
+  `fopen(..., "w")` (`lib/borg/borgmm.c`) and the new seed-1 files carry the same
+  names, so an in-place launch truncates the August archives at startup. After the
+  move the step-06 duplicate guard no longer trips for seed 1 (seed 2 never ran). The
+  archived `.set` is the Section 3 pre-replacement record.
 - [ ] **[HPC]** Seed 1 per design (750k NFE; submit lines in the `*_production.env`
   headers). After ~12 h read SU/NFE and the seed's coordinator-archive HV at
   500k total NFE (step 07 on the partial runtime files); hold seed 2 if SU/NFE
@@ -267,8 +286,9 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 3. Diagnostics on the step-08/09 cube
 
-- [ ] **[HPC + local]** The search-time `.set` data stays in place untouched and is
-  deleted only once the campaign has generated its replacement (Section 2, after
+- [ ] **[HPC + local]** The search-time `.set` data stays untouched (the HIST copy is
+  moved, not deleted, to `outputs/_archive_pre_nov3/` by the Section 2 archive item) and
+  is deleted only once the campaign has generated its replacement (Section 2, after
   `extract_runtime_archive.py --merge --install`). Its objective columns were computed
   on the metric window of `dc7e70b` (`START_DATE` 1945-10-01, `END_DATE` 2022-09-30),
   before `a1e88bd` aligned the metrics on June 1, and sit 1 to 4 ε from what the current
