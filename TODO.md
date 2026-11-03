@@ -231,15 +231,6 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Build QC on each restaged ensemble: `validate_staged_seasonality.py`
   and the per-axis tail-share record per hazfill draw; then step 05 baselines for
   both matched designs scenario-matched to d0 (`--search-ensemble`).
-- [ ] **[HPC]** ε re-verification at N = 300: `epsilon_calibration.sh` per design.
-  Go if every adopted entry lies above its N = 300 floor; otherwise raise it,
-  re-pin τ in every env file, and record it in `epsilon_calibration_experiment.md`.
-- [ ] **[HPC]** Re-assess the `trenton_flow_deficit_p99_pct` ε before the next full-scale
-  search. It carries the deficit-family value (10.0) by default, but its policy spread
-  is far narrower than the Montague deficit's (P99 of 2–11 % of target across feasible
-  policies on local runs), so read its N = 300 floor and span from the same
-  `epsilon_calibration.sh` pass and give it its own value if the shared one leaves
-  under two ε boxes.
 - [ ] **[HPC]** Batched-search memory smoke: `bash workflow/submit_search_memory_smoke.sh`.
   Go if peak node memory ≤ ~217,000 MB and warm per-evaluation time ≤ 540 s + 20 %;
   otherwise batch 100 (memory miss) or re-price `campaign_design.md` §6 (time miss).
@@ -268,8 +259,9 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   exceeds the model basis or HV still rises > 5 % per 100k total NFE.
 - [ ] **[HPC]** Per design: `extract_runtime_archive.py --seed 1` (writes
   `seed_01_ffmp_obj8_nfe125000.set`), then the ε cardinality re-filter
-  (`epsilon_ensemble_refilter.py`); apply the §5 cap rule if the merged union
-  exceeds ~2,000.
+  (`epsilon_ensemble_refilter.py`, selection rule: finest grouped vector whose
+  largest-design union x1.35 is <= 1,000, `--max-size`); apply the §5 cap rule
+  if the merged union exceeds ~2,000.
 - [ ] **[HPC]** Seed 2 per design (500k NFE), then
   `extract_runtime_archive.py --merge --install` (installs `ffmp_obj8_merged.set`,
   the step-08/09 reference) and step 07 (coordinator-archive diagnostics; writes
@@ -296,7 +288,8 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   Until the replacement exists: never compare stored `.set` objective columns with
   freshly computed values; the adopted ε vector and the re-filtered cardinalities
   (335/991/784 on disk, 1,040/833/335 in `campaign_design.md`) carry the old window
-  and are superseded by the N = 300 ε re-verification and re-filter of Section 2.
+  and are superseded by the post-search re-filter of Section 2 (the search ε vector
+  is fixed as adopted; decision 2026-11-03, `epsilon_calibration_experiment.md`).
   The E_test re-evaluation and the transfer evaluation simulate and are unaffected.
 
 - [ ] **[local]** Regret tolerance: re-run pass A on the regenerated incumbent cube

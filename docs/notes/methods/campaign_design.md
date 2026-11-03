@@ -42,7 +42,7 @@ Twelve nodes are required because a 750k-NFE search at N = 300 is projected at 9
 
 ## 4. Pre-search steps
 
-Before the searches, E_test is regenerated over the extended forcing box (§5: sharded generation, the presim pass, the sub-window hazard image, the prefix subset and the current-policy cubes, about 0.35k SU inside the staging allowance), both matched designs are staged at N = 300 for draws d0 and d1 (workflow steps 02–04 on the P = 10⁶ pools), the step-05 current FFMP policy baselines are simulated on each d0 ensemble, the ε vector [0.05, 10.0, 0.05, 10.0, 10.0, 0.3, 5.0, 0.05] is re-verified against the N = 300 floors (`workflow/supplemental/epsilon_calibration.sh`; τ is re-pinned only if ε changes), and the batched-search memory smoke (`workflow/submit_search_memory_smoke.sh`) confirms node RSS and evaluation time on one node.
+Before the searches, E_test is regenerated over the extended forcing box (§5: sharded generation, the presim pass, the sub-window hazard image, the prefix subset and the current-policy cubes, about 0.35k SU inside the staging allowance), both matched designs are staged at N = 300 for draws d0 and d1 (workflow steps 02–04 on the P = 10⁶ pools), the step-05 current FFMP policy baselines are simulated on each d0 ensemble, and the batched-search memory smoke (`workflow/submit_search_memory_smoke.sh`) confirms node RSS and evaluation time on one node. The search ε vector [0.05, 10.0, 0.05, 10.0, 10.0, 0.3, 5.0, 0.05] is fixed as adopted (decision 2026-11-03): the N = 100 floors are conservative for N = 300, and the reported cardinality is set after the search by the grouped re-filter (`epsilon_calibration_experiment.md`).
 
 ## 5. E_test re-evaluation
 

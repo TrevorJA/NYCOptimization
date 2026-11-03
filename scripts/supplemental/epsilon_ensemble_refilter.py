@@ -17,7 +17,10 @@ Substrates per scenario, from outputs/{scenario}/{slug}/sets/:
 
 A static re-filter under-prices live-search cardinality (epsilon also steers
 Borg's selection and restarts), so the recommendation table carries
-inflation-adjusted sizes (INFLATE_MERGED / INFLATE_SEED).
+inflation-adjusted sizes (INFLATE_MERGED / INFLATE_SEED). The selection rule
+is the finest candidate whose largest-design size, inflated by the
+conservative INFLATE_SEED factor, stays at or below MAX_FRONT_SIZE
+(--max-size overrides it for one run).
 
 Usage (from repo root, venv; submit via
 workflow/supplemental/epsilon_ensemble_refilter.sh):
@@ -88,10 +91,22 @@ CANDIDATES: dict[str, tuple | None] = {
     "keepf_b":      (0.06, 7.5, 0.3, 5.0),
     "keepf_c":      (0.05, 7.5, 0.3, 5.0),
     "keepf_d":      (0.06, 10.0, 0.3, 5.0),
+    # Reliability ladder at the deficit-family value 10 (flood and storage
+    # fixed), and deficit coarsening at reliability 0.05 / 0.06.
+    "rel0.07_def10": (0.07, 10.0, 0.3, 5.0),
+    "rel0.08_def10": (0.08, 10.0, 0.3, 5.0),
+    "rel0.10_def10": (0.10, 10.0, 0.3, 5.0),
+    "rel0.05_def12.5": (0.05, 12.5, 0.3, 5.0),
+    "rel0.05_def15": (0.05, 15.0, 0.3, 5.0),
+    "rel0.06_def12.5": (0.06, 12.5, 0.3, 5.0),
+    "rel0.06_def15": (0.06, 15.0, 0.3, 5.0),
 }
 
-#: Re-eval sizing band (per design, cross-seed-adjusted retained count).
-TARGET_BAND = (1000, 1200)
+#: Cardinality cap on the final per-design Pareto-approximate set. A
+#: candidate qualifies when the LARGEST design's retained union, inflated by
+#: INFLATE_SEED (the conservative end of the measured live-search inflation),
+#: is at or below this value; the finest qualifying candidate is selected.
+MAX_FRONT_SIZE = 1000
 
 #: Live-search inflation factors (measured on a confirmatory search;
 #: epsilon_calibration_experiment.md): cross-seed epsilon-front, per-seed archives.
@@ -294,12 +309,13 @@ def validate_scenario(scenario: str, results: dict, archives: dict,
               f"step-07 merged.set {len(objs)} -> {'PASS' if ok else 'FAIL'}")
 
 
-def combined_table(all_results: dict, out_dir: Path) -> tuple[list, str | None]:
+def combined_table(all_results: dict, out_dir: Path,
+                   max_size: int = MAX_FRONT_SIZE) -> tuple[list, str | None]:
     """Cross-design recommendation table; returns (rows, finalist label).
 
-    The band test applies to the LARGEST design (the re-eval cost binder):
-    front sizes differ ~2.5x across designs, so requiring every design in
-    band is unsatisfiable — smaller designs simply re-evaluate cheaper.
+    The cap test applies to the LARGEST design (the re-eval cost binder):
+    front sizes differ ~2.5x across designs, so the largest design decides
+    and the smaller designs simply re-evaluate cheaper.
     """
     scenarios = list(all_results)
     rows = []
@@ -308,7 +324,7 @@ def combined_table(all_results: dict, out_dir: Path) -> tuple[list, str | None]:
         for g, val in zip(("eps_rel", "eps_def", "eps_flood", "eps_storage"),
                           cand if cand is not None else ("", "", "", "")):
             row[g] = val
-        adjusted = []
+        adjusted, adjusted_hi = [], []
         for sc in scenarios:
             r = all_results[sc][label]
             n = r["sizes"].get("union")
@@ -324,9 +340,11 @@ def combined_table(all_results: dict, out_dir: Path) -> tuple[list, str | None]:
             if n is None:
                 continue
             adj = int(round(n * INFLATE_MERGED))
+            adj_hi = int(round(n * INFLATE_SEED))
             adjusted.append(adj)
+            adjusted_hi.append(adj_hi)
             row[f"adj110_{sc}"] = adj
-            row[f"adj135_{sc}"] = int(round(n * INFLATE_SEED))
+            row[f"adj135_{sc}"] = adj_hi
             cov = r["coverage"]
             if cov is not None:
                 row[f"min_axis_boxes_{sc}"] = int(min(cov["boxes"]))
@@ -338,39 +356,41 @@ def combined_table(all_results: dict, out_dir: Path) -> tuple[list, str | None]:
                     b < min(MIN_AXIS_BOXES, ab)
                     for b, ab in zip(cov["boxes"], adopted_boxes))
         max_adj = max(adjusted) if adjusted else None
+        max_adj_hi = max(adjusted_hi) if adjusted_hi else None
         row["max_adj110"] = max_adj if max_adj is not None else ""
+        row["max_adj135"] = max_adj_hi if max_adj_hi is not None else ""
         # overcoarse_* columns are ADVISORY (any real coarsening drops some
-        # axis below the adopted resolution — the size band already excludes
-        # degenerate vectors); the coverage table is the judgment substrate.
-        in_band = (cand is not None and max_adj is not None
-                   and TARGET_BAND[0] <= max_adj <= TARGET_BAND[1])
+        # axis below the adopted resolution); the coverage table is the
+        # judgment substrate.
+        within_cap = (cand is not None and max_adj_hi is not None
+                      and max_adj_hi <= max_size)
         row["fineness"] = f"{fineness(cand):.3f}" if cand is not None else ""
-        row["in_band_max"] = in_band
+        row["within_cap"] = within_cap
         rows.append(row)
     legacy._write_csv(out_dir / "recommendation.csv", rows)
 
     eligible = [(float(r["fineness"]), r["candidate"])
-                for r in rows if r["in_band_max"]]
+                for r in rows if r["within_cap"]]
     finalist = min(eligible)[1] if eligible else None
     return rows, finalist
 
 
 def write_recommendation_md(rows: list, finalist: str | None, scenarios: list,
-                            out_path: Path):
+                            out_path: Path, max_size: int = MAX_FRONT_SIZE):
     cols = ["candidate", "eps_rel", "eps_def", "eps_flood", "eps_storage"]
-    cols += [f"{p}_{sc}" for sc in scenarios for p in ("size", "adj110")]
-    cols += ["max_adj110", "fineness", "in_band_max"]
+    cols += [f"{p}_{sc}" for sc in scenarios for p in ("size", "adj135")]
+    cols += ["max_adj135", "fineness", "within_cap"]
     lines = [
         "# Grouped-epsilon re-assessment on the production ensemble fronts",
         "",
-        f"Substrate: cross-seed raw unions (draw 0 / seed 1, 500k NFE) for "
-        f"{', '.join(scenarios)}. `adj110` = retained size x{INFLATE_MERGED} "
-        f"(measured cross-seed live-search inflation); the target band "
-        f"{TARGET_BAND[0]}-{TARGET_BAND[1]} applies to the LARGEST design "
-        "(the re-eval cost binder — front sizes differ ~2.5x across designs). "
+        f"Substrate: cross-seed raw unions for {', '.join(scenarios)}. "
+        f"`adj135` = retained size x{INFLATE_SEED} (the conservative end of "
+        f"the measured 10-35 % live-search inflation; `adj110` is in the "
+        f"CSV); the cap of {max_size} applies to the LARGEST design (the "
+        "re-eval cost binder; front sizes differ ~2.5x across designs). "
         f"`overcoarse` flags (ADVISORY, per design) mark candidates whose "
         f"occupied 1-D box count on some axis falls below "
-        f"min({MIN_AXIS_BOXES}, the adopted vector's count on that axis) — "
+        f"min({MIN_AXIS_BOXES}, the adopted vector's count on that axis); "
         "judge them against the per-axis coverage tables.",
         "",
         "| " + " | ".join(cols) + " |",
@@ -381,18 +401,21 @@ def write_recommendation_md(rows: list, finalist: str | None, scenarios: list,
     lines.append("")
     if finalist:
         lines.append(f"Selection rule (finest candidate whose largest-design "
-                     f"adjusted size is in band): **{finalist}**. Decision "
-                     "deferred — epsilon steers the live search, so "
-                     "adopted-vector archives will run ~10-35% larger than "
-                     "this static re-filter predicts.")
+                     f"size x{INFLATE_SEED} is at or below {max_size}): "
+                     f"**{finalist}**. Epsilon steers the live search, so "
+                     "adopted-vector archives run 10-35 % larger than this "
+                     "static re-filter predicts; the x1.35 column prices "
+                     "the upper end.")
     else:
-        lines.append("No candidate puts the largest design in the band — "
-                     "inspect `recommendation.csv` and extend the grid.")
+        lines.append(f"No candidate keeps the largest design at or below "
+                     f"{max_size} after x{INFLATE_SEED} inflation; inspect "
+                     "`recommendation.csv` and extend the grid.")
     out_path.write_text("\n".join(lines) + "\n")
     print(f"[table] {out_path}")
 
 
-def size_figure(all_results: dict, out_png: Path):
+def size_figure(all_results: dict, out_png: Path,
+                max_size: int = MAX_FRONT_SIZE):
     """Retained union size per candidate, one panel per design (dot plot)."""
     import matplotlib.pyplot as plt
     from src.plotting.style import apply_style
@@ -406,10 +429,8 @@ def size_figure(all_results: dict, out_png: Path):
     y = np.arange(len(labels))[::-1]
     for ax, sc in zip(axes, scenarios):
         sizes = [all_results[sc][lb]["sizes"].get("union") for lb in labels]
-        ax.axvspan(TARGET_BAND[0] / INFLATE_MERGED,
-                   TARGET_BAND[1] / INFLATE_MERGED,
-                   color="0.85", zorder=0,
-                   label=f"target band / {INFLATE_MERGED:g}")
+        ax.axvline(max_size / INFLATE_SEED, color="0.4", linestyle="--",
+                   zorder=0, label=f"cap {max_size} / {INFLATE_SEED:g}")
         ax.plot([s for s in sizes if s is not None],
                 [yy for yy, s in zip(y, sizes) if s is not None],
                 "o", color="steelblue", markersize=5)
@@ -435,6 +456,10 @@ def main():
     ap.add_argument("--figures-only", action="store_true",
                     help="Re-render figures only (sweeps are recomputed in "
                          "memory; tables are not rewritten).")
+    ap.add_argument("--max-size", type=int, default=MAX_FRONT_SIZE,
+                    help="Cardinality cap on the largest design's "
+                         f"x{INFLATE_SEED}-inflated front "
+                         f"(default {MAX_FRONT_SIZE}).")
     args = ap.parse_args()
 
     names = get_obj_names()
@@ -476,10 +501,13 @@ def main():
 
     combined_dir = root / f"combined_{args.slug}_grouped"
     combined_dir.mkdir(parents=True, exist_ok=True)
-    rows, finalist = combined_table(all_results, combined_dir)
+    rows, finalist = combined_table(all_results, combined_dir,
+                                    max_size=args.max_size)
     write_recommendation_md(rows, finalist, list(all_results),
-                            combined_dir / "recommendation.md")
-    size_figure(all_results, combined_dir / "size_vs_coarsening.png")
+                            combined_dir / "recommendation.md",
+                            max_size=args.max_size)
+    size_figure(all_results, combined_dir / "size_vs_coarsening.png",
+                max_size=args.max_size)
 
     # Full-vs-filtered parallel axes for the finalist, per scenario.
     highlight = finalist or "joint_x2"
@@ -497,7 +525,7 @@ def main():
             root / f"{scenario}_{args.slug}" /
             f"grouped_refilter_parallel_axes_{highlight}_2panel.png",
             label=highlight)
-    print(f"DONE -> {root} (finalist: {finalist or 'none in band'})")
+    print(f"DONE -> {root} (finalist: {finalist or 'none within cap'})")
 
 
 if __name__ == "__main__":

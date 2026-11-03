@@ -50,9 +50,18 @@ Scripts `scripts/supplemental/epsilon_calibration_{run,figures}.py`, launcher
   estimator would coarsen the reliability precisions well beyond what the
   ensemble designs need. It searches at the shared vector, and its archive
   resolves below its own noise on the reliability axes (disclosed).
-- **Re-verification.** Floors were measured on the N = 100 draw-0 ensembles and
-  are re-measured on the N = 300 campaign ensembles before search. The vector
-  stands provided every entry lies above its N = 300 floor.
+- **Re-verification (dropped 2026-11-03).** Floors were measured on the N = 100
+  draw-0 ensembles. A re-measurement on the N = 300 campaign ensembles was
+  planned and is not run: the binding floors are noise floors, the bootstrap SD
+  of the unit-operator estimator falls with the realization count, and the
+  adopted entries sit 2.5 to 5 times above their N = 100 floors, so the N = 100
+  floors bound the N = 300 floors from above. The Trenton deficit axis keeps the
+  deficit-family value; its narrow policy spread (one to two boxes at 10) is a
+  disclosed loss of resolution on that axis, not a calibration failure. The
+  search vector is therefore fixed; cardinality is handled after the search
+  (Stage 2), and Borg's archive behaviour is insensitive to ε changes of this
+  size (ε-progress and the archive-parent draw shift at the margin; the
+  per-evaluation cost does not).
 
 ### Stage 2, family coarsening by archive cardinality
 
@@ -74,6 +83,15 @@ span only a few flood ε-boxes, so flood-ε cardinality effects are box-boundary
 placement artifacts rather than resolution. Storage stays at 5.0 (a
 5 %-of-capacity distinction is significant). The diagnostic is repeated on the
 first archives searched at N = 300.
+
+Since 2026-11-03 the script's selection rule is a cap rather than a band: the
+finest candidate whose largest-design retained union, inflated by the
+conservative 1.35 factor, is at or below `MAX_FRONT_SIZE` = 1,000 (`--max-size`
+overrides it). The candidate grid also carries a reliability ladder at the
+deficit-family value 10 (0.07, 0.08, 0.10) and deficit 12.5 and 15 at
+reliability 0.05 and 0.06. On the August N = 100 archives the adopted vector
+prices at 1,338 on Monte Carlo under that rule and reliability 0.06 at 1,104,
+so neither qualifies; the rule is to be applied to the first N = 300 archives.
 
 **Disclosures.** Static re-filter counts are lower bounds on live archives,
 because the ε-archive steers selection and restarts during a run; the measured
