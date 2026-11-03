@@ -350,6 +350,7 @@ STAGED_ENSEMBLE_FILES: dict[str, str] = {
     "catchment_inflow_with_flood_nodes_mgd.hdf5": "04",
     "presimulated_releases_mgd.hdf5": "04",
     "predicted_inflows_mgd.hdf5": "04",
+    "diversion_nyc_extrapolated_mgd.hdf5": "04",
 }
 
 

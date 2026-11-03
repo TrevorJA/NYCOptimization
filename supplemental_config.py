@@ -1748,8 +1748,9 @@ def configure_tev_env() -> None:
     requires a staged search ensemble. It does NOT need to match the source
     design of a cell: every target is passed to ``evaluate_annual_units`` as an
     explicit ``ensemble_spec``, and the three campaign env files are identical
-    on every evaluation-relevant knob (objectives, demand source, LSTM flags,
-    MOEA config), so one process serves all three sources. ``setdefault``
+    on every evaluation-relevant knob (objectives, LSTM flags, MOEA config; the
+    demand model is fixed in ``config``), so one process serves all three
+    sources. ``setdefault``
     means an explicitly exported value still wins.
     """
     _apply_env(salinity="0", temperature="0")

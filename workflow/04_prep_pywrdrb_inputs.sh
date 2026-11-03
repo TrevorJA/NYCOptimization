@@ -5,6 +5,7 @@
 #   catchment_inflow_with_flood_nodes_mgd.hdf5   (FlowEnsemble, flood ops on)
 #   presimulated_releases_mgd.hdf5 (+ _metadata.json)   (trimmed-model releases)
 #   predicted_inflows_mgd.hdf5                   (Montague/Trenton forecasts)
+#   diversion_nyc_extrapolated_mgd.hdf5          (per-realization NYC demand)
 #
 # The ensemble is the active scenario design's search ensemble
 # (config.SEARCH_ENSEMBLE_SPEC); the base catchment_inflow_mgd.hdf5 must

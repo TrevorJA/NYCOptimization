@@ -5,63 +5,42 @@ The method and its justification live in `docs/notes/methods/` (campaign at
 scale: `campaign_design.md`). Delete items as they land. Venue: **[HPC]**
 cluster, **[local]** laptop.
 
-## 0. Coordinator-archive search diagnostics (2026-10-23)
+## 0. NYC demand model (2026-11-03)
 
-Reed (2026-10-23): convergence must be read from the MM Borg coordinator
-archive, one trace per seed, never one line per island. The controller writes
-no runtime file (`BORG_Controller_run`, lib/borg/borgmm.c) and the library
-source is not to be modified, so step 07 reconstructs the coordinator archive at
-every snapshot as the epsilon-box merge of the seed's island runtime files and
-scores that series with MOEAFramework's `MetricsEvaluator`. One epsilon-archive
-implementation (`src/sensitivity_common.py`, validated against Borg's archive)
-serves every merge; MOEAFramework's mergers are not used (v5.0
-`ResultFileMerger` ignores `--epsilon`; `ResultFileSeedMerger` kept boxes Borg's
-rule rejects when tried on 2026-10-23). Epsilon-progress is dropped (the
-controller has no improvement counter); the six MOEAFramework indicators of the
-coordinator series are the diagnostics. The ensemble-size supplement
-(`ensemble_size_figures.py`) is left as is.
+NYC demand is now the time-dynamic extrapolated diversion series everywhere
+(`config.nyc_demand_source`; per realization for ensembles, staged by step 04 as
+`diversion_nyc_extrapolated_mgd.hdf5`; pywrdrb's regenerated 1945-2026
+historic-flow CSV for the single trace). A constant 800 MGD NYC demand is never
+used and no env file selects a demand source (`tests/test_demand_source.py`).
+NJ stays at its constant 100 MGD allocation. Every calibrated quantity below was
+derived under the former constant 800 MGD demand and must be re-verified.
 
-- [x] `src/runtime_archive.py`: result-file parser and writer, island NFE-grid
-  check, series builder (`//NFE=` = island NFE x islands), epsilon-box
-  comparison, equal-NFE per-seed set resolver.
-- [x] `src/diagnostics.py`: per-seed coordinator series under
-  `outputs/{scenario}/{slug}/runtime_coordinator/`, merge of the final island
-  archives checked box by box against the seed's controller `.set` (Borg ground
-  truth) under the epsilons that search ran with, reference set renamed
-  `{slug}_diagnostics_reference.set` so step 07 never writes the campaign
-  `{slug}_merged.set`, one `.metrics` per seed.
-- [x] `src/mmborg.py`: the `.set` header now records `# Epsilons:` (the archive
-  is an epsilon archive under that vector only). Archives written before
-  2026-10-23 carry no header, so the check is skipped for them; the August go/no-go
-  runs also used the pre-2026-08-12 vector and a different fifth objective, so
-  their `.set` files are not comparable under today's configuration.
-- [x] Figures: one line per seed on total NFE with the reporting-budget marker
-  (search_02, search_03, SI search_convergence, run02); search_01 reads the
-  per-seed equal-NFE sets; per-island plotting and `seed_reliability.py`
-  removed.
-- [x] `extract_runtime_archive.py`, workflow step 07, README, workflow/README,
-  campaign_design.md, scenario_design_methods.md, manuscript 3.3, Text S7.
-- [x] Tests: pure tests on synthetic text plus a Java-gated integration test
-  that MetricsEvaluator scores the files the pipeline writes.
-- [x] **[HPC]** Validated 2026-10-23 on `outputs/monte_carlo/ffmp_obj8` (seed 1):
-  `extract_runtime_archive.py --seed 1` (16,372 island rows -> 550), step 07 in
-  6 min on 4 shared cores (series 4 x 50 snapshots, reference set 24,993 -> 560,
-  MetricsEvaluator ~2.4 s per snapshot), `search_01..03` one line per seed on
-  total NFE. The August `.set` has no epsilon header, so the controller check
-  was skipped there; the merge was checked once by hand under the August-11
-  vector (ANVIL_NOTES.md).
+- [ ] **[HPC]** Add the demand series to every already-staged ensemble that will
+  be simulated again: the E_test chunks
+  (`workflow/supplemental/stage_nyc_demand_etest_chunks.sh`, 50-task array) and
+  any staged search / diagnostics ensemble that is reused
+  (`workflow/supplemental/stage_nyc_demand.sh`). New ensembles get it from step 04.
+- [ ] **[HPC]** Re-run the current-FFMP E_test baseline cube (step 09 with
+  `NYCOPT_CHUNK_POLICIES=baseline`); the stored cube was simulated at 800 MGD.
+- [ ] **[HPC]** Re-verify under the new demand: the ε floors and the N = 300
+  ladder claim for the NYC objectives (`epsilon_calibration_experiment.md`), the
+  failing-week saturation screen for NYC reliability
+  (`framing_convention_diagnostics.md` §1), and the satisficing-criteria
+  re-anchoring (`robustness_threshold_diagnostics.md`).
+- [ ] **[HPC]** The `historic` reruns (§2) must use the regenerated historic demand
+  CSV in Pywr-DRB (`src/pywrdrb/data/diversions/diversion_nyc_extrapolated_mgd.csv`,
+  capped, 1945-2026); any `historic` result simulated at 800 MGD is superseded.
+- [ ] Implement the NYC utilization DU factor u ∈ [0.45, 1.0] in E_test
+  (prompt: `docs/prompts/demand_utilization_axis_prompt.md`).
 
 ## 1. Anvil HPC rename for the Monte Carlo design
 
-Path renames DONE on the cluster 2026-08-30: pull, env files, and every
-`outputs/` path moved and verified (`find outputs logs -name
-'*fixed_probabilistic*'` prints nothing; registry, baseline partition, and
-`search_ensemble_slug()` → `fixprob_10yr_n300_d{k}` all resolve). Run-manifest
-snapshots under `outputs/run_manifests/` deliberately keep the old string as
-frozen per-run provenance. Only the regeneration pointer below remains open.
+Path renames landed on the cluster 2026-08-30; run-manifest snapshots under
+`outputs/run_manifests/` deliberately keep the old string as frozen per-run
+provenance.
 
-- [ ] Flagged, not renamed. Internal contents still carry `fixed_probabilistic`;
-  regenerate from the renamed inputs rather than rewriting in place:
+- [ ] Internal contents still carry `fixed_probabilistic`; regenerate from the
+  renamed inputs rather than rewriting in place:
   - `outputs/monte_carlo/ffmp_obj8/reeval/*/reeval_raw_meta.json`, field
     `scenario_design` — written by `src/reeval_core.py`; no loader reads the field
     (provenance only).
@@ -97,79 +76,23 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
   against the ~600k the budget assumes. The main repo calls the
   `NYCOptimization_scenario_generation` interface of `6790a02` from `71b3478` on, so
   pull both together.
-- [ ] **[HPC]** Recompute every hazard image under the June 1 dry-axis window before
-  step 03 runs at N = 300 (every reader refuses an image lacking `dry_cut_months` or
-  any of the current `dry_scoring_rule`, `wet_scoring_rule` and
-  `supplement_scoring_rule`). The P = 10⁶ pools are stream-only (hazard coordinates
-  and seeds only, no daily flows), so they are regenerated, not rescored. The code
-  side was verified locally 2026-09-30 (main `610e802`, scengen `6790a02`; the shard,
-  provenance and scoring tests pass), so what remains is this Anvil procedure:
-  1. **Done 2026-09-30.** Pull both repos; confirm `git -C ../NYCOptimization_scenario_generation
-     rev-parse --short HEAD` prints `6790a02` and
-     `python3 -c "import scengen; print(scengen.__file__)"` resolves inside that
-     checkout. Read `mybalance`. (As run: scengen HEAD was `7f58f8c`, one commit past
-     `6790a02` touching only docstrings and E_test forcing-space code, frozen constants
-     unchanged; balance 595,541.7 SU.)
-  2. **Done 2026-09-30** (moved to `outputs/_archive_pre_june1/`). Move the pre-June-1
-     pool artifacts out of `outputs/synthetic_ensembles/`
-     (e.g. to `outputs/_archive_pre_june1/`): `statpool_10yr_n1000000_d{0,1,2}`,
-     `statpool_10yr_n2000_d{0,1,2}` and the stale step-03 selection
-     `hazfill_stat_abs_10yr_n300_d0`. Leave the Monte Carlo ensembles
-     (`fixprob_10yr_n300_d{k}`) in place: their realizations are valid and only their
-     image is rescored by `compute_staged_hazard_image.py` below.
-  3. **Done 2026-09-30** (array 20986172, 73 min per draw, 44 SU together). Stage the
-     P = 2,000 smoke pools first, one per draw. `gen_pool_merge.sh` ends with
-     `verify_prefix_identity.py`, which loads the smoke image through the provenance
-     check, so a pre-June-1 smoke pool fails the merge job after it has already merged
-     and deleted the shards. Step 02 skips a slug that is already staged, hence the
-     move in item 2:
-     `sbatch --array=0-1 --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=2000,NYCOPT_ENSEMBLE_MASTER_STREAM_ONLY=1 workflow/02_generate_ensemble.sh`
-     (about 1 h each; writes `statpool_10yr_n2000_d{0,1}/hazard_image.npz`).
-  4. **Done 2026-10-01** with 100 shards per draw (`--array=0-99` and
-     `NYCOPT_ENSEMBLE_SHARD_COUNT=100` in both the shard and merge exports; arrays
-     20987592 (d0) and 20987594 (d1), merges 20987593 and 20987595). The shard count is a
-     free parameter: rows are keyed to the global index, so the image is identical, SU is
-     unchanged and the wall per shard scales as P / count. Per draw k ∈ {0, 1} (the two
-     arrays may run concurrently):
-     `sbatch --array=0-49 --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_ENSEMBLE_DRAW=k workflow/supplemental/gen_pool_shards.sh`
-     then, chained on that array's job id,
-     `sbatch --dependency=afterok:<array_jobid> --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_ENSEMBLE_DRAW=k,NYCOPT_NESTEDP_POOL_SLUG=statpool_10yr_n1000000_dk,NYCOPT_NESTEDP_SMOKE_SLUG=statpool_10yr_n2000_dk workflow/supplemental/gen_pool_merge.sh`.
-     The smoke slug must match the draw: the verifier defaults to the d0 smoke pool
-     and would fail the d1 merge. Do not edit the shard header (2 cpus, 4 GB, 20 h:
-     generation is single-threaded and 4 GB already bills as two cores).
-  5. **Done 2026-10-01**: all four log lines present for both draws and the shape check
-     prints `(1000000, 8) (1000000, 15)` for d0 and d1. Acceptance per draw: every shard log ends `[gen] Shard i/50 done: realizations
-     [lo,hi) of 1000000`; the merge log carries `[gen] Merged 50 hazard-image shards`,
-     `[gen] Done 'statpool_10yr_n1000000_dk': N=1000000`, `[verify_shards] OK` and
-     `[verify_prefix] OK`; and
-     `python3 -c "from scengen.diagnostics import load_hazard_image as l; d=l('outputs/synthetic_ensembles/statpool_10yr_n1000000_dk/hazard_image.npz'); print(d['H'].shape, d['supplement'].shape)"`
-     prints `(1000000, 8) (1000000, 15)`. A shard killed at the wall writes nothing:
-     resubmit only that index (`--array=i`, same export); staged shard files are
-     skipped, and the merge refuses a set that does not tile [0, 10⁶). The merge
-     deletes the shards, so `pool_verify.sh` (same export as the merge) is the only
-     re-check afterwards.
-  6. Cost, measured 2026-10-01 at 100 shards per draw: 1,854 SU (d0) and 1,871 SU (d1)
-     for the shard arrays, 0.2 SU per merge, 44 SU for both smoke pools; 3,769 SU in
-     total (`mybalance` 595,541.7 → 591,772.4). Shards ran 5.9–7.3 h each (median
-     6.15 h, single-threaded, peak RSS 1.6 GB) and billed 3 cores per shard, because
-     4 GB on `shared` bills as 3 cores (~1.9 GB per core), not 2. Wall 7 h 23 min from
-     the first shard start to the last merge end, after 73 min of smoke-pool staging.
-     Inside the 5k staging allowance of `campaign_design.md` §6.
-  7. Frozen by this generation (a change to any of these forces another one): the
-     scengen `hazard_metrics` scoring constants (`_DRY_SCORING_RULE`,
-     `_WET_SCORING_RULE`, `_SUPPLEMENT_SCORING_RULE`, `_DRY_CUT_MONTHS = 6`,
-     `_SCENARIO_STAMP_START`, `_REFERENCE_START`), the generator fit (flowtype
-     `pub_nhmv10_BC_withObsScaled`, start 1945-12-01), the `stat_pool` seed domain
-     and the synhydro version. The selection-axis decision, N and ε live downstream
-     of the image (all 8 axes and 15 supplement columns are stored) and do not touch
-     the pool.
-  Then the step-03 selections (restage item below); both E_test images come from the
-  regeneration item below; and the cached `outputs/supplemental/historic_hazard_windows/`
-  (recomputes itself on the provenance mismatch). Afterwards rerun the readers:
-  `compute_staged_hazard_image.py` for the Monte Carlo ensembles, the
-  hazard-examples figure, `ensemble_size_hazard.sh`, `hazard_support_decomposition.sh`,
-  `hazard_selector_diagnostics`, the E_test overlay, and
-  `hf_design_metrics.sh` (Section 7).
+- [ ] **[HPC]** June 1 hazard-image recompute. The P = 10⁶ pools
+  (`statpool_10yr_n1000000_d{0,1}`) and the P = 2,000 smoke pools were regenerated
+  2026-10-01 (3,769 SU; costs and acceptance in `ANVIL_NOTES.md`), with the pre-June-1
+  artifacts under `outputs/_archive_pre_june1/`. Frozen by that generation (a change
+  to any forces another): the scengen `hazard_metrics` scoring constants
+  (`_DRY_SCORING_RULE`, `_WET_SCORING_RULE`, `_SUPPLEMENT_SCORING_RULE`,
+  `_DRY_CUT_MONTHS = 6`, `_SCENARIO_STAMP_START`, `_REFERENCE_START`), the generator
+  fit (flowtype `pub_nhmv10_BC_withObsScaled`, start 1945-12-01), the `stat_pool` seed
+  domain and the synhydro version; the selection axes, N and ε live downstream of the
+  image. Still open on the June 1 images: the step-03 selections (restage item below),
+  both E_test images (regeneration item below), the cached
+  `outputs/supplemental/historic_hazard_windows/` (recomputes itself on the provenance
+  mismatch), and the readers: `compute_staged_hazard_image.py` for the Monte Carlo
+  ensembles, the hazard-examples figure, `ensemble_size_hazard.sh`,
+  `hazard_support_decomposition.sh`, the E_test overlay, and `hf_design_metrics.sh`
+  (Section 7). The selector diagnostic ran on the regenerated pools 2026-10-01 and is
+  repeated only on the adopted axes (selection-axis item below).
 - [ ] **[HPC]** Regenerate E_test over the extended forcing box
   (`src/etest.py::E_TEST_VOLUME_MULTIPLIER_MIN = 0.80`, `campaign_design.md` §5; pull both
   repos, the main repo needs the `axis_bounds` interface of scengen). Move the pre-extension
@@ -221,13 +144,12 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 - [ ] **[HPC]** Restage search ensembles at N = 300, draws 0–1: step 02
   (`monte_carlo`, `--array=0-1`), step 03 (`hazard_filling_stationary`,
   `NYCOPT_CANDIDATE_POOL_N=1000000`; confirm the log line
-  `pool='statpool_10yr_n1000000_d{k}'`), step 04 both (`--array=0-1`).
-  DRAW 0 DONE 2026-09-11 for the figure-4 composition variant:
-  `fixprob_10yr_n300_d0` (step 02, 12 min) and `hazfill_stat_abs_10yr_n300_d0`
-  (step 03, 12 min; abs L2\* 0.0117 vs null 0.1650 ± 0.0068, pctl 0), plus the
-  MC hazard image via the new `workflow/supplemental/staged_hazard_image.sh`.
-  STILL OPEN for the campaign: draw 1 of both, and step 04 for every draw
-  (the figure needs only `hazard_image.npz`, so step 04 was skipped).
+  `pool='statpool_10yr_n1000000_d{k}'`), step 04 both (`--array=0-1`; it also
+  stages the NYC demand series). Staged so far: `fixprob_10yr_n300_d0` (step 02,
+  2026-09-11; its image is rescored by `compute_staged_hazard_image.py`, item above).
+  The 2026-09-11 `hazfill_stat_abs_10yr_n300_d0` selection was made on the pre-June-1
+  pool and sits in `outputs/_archive_pre_june1/`, so step 03 is open for both draws,
+  as are MC draw 1 and step 04 for every draw.
 - [ ] **[HPC]** Build QC on each restaged ensemble: `validate_staged_seasonality.py`
   and the per-axis tail-share record per hazfill draw; then step 05 baselines for
   both matched designs scenario-matched to d0 (`--search-ensemble`).
@@ -321,14 +243,10 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## 4. Figures and manuscript
 
-- [ ] **[local]** `figures/historic/ffmp_obj8/` regenerated 2026-10-16 under the current
-  baseline (search-era objective names via NYCOPT_OBJECTIVES; highlighted rows 1947,
-  2205, 2013): explore suite incl. timeseries, search figures, and the dynamics
-  figures (`dynamics/`, 1960s and 2002 droughts). All parallel-axis figures now share
-  `custom_parallel_coordinates`. HDF5 runs under
-  `outputs/historic/ffmp_obj8/timeseries/selected_policies/` (job 21393749). Open:
-  decide which periods/panels go to the SI and whether to add panels (Trenton, NJ
-  diversion, drought level) via the `PANELS` registry.
+- [ ] **[local]** Historic dynamics figures (`figures/historic/ffmp_obj8/dynamics/`,
+  1960s and 2002 droughts): decide which periods/panels go to the SI and whether to
+  add panels (Trenton, NJ diversion, drought level) via the `PANELS` registry; render
+  them from the post-2026-11-03 HIST set (Section 0: results at 800 MGD are superseded).
 - [ ] **[local]** Figure 9: keep one of the three `number=9` registry entries
   (`regret_exposure` recommended; the two `regret_surfaces*` variants degenerate at
   the adopted τ) and delete the other two from `src/figures/registry.py`.
@@ -352,10 +270,9 @@ frozen per-run provenance. Only the regeneration pointer below remains open.
 
 ## Parked (scope, not blockers)
 
-- [ ] Demand is Decree-capped and stationary (no demand-growth DU axis); one scoping
-  sentence in the manuscript.
-- [ ] Forward hooks only: per-realization diversion staging (`src/ensemble_prep.py`)
-  and the deferred DU-factor presets (`src/ensembles.py`).
+- [ ] Forward hook only: the deferred DU-factor presets (`src/ensembles.py`,
+  `du_factors`; see the Section 0 utilization-factor item). The per-realization
+  diversion staging (`src/ensemble_prep.py::stage_nyc_demand`) is live.
 
 ## 5. Proposal revision follow-ups (2026-09-02)
 

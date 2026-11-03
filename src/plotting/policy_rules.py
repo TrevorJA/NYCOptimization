@@ -126,7 +126,7 @@ _DOY = np.arange(1, 367)
 # Rule extraction
 # ---------------------------------------------------------------------------
 
-def _extract_rules(cfg) -> dict:
+def extract_rules(cfg) -> dict:
     """Read plotted rule structures off a NYCOperationsConfig.
 
     The only function in this module that touches the pywrdrb config object;
@@ -493,14 +493,14 @@ def plot_policy_rules(
     Returns:
         The matplotlib Figure.
     """
-    baseline_rules = _extract_rules(
+    baseline_rules = extract_rules(
         dvs_to_config(get_baseline_values(formulation), formulation)
     )
     if dv_vector is None:
         mode = "baseline"
         primary, reference = baseline_rules, None
     else:
-        primary = _extract_rules(dvs_to_config(np.asarray(dv_vector, float),
+        primary = extract_rules(dvs_to_config(np.asarray(dv_vector, float),
                                                formulation))
         mode = "overlay" if show_baseline else "candidate"
         reference = baseline_rules if show_baseline else None

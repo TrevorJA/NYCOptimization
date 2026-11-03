@@ -259,7 +259,9 @@ annual-unit epsilon vector; comparison metrics = multivariate Starr satisficing
 as the co-primary RQ1 family; search aggregation = two-layer annual-unit scheme; the
 framing conventions (failure-week counts, flood unit operator = mean, 0.99 weekly
 satisfaction factor); forcing space retains historical persistence (claims scoped
-accordingly).
+accordingly); NYC demand is the time-dynamic extrapolated diversion series (per
+realization from its own inflows, 800 MGD monthly-mean cap; never a constant
+800 MGD) in search and re-evaluation, with NJ fixed at its 100 MGD allocation.
 
 **Budget.** The campaign is priced on the measured production basis (21,850 SU per
 N = 100 / 500k search, scaled by (N/100)^0.951) against the remaining Anvil balance of

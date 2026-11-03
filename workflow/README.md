@@ -35,7 +35,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 01 | `01_generate_presim.sh` | `shared`, 1×1, 30 min | optional | Full Pywr-DRB run once; save non-NYC (STARFIT) releases for the trimmed model |
 | 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (two draws staged, `--array=0-1`: d0 is searched, d1 serves the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh` instead |
 | 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) + `NYCOPT_CANDIDATE_POOL_N=1000000` | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
-| 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs (MPI across realizations); `--preset NAME` stages an arbitrary ensemble |
+| 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs, including the per-realization NYC demand series (MPI across realizations); `--preset NAME` stages an arbitrary ensemble |
 | 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Evaluate the default (unoptimized) FFMP policy + persist its per-SOW E_test matrix for the incumbent-relative regret family; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble |
 | 06 | `06_run_mmborg.sh` | `wholenode`; header 4×128 (`mm_moderate`); production passes `--nodes=12 --ntasks-per-node=128` (1,533 ranks) and a per-seed `--time` | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed, `DRAW=k` = ensemble draw (default 0; the campaign searches d0 only); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
 | 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics on the per-seed coordinator archive (island runtime files merged snapshot by snapshot with the project's epsilon archive; six MOEAFramework indicators vs total NFE; diagnostics reference set `{slug}_diagnostics_reference.set`, never the campaign `{slug}_merged.set`); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
@@ -71,6 +71,17 @@ use the SAME preset as `08`/`09`, or the status-quo baseline lands under a
 different re-eval tag and the incumbent-relative regret family is silently
 skipped. `scripts/supplemental/stage_etest_subset_baseline.py` symlinks an
 existing incumbent cube under a subset tag without re-simulating.
+
+NYC demand is the time-dynamic extrapolated diversion series in every
+simulation (search, baselines, re-evaluation, diagnostics); a constant 800 MGD
+NYC demand is never used and no env file selects a demand source. Step 04
+stages the per-realization series (`diversion_nyc_extrapolated_mgd.hdf5`) with
+the other inputs. For ensembles staged before the series was part of the
+contract, `supplemental/stage_nyc_demand_etest_chunks.sh` (one array task per
+E_test chunk) and `supplemental/stage_nyc_demand.sh` (a design's search
+ensemble, array index = draw; `--preset NAME` for any staged slug) add it
+without repeating the presim pass. NJ demand is the constant 100 MGD Decree
+quantity.
 
 ## Building a design's search ensemble (02–04)
 

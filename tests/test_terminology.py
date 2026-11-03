@@ -172,6 +172,18 @@ RETIRED_TERMS: dict[str, str] = {
         "SIZING; campaign_design.md §5)",
     "entire search evaluation":
         "the per-SOW precision argument in its own terms (src/etest.py SIZING)",
+    # NYC demand is the time-dynamic extrapolated diversion series everywhere
+    # (config.nyc_demand_source); a constant 800 MGD NYC demand is never used
+    # and the env knob that could select one is gone (2026-11-03).
+    "NYCOPT_NYC_NJ_DEMAND_SOURCE":
+        "nothing: config.nyc_demand_source(is_ensemble) + config.NJ_DEMAND_SOURCE "
+        "are fixed; there is no demand env knob",
+    "constant Decree demands":
+        "the time-dynamic extrapolated NYC demand (per realization, 800 MGD "
+        "monthly-mean cap); only NJ is a constant Decree quantity",
+    "held constant at the Decree maxima":
+        "the time-dynamic extrapolated NYC demand; only NJ is a constant Decree "
+        "quantity",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

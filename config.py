@@ -281,21 +281,47 @@ INITIAL_VOLUME_FRAC = 0.80
 # default.
 PYWRDRB_FLOW_PREDICTION_MODE = "perfect_foresight"
 
-# NYC and NJ interbasin diversion demand mode passed to pywrdrb.ModelBuilder.
-# Default = constant_max so every candidate policy is stressed with the same
-# decree-maximum demand profile (NYC=800 MGD, NJ=100 MGD monthly avg, defined
-# in pywrdrb constants.csv). Set to "historical" to use the extrapolated
-# historical time series instead — useful for sensitivity studies.
-# "custom" is also accepted by pywrdrb but not wired into NYCOpt experiments.
-_NYC_NJ_DEMAND_SOURCE_MODES = ("constant_max", "historical", "custom")
-NYC_NJ_DEMAND_SOURCE = _parse_str_env(
-    "NYCOPT_NYC_NJ_DEMAND_SOURCE", "constant_max"
-).lower()
-if NYC_NJ_DEMAND_SOURCE not in _NYC_NJ_DEMAND_SOURCE_MODES:
-    raise ValueError(
-        f"Invalid NYC_NJ_DEMAND_SOURCE='{NYC_NJ_DEMAND_SOURCE}'; "
-        f"expected one of {_NYC_NJ_DEMAND_SOURCE_MODES}"
-    )
+# NYC and NJ interbasin-diversion demands passed to pywrdrb.ModelBuilder.
+#
+# NYC demand is ALWAYS the time-dynamic extrapolated diversion series of
+# Pywr-DRB's ExtrapolatedDiversionPreprocessor (quarterly regressions of monthly
+# Delaware diversion on log monthly NYC inflow fitted to the 2000-2021 River
+# Master record, nearest-neighbour daily patterns, 800 MGD monthly-mean cap;
+# Hamilton et al. 2024 SI): per realization for ensembles ("custom", the
+# diversion_nyc_extrapolated_mgd.hdf5 that step 04 extrapolates from each
+# realization's own inflows) and pywrdrb's 1945-2023 historic-flow series for
+# the single trace ("historical"). A constant 800 MGD NYC demand is never used
+# -- not in search, re-evaluation, baselines or diagnostics -- and
+# assert_time_dynamic_nyc_demand() refuses it at every model build. There is
+# no env knob. NJ demand is the 100 MGD Decree quantity held constant
+# ("constant_max"); it is not a study factor.
+NYC_DEMAND_SOURCE_ENSEMBLE = "custom"
+NYC_DEMAND_SOURCE_SINGLE_TRACE = "historical"
+NJ_DEMAND_SOURCE = "constant_max"
+
+
+def nyc_demand_source(is_ensemble: bool) -> str:
+    """The pywrdrb NYC demand source: per-realization series for an ensemble,
+    the historic-flow series for the single trace. Both are time-dynamic."""
+    return NYC_DEMAND_SOURCE_ENSEMBLE if is_ensemble else NYC_DEMAND_SOURCE_SINGLE_TRACE
+
+
+def assert_time_dynamic_nyc_demand(source: str) -> None:
+    """Refuse any NYC demand source that is not the extrapolated time series.
+
+    Args:
+        source: A pywrdrb demand-source name.
+
+    Raises:
+        ValueError: If ``source`` is ``"constant_max"`` or unknown.
+    """
+    if source not in (NYC_DEMAND_SOURCE_ENSEMBLE, NYC_DEMAND_SOURCE_SINGLE_TRACE):
+        raise ValueError(
+            f"NYC demand source {source!r} is not allowed: NYC demand must be the "
+            "time-dynamic extrapolated diversion series ('custom' for ensembles, "
+            "'historical' for the single trace); a constant 800 MGD NYC demand is "
+            "never used in this study."
+        )
 
 # Results sets to export from Pywr-DRB simulations
 RESULTS_SETS = [

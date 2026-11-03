@@ -95,7 +95,7 @@ own-draw hazard-filling cells would otherwise trip it (both sides carry
 importing `config` needs no staged search ensemble. It does not need to match a cell's source,
 because nothing on the evaluation path reads it once the target is explicit, and because the
 three campaign env files are byte-identical on every evaluation-relevant knob (objectives,
-demand source, LSTM flags, MOEA config); they differ only in `NYCOPT_SCENARIO_DESIGN` and in
+LSTM flags, MOEA config; the demand model is fixed in `config`); they differ only in `NYCOPT_SCENARIO_DESIGN` and in
 `NYCOPT_SEARCH_REALIZATION_BATCH`, which is a documented results-identical memory knob and is
 inert at N = 100. The driver asserts the evaluation-relevant configuration into each cell's
 provenance sidecar so a future divergence fails loudly.

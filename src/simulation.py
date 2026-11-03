@@ -30,7 +30,9 @@ from config import (
     INFLOW_TYPE,
     USE_TRIMMED_MODEL,
     INITIAL_VOLUME_FRAC,
-    NYC_NJ_DEMAND_SOURCE,
+    NJ_DEMAND_SOURCE,
+    nyc_demand_source,
+    assert_time_dynamic_nyc_demand,
     PYWRDRB_FLOW_PREDICTION_MODE,
     RESULTS_SETS,
     PRESIM_DIR,
@@ -863,6 +865,26 @@ def compute_constraint_violations(dv_vector,
 # Model Building Helpers
 ###############################################################################
 
+def _demand_options(is_ensemble: bool) -> dict:
+    """pywrdrb demand options: time-dynamic NYC demand, constant NJ quantity.
+
+    NYC demand is the extrapolated diversion series (per realization for an
+    ensemble, the historic-flow series for the single trace); a constant
+    800 MGD NYC demand is refused by ``config.assert_time_dynamic_nyc_demand``.
+    NJ demand is the constant 100 MGD Decree quantity.
+
+    Args:
+        is_ensemble: Whether the model is built for a staged ensemble.
+
+    Returns:
+        The ``nyc_nj_demand_source`` / ``nj_demand_source`` entries of the
+        ModelBuilder options dict.
+    """
+    nyc_source = nyc_demand_source(is_ensemble)
+    assert_time_dynamic_nyc_demand(nyc_source)
+    return {"nyc_nj_demand_source": nyc_source, "nj_demand_source": NJ_DEMAND_SOURCE}
+
+
 def _build_model_builder(nyc_config, use_trimmed: bool = None,
                          ensemble_spec=None):
     """Create and configure a ModelBuilder. Shared by both simulation paths.
@@ -884,8 +906,10 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
     if use_trimmed is None:
         use_trimmed = USE_TRIMMED_MODEL
 
+    is_ensemble = ensemble_spec is not None and ensemble_spec.is_ensemble
+
     options = {
-        "nyc_nj_demand_source": NYC_NJ_DEMAND_SOURCE,
+        **_demand_options(is_ensemble),
         "use_trimmed_model": use_trimmed,
         "initial_volume_frac": INITIAL_VOLUME_FRAC,
         # Pinned explicitly for EVERY simulation; never rely on pywrdrb's default.
@@ -901,7 +925,7 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
         # ModelBuilder auto-routes to {flows/inflow_type}/presimulated_releases_mgd.hdf5
         # (written by STARFITReleaseEnsemblePreprocessor); pywrdrb then wires
         # PresimulatedReleaseEnsemble parameters to that artifact.
-        if ensemble_spec is None or not ensemble_spec.is_ensemble:
+        if not is_ensemble:
             presim_file = _require_presim_file()
             options["presimulated_releases_file"] = str(presim_file)
 
@@ -915,7 +939,7 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
     # uses it to size the scenarios block + instantiate FlowEnsemble /
     # PredictionEnsemble parameters; see Pywr-DRB/.../model_builder.py:547).
     inflow_type_to_use = INFLOW_TYPE
-    if ensemble_spec is not None and ensemble_spec.is_ensemble:
+    if is_ensemble:
         from src.ensembles import register_ensemble_path
         register_ensemble_path(ensemble_spec.inflow_type)
         inflow_type_to_use = ensemble_spec.inflow_type
@@ -928,7 +952,7 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
     # so the pywr timestepper aligns with the staged HDF5 date axis.
     sim_start = START_DATE
     sim_end = END_DATE
-    if ensemble_spec is not None and ensemble_spec.is_ensemble:
+    if is_ensemble:
         sim_start, sim_end = _ensemble_window(ensemble_spec)
 
     mb = pywrdrb.ModelBuilder(

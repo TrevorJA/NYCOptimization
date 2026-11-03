@@ -7,13 +7,14 @@ this stages, under ``STAGED_ENSEMBLE_DIR/{inflow_type}/``:
     catchment_inflow_with_flood_nodes_mgd.hdf5   (FlowEnsemble, flood ops on)
     presimulated_releases_mgd.hdf5  (+ _metadata.json)   (trimmed-model releases)
     predicted_inflows_mgd.hdf5                   (Montague/Trenton forecasts)
+    diversion_nyc_extrapolated_mgd.hdf5          (per-realization NYC demand)
 
 so pywrdrb's path navigator resolves them at simulation start (see
 ``src/ensembles.py::register_ensemble_path``). The base
 ``catchment_inflow_mgd.hdf5`` must already exist (steps 02-03).
 
-All settings come from ``config`` (scenario design, ensemble preset, demand
-source, initial volume); there are no CLI value flags. Staging is delegated to
+All settings come from ``config`` (scenario design, ensemble preset, initial
+volume; the demand model is fixed there); there are no CLI value flags. Staging is delegated to
 ``src.ensemble_prep.stage_pywrdrb_ensemble_inputs``. MPI is used automatically
 when launched under more than one rank.
 
