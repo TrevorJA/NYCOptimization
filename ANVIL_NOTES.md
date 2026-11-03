@@ -76,3 +76,18 @@ node-scaling factor, 605k model basis, against ~600k remaining.
 - 2026-10-16: selection regenerated under the current baseline (rows 1947, 2205,
   2013); job 21393749 simulated the three new rows (2 min 35 s, ~0.1 SU), baseline
   reused; the superseded row_1393/1682/115 runs were deleted.
+- 2026-10-23: coordinator-archive diagnostics (step 07 rewrite; Reed guidance).
+  Shared partition, 2-4 cores: test jobs 21595978, 21596972, 21597370, 21597990
+  (<1 min each), 21597369 (first step-07 attempt, 4 min), 21597752 (tests + full
+  step 07 on `monte_carlo/ffmp_obj8` seed 1: 6 min 23 s on 4 cores; series build
+  ~3 min, MetricsEvaluator 50 snapshots at ~2.4 s each, figures), 21598097
+  (legacy merge check, 49 s: under the August-11 search vector the Python merge
+  of the four final island archives reproduces the controller `.set` exactly,
+  6,353 rows, identical epsilon boxes, 50 within-box representatives differ).
+  Family total ~15 core-minutes, ~1 SU. Step 07 per seed is now ~6 min on 4
+  cores, so the production diagnostics are negligible.
+- 2026-10-23: historic step 07 rerun (job 21599089, 1 min 52 s, 4 cores) and the
+  `explore_*` suite of `figures/historic/ffmp_obj8` regenerated (job 21600863, 57 s,
+  2 cores) under the August objective list (`trenton_flow_reliability_weekly` fifth)
+  that the archive and `outputs/baseline/ffmp_baseline_objectives.csv` share; the
+  selection reproduced rows 1947/2205/2013, so figures 05/06 reused the HDF5 traces.

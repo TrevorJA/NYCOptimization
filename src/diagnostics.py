@@ -17,9 +17,11 @@ Workflow (``run_full_diagnostics``):
        epsilon-box merge of every island's archive at snapshot k
        (``src.runtime_archive.coordinator_series``), annotated with
        ``//NFE=`` (total NFE = per-island NFE x islands) and ``//IslandNFE=``.
-       When the seed's controller ``.set`` exists, the final entry is checked
-       against it box by box: the controller's archive is the ground truth
-       for the merge, and the two must agree exactly.
+       When the seed's controller ``.set`` exists and records its search
+       epsilons (``# Epsilons:``, written by ``src.mmborg`` since
+       2026-10-23), the merge of the final island archives under those
+       epsilons is checked against it box by box: the controller's archive
+       is the ground truth for the merge, and the two must agree exactly.
     2. Diagnostics reference set ``sets/{slug}_diagnostics_reference.set``:
        the epsilon-box merge of every coordinator snapshot of every seed. This
        is the best-known front of the design's own runs, including seed 1's
@@ -60,7 +62,6 @@ import subprocess
 from pathlib import Path
 
 from config import (
-    ACTIVE_MOEA_CONFIG,
     get_epsilons,
     DIAGNOSTICS_SETTINGS,
     FFMP_VR_N_SWEEP,
@@ -220,38 +221,54 @@ def _problem_header(slug: str) -> list[str]:
                               get_n_vars(formulation_for(slug)), get_n_objs())
 
 
-def check_series_against_set(series_rows, set_file: Path, n_vars: int,
-                             epsilons) -> dict:
-    """The final series entry must occupy exactly the controller's boxes.
+def check_series_against_set(island_files: list[Path], set_file: Path,
+                             n_vars: int) -> dict | None:
+    """Check the merge of the final island archives against the controller.
 
-    ``set_file`` is the seed's controller archive at shutdown, the ground
-    truth for the merge of the island archives at the final snapshot. Box
+    The controller archive at shutdown (``set_file``) is the ground truth
+    for the merge of the island archives at the final snapshot, but only
+    under the epsilon vector the search ran with, which the ``.set`` header
+    records (``# Epsilons:``). The final island snapshots are merged under
+    that vector and must occupy exactly the controller's boxes; box
     representatives may differ only on distance ties, which is reported.
+
+    Returns:
+        ``compare_archives`` result, or None when the ``.set`` carries no
+        epsilon header (an archive written before 2026-10-23).
 
     Raises:
         RuntimeError: On any box-set difference.
     """
     from src.load.reference_set import load_set_file
+    from src.runtime_archive import island_nfe_grid, read_set_epsilons, snapshot_at
 
+    eps_run = read_set_epsilons(set_file)
+    if eps_run is None:
+        return None
+    final_nfe = island_nfe_grid(island_files)[-1]
+    merged = epsilon_merge(snapshot_at(island_files, final_nfe), n_vars, eps_run)
     set_rows = load_set_file(set_file)
-    cmp = compare_archives(series_rows, set_rows, n_vars, epsilons)
+    cmp = compare_archives(merged, set_rows, n_vars, eps_run)
     if cmp["boxes_only_a"] or cmp["boxes_only_b"]:
         raise RuntimeError(
-            f"final coordinator entry ({cmp['n_a']} rows) and the controller "
-            f"archive {set_file.name} ({cmp['n_b']} rows) occupy different "
-            f"epsilon boxes: {len(cmp['boxes_only_a'])} only in the series, "
+            f"merge of the final island archives ({cmp['n_a']} rows) and the "
+            f"controller archive {Path(set_file).name} ({cmp['n_b']} rows) occupy "
+            f"different epsilon boxes under the search vector {eps_run}: "
+            f"{len(cmp['boxes_only_a'])} only in the merge, "
             f"{len(cmp['boxes_only_b'])} only in the controller archive; "
-            + _box_mismatch_detail(cmp, series_rows, set_rows, n_vars, epsilons))
+            + _box_mismatch_detail(cmp, merged, set_rows, n_vars, eps_run))
     return cmp
 
 
 def _box_mismatch_detail(cmp: dict, rows_a, rows_b, n_vars: int, epsilons) -> str:
     """Name the mismatched boxes and, for each, the box that dominates it."""
     import numpy as np
-    from src.runtime_archive import epsilon_boxes
+    from src.runtime_archive import epsilon_boxes, round_to_set_precision
 
-    boxes_a = epsilon_boxes(rows_a, n_vars, epsilons)
-    boxes_b = epsilon_boxes(rows_b, n_vars, epsilons)
+    boxes_a = epsilon_boxes(round_to_set_precision(np.asarray(rows_a, dtype=float)),
+                            n_vars, epsilons)
+    boxes_b = epsilon_boxes(round_to_set_precision(np.asarray(rows_b, dtype=float)),
+                            n_vars, epsilons)
     parts = []
     for label, extra, other in (("series", cmp["boxes_only_a"], boxes_b),
                                 ("controller", cmp["boxes_only_b"], boxes_a)):
@@ -274,8 +291,9 @@ def build_coordinator_series(slug: str, seed: int, runtime_dir: Path = None,
     campaign epsilons, of every island's archive at the k-th snapshot
     (``src.runtime_archive.coordinator_series``); each entry carries
     ``//NFE=`` (total: per-island NFE x islands), ``//IslandNFE=`` and
-    ``//Islands=``. When the seed's controller ``.set`` exists, the final
-    entry is checked against it (``check_series_against_set``).
+    ``//Islands=``. When the seed's controller ``.set`` exists and records
+    its search epsilons, the merge of the final island archives under those
+    epsilons is checked against it (``check_series_against_set``).
 
     Args:
         slug: Run moea slug.
@@ -313,12 +331,17 @@ def build_coordinator_series(slug: str, seed: int, runtime_dir: Path = None,
 
     if set_file is None:
         set_file = run_output_dir(scenario, slug, "sets") / f"seed_{seed:02d}_{slug}.set"
-    if Path(set_file).exists():
-        cmp = check_series_against_set(series[-1][1], Path(set_file), n_vars, epsilons)
-        print(f"  verified against {Path(set_file).name}: boxes identical, "
-              f"{cmp['representatives_differ']} tie-broken representatives differ")
+    if not Path(set_file).exists():
+        print(f"  {Path(set_file).name} absent (seed still running): merge unchecked")
     else:
-        print(f"  {Path(set_file).name} absent (seed still running): final entry unchecked")
+        cmp = check_series_against_set(files, Path(set_file), n_vars)
+        if cmp is None:
+            print(f"  {Path(set_file).name} carries no '# Epsilons:' header (archive "
+                  f"written before 2026-10-23): merge unchecked")
+        else:
+            print(f"  verified against {Path(set_file).name} under its search "
+                  f"epsilons: boxes identical, {cmp['representatives_differ']} "
+                  f"tie-broken representatives differ")
     return out
 
 
@@ -442,13 +465,11 @@ def run_full_diagnostics(
     print(f"\n=== MOEAFramework Diagnostics: {scenario}/{slug}, seeds {seeds} ===\n")
     _notice_retired_artifacts(slug, scenario)
 
-    reporting_nfe = ACTIVE_MOEA_CONFIG.max_evaluations
     series = {}
     for seed in seeds:
         print(f"[{scenario}/{slug}] seed {seed}: coordinator series")
         series[seed] = build_coordinator_series(
-            slug, seed, runtime_dir=runtime_dir, scenario=scenario,
-            reporting_nfe=reporting_nfe)
+            slug, seed, runtime_dir=runtime_dir, scenario=scenario)
 
     print(f"[{scenario}/{slug}] diagnostics reference set")
     reference = merge_reference_set(

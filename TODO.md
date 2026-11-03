@@ -25,10 +25,16 @@ coordinator series are the diagnostics. The ensemble-size supplement
   check, series builder (`//NFE=` = island NFE x islands), epsilon-box
   comparison, equal-NFE per-seed set resolver.
 - [x] `src/diagnostics.py`: per-seed coordinator series under
-  `outputs/{scenario}/{slug}/runtime_coordinator/`, final entry checked box by
-  box against the seed's controller `.set` (Borg ground truth), reference set
-  renamed `{slug}_diagnostics_reference.set` so step 07 never writes the
-  campaign `{slug}_merged.set`, one `.metrics` per seed.
+  `outputs/{scenario}/{slug}/runtime_coordinator/`, merge of the final island
+  archives checked box by box against the seed's controller `.set` (Borg ground
+  truth) under the epsilons that search ran with, reference set renamed
+  `{slug}_diagnostics_reference.set` so step 07 never writes the campaign
+  `{slug}_merged.set`, one `.metrics` per seed.
+- [x] `src/mmborg.py`: the `.set` header now records `# Epsilons:` (the archive
+  is an epsilon archive under that vector only). Archives written before
+  2026-10-23 carry no header, so the check is skipped for them; the August go/no-go
+  runs also used the pre-2026-08-12 vector and a different fifth objective, so
+  their `.set` files are not comparable under today's configuration.
 - [x] Figures: one line per seed on total NFE with the reporting-budget marker
   (search_02, search_03, SI search_convergence, run02); search_01 reads the
   per-seed equal-NFE sets; per-island plotting and `seed_reliability.py`
@@ -37,10 +43,13 @@ coordinator series are the diagnostics. The ensemble-size supplement
   campaign_design.md, scenario_design_methods.md, manuscript 3.3, Text S7.
 - [x] Tests: pure tests on synthetic text plus a Java-gated integration test
   that MetricsEvaluator scores the files the pipeline writes.
-- [ ] **[HPC]** Validate on `outputs/monte_carlo/ffmp_obj8` (seed 1 only):
-  `extract_runtime_archive.py --seed 1`, then step 07; the series self-check
-  must pass and `figures/monte_carlo/ffmp_obj8/search_0*.png` must show one
-  line per seed.
+- [x] **[HPC]** Validated 2026-10-23 on `outputs/monte_carlo/ffmp_obj8` (seed 1):
+  `extract_runtime_archive.py --seed 1` (16,372 island rows -> 550), step 07 in
+  6 min on 4 shared cores (series 4 x 50 snapshots, reference set 24,993 -> 560,
+  MetricsEvaluator ~2.4 s per snapshot), `search_01..03` one line per seed on
+  total NFE. The August `.set` has no epsilon header, so the controller check
+  was skipped there; the merge was checked once by hand under the August-11
+  vector (ANVIL_NOTES.md).
 
 ## 1. Anvil HPC rename for the Monte Carlo design
 

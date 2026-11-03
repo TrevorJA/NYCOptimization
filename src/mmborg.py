@@ -241,6 +241,11 @@ def _write_set_file(result, set_file: Path, formulation_name: str, seed: int):
     C runtime writer (BORG_Archive_append skips constraint violators and
     never writes constraint columns). An infeasible solution can appear in
     the final archive only if the run found no feasible solution at all.
+
+    The header records the epsilon vector the search ran with
+    (``# Epsilons:``): the archive is an epsilon-box archive under that
+    vector only, and step 07 reads it back to check its coordinator series
+    against this file (``src.diagnostics.check_series_against_set``).
     """
     var_names = get_var_names(formulation_name)
     obj_names = get_obj_names()
@@ -249,6 +254,7 @@ def _write_set_file(result, set_file: Path, formulation_name: str, seed: int):
         f.write(f"# Formulation: {formulation_name}, Seed: {seed}\n")
         f.write(f"# Variables: {','.join(var_names)}\n")
         f.write(f"# Objectives: {','.join(obj_names)}\n")
+        f.write(f"# Epsilons: {','.join(repr(float(e)) for e in get_epsilons())}\n")
 
         for solution in result:
             if solution.violatesConstraints():

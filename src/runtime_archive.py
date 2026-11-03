@@ -220,18 +220,34 @@ def epsilon_boxes(rows: np.ndarray, n_vars: int,
     return {tuple(b) for b in boxes.tolist()}
 
 
+def round_to_set_precision(rows: np.ndarray, fmt: str = "{:.6e}") -> np.ndarray:
+    """Round rows through the text format of the ``.set`` writers.
+
+    ``src.mmborg._write_set_file`` and ``write_set_file`` store six
+    significant digits, while runtime files hold full doubles; archives are
+    compared at the coarser precision so a value a rounding step from a box
+    boundary is not reported as a box difference.
+    """
+    if rows.size == 0:
+        return rows
+    return np.array([[float(fmt.format(v)) for v in row]
+                     for row in np.asarray(rows, dtype=float)])
+
+
 def compare_archives(rows_a: np.ndarray, rows_b: np.ndarray, n_vars: int,
                      epsilons: Sequence[float]) -> dict:
     """Compare two epsilon archives of the same solutions box by box.
 
-    Two implementations of epsilon-box archiving over the same solutions must
-    occupy the same nondominated boxes; they may differ in which solution
-    represents a box only when two members tie in distance to the box corner.
+    Two archives built from the same solutions must occupy the same
+    nondominated boxes; they may differ in which solution represents a box
+    only when two members tie in distance to the box corner. Both sides are
+    rounded through ``round_to_set_precision`` first.
 
     Args:
-        rows_a: ``(n, n_vars + n_objs)`` archive (e.g. the MOEAFramework
-            merge).
-        rows_b: ``(m, n_vars + n_objs)`` archive (e.g. the Python merge).
+        rows_a: ``(n, n_vars + n_objs)`` archive (e.g. the final series
+            entry).
+        rows_b: ``(m, n_vars + n_objs)`` archive (e.g. the controller
+            ``.set``).
         n_vars: Number of decision-variable columns.
         epsilons: Epsilon vector, one per objective.
 
@@ -241,6 +257,8 @@ def compare_archives(rows_a: np.ndarray, rows_b: np.ndarray, n_vars: int,
         but not the other, and the number of shared boxes whose representative
         rows are not numerically equal.
     """
+    rows_a = round_to_set_precision(np.asarray(rows_a, dtype=float))
+    rows_b = round_to_set_precision(np.asarray(rows_b, dtype=float))
     boxes_a = epsilon_boxes(rows_a, n_vars, epsilons)
     boxes_b = epsilon_boxes(rows_b, n_vars, epsilons)
     shared = boxes_a & boxes_b
@@ -361,6 +379,23 @@ def write_set_file(path: Path, rows: np.ndarray, var_names: Sequence[str],
         for row in rows:
             f.write(" ".join(f"{v:.6e}" for v in row[:n_vars])
                     + " " + " ".join(f"{o:.6e}" for o in row[n_vars:]) + "\n")
+
+
+def read_set_epsilons(path: Path) -> list[float] | None:
+    """The ``# Epsilons:`` header of a ``.set`` file, or None when absent.
+
+    ``src.mmborg._write_set_file`` records the search epsilon vector since
+    2026-10-23; earlier archives carry no header and cannot be compared
+    against a merge under any other vector.
+    """
+    for raw in Path(path).read_text().splitlines():
+        line = raw.strip()
+        if not line.startswith("#"):
+            break
+        key, _, value = line[1:].partition(":")
+        if key.strip() == "Epsilons":
+            return [float(x) for x in value.split(",") if x.strip()]
+    return None
 
 
 # ---------------------------------------------------------------------------
