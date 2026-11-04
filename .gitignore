@@ -60,3 +60,6 @@ scripts/temporary/*
 docs/prior_study_presentations/*
 docs/experimental_proposal/*
 docs/*.pptx
+# Superseded-results archive (symlink into projects space; see TODO.md "Archive")
+archive
+archive/

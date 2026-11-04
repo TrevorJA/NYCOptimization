@@ -199,9 +199,10 @@ tables. Figures regenerate from tables alone.
 
 ## 5. Support membership on the regenerated pools
 
-The numbers in this section were scored on the pre-extension E_test (annual-volume
-lower bound 0.866) under the retired scoring rules and are re-read after the
-regeneration over the extended box (`campaign_design.md` §5).
+The numbers in this section were scored on the staged E_test (annual-volume
+lower bound 0.866, the campaign box) under the retired scoring rules and are re-read
+after its sub-window hazard image is recomputed under the June 1 rules
+(`campaign_design.md` §5).
 
 Stage A on the P = 10⁶ pools gives the strata **in_support 611 / boundary 389 /
 out_of_support 0** (pool d0, primary). No SOW has a majority of its

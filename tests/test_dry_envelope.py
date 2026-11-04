@@ -15,7 +15,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR))
 
 from scripts.supplemental.dry_envelope_run import etest_share_table, volume_levels  # noqa: E402
-from src.etest import E_TEST_MARGIN, E_TEST_VOLUME_MULTIPLIER_MIN  # noqa: E402
+from src.etest import E_TEST_MARGIN  # noqa: E402
 
 
 def test_levels_descend_and_include_the_margin_bound():
@@ -29,8 +29,8 @@ def test_levels_descend_and_include_the_margin_bound():
     assert len(margin_bound) == 1
     assert np.isclose(margin_bound["margin"].iloc[0], E_TEST_MARGIN)
     assert margin_bound["em"].iloc[0] < forced["em"].iloc[0]
-    assert (levels["adopted_em"] == E_TEST_VOLUME_MULTIPLIER_MIN).all()
-    assert E_TEST_VOLUME_MULTIPLIER_MIN < margin_bound["em"].iloc[0]
+    # the adopted dry bound is the margin box's own bound (no per-axis override)
+    assert np.allclose(levels["adopted_em"], margin_bound["em"].iloc[0])
 
 
 def test_share_table_is_a_fraction_and_zero_at_the_margin_bound():
@@ -42,5 +42,6 @@ def test_share_table_is_a_fraction_and_zero_at_the_margin_bound():
     assert np.isclose(at_margin["share_below_margin_bound"].iloc[0], 0.0)
     adopted = share[share["lower_bound_level"] == "adopted"]
     assert len(adopted) == 1
-    assert np.isclose(adopted["em_lower"].iloc[0], E_TEST_VOLUME_MULTIPLIER_MIN)
-    assert adopted["share_below_margin_bound"].iloc[0] > 0
+    margin_bound = levels[levels["is_margin_bound"]]
+    assert np.isclose(adopted["em_lower"].iloc[0], margin_bound["em"].iloc[0])
+    assert np.isclose(adopted["share_below_margin_bound"].iloc[0], 0.0)

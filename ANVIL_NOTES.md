@@ -91,3 +91,21 @@ node-scaling factor, 605k model basis, against ~600k remaining.
   2 cores) under the August objective list (`trenton_flow_reliability_weekly` fifth)
   that the archive and `outputs/baseline/ffmp_baseline_objectives.csv` share; the
   selection reproduced rows 1947/2205/2013, so figures 05/06 reused the HDF5 traces.
+- 2026-11-04: balance 591,765 before the demand-model rerun. Every pre-2026-11-04 simulation
+  output moved to `archive/2026-11-04_pre_demand_update/` (projects space, repo symlink
+  `archive/`; `archive/README.md` lists the contents), the pre-June-1 pools to
+  `archive/2026-10-01_pre_june1_hazard_recompute/`; home quota 89 % -> 80 %. The
+  pre-extension E_test (290 GB) sits in the archive and can be deleted once the
+  regenerated one passes `assert_staged_etest_contract`. Measured costs of the previous
+  E_test builds (sacct): generation 50 shards x 92 min x 9 cores = ~690 SU
+  (19654577, 20033555); presim `prep_etest_chunk` 49 tasks x 55 min x 33 cores = ~1.5k SU
+  on 2026-08-04 (19660403, two OOM reruns) but 50 x 0.7 min = ~19 SU on 2026-08-19
+  (20034847) after the STARFIT presim parallelism change; hazard-image shards ~21 SU.
+  Budget the chain at ~1k SU, not the 0.35k in `campaign_design.md` §4.
+  `demand_utilization_calibration.py` ran on the login node (6 s).
+- 2026-11-04 (later): the 0.80 annual-volume extension of E_test was reverted (the box is the
+  widened CMIP6 range, e^m = 0.866 to 1.32), so the 2026-08-19 E_test is reused: moved back
+  from the archive (projects-space rename, no copy), its retired-scoring sub-window image set
+  aside in the archive, utilization column appended by `srun` job 21947556 (2 cores, seconds;
+  u in [0.450, 0.999], k in [0.653, 6.0], 4 SOWs clipped at k = 6). Remaining E_test chain is
+  ~0.1k SU (chunk demand staging, sub-window image) plus the 66 SU baseline cube.

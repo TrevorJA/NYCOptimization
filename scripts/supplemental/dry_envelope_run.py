@@ -73,7 +73,7 @@ from src.ensemble_generation import (  # noqa: E402
     _prepare_generators,
 )
 from src.ensembles import hazard_image_provenance, staged_ensemble_dir  # noqa: E402
-from src.etest import E_TEST_BOUND_PCT, E_TEST_MARGIN, E_TEST_VOLUME_MULTIPLIER_MIN  # noqa: E402
+from src.etest import E_TEST_BOUND_PCT, E_TEST_MARGIN  # noqa: E402
 from src.load.historical_flows import load_historical_flows  # noqa: E402
 
 TABLES = scfg.DRYENV_TABLES_DIR
@@ -106,12 +106,14 @@ def volume_levels() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     levels["em"] = np.exp(levels["m"])
     levels["is_margin_bound"] = np.isclose(levels["margin"].fillna(-1.0), E_TEST_MARGIN)
     levels["m_hi_full"] = m_hi
-    levels["adopted_em"] = E_TEST_VOLUME_MULTIPLIER_MIN
     if not levels["is_margin_bound"].any():
         raise ValueError(
             f"E_TEST_MARGIN={E_TEST_MARGIN} is not among DRYENV_CANDIDATE_MARGINS="
             f"{scfg.DRYENV_CANDIDATE_MARGINS}; the margin box's own bound must be one level."
         )
+    # The adopted dry bound IS the margin box's own bound (e^m = 0.866): E_test applies no
+    # per-axis override (src/etest.py). The deeper candidate levels stay as sensitivities.
+    levels["adopted_em"] = float(levels.loc[levels["is_margin_bound"], "em"].iloc[0])
     return levels, env, fit
 
 
@@ -135,15 +137,15 @@ def etest_share_table(levels: pd.DataFrame) -> pd.DataFrame:
     """Share of a uniform-in-m design below the margin box's bound and the CMIP6 minimum.
 
     Every widened box keeps the upper bound; the LHS is uniform in ``m``, so the
-    share of SOWs below a level is a ratio of ``m`` intervals. The adopted bound
-    (``E_TEST_VOLUME_MULTIPLIER_MIN``) is the last row.
+    share of SOWs below a level is a ratio of ``m`` intervals. The adopted bound,
+    the margin box's own (e^m = 0.866, zero share below it), is the last row.
     """
     m_hi = float(levels["m_hi_full"].iloc[0])
     m_margin = float(levels.loc[levels["is_margin_bound"], "m"].iloc[0])
     m_cmip = float(levels.loc[levels["level"] == "cmip6_min", "m"].iloc[0])
     rows = []
     candidates = [(r["level"], r["margin"], r["m"]) for _, r in levels[levels["margin"].notna()].iterrows()]
-    candidates.append(("adopted", np.nan, float(np.log(E_TEST_VOLUME_MULTIPLIER_MIN))))
+    candidates.append(("adopted", float(E_TEST_MARGIN), m_margin))
     for label, margin, m_lo in candidates:
         width = m_hi - m_lo
         rows.append({

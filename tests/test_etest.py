@@ -55,14 +55,6 @@ from src.scenario_designs import SCENARIO_DESIGNS, SCENARIO_YEARS, assert_iid_po
 # Staging helpers
 # ---------------------------------------------------------------------------
 
-def _registry_axis_bounds(seed_domain: str) -> dict | None:
-    """The ``axis_bounds`` a staged E_test of ``seed_domain`` must record (None for a search stream)."""
-    for v in E_TEST_VARIANTS.values():
-        if v.seed_domain == seed_domain:
-            return {k: list(b) for k, b in v.axis_bounds.items()}
-    return None
-
-
 def _demand_payload(n_theta: int, r: int, seed_domain: str,
                     bounds=du.DEMAND_UTILIZATION_BOUNDS) -> tuple[dict, dict]:
     """The utilization column + provenance the append step adds (npz, meta)."""
@@ -92,7 +84,7 @@ def _demand_payload(n_theta: int, r: int, seed_domain: str,
 def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10,
                  theta_sampler: str = "lhs", seed_domain: str = "etest:kn",
                  population: str = "du_forced", with_npz: bool = True,
-                 axis_bounds="registry", with_demand: bool = True,
+                 axis_bounds=None, with_demand: bool = True,
                  demand_bounds=du.DEMAND_UTILIZATION_BOUNDS) -> Path:
     """Stage the two artifacts an E_test directory is resolved and grouped from.
 
@@ -104,8 +96,6 @@ def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10
     d = root / slug
     d.mkdir(parents=True, exist_ok=True)
     n = n_theta * r
-    if axis_bounds == "registry":
-        axis_bounds = _registry_axis_bounds(seed_domain)
     forced = population == "du_forced"
     demand_npz, demand_meta = ({}, {})
     if with_demand and forced:
@@ -195,24 +185,13 @@ def test_etest_box_is_wider_than_the_search_box():
         assert v.margin >= config.ENSEMBLE_FORCING_MARGIN, f"'{name}' has no extra margin"
 
 
-def test_volume_lower_bound_extends_the_margin_box_on_the_dry_side():
-    """The annual-volume axis reaches below the widened CMIP6 minimum, and only that axis moves."""
-    from scengen import forcing_space as fs
+def test_etest_samples_the_whole_widened_box_with_no_axis_override():
+    """Every axis keeps the widened CMIP6 range (annual-volume multiplier 0.866 to 1.32)."""
+    from scripts.main.generate_test_ensemble import etest_config
 
-    csv = Path(config.ENSEMBLE_FORCING_MEAN_FRAC_CSV)
-    if not csv.exists():
-        pytest.skip("CMIP6 envelope table not available")
-    fit = fs.fit_harmonic_params(fs.load_cmip6_envelope(csv), order=2)
     for name, v in E_TEST_VARIANTS.items():
-        assert set(v.axis_bounds) == {"m"}, f"'{name}' overrides an axis other than m"
-        lo, hi, names = fs.harmonic_param_box(fit, bound_pct=v.bound_pct, margin=v.margin)
-        m_lo, m_hi = lo[names.index("m")], hi[names.index("m")]
-        new_lo, new_hi = v.axis_bounds["m"]
-        assert new_lo < m_lo, f"'{name}' volume bound is not drier than the margin box"
-        assert new_hi is None
-        assert np.isclose(np.exp(new_lo), v.volume_multiplier_min)
-        lo2, hi2 = fs.override_axis_bounds(lo, hi, names, v.axis_bounds)
-        assert np.isclose(hi2[names.index("m")], m_hi)
+        assert not hasattr(v, "axis_bounds"), f"'{name}' carries a per-axis override"
+        assert dict(etest_config(v).axis_bounds) == {}, f"'{name}' narrows or extends an axis"
 
 
 def test_chunks_never_split_a_sow():
@@ -259,7 +238,7 @@ def test_etest_config_is_lhs_replicated_chunked_and_hazard_imaged():
     assert cfg.seed_domain == v.seed_domain
     assert cfg.generator == v.generator
     assert cfg.n_realizations == v.n_realizations
-    assert cfg.axis_bounds == v.axis_bounds      # the extended annual-volume lower bound
+    assert dict(cfg.axis_bounds) == {}           # the whole widened box, no per-axis override
 
 
 # ---------------------------------------------------------------------------
@@ -278,8 +257,7 @@ def test_staged_meta_records_lhs_and_replication(tmp_path, monkeypatch):
     {"theta_sampler": "iid"},          # the search-side pool construction, not E_test's
     {"r": 1},                          # no within-SOW sample -> SOW metric undefined
     {"seed_domain": "fixed"},          # a SEARCH seed stream -> not held out
-    {"axis_bounds": None},             # staged over the pre-extension box -> regenerate
-    {"axis_bounds": {"m": [-0.1, None]}},  # another volume bound -> regenerate
+    {"axis_bounds": {"m": [-0.223, None]}},  # generated with a per-axis override -> regenerate
 ])
 def test_staged_contract_rejects_a_search_side_construction(bad, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
