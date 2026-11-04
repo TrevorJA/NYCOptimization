@@ -4,9 +4,10 @@ Renders, from the tables ``run.py`` wrote (zero simulation), old (USGS
 gauge-sum covariate) versus new (reconstruction reservoir-inflow covariate),
 current FFMP policy on the historic record:
 
-  storage_1960s_drought        combined NYC storage under both demands over the
+  storage_1960s_drought        combined NYC storage under both demands and under
+                               the superseded constant 800 MGD reference over the
                                1960s drought with the FFMP zone boundaries, and
-                               the two monthly-mean demand series
+                               the monthly-mean demand series of the three
   storage_difference_windows   the whole-record storage difference (new - old)
                                with the screening threshold, and one panel per
                                screened window with both storage series
@@ -53,6 +54,12 @@ VARIANT_STYLE = {
     "old": {"color": "#8C8C8C", "ls": "--", "label": "USGS gauge-sum covariate (superseded)"},
     "new": {"color": "#0072B2", "ls": "-", "label": "Reservoir-inflow covariate (current)"},
 }
+#: The constant-demand reference (flat 800 MGD, every output before 2026-11-03),
+#: drawn on the 1960s drought figure only.
+REFERENCE_STYLE = {
+    "constant_800": {"color": "#D55E00", "ls": "-.",
+                     "label": "Constant 800 MGD demand (superseded reference)"},
+}
 ZONE_LABELS = {"level1b": "L1b", "level1c": "L1c", "level2": "L2",
                "level3": "L3", "level4": "L4", "level5": "L5"}
 ZONE_COLOR = "#B8860B"
@@ -85,10 +92,11 @@ def _draw_zones(ax, curves: pd.DataFrame) -> None:
                     fontsize=plt.rcParams["font.size"] - 2, color=ZONE_COLOR)
 
 
-def _draw_storage(ax, daily: pd.DataFrame, zones: pd.DataFrame, start, end) -> None:
+def _draw_storage(ax, daily: pd.DataFrame, zones: pd.DataFrame, start, end,
+                  styles: dict = VARIANT_STYLE) -> None:
     sub = daily.loc[start:end]
     _draw_zones(ax, _zone_curves(zones, pd.DatetimeIndex(sub.index)))
-    for v, st in VARIANT_STYLE.items():
+    for v, st in styles.items():
         ax.plot(sub.index, sub[f"storage_pct_{v}"], color=st["color"], ls=st["ls"], lw=1.6,
                 label=st["label"], zorder=3)
     ax.set_ylim(0, 102)
@@ -101,11 +109,12 @@ def fig_storage_1960s() -> Path:
     start, end = scfg.DCV_DROUGHT_1960S
     fig, axes = plt.subplots(2, 1, figsize=(11, 7.5), sharex=True,
                              gridspec_kw={"height_ratios": [2, 1.1], "hspace": 0.08})
-    _draw_storage(axes[0], daily, zones, start, end)
+    styles = {**VARIANT_STYLE, **REFERENCE_STYLE}
+    _draw_storage(axes[0], daily, zones, start, end, styles)
     axes[0].set_ylabel("Combined NYC storage (% of capacity)")
     axes[0].legend(loc="lower left", frameon=False)
     sub = daily.loc[start:end]
-    for v, st in VARIANT_STYLE.items():
+    for v, st in styles.items():
         monthly = sub[f"demand_{v}"].resample("MS").mean()
         axes[1].step(monthly.index, monthly, where="post", color=st["color"], ls=st["ls"], lw=1.6)
     axes[1].set_ylabel("NYC demand,\nmonthly mean (MGD)")

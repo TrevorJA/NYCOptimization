@@ -6,7 +6,9 @@ record. Evidence: one local pass of `scripts/supplemental/demand_covariate/run.p
 two full-model single-trace simulations of the current FFMP policy in the step-05
 baseline configuration (one cached model dict, deep-copied and patched twice with
 only the `demand_nyc` source swapped), the eight active annual-unit objectives, and
-the `kn_50yr_n5` fixture at k = 1 before and after. Settings: `supplemental_config.py`
+the `kn_50yr_n5` fixture at k = 1 before and after; a third run with NYC demand held
+constant at its 800 MGD allocation is simulated the same way as a reference for the
+storage figures and the outcome tables only. Settings: `supplemental_config.py`
 `DCV_*`. Tables under `outputs/supplemental/demand_covariate/tables/`, figures
 (`figures.py`) under `.../figures/`. Terminology per `docs/notes/terminology.md`.*
 
@@ -91,15 +93,21 @@ realized minus nominal utilization moved from −0.13 to −0.07 per SOW to −0
 (`outcomes_summary.csv`, `drought_zone_days.csv`, `storage_annual_minimum.csv`;
 metric window 1946-06-01 to 2023-11-30, after the six-month spin-up)
 
-| | Old | New |
-|---|---|---|
-| Combined storage mean / min / p01 / p05 (% of capacity) | 82.2 / 3.8 / 18.0 / 41.6 | 82.4 / 4.7 / 19.5 / 41.4 |
-| Days in drought watch or worse (L3+) / warning or worse (L4+) / emergency (L5) | 1,863 / 1,358 / 917 | 1,853 / 1,397 / 902 |
-| Distinct L3 / L4 / L5 events | 31 / 22 / 7 | 26 / 20 / 7 |
-| NYC demand / delivery mean (MGD) | 557.3 / 549.7 | 549.4 / 542.1 |
-| NYC shortfall: total (MG) / % of demand / days | 213,783 / 1.36 / 1,189 | 206,469 / 1.33 / 1,072 |
-| Montague days below target | 1 | 0 |
-| Trenton days below target / deficit (MG) | 313 / 39,513 | 313 / 39,750 |
+| | Old | New | Constant 800 MGD (reference) |
+|---|---|---|---|
+| Combined storage mean / min / p01 / p05 (% of capacity) | 82.2 / 3.8 / 18.0 / 41.6 | 82.4 / 4.7 / 19.5 / 41.4 | 76.3 / 0.0 / 10.3 / 33.7 |
+| Days in drought watch or worse (L3+) / warning or worse (L4+) / emergency (L5) | 1,863 / 1,358 / 917 | 1,853 / 1,397 / 902 | 3,446 / 2,125 / 1,284 |
+| Distinct L3 / L4 / L5 events | 31 / 22 / 7 | 26 / 20 / 7 | – / – / 9 |
+| NYC demand / delivery mean (MGD) | 557.3 / 549.7 | 549.4 / 542.1 | 800 / 774.1 |
+| NYC shortfall: total (MG) / % of demand | 213,783 / 1.36 | 206,469 / 1.33 | 732,028 / 3.23 |
+| Montague days below target | 1 | 0 | – |
+| Trenton days below target / deficit (MG) | 313 / 39,513 | 313 / 39,750 | – |
+
+Under the constant-demand reference the system empties on 1964-12-21 and sits at or
+below 1 % of capacity for 97 days between 1964-12-11 and 1965-11-24. Over 1961-06 to 1967-12 it
+delivers 636 MGD against 549 under the new series, and its FFMP-year minima are
+44.3 / 26.0 / 18.7 / 0.0 / 0.0 % for 1961 to 1965 against 53.0 / 31.9 / 28.9 / 9.2 /
+4.7 % (`storage_annual_minimum.csv`).
 
 ## 6. Storage differences (`storage_difference_windows.csv`; figures `storage_difference_windows`, `storage_1960s_drought`)
 
@@ -122,8 +130,10 @@ storage lower from 1961-07 to 1964-04 with a peak difference of −8.6 points on
 1961-11-07, FFMP-year minima 59.4 → 53.0 % (1961), 35.2 → 31.9 % (1962) and
 31.5 → 28.9 % (1963), then higher at the trough, 8.0 → 9.2 % (1964) and 3.8 → 4.7 %
 (1965); the annual demand is higher by 39 to 45 MGD in FFMP years 1961-1962 and lower
-by 23 MGD in 1964. No window falls inside the observed River Master record, where both
-variants carry the observed diversions.
+by 23 MGD in 1964. The constant-demand reference on the same figure runs 7 to 13
+points below both series through the drought and reaches zero at the 1964-65 and
+1965-66 troughs (§5). No window falls inside the observed River Master record, where
+both variants carry the observed diversions.
 
 ## 7. Baseline objective scores (`baseline_objectives.csv`)
 

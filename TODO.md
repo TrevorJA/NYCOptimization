@@ -7,17 +7,18 @@ cluster, **[local]** laptop.
 
 ## 0. NYC demand model (2026-11-03)
 
-NYC demand is now the time-dynamic extrapolated diversion series everywhere
+NYC demand is the time-dynamic extrapolated diversion series everywhere
 (`config.nyc_demand_source`; per realization for ensembles, staged by step 04 as
 `diversion_nyc_extrapolated_mgd.hdf5`; pywrdrb's regenerated 1945-2023
-historic CSV on the inflow reconstruction for the single trace). A constant 800 MGD NYC demand is never
-used and no env file selects a demand source (`tests/test_demand_source.py`).
-NJ stays at its constant 100 MGD allocation. Everything simulated before
-2026-11-03 ran at the constant 800 MGD demand and is superseded; the inventory
-below is complete as of the switch. Every staged demand series and the historic
-CSV produced before 2026-11-04 predate the covariate change (the regressions are
+historic CSV on the inflow reconstruction for the single trace). It is the only
+NYC demand source and no env file selects one (`tests/test_demand_source.py`).
+Search runs the unscaled series (k = 1); E_test scales it per SOW by k(u)
+(`forcing_parameterization.md`, "Demand-utilization axis"). NJ stays at its
+100 MGD allocation. Every simulation output, staged demand series and historic
+CSV produced before 2026-11-04 predates the current series (the regressions are
 trained and applied on the reconstruction's reservoir inflow,
-`demand_covariate_diagnostics.md`) and are superseded by the same inventory.
+`demand_covariate_diagnostics.md`) and is superseded; the inventory below is
+complete as of that date.
 
 **Unaffected (do not redo).** Everything that is streamflow-only: the P = 10⁶
 pools and smoke pools, the hazard images and step-03 selections, the HF design
@@ -27,9 +28,7 @@ presim pass (`prep_etest_chunks.sh` output), and the step-01 single-trace presim
 (the non-NYC STARFIT releases do not depend on NYC demand). The measured search
 cost basis (21,850 SU per N = 100 / 500k) also stands: demand is a parameter
 lookup; confirm from seed 1 rather than re-measure. The search ε vector is fixed
-by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`); its
-stage-1 floors were measured at the former constant demand, which that note and
-SI Text S5 must say in one sentence (disclosure, not a re-measurement).
+by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
 
 **A. Staging (no simulation), before anything else**
 
@@ -76,10 +75,10 @@ SI Text S5 must say in one sentence (disclosure, not a re-measurement).
   regenerated 1,000-SOW E_test (~66 SU), after the §A demand staging so the
   cube carries the per-SOW utilization scaling, then
   `scripts/supplemental/stage_etest_subset_baseline.py` per design. The stored
-  cube and its subset symlinks were simulated at 800 MGD.
+  cube and its subset symlinks predate the current demand series.
 - [ ] **[HPC]** Searches: every stored Pareto set (the August HIST set, the
-  N = 100 production and moderate MC/HF sets, the `ffmp_vr` sets) was searched at
-  800 MGD and is superseded by the §2 campaign searches (HIST included: the
+  N = 100 production and moderate MC/HF sets, the `ffmp_vr` sets) predates the
+  current demand series and is superseded by the §2 campaign searches (HIST included: the
   rerun must use the regenerated historic CSV). Never evaluate an old set
   against new baselines or cubes; the §3 `.set` caveat applies doubly.
 - [ ] **[HPC]** E_test re-evaluation cubes of those sets
@@ -102,19 +101,19 @@ SI Text S5 must say in one sentence (disclosure, not a re-measurement).
     `eps_calib_*.env`; `outputs/supplemental/epsilon_calibration/`, SI Text S5):
     the ε vector does not change, but the cubes are the substrate of the
     framing-convention screens below, so they are regenerated if those screens
-    are re-run; otherwise the disclosure sentence above is the only change.
+    are re-run; otherwise nothing changes.
   - Framing-convention screens (`framing_convention_analysis.py`,
     `satisfaction_factor.sh`; `framing_convention_diagnostics.md` "Measured
     verdicts": k = 3 / k = 1 failing weeks, the 0.99 factor): NYC delivery
-    reliability is the axis the demand change moves most (failing weeks fall as
-    the curtailed caps stop binding), so re-screen k for saturation on the
+    reliability is the axis most sensitive to the demand level (the curtailed
+    caps bind only when demand exceeds them), so re-screen k for saturation on the
     regenerated cubes before the campaign reports it; refresh the verdict
     sentences in `objective_definitions.md` and manuscript §3.2.2.
   - Ensemble-size diagnostics (`ensemble_size_library_stage.sh`,
     `ensemble_size_library_eval.sh`, `ensemble_size_analysis.sh`;
     `ensemble_size_diagnostics.md`, SI Texts S4 and S5; the claim that N = 300
     resolves every objective's paired difference within ε/2): the NYC objectives'
-    sampling variance changes with the demand; re-run Layer B on demand-staged
+    sampling variance depends on the demand series; re-run Layer B on demand-staged
     ladder ensembles, or restate the claim for the NYC axes from the new library.
   - Transfer-evaluation matrix (`transfer_evaluation_run.py`,
     `envs/transfer_evaluation.env`, N = 100 cells; `tev_path_consistency.csv`
@@ -122,9 +121,9 @@ SI Text S5 must say in one sentence (disclosure, not a re-measurement).
     is also the §3 draw-sensitivity driver).
   - Flood-objective diagnostics (`flood_objective_run.py`,
     `flood_exceedance_baseline_figures.py`; `flood_objective_diagnostics.md`):
-    the local pass (34 policies on the historic record and `kn_50yr_n5`) ran at
-    800 MGD; storage and therefore spill and exceedance move with demand, so
-    re-run before quoting any of its numbers.
+    the local pass (34 policies on the historic record and `kn_50yr_n5`) predates
+    the current demand series; storage and therefore spill and exceedance move
+    with demand, so re-run before quoting any of its numbers.
   - Objective-dynamics figures (`objective_dynamics.py`,
     `ensemble_objective_dynamics.py`; `objective_dynamics_diagnostics.md`):
     re-render from the new baseline (they annotate delivery against demand).
@@ -134,15 +133,14 @@ SI Text S5 must say in one sentence (disclosure, not a re-measurement).
     diagnostics only): re-run if used; low priority.
   - `check_objective_determinism.py`
     (`outputs/supplemental/objective_determinism/summary.csv`, the SI Text S1
-    numbers in §4): cheap local re-run under the new demand before quoting.
+    numbers in §4): cheap local re-run under the current demand series before
+    quoting.
   - `sim_selected_policies.sh` / `simulate_selected_policies.py` (full-model
     traces behind figures 05/06 and the historic dynamics figures, §4): re-run
     from the new sets.
 - [ ] **[local]** Numbers to refresh once the above exist: the per-SOW noise
   floors (three places), the framing-convention verdicts, the criteria
-  placements, the HIST baseline attainment wherever the manuscript quotes it,
-  and `docs/notes/methods/campaign_design.md` §4 (the pre-search list now
-  includes the demand staging).
+  placements, and the HIST baseline attainment wherever the manuscript quotes it.
 
 ## 1. Anvil HPC rename for the Monte Carlo design
 
@@ -357,7 +355,7 @@ provenance.
 - [ ] **[local]** Historic dynamics figures (`figures/historic/ffmp_obj8/dynamics/`,
   1960s and 2002 droughts): decide which periods/panels go to the SI and whether to
   add panels (Trenton, NJ diversion, drought level) via the `PANELS` registry; render
-  them from the post-2026-11-03 HIST set (Section 0: results at 800 MGD are superseded).
+  them from the campaign HIST set (Section 0: pre-2026-11-04 results are superseded).
 - [ ] **[local]** Figure 9: keep one of the three `number=9` registry entries
   (`regret_exposure` recommended; the two `regret_surfaces*` variants degenerate at
   the adopted τ) and delete the other two from `src/figures/registry.py`.

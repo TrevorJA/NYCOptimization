@@ -1015,7 +1015,10 @@ def floodobj_figure_path(name: str) -> Path:
 # policy's NYC system outcomes and its eight annual-unit objective scores on the
 # historic record, old (USGS gauge-sum covariate) versus new, with everything
 # else identical (one full-model build; only the demand_nyc source is swapped),
-# plus the k = 1 utilization of one staged fixture before and after.
+# plus the k = 1 utilization of one staged fixture before and after. A third
+# run, the superseded constant 800 MGD demand every output before 2026-11-03
+# carried, is simulated the same way as a reference for the storage figures
+# and the outcome tables only.
 ###############################################################################
 
 

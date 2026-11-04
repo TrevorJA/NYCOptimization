@@ -16,11 +16,15 @@ versus new, with everything else identical:
      measured, not asserted.
   2. NYC system outcomes of the current FFMP policy from the step-05 baseline
      configuration (full model, single trace, default decision variables): one
-     cached model dict, deep-copied and patched twice with only the
-     ``demand_nyc`` dataframe source swapped. Combined storage, FFMP-year
-     minimum storage, days and distinct events per FFMP drought zone, NYC
-     delivery and shortfall, Montague and Trenton target compliance, and the
-     screened windows where the two variants' storage differs materially.
+     cached model dict, deep-copied and patched with only the ``demand_nyc``
+     source swapped. Combined storage, FFMP-year minimum storage, days and
+     distinct events per FFMP drought zone, NYC delivery and shortfall,
+     Montague and Trenton target compliance, and the screened windows where
+     the two variants' storage differs materially. A third run, the
+     superseded constant-demand reference (NYC demand flat at the 800 MGD
+     allocation, the model every output before 2026-11-03 ran), is simulated
+     the same way for the storage figures and the outcome tables only; it is
+     never a demand source anywhere else (``config.assert_time_dynamic_nyc_demand``).
   3. The eight active annual-unit objectives (``config.get_objective_set()``,
      the step-05 computation) under both demands, the difference in units of
      each objective's epsilon.
@@ -79,7 +83,12 @@ from src.simulation import (  # noqa: E402
     dvs_to_config,
 )
 
+#: The two covariate variants every comparison is made between.
 VARIANTS = ("old", "new")
+#: The superseded constant-demand reference, simulated for the storage figures
+#: and the outcome tables only (see the module docstring).
+REFERENCE = "constant_800"
+RUNS = VARIANTS + (REFERENCE,)
 NYC_DEMAND_CSV = "diversion_nyc_extrapolated_mgd.csv"
 #: Pywr-DRB sibling checkout the old CSV is recovered from.
 PYWRDRB_DIR = PROJECT_DIR.parent / "Pywr-DRB"
@@ -321,13 +330,15 @@ def current_policy_config():
                          formulation_name=scfg.DCV_FORMULATION)
 
 
-def simulate(nyc_config, demand_csv: Path) -> dict:
+def simulate(nyc_config, demand_csv: Path | None) -> dict:
     """Full-model single-trace run of ``nyc_config`` with ``demand_nyc`` read from ``demand_csv``.
 
     Mirrors ``src.simulation.run_simulation_inmemory`` (the step-05 path): the
     cached full-model dict is deep-copied and patched, then only the
-    ``demand_nyc`` dataframe parameter's ``url`` is replaced. Every named node
-    and parameter is recorded so the drought-level index is available.
+    ``demand_nyc`` parameter is replaced: the dataframe source's ``url`` points
+    at ``demand_csv``, or, for ``None``, a constant at the 800 MGD allocation
+    (the superseded reference). Every named node and parameter is recorded so
+    the drought-level index is available.
 
     Returns:
         The ``_extract_results_from_recorder`` dict plus ``drought_level`` (the
@@ -340,7 +351,11 @@ def simulate(nyc_config, demand_csv: Path) -> dict:
     param = model_dict["parameters"]["demand_nyc"]
     if param.get("type") != "dataframe" or "url" not in param:
         raise RuntimeError(f"demand_nyc is not the historic dataframe source: {param}")
-    param["url"] = str(demand_csv)
+    if demand_csv is None:
+        model_dict["parameters"]["demand_nyc"] = {
+            "type": "constant", "value": float(NYC_DECREE_DIVERSION_CAP_MGD)}
+    else:
+        param["url"] = str(demand_csv)
     json_path = Path(_get_temp_dir()) / "dcv_model.json"
     json_path.write_text(json.dumps(model_dict))
     model = pywrdrb.Model.load(str(json_path))
@@ -555,27 +570,29 @@ def main() -> None:
           + ", ".join(f"{v} {float(fixture.iloc[-1][f'{v}_utilization']):.3f}" for v in VARIANTS),
           flush=True)
 
-    # 2. Simulations
+    # 2. Simulations (the two variants, then the constant-demand reference)
     results, secs = {}, {}
-    for v in VARIANTS:
+    for v in RUNS:
         t0 = time.perf_counter()
-        results[v] = simulate(nyc_config, csv[v])
+        results[v] = simulate(nyc_config, csv.get(v))
         secs[v] = time.perf_counter() - t0
         print(f"[dcv_run] simulated {v} demand in {secs[v]:.0f} s", flush=True)
         sim_dem = results[v]["ibt_demands"]["demand_nyc"].loc[START_DATE:END_DATE]
-        if not np.allclose(sim_dem.to_numpy(), demand[v].reindex(sim_dem.index).to_numpy()):
-            raise RuntimeError(f"{v}: simulated demand_nyc is not the {v} CSV series.")
+        expected = (demand[v].reindex(sim_dem.index).to_numpy() if v in csv
+                    else np.full(len(sim_dem), float(NYC_DECREE_DIVERSION_CAP_MGD)))
+        if not np.allclose(sim_dem.to_numpy(), expected):
+            raise RuntimeError(f"{v}: simulated demand_nyc is not the intended series.")
 
-    out = pd.DataFrame({v: outcomes(results[v]) for v in VARIANTS}).T
+    out = pd.DataFrame({v: outcomes(results[v]) for v in RUNS}).T
     out.index.name = "variant"
     out.to_csv(scfg.dcv_table_path("outcomes_summary"))
     zones = pd.concat([zone_table(_metric_window(results[v]["drought_level"])).assign(variant=v)
-                       for v in VARIANTS], ignore_index=True)
+                       for v in RUNS], ignore_index=True)
     zones.to_csv(scfg.dcv_table_path("drought_zone_days"), index=False)
 
-    st = {v: storage_pct(results[v]) for v in VARIANTS}
-    lv = {v: results[v]["drought_level"] for v in VARIANTS}
-    annual_min = pd.DataFrame({v: ffmp_year_reduce(st[v], np.min) for v in VARIANTS})
+    st = {v: storage_pct(results[v]) for v in RUNS}
+    lv = {v: results[v]["drought_level"] for v in RUNS}
+    annual_min = pd.DataFrame({v: ffmp_year_reduce(st[v], np.min) for v in RUNS})
     annual_min["diff"] = annual_min["new"] - annual_min["old"]
     annual_min.rename_axis("ffmp_year").to_csv(scfg.dcv_table_path("storage_annual_minimum"))
 
@@ -590,7 +607,7 @@ def main() -> None:
           flush=True)
 
     daily = pd.DataFrame(index=st["old"].index)
-    for v in VARIANTS:
+    for v in RUNS:
         daily[f"demand_{v}"] = results[v]["ibt_demands"]["demand_nyc"]
         daily[f"storage_pct_{v}"] = st[v]
         daily[f"level_{v}"] = lv[v]
@@ -613,6 +630,7 @@ def main() -> None:
         "old_csv": str(csv["old"]), "new_csv": str(csv["new"]),
         "old_pywrdrb_ref": scfg.DCV_OLD_PYWRDRB_REF, "pywrdrb_head": pywrdrb_head,
         "fixture": scfg.DCV_FIXTURE_SLUG,
+        "constant_demand_reference_mgd": float(NYC_DECREE_DIVERSION_CAP_MGD),
         "drought_caps_mgd": caps,
         "storage_diff_threshold_pct": scfg.DCV_STORAGE_DIFF_THRESHOLD_PCT,
         "sim_seconds": {v: round(s, 1) for v, s in secs.items()},

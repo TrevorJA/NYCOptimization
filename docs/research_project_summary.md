@@ -240,13 +240,17 @@ never as a comparison result.
 **In place:** the end-to-end pipeline (smoke-verified), the measured campaign cost
 basis (173.8 s per N = 100 evaluation trimmed, full model 1.16×, and 21,850 SU per
 N = 100 / 500k-NFE production search on 8 × 128, from which every campaign number
-scales), the P = 10⁶ candidate ensembles for draws 0–1, E_test with its presim pass, and
-the current FFMP policy's E_test matrix. The hazard-filling selection has no tail-share
+scales), the P = 10⁶ candidate ensembles for draws 0–1, and E_test with its presim pass.
+The current FFMP policy's E_test matrix and every step-05 baseline predate the
+time-dynamic NYC demand series and are re-simulated under it before the campaign
+(`TODO.md` §0). The hazard-filling selection has no tail-share
 threshold; the minimum per-axis share above the pool P90 is reported as a property of
 the selector on the pool's joint geometry (`notes/methods/hazard_selector_diagnostics.md`).
 
-**Not yet staged:** the N = 300 search ensembles (draws 0–1 of both matched designs)
-and their step-05 baselines (`TODO.md` §1).
+**Not yet staged:** the per-SOW scaled NYC demand series of E_test (`TODO.md` §0), and
+the N = 300 search ensembles (draws 0–1 of both matched designs, each with its
+per-realization NYC demand series from step 04) and their step-05 baselines
+(`TODO.md` §2).
 
 **Decided:** the three designs above; a single stationary search population with deep
 uncertainty carried only in E_test; N = 300, L = 10 yr at equal NFE (the smallest ladder
@@ -287,7 +291,7 @@ campaign. Table: `notes/methods/campaign_design.md` §6.
 (`append_demand_utilization.py`), stage its scaled NYC demand series per chunk, and
 re-simulate the current-FFMP E_test cube; stage the search ensembles at N = 300 (steps
 02–04 for draws 0–1 of both matched designs, step 05 baselines) with
-`validate_staged_seasonality` build QC; re-verify the ε floors on the N = 300 ensembles;
+`validate_staged_seasonality` build QC (the search ε vector is fixed as adopted);
 run the one-node batched-search memory smoke; then seed 1 of every design, which prices
 the campaign. Re-run the satisficing-threshold diagnostic and the criteria re-anchoring
 audit on the production cubes and adopt final placements; re-run the regret-tolerance

@@ -221,7 +221,13 @@ about 0.68, so the design comparison tests generalization from the model's stati
 to the full utilization range in both directions. The factor reaches the objectives through the NYC
 delivery entitlement `min(demand, allowance)` (`objective_definitions.md` §0): the FFMP writes its
 curtailments against the allocation, so the drought-protection value of the curtailment variables
-scales with `u`.
+scales with `u`. Search does not hold NYC demand at the 800 MGD allocation. That constant is the
+Decree parties' worst-case evaluation premise, which Kolesar and Serio (2011) showed biases drought
+risk upward and pushes release design toward needless conservatism at the expense of downstream
+flows and flood exposure, and under it the current FFMP empties the system on the 1964-65 historic
+record (`demand_covariate_diagnostics.md` §5). The worst case enters the study as the `u = 1`
+ceiling of E_test, where demand uncertainty is carried, as in the deep-uncertainty re-evaluations of
+Herman et al. (2014), Trindade et al. (2017) and Gold et al. (2022, 2023).
 
 **Analysis plumbing.** `src/factor_mapping.py::theta_features` returns `(em, r1, r2, u)` for an
 appended E_test; `reeval_raw_meta.json` records `sow_demand_utilization`; step 10 writes

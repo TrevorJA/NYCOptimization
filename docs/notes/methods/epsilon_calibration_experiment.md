@@ -62,6 +62,13 @@ Scripts `scripts/supplemental/epsilon_calibration_{run,figures}.py`, launcher
   (Stage 2), and Borg's archive behaviour is insensitive to ε changes of this
   size (ε-progress and the archive-parent draw shift at the margin; the
   per-evaluation cost does not).
+- **Demand at calibration (disclosure).** The stage-1 cubes were simulated with
+  NYC demand held constant at its 800 MGD allocation, before the time-dynamic
+  extrapolated series (`config.nyc_demand_source`) was adopted on 2026-11-03.
+  The vector is not re-measured under the current series: the NYC delivery
+  floors are noise and granularity floors whose adopted entries sit well above
+  them, and the cubes are regenerated only if the framing-convention screens
+  are re-run (`TODO.md` §0).
 
 ### Stage 2, family coarsening by archive cardinality
 
