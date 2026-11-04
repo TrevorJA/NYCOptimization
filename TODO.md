@@ -21,11 +21,12 @@ presim verified current (`start_date` 1945-12-01, `end_date` 2023-11-30: no step
 rerun); the problem JARs need no rebuild (only DV and objective COUNTS enter the JAR,
 still 8; `00_setup_borg_jars.sh` header); Pywr-DRB `nyc_opt` at `9619a90` and scengen
 `main` at `c61fef8`, clean and in sync, both editable in `venv`; `squeue` empty; balance
-591,765 SU. Every `python` step below goes through `srun` (shared, seconds), never the
-login node.
+591,765 SU. Every step below is an sbatch wrapper under `workflow/`; nothing runs on
+the login node and no bare `srun` one-liners (the three metadata-only E_test steps got
+wrappers on 2026-11-04: `etest_demand_utilization.sh`, `etest_subset_stage.sh`,
+`stage_etest_subset_baseline.sh`).
 
-Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_production.env`;
-`SRUN="srun -A ees260021 -p shared -n 1 -c 2 --mem=4G -t 00:20:00"`):
+Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_production.env`):
 
 - [ ] **[local] 0. Tests** run on the local machine as usual (never on Anvil unless
   Trevor asks); confirm the new demand-source, utilization, etest and compare_designs
@@ -37,25 +38,29 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
   Optional first: `bash workflow/submit_smoke.sh ffmp` (debug queue, 2 x 40, verifies the
   model build with the new demand series before the 12-node queue wait). Seed 2
   (`--array=2 --time=08:00:00`) after seed 1 lands.
-- [ ] **[HPC] 2. E_test completion** (no regeneration; the staged flows and presim are reused):
-  1. `$SRUN python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000`
-     (-> `etest_kn_50yr_n25000_first25ch`; runs `assert_staged_etest_contract` with the
-     utilization keys, the first real check of the reverted contract on the staged meta)
-  2. `sbatch --export=ALL,NYCOPT_ENV_FILE=$H workflow/supplemental/stage_nyc_demand_etest_chunks.sh`
-     (50 tasks x 33 ranks, minutes each: writes each chunk's k(u)-scaled
+- [ ] **[HPC] 2. E_test completion** (no regeneration; the staged flows and presim are reused).
+  The staging contract lists the demand series as a required chunk file, so the chunk
+  staging precedes the subset build (the reverse order was refused on 2026-11-04):
+  1. [x] `stage_nyc_demand_etest_chunks.sh` submitted 2026-11-04 as array 21950437
+     (50 tasks x 33 ranks; writes each chunk's k(u)-scaled
      `diversion_nyc_extrapolated_mgd.hdf5` and `demand_utilization_realized.csv`)
-  3. after 2: `$SRUN python3 scripts/supplemental/merge_demand_utilization_realized.py --variant kn`
+  2. `sbatch --dependency=afterok:21950437 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_subset_stage.sh`
+     (realized `u` per SOW, then `etest_kn_50yr_n25000_first25ch`; runs
+     `assert_staged_etest_contract` with the utilization keys, the first real check of
+     the reverted contract on the staged meta)
+  3. (folded into 2)
   4. `J5=$(sbatch --parsable --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_shards.sh)`;
      `sbatch --dependency=afterok:$J5 --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_merge.sh`
      (~21 SU; the retired-scoring image was moved to the archive, so the merge writes fresh)
-  5. later, via `$SRUN`: `python -m scripts.supplemental.figures_forcing_parameterization`
-     (Figure 3, S12 to S16) and the `dry_envelope.sh` production leg (Section 2).
+  5. later: `si_figures_design.sh` (Figure 3, S12 to S16 from the staged
+     `forcing_profiles.npz`) and the `dry_envelope.sh` production leg (Section 2).
   The realization-level `hazard_image.npz` of the parent stays on the retired 8-axis
   scoring; only the exploratory step 11 reads it (rescore before any step-11 run).
-- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.2 and the subset; ~66 SU):
+- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.1 to 2.3; ~66 SU):
   `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/09_simulate_test_chunks.sh`
   (in-job merge; lands in `outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n25000/baseline/`),
-  then per design env `set -a; source <env>; set +a; export NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch; $SRUN python3 -m scripts.supplemental.stage_etest_subset_baseline --baseline-src outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n25000/baseline`,
+  then once per design env
+  `sbatch --export=ALL,NYCOPT_ENV_FILE=<env>,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_BASELINE_SRC=outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n25000/baseline workflow/supplemental/stage_etest_subset_baseline.sh`,
   and point `RTD_REEVAL_BASELINE_DIR` (`supplemental_config.py`, currently the archived
   `ffmp_obj8_mm_full` path) at the new cube.
 - [ ] **[HPC] 4. Historic step-05 baseline** (objective anchor; `--reeval` cannot run on a
@@ -66,7 +71,7 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
   the ε re-filter, seed 2, `--merge --install`, step 07, steps 09 + 09b on
   `etest_kn_50yr_n25000_first25ch`, then 10/13/14 (Section 2 items).
 
-Day target: item 1 submitted, items 2.1 to 2.4 submitted, item 3 chained as 2.2 lands. Matched-design staging at N = 300 (Section 2) is independent and can
+Day target: item 1 submitted, items 2.1 to 2.4 done or submitted, item 3 chained as 2.1 lands. Matched-design staging at N = 300 (Section 2) is independent and can
 queue alongside.
 
 ## 0. NYC demand model (2026-11-03)
@@ -98,8 +103,9 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
 
 **A. Staging (no simulation), before anything else**
 
-- [x] Repos pulled (Pywr-DRB `9619a90`, scengen `c61fef8`); `demand_utilization_calibration.py`
-  run (2026-11-04; rerun through `srun` only if `src/demand_utilization.py` constants change).
+- [x] Repos pulled (Pywr-DRB `9619a90`, scengen `c61fef8`); k(u) table and utilization column
+  written 2026-11-04 (`etest_demand_utilization.sh` is the reproducible path; rerun with
+  `NYCOPT_FORCE=1` only if `src/demand_utilization.py` constants change).
 - [ ] **[HPC]** E_test demand-utilization axis: on the REGENERATED E_test (rerun chain,
   item 2): `append_demand_utilization.py --variant kn` after the merge, then
   `prep_etest_chunks.sh` stages the k(u)-scaled series itself (no separate

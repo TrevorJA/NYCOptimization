@@ -183,12 +183,15 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.
 sbatch --dependency=afterok:<shards_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
        workflow/supplemental/gen_etest_merge.sh
-python3 scripts/supplemental/demand_utilization_calibration.py                   # k(u) table, seconds
-python3 scripts/supplemental/append_demand_utilization.py --variant kn           # per-SOW utilization u, metadata only
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-       workflow/supplemental/prep_etest_chunks.sh
-python3 scripts/supplemental/merge_demand_utilization_realized.py --variant kn   # realized vs nominal u per SOW
-python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000   # -> etest_kn_50yr_n25000_first25ch
+sbatch --dependency=afterok:<merge_jobid> \
+       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
+       workflow/supplemental/etest_demand_utilization.sh                 # k(u) table + per-SOW utilization u, metadata only
+sbatch --dependency=afterok:<demand_u_jobid> \
+       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
+       workflow/supplemental/prep_etest_chunks.sh                        # step-04 inputs + scaled NYC demand per chunk
+sbatch --dependency=afterok:<prep_jobid> \
+       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
+       workflow/supplemental/etest_subset_stage.sh                       # realized u per SOW + etest_kn_50yr_n25000_first25ch
 ```
 
 Every re-evaluation step (`05`, `08`, `09`, `09b`, `10`, `11`) takes
@@ -296,7 +299,7 @@ sbatch workflow/14_results_figures.sh
 ```
 
 Step order: `01` before `05`/`06`; `02`→`04` (with `03` for hazard filling)
-before `06`; `12`→`demand_utilization_calibration`→`append_demand_utilization`→`prep_etest_chunks`→`merge_demand_utilization_realized`→`make_etest_subset` before `05`/`08`/`09`/`11`;
+before `06`; `12`→`etest_demand_utilization`→`prep_etest_chunks`→`etest_subset_stage` before `05`/`08`/`09`/`11`;
 `06`→`extract_runtime_archive`→`07`→`09`→`09b`→`10`/`11`/`13`/`14`. Chain on a
 cluster with `sbatch --dependency=afterok:<jobid>`. Outputs land under
 `outputs/{scenario}/{moea_slug}/`.
