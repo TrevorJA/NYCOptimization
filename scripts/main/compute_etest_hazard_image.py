@@ -232,7 +232,8 @@ def main() -> None:
     """Score the staged E_test on disjoint sub-windows and persist the hazard image."""
     variant = get_etest_variant(E_TEST_VARIANT)
     slug = variant.slug
-    meta = assert_staged_etest_contract(slug)
+    # Streamflow-only pass: it may run before the NYC utilization column is appended.
+    meta = assert_staged_etest_contract(slug, require_demand=False)
     out_dir = staged_ensemble_dir(slug)
     out_path = out_dir / "hazard_image_subwindows.npz"
     if out_path.exists():

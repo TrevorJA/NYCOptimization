@@ -619,6 +619,155 @@ def incumbent_spread(baseline: RawCube) -> dict:
 
 
 ###############################################################################
+# SOW-subset re-scoring (composition sensitivity; SI Text S10)
+###############################################################################
+# The ONE path every subset re-scoring goes through: hazard-restricted and
+# envelope-restricted subsets of E_test, and the NYC entitlement-utilization
+# bands, all re-score the same persisted matrix under a boolean SOW mask. The
+# result is a tidy table, never a scorecard, so no METRIC_CONTRACT prefix is
+# introduced: its columns reuse the scorecard names with identical semantics
+# restricted to the masked SOWs.
+
+def rescore_sow_subsets(raw: RawCube, groups: dict, baseline: Optional[RawCube] = None,
+                        thresholds: dict = None, tau: dict = None) -> pd.DataFrame:
+    """Re-score every solution on named SOW subsets of the persisted matrix.
+
+    For each group (a boolean ``(G,)`` mask aligned to ``raw.sow_labels``) the
+    Starr conjunction and, with a baseline, the incumbent-relative family are
+    recomputed over the masked SOWs only: the same per-SOW values, the same
+    unit (the SOW), a different coverage of the designed exploration.
+
+    Args:
+        raw: The per-SOW re-eval cube.
+        groups: ``{group_name: mask}``; masks are boolean ``(G,)`` arrays
+            aligned to ``raw.sow_labels`` (build them by LABEL, e.g. with
+            :func:`utilization_groups`, never by position).
+        baseline: Status-quo cube on the same ensemble; enables
+            ``no_harm_freq_tau`` and the per-objective regret/gain means.
+        thresholds: Threshold vector override (the meta snapshot otherwise).
+        tau: Per-objective regret tolerance; defaults to :func:`tau_ladder`.
+
+    Returns:
+        Tidy frame, one row per ``(group, solution_id)``: ``group``,
+        ``solution_id``, ``n_sow`` (SOWs in the mask), ``sat_multivariate_sow``
+        and, with a baseline, ``no_harm_freq_tau`` plus
+        ``regret_mean__{obj}`` / ``gain_mean__{obj}`` (mean over the masked
+        SOWs of ``max(0, -D)`` / ``max(0, +D)``, natural units). An empty
+        group yields NaN in every scored column; a solution whose whole cube
+        slice is non-finite is NaN everywhere, as in the scorecards.
+
+    Raises:
+        ValueError: If a mask is not a boolean ``(G,)`` array.
+    """
+    sat = _satisfaction_cube(raw, thresholds).all(axis=2)              # (S, G)
+    n_sol, n_sow = sat.shape
+    all_missing = np.all(~np.isfinite(raw.cube), axis=(1, 2))           # (S,)
+
+    no_harm_tau = regret = gain = None
+    if baseline is not None:
+        D = incumbent_advantage(raw, baseline)                          # (S, G, M)
+        tau = tau_ladder(raw.obj_names) if tau is None else tau
+        tau_vec = np.array([float(tau[n]) for n in raw.obj_names], dtype=float)
+        finite = np.isfinite(D)
+        no_harm_tau = (finite & (D >= -tau_vec[None, None, :])).all(axis=2)
+        regret = np.where(finite, np.maximum(0.0, -D), np.nan)
+        gain = np.where(finite, np.maximum(0.0, D), np.nan)
+
+    frames = []
+    for name, mask in groups.items():
+        mask = np.asarray(mask)
+        if mask.dtype != bool or mask.shape != (n_sow,):
+            raise ValueError(
+                f"group {name!r}: mask must be a boolean array of shape ({n_sow},) "
+                f"aligned to raw.sow_labels; got dtype={mask.dtype}, shape={mask.shape}."
+            )
+        n = int(mask.sum())
+        cols: dict = {
+            "group": [name] * n_sol,
+            "solution_id": [int(s) for s in raw.solution_ids],
+            "n_sow": [n] * n_sol,
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)   # empty masks -> NaN
+            cols["sat_multivariate_sow"] = (
+                sat[:, mask].mean(axis=1) if n else np.full(n_sol, np.nan))
+            if no_harm_tau is not None:
+                cols["no_harm_freq_tau"] = (
+                    no_harm_tau[:, mask].mean(axis=1) if n else np.full(n_sol, np.nan))
+                for k, obj in enumerate(raw.obj_names):
+                    cols[f"regret_mean__{obj}"] = (
+                        np.nanmean(regret[:, mask, k], axis=1) if n
+                        else np.full(n_sol, np.nan))
+                    cols[f"gain_mean__{obj}"] = (
+                        np.nanmean(gain[:, mask, k], axis=1) if n
+                        else np.full(n_sol, np.nan))
+        frame = pd.DataFrame(cols)
+        scored = [c for c in frame.columns if c not in ("group", "solution_id", "n_sow")]
+        if all_missing.any():
+            frame.loc[all_missing, scored] = np.nan
+        frames.append(frame)
+
+    if not frames:
+        return pd.DataFrame(columns=["group", "solution_id", "n_sow",
+                                     "sat_multivariate_sow"])
+    return pd.concat(frames, ignore_index=True)
+
+
+def _u_aligned(u_by_sow: dict, sow_labels) -> np.ndarray:
+    """``(G,)`` nominal utilization aligned to ``sow_labels`` BY LABEL.
+
+    Keys may be ints or their string form (``reeval_raw_meta.json`` stores
+    them as strings). A label without a value is a hard error: filling it
+    would silently put that SOW in no band or in a wrong one.
+    """
+    table = {int(k): float(v) for k, v in u_by_sow.items()}
+    missing = [g for g in sow_labels if int(g) not in table]
+    if missing:
+        raise KeyError(
+            f"{len(missing)} SOW label(s) have no utilization value (e.g. "
+            f"{missing[:5]}); the staged factor does not cover this cube."
+        )
+    return np.array([table[int(g)] for g in sow_labels], dtype=float)
+
+
+def utilization_groups(u_by_sow: dict, sow_labels) -> dict:
+    """The NYC entitlement-utilization bands as SOW masks aligned to a cube.
+
+    Args:
+        u_by_sow: ``{sow_label: u}`` (``reeval_raw_meta.json``'s
+            ``sow_demand_utilization`` or the staged sample keyed by SOW).
+        sow_labels: The cube's ``sow_labels``.
+
+    Returns:
+        ``{band_label: mask}`` in ``src.demand_utilization.UTILIZATION_BAND_LABELS``
+        order, each mask boolean ``(G,)``.
+    """
+    from src.demand_utilization import utilization_band_masks
+
+    return utilization_band_masks(_u_aligned(u_by_sow, sow_labels))
+
+
+def utilization_bins(u_by_sow: dict, sow_labels, n_bins: int = None
+                     ) -> tuple[np.ndarray, np.ndarray]:
+    """Equal-width utilization bin of each SOW of a cube, aligned by label.
+
+    Args:
+        u_by_sow: ``{sow_label: u}``.
+        sow_labels: The cube's ``sow_labels``.
+        n_bins: Bin count over the utilization bounds (default
+            ``src.demand_utilization.UTILIZATION_REGRET_BINS``).
+
+    Returns:
+        ``(labels, edges)``: ``labels`` int ``(G,)`` bin index per SOW,
+        ``edges`` ``(n_bins + 1,)``.
+    """
+    from src.demand_utilization import UTILIZATION_REGRET_BINS, utilization_bin_labels
+
+    n_bins = UTILIZATION_REGRET_BINS if n_bins is None else int(n_bins)
+    return utilization_bin_labels(_u_aligned(u_by_sow, sow_labels), n_bins)
+
+
+###############################################################################
 # Criterion-set scoring (Quinn 2017 subset criteria)
 ###############################################################################
 

@@ -70,6 +70,21 @@ def _need_available(need: str, ctx: FigureContext) -> bool:
         return DEFAULT_CACHE.is_file()
     if need == "factor_mapping":
         return (ctx.comparison_dir() / "factor_mapping").is_dir()
+    if need == "demand_calibration":
+        from src.demand_utilization import CALIBRATION_CSV, REFERENCE_SERIES_CSV
+        return Path(CALIBRATION_CSV).is_file() and Path(REFERENCE_SERIES_CSV).is_file()
+    if need == "demand_utilization":
+        npz = config.STAGED_ENSEMBLE_DIR / ctx.tag / "forcing_profiles.npz"
+        if not npz.is_file():
+            return False
+        import numpy as np
+        with np.load(npz, allow_pickle=True) as z:
+            return "demand_utilization" in z.files
+    if need == "demand_realized":
+        from src.plotting.demand_utilization import _parent_dir
+        return (_parent_dir(ctx.tag) / "demand_utilization_realized_by_sow.csv").is_file()
+    if need == "regret_by_utilization":
+        return (ctx.comparison_dir() / "design_regret_by_utilization.csv").is_file()
     return True
 
 

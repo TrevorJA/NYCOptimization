@@ -45,6 +45,7 @@ from src.etest import (
     get_etest_variant,
     list_etest_variants,
 )
+from src import demand_utilization as du
 from src.ensembles import get_ensemble_spec
 from src.reeval_core import sow_grouping
 from src.scenario_designs import SCENARIO_DESIGNS, SCENARIO_YEARS, assert_iid_pools
@@ -62,16 +63,53 @@ def _registry_axis_bounds(seed_domain: str) -> dict | None:
     return None
 
 
+def _demand_payload(n_theta: int, r: int, seed_domain: str,
+                    bounds=du.DEMAND_UTILIZATION_BOUNDS) -> tuple[dict, dict]:
+    """The utilization column + provenance the append step adds (npz, meta)."""
+    u = du.sample_utilization(n_theta, seed=7, bounds=bounds)
+    k = 0.5 + 2.0 * u                          # any admissible (0, k_max] scale
+    clipped = np.zeros(n_theta, dtype=bool)
+    provenance = {
+        "demand_utilization_bounds": [float(b) for b in bounds],
+        "demand_utilization_seed": 7,
+        "demand_utilization_seed_domain": f"{seed_domain}:demand",
+        "demand_scale_max": float(du.DEMAND_SCALE_MAX),
+        "demand_calibration_sha256": "0" * 64,
+    }
+    npz = {
+        "demand_utilization": np.repeat(u, r),
+        "demand_scale_k": np.repeat(k, r),
+        "demand_scale_clipped": np.repeat(clipped, r),
+        "demand_utilization_bounds": np.asarray(provenance["demand_utilization_bounds"]),
+        "demand_utilization_seed": np.asarray(7),
+        "demand_utilization_seed_domain": np.asarray(provenance["demand_utilization_seed_domain"]),
+        "demand_scale_max": np.asarray(float(du.DEMAND_SCALE_MAX)),
+        "demand_calibration_sha256": np.asarray("0" * 64),
+    }
+    return npz, provenance
+
+
 def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10,
                  theta_sampler: str = "lhs", seed_domain: str = "etest:kn",
                  population: str = "du_forced", with_npz: bool = True,
-                 axis_bounds="registry") -> Path:
-    """Stage the two artifacts an E_test directory is resolved and grouped from."""
+                 axis_bounds="registry", with_demand: bool = True,
+                 demand_bounds=du.DEMAND_UTILIZATION_BOUNDS) -> Path:
+    """Stage the two artifacts an E_test directory is resolved and grouped from.
+
+    ``with_demand`` stages the NYC utilization column exactly as
+    ``append_demand_utilization.py`` writes it (per-realization npz keys plus
+    the provenance in both the npz and the meta); a legacy E_test is staged
+    with ``with_demand=False``.
+    """
     d = root / slug
     d.mkdir(parents=True, exist_ok=True)
     n = n_theta * r
     if axis_bounds == "registry":
         axis_bounds = _registry_axis_bounds(seed_domain)
+    forced = population == "du_forced"
+    demand_npz, demand_meta = ({}, {})
+    if with_demand and forced:
+        demand_npz, demand_meta = _demand_payload(n_theta, r, seed_domain, demand_bounds)
     (d / "_meta.json").write_text(json.dumps({
         "axis_bounds": axis_bounds,
         "slug": slug,
@@ -79,15 +117,16 @@ def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10
         "population": population,
         "generator": "kn",
         "seed_domain": seed_domain,
-        "theta_sampler": theta_sampler if population == "du_forced" else None,
+        "theta_sampler": theta_sampler if forced else None,
         "n_realizations": n,
         "n_forcing_profiles": n_theta,
         "realizations_per_profile": r,
         "realization_years": years,
         "n_years": years,
         "start_date": config.ENSEMBLE_START_DATE,
+        **demand_meta,
     }))
-    if with_npz and population == "du_forced":
+    if with_npz and forced:
         np.savez(
             d / "forcing_profiles.npz",
             realization_ids=np.arange(n),
@@ -97,6 +136,7 @@ def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10
             theta_sampler=theta_sampler,
             n_forcing_profiles=n_theta,
             realizations_per_profile=r,
+            **demand_npz,
         )
     return d
 
@@ -253,6 +293,85 @@ def test_staged_contract_raises_when_not_staged(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
     with pytest.raises(FileNotFoundError):
         assert_staged_etest_contract("etest_kn_10yr_n40")
+
+
+# ---------------------------------------------------------------------------
+# The NYC utilization column: the fourth factor must be staged, at the registry bounds
+# ---------------------------------------------------------------------------
+
+def test_staged_contract_refuses_an_etest_without_the_utilization_column(tmp_path, monkeypatch):
+    """A staged E_test lacking u is refused, and the message names the append step."""
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    _stage_etest(tmp_path, "etest_kn_10yr_n40", n_theta=10, r=4, with_demand=False)
+    with pytest.raises(AssertionError, match="append_demand_utilization.py"):
+        assert_staged_etest_contract("etest_kn_10yr_n40")
+    # The streamflow-side callers (generator, hazard image) run before the append.
+    meta = assert_staged_etest_contract("etest_kn_10yr_n40", require_demand=False)
+    assert "demand_utilization_seed" not in meta
+
+
+def test_staged_contract_refuses_other_utilization_bounds(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    _stage_etest(tmp_path, "etest_kn_10yr_n40", n_theta=10, r=4, demand_bounds=(0.5, 1.0))
+    with pytest.raises(AssertionError, match="demand_utilization_bounds"):
+        assert_staged_etest_contract("etest_kn_10yr_n40")
+
+
+def test_staged_contract_refuses_a_column_that_varies_within_a_sow(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    d = _stage_etest(tmp_path, "etest_kn_10yr_n40", n_theta=10, r=4)
+    with np.load(d / "forcing_profiles.npz", allow_pickle=True) as z:
+        payload = {k: z[k] for k in z.files}
+    payload["demand_utilization"] = np.linspace(0.45, 1.0, 40)   # one value per realization
+    np.savez(d / "forcing_profiles.npz", **payload)
+    with pytest.raises(AssertionError, match="constant within each SOW"):
+        assert_staged_etest_contract("etest_kn_10yr_n40")
+
+
+def test_staged_contract_accepts_the_appended_column(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    _stage_etest(tmp_path, "etest_kn_10yr_n40", n_theta=10, r=4)
+    meta = assert_staged_etest_contract("etest_kn_10yr_n40")
+    assert meta["demand_utilization_bounds"] == list(du.DEMAND_UTILIZATION_BOUNDS)
+    assert meta["demand_utilization_seed_domain"] == "etest:kn:demand"
+
+
+def test_utilization_keys_round_trip_through_the_subset_slicer_grouping_and_theta(
+        tmp_path, monkeypatch):
+    """The slicer keeps the leading SOWs' u, sow_grouping is unchanged, and
+    theta_features exposes u as a fourth column (three for a legacy E_test)."""
+    from scripts.supplemental.make_etest_subset import _subset_npz
+    from src.factor_mapping import theta_features
+
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    n_theta, r, n_sub_theta = 4, 3, 2
+    parent = _stage_etest(tmp_path, "etest_kn_10yr_n12", n_theta=n_theta, r=r)
+    sub = _stage_etest(tmp_path, "etest_kn_10yr_n12_first2ch", n_theta=n_sub_theta, r=r)
+    (sub / "forcing_profiles.npz").unlink()
+    notes = _subset_npz(parent / "forcing_profiles.npz", sub / "forcing_profiles.npz",
+                        n_theta * r, n_theta, n_sub_theta * r, n_sub_theta)
+    assert any(n.startswith("demand_utilization:") for n in notes)
+
+    with np.load(parent / "forcing_profiles.npz", allow_pickle=True) as zp, \
+            np.load(sub / "forcing_profiles.npz", allow_pickle=True) as zs:
+        for key in du.NPZ_KEYS:
+            assert zs[key].shape == (n_sub_theta * r,)
+            np.testing.assert_array_equal(zs[key], zp[key][: n_sub_theta * r])
+        assert str(zs["demand_calibration_sha256"]) == str(zp["demand_calibration_sha256"])
+        u_parent = np.asarray(zp["demand_utilization"], dtype=float)[::r]
+
+    spec = get_ensemble_spec("etest_kn_10yr_n12_first2ch")
+    sow_ids, n_sow, r_per_sow = sow_grouping(spec, spec.realization_indices)
+    assert (sow_ids, n_sow, r_per_sow) == ([0, 0, 0, 1, 1, 1], n_sub_theta, r)
+    assert_staged_etest_contract("etest_kn_10yr_n12_first2ch")
+
+    X, names = theta_features("etest_kn_10yr_n12_first2ch")
+    assert names == ["em", "r1", "r2", "u"] and X.shape == (n_sub_theta, 4)
+    np.testing.assert_allclose(X[:, 3], u_parent[:n_sub_theta])
+
+    _stage_etest(tmp_path, "etest_kn_10yr_n12_legacy", n_theta=n_theta, r=r, with_demand=False)
+    X3, names3 = theta_features("etest_kn_10yr_n12_legacy")
+    assert names3 == ["em", "r1", "r2"] and X3.shape == (n_theta, 3)
 
 
 # ---------------------------------------------------------------------------

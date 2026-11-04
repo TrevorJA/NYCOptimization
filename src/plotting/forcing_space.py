@@ -251,15 +251,30 @@ def load_etest_sample(ensemble_dir) -> dict:
 
     Returns:
         Dict with ``theta`` ``(n_sow, 3)``, ``theta_names``, ``a`` ``(n_sow, 12)``
-        water-year change factors, and ``n_sow``.
+        water-year change factors (``None`` for a metadata-only staging that
+        carries no ``mean_factor_a``), and ``n_sow``. When the staged E_test
+        carries the NYC entitlement-utilization factor (the ``demand_utilization``
+        key written by ``scripts/supplemental/append_demand_utilization.py``,
+        ``src.demand_utilization``), the dict also holds ``u`` ``(n_sow,)``, the
+        nominal utilization, ``k`` ``(n_sow,)``, the demand scale applied to the
+        SOW's realizations, and ``k_clipped`` ``(n_sow,)`` bool, all strided
+        like ``theta``. ``u`` is a separate key and never a column of ``theta``:
+        :func:`assert_box_contains` and the forcing-space panels read ``theta``
+        as the three climate axes only.
     """
     npz = Path(ensemble_dir) / "forcing_profiles.npz"
     with np.load(npz, allow_pickle=True) as z:
         rpp = int(z["realizations_per_profile"])
         theta = np.asarray(z["theta_params"], dtype=float)[::rpp]
-        a = np.asarray(z["mean_factor_a"], dtype=float)[::rpp]
+        a = (np.asarray(z["mean_factor_a"], dtype=float)[::rpp]
+             if "mean_factor_a" in z.files else None)
         names = [str(x) for x in z["theta_param_names"]]
-    return {"theta": theta, "theta_names": names, "a": a, "n_sow": theta.shape[0]}
+        out = {"theta": theta, "theta_names": names, "a": a, "n_sow": theta.shape[0]}
+        if "demand_utilization" in z.files:
+            out["u"] = np.asarray(z["demand_utilization"], dtype=float)[::rpp]
+            out["k"] = np.asarray(z["demand_scale_k"], dtype=float)[::rpp]
+            out["k_clipped"] = np.asarray(z["demand_scale_clipped"]).astype(bool)[::rpp]
+    return out
 
 
 def assert_box_contains(theta: np.ndarray, names: list[str],

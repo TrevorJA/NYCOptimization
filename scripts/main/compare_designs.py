@@ -21,6 +21,12 @@ and seeds and produces the cross-design tables and figures:
    robustness number, with degeneracy flags.
 5. Attainability screen over the pooled cubes of all designs (is an E_test SOW
    winnable by any policy from any design).
+6. NYC entitlement-utilization re-scoring (``src.demand_utilization``): the
+   design contrast per utilization band (``design_rescoring_by_utilization_band.csv``,
+   the utilization leg of the SI Text S10 composition-sensitivity re-scoring)
+   and the per-objective regret and gain against the incumbent in equal-width
+   utilization bins (``design_regret_by_utilization.csv``), both through the
+   shared SOW-mask path :func:`src.robustness.rescore_sow_subsets`.
 
 Inputs (per design, per moea slug, per re-eval tag, optionally per seed):
     outputs/{design}/{moea_slug}/reeval/{reeval_tag}[/seed_NN]/
@@ -1018,6 +1024,170 @@ def regret_by_severity(runs: list[ReevalRun], spec,
     return pd.DataFrame(rows)
 
 
+def _baseline_cube_if_present(run: ReevalRun):
+    """The run's step-05 baseline cube, or ``None`` silently.
+
+    The quiet companion of :func:`_baseline_cube` for re-scorings whose
+    satisficing half is meaningful without a baseline (the regret half is
+    then simply absent from the table).
+    """
+    bdir = run.path / "baseline"
+    if not any((bdir / f).exists() for f in
+               ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+        return None
+    return rob.load_raw(bdir)
+
+
+def _utilization_by_sow(spec, n_sow: int) -> dict | None:
+    """Nominal NYC entitlement utilization ``u`` of each E_test SOW, by label.
+
+    Read from the staged forcing sample
+    (:func:`src.plotting.forcing_space.load_etest_sample`, key ``u``), whose
+    rows are the SOW labels ``0..n_sow-1`` (realization ``k`` belongs to SOW
+    ``k // R``). Returns ``None`` with a warning when the ensemble stages no
+    forcing profiles, carries no utilization factor (a legacy E_test staged
+    before ``append_demand_utilization.py``), or its SOW count differs from
+    the cube's -- never aligned by position.
+    """
+    try:
+        from src.ensembles import staged_ensemble_dir
+        from src.plotting.forcing_space import load_etest_sample
+        staged = load_etest_sample(staged_ensemble_dir(spec.inflow_type))
+    except Exception as exc:                                   # noqa: BLE001
+        warnings.warn(f"[compare] no staged forcing profiles ({exc}); "
+                      f"utilization re-scoring skipped.")
+        return None
+    if "u" not in staged:
+        warnings.warn(
+            "[compare] the staged E_test carries no NYC entitlement-utilization "
+            "factor (scripts/supplemental/append_demand_utilization.py); "
+            "utilization re-scoring skipped."
+        )
+        return None
+    u = np.asarray(staged["u"], dtype=float)
+    if u.shape[0] != n_sow:
+        warnings.warn(
+            f"[compare] staged utilization has {u.shape[0]} SOWs but the re-eval "
+            f"cube has {n_sow}; utilization re-scoring skipped rather than "
+            f"aligned by position."
+        )
+        return None
+    return {int(g): float(v) for g, v in enumerate(u)}
+
+
+def rescoring_by_utilization_band(runs: list[ReevalRun], spec) -> pd.DataFrame:
+    """Robustness and low-regret frequency per NYC entitlement-utilization band.
+
+    The utilization leg of the composition-sensitivity re-scoring (SI Text
+    S10): the persisted matrix re-scored on the three bands of
+    ``src.demand_utilization`` (``u < 0.6``, ``0.6 <= u < 0.8``, ``u >= 0.8``)
+    through :func:`src.robustness.rescore_sow_subsets`.
+
+    Returns:
+        Tidy frame: design, draw, seed, band, u_lo, u_hi, n_sow, sat_best,
+        sat_median, no_harm_tau_best, no_harm_tau_median (the last two NaN
+        for a run without a baseline). Empty when the staged E_test carries
+        no utilization factor.
+    """
+    from src.demand_utilization import (DEMAND_UTILIZATION_BOUNDS,
+                                        UTILIZATION_BAND_EDGES,
+                                        UTILIZATION_BAND_LABELS)
+
+    u_by_sow = _utilization_by_sow(spec, _first_n_sow(runs))
+    if u_by_sow is None:
+        return pd.DataFrame()
+    edges = [DEMAND_UTILIZATION_BOUNDS[0], *UTILIZATION_BAND_EDGES,
+             DEMAND_UTILIZATION_BOUNDS[1]]
+
+    rows = []
+    for r in runs:
+        raw = rob.load_raw(r.path)
+        base = _baseline_cube_if_present(r)
+        groups = rob.utilization_groups(u_by_sow, raw.sow_labels)
+        table = rob.rescore_sow_subsets(raw, groups, baseline=base)
+        for b, band in enumerate(UTILIZATION_BAND_LABELS):
+            sub = table[table["group"] == band]
+            has_regret = "no_harm_freq_tau" in sub.columns
+            rows.append({
+                "design": r.design, "draw": r.draw, "seed": r.seed,
+                "band": band, "u_lo": float(edges[b]), "u_hi": float(edges[b + 1]),
+                "n_sow": int(sub["n_sow"].iloc[0]) if len(sub) else 0,
+                "sat_best": _best(sub["sat_multivariate_sow"], True),
+                "sat_median": _median(sub["sat_multivariate_sow"]),
+                "no_harm_tau_best": (_best(sub["no_harm_freq_tau"], True)
+                                     if has_regret else float("nan")),
+                "no_harm_tau_median": (_median(sub["no_harm_freq_tau"])
+                                       if has_regret else float("nan")),
+            })
+    return pd.DataFrame(rows)
+
+
+def regret_by_utilization(runs: list[ReevalRun], spec,
+                          n_bins: int = None) -> pd.DataFrame:
+    """Per-objective regret and gain against the incumbent, binned by utilization.
+
+    The analysis that shows how much of any re-optimization gain is
+    contingent on NYC demand: equal-width bins of the nominal entitlement
+    utilization ``u`` over its sampled range (``n_bins`` defaults to
+    ``src.demand_utilization.UTILIZATION_REGRET_BINS``), each re-scored
+    through :func:`src.robustness.rescore_sow_subsets`.
+
+    Returns:
+        Tidy frame, one row per run and non-empty bin: design, draw, seed,
+        u_bin, u_lo, u_hi, n_sow, sat_best, no_harm_tau_best, and for each
+        objective ``regret_mean__{name}`` / ``gain_mean__{name}`` (the MEDIAN
+        over solutions of the per-solution bin mean, the
+        :func:`regret_by_severity` convention) plus
+        ``regret_mean_best__{name}`` / ``gain_mean_best__{name}`` for the
+        run's max-robustness policy (argmax of ``sat_multivariate_sow`` on the
+        whole cube). Empty when no run carries a baseline or the staged
+        E_test carries no utilization factor.
+    """
+    from src.demand_utilization import UTILIZATION_REGRET_BINS
+
+    n_bins = UTILIZATION_REGRET_BINS if n_bins is None else int(n_bins)
+    u_by_sow = _utilization_by_sow(spec, _first_n_sow(runs))
+    if u_by_sow is None:
+        return pd.DataFrame()
+
+    rows = []
+    for r in runs:
+        raw = rob.load_raw(r.path)
+        base = _baseline_cube(r)
+        if base is None:
+            continue
+        labels, edges = rob.utilization_bins(u_by_sow, raw.sow_labels, n_bins)
+        groups = {f"bin_{b}": labels == b for b in range(n_bins)}
+        table = rob.rescore_sow_subsets(raw, groups, baseline=base)
+
+        sat_full = rob.satisficing_multivariate_sow(raw).to_numpy(dtype=float)
+        if not np.isfinite(sat_full).any():
+            continue
+        best_sid = int(raw.solution_ids[int(np.nanargmax(sat_full))])
+
+        for b in range(n_bins):
+            sub = table[table["group"] == f"bin_{b}"]
+            if sub.empty or int(sub["n_sow"].iloc[0]) == 0:
+                continue
+            best = sub[sub["solution_id"] == best_sid]
+            row = {
+                "design": r.design, "draw": r.draw, "seed": r.seed,
+                "u_bin": b, "u_lo": float(edges[b]), "u_hi": float(edges[b + 1]),
+                "n_sow": int(sub["n_sow"].iloc[0]),
+                "sat_best": _best(sub["sat_multivariate_sow"], True),
+                "no_harm_tau_best": _best(sub["no_harm_freq_tau"], True),
+                "best_solution_id": best_sid,
+            }
+            for name in raw.obj_names:
+                for pre in ("regret_mean", "gain_mean"):
+                    col = f"{pre}__{name}"
+                    row[col] = _median(sub[col])
+                    row[f"{pre}_best__{name}"] = (float(best[col].iloc[0])
+                                                  if len(best) else float("nan"))
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def regret_plane_points(loaded: Iterable[LoadedRun],
                         x: str = "sat_multivariate_sow",
                         y: str = "no_harm_freq_tau") -> pd.DataFrame:
@@ -1525,6 +1695,21 @@ def run_comparison(formulation: str = "ffmp", reeval_tag: Optional[str] = None,
             written["design_regret_by_severity"] = (
                 table_dir / "design_regret_by_severity.csv")
             severity.to_csv(written["design_regret_by_severity"], index=False)
+
+    # --- 2c. NYC entitlement-utilization re-scoring (composition sensitivity,
+    # SI Text S10) and the regret-by-utilization decomposition. Both are absent,
+    # with a warning, when the staged E_test carries no utilization factor.
+    bands = rescoring_by_utilization_band(runs, config.REEVAL_ENSEMBLE_SPEC)
+    if not bands.empty:
+        written["design_rescoring_by_utilization_band"] = (
+            table_dir / "design_rescoring_by_utilization_band.csv")
+        bands.to_csv(written["design_rescoring_by_utilization_band"], index=False)
+    if not regret_sweep.empty:
+        by_u = regret_by_utilization(runs, config.REEVAL_ENSEMBLE_SPEC)
+        if not by_u.empty:
+            written["design_regret_by_utilization"] = (
+                table_dir / "design_regret_by_utilization.csv")
+            by_u.to_csv(written["design_regret_by_utilization"], index=False)
 
     # --- 3. raw distributions + degeneracy screen --------------------------
     perf = performance_distributions(loaded)

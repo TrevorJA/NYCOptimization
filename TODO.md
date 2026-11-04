@@ -9,29 +9,140 @@ cluster, **[local]** laptop.
 
 NYC demand is now the time-dynamic extrapolated diversion series everywhere
 (`config.nyc_demand_source`; per realization for ensembles, staged by step 04 as
-`diversion_nyc_extrapolated_mgd.hdf5`; pywrdrb's regenerated 1945-2026
-historic-flow CSV for the single trace). A constant 800 MGD NYC demand is never
+`diversion_nyc_extrapolated_mgd.hdf5`; pywrdrb's regenerated 1945-2023
+historic CSV on the inflow reconstruction for the single trace). A constant 800 MGD NYC demand is never
 used and no env file selects a demand source (`tests/test_demand_source.py`).
-NJ stays at its constant 100 MGD allocation. Every calibrated quantity below was
-derived under the former constant 800 MGD demand and must be re-verified.
+NJ stays at its constant 100 MGD allocation. Everything simulated before
+2026-11-03 ran at the constant 800 MGD demand and is superseded; the inventory
+below is complete as of the switch. Every staged demand series and the historic
+CSV produced before 2026-11-04 predate the covariate change (the regressions are
+trained and applied on the reconstruction's reservoir inflow,
+`demand_covariate_diagnostics.md`) and are superseded by the same inventory.
 
-- [ ] **[HPC]** Add the demand series to every already-staged ensemble that will
-  be simulated again: the E_test chunks
-  (`workflow/supplemental/stage_nyc_demand_etest_chunks.sh`, 50-task array) and
-  any staged search / diagnostics ensemble that is reused
-  (`workflow/supplemental/stage_nyc_demand.sh`). New ensembles get it from step 04.
-- [ ] **[HPC]** Re-run the current-FFMP E_test baseline cube (step 09 with
-  `NYCOPT_CHUNK_POLICIES=baseline`); the stored cube was simulated at 800 MGD.
-- [ ] **[HPC]** Re-verify under the new demand: the ε floors and the N = 300
-  ladder claim for the NYC objectives (`epsilon_calibration_experiment.md`), the
-  failing-week saturation screen for NYC reliability
-  (`framing_convention_diagnostics.md` §1), and the satisficing-criteria
-  re-anchoring (`robustness_threshold_diagnostics.md`).
-- [ ] **[HPC]** The `historic` reruns (§2) must use the regenerated historic demand
-  CSV in Pywr-DRB (`src/pywrdrb/data/diversions/diversion_nyc_extrapolated_mgd.csv`,
-  capped, 1945-2026); any `historic` result simulated at 800 MGD is superseded.
-- [ ] Implement the NYC utilization DU factor u ∈ [0.45, 1.0] in E_test
-  (prompt: `docs/prompts/demand_utilization_axis_prompt.md`).
+**Unaffected (do not redo).** Everything that is streamflow-only: the P = 10⁶
+pools and smoke pools, the hazard images and step-03 selections, the HF design
+metrics, the hazard-axis selection, the persistence and CV-axis diagnostics, the
+dry-envelope diagnostic, the forcing-space figures, E_test's streamflow and its
+presim pass (`prep_etest_chunks.sh` output), and the step-01 single-trace presim
+(the non-NYC STARFIT releases do not depend on NYC demand). The measured search
+cost basis (21,850 SU per N = 100 / 500k) also stands: demand is a parameter
+lookup; confirm from seed 1 rather than re-measure. The search ε vector is fixed
+by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`); its
+stage-1 floors were measured at the former constant demand, which that note and
+SI Text S5 must say in one sentence (disclosure, not a re-measurement).
+
+**A. Staging (no simulation), before anything else**
+
+- [ ] **[HPC]** Pull `Pywr-DRB` (`nyc_opt`: split `nj_demand_source` option,
+  per-realization seeding of the demand draws, the `demand_scale` of the
+  extrapolation preprocessor, the regenerated capped historic CSV) and
+  `NYCOptimization_scenario_generation` (the `etest:kn:demand` seed domain)
+  together with the main repo; the editable installs need no reinstall.
+- [ ] **[HPC]** E_test demand-utilization axis, in order:
+  `python scripts/supplemental/demand_utilization_calibration.py` (the k(u)
+  table, seconds); `python scripts/supplemental/append_demand_utilization.py
+  --variant kn` (the per-SOW u column, metadata only);
+  `python -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000
+  --force` (the prefix subset inherits the first 500 values; the staged contract
+  refuses an E_test without the keys).
+- [ ] **[HPC]** E_test: `workflow/supplemental/stage_nyc_demand_etest_chunks.sh`
+  (50-task array, one chunk each; stages every SOW's series scaled by k(u)
+  from the parent's `demand_utilization_nominal.csv`, cap after scaling, and
+  writes each chunk's `demand_utilization_realized.csv`) before any step
+  05/08/09 submission, then
+  `python scripts/supplemental/merge_demand_utilization_realized.py --variant kn`
+  (realized versus nominal u per SOW). The prefix subset is metadata-only and
+  needs nothing more. A chunk without the file now fails
+  `staged_ensemble_missing` and the pywrdrb build, so it cannot pass silently.
+- [ ] **[HPC]** Every already-staged ensemble that will be simulated again:
+  `workflow/supplemental/stage_nyc_demand.sh` (array index = draw, or
+  `--preset SLUG`). Known reusers: the N = 100 d0 ensembles of both matched
+  designs (`supplemental_config.TEV_TARGETS`; the ε-calibration cubes), the
+  ensemble-size ladder and library slugs (`esd_pool_slug`, `esd_library_slug`,
+  `ESD_N_LADDER` 50 to 500), the memory-smoke ensemble
+  (`envs/smoke_search_batch.env`, `monte_carlo`), and the scaling/cost
+  ensembles if ever re-benchmarked. New N = 300 stagings (§2) get the series
+  from step 04. Local fixtures get it from `ensure_local_test_ensemble` on first
+  use.
+
+**B. Simulation outputs superseded (regenerate, in this order)**
+
+- [ ] **[HPC]** Step 05 baselines: the `historic` single-trace baseline (the
+  anchor of the satisficing criteria and of the §3 tolerance rules) and each
+  matched design's d0 baseline at N = 300 (with the §2 staging). Every existing
+  `outputs/*/ffmp_obj8/baseline/` is superseded.
+- [ ] **[HPC]** Current-FFMP E_test baseline cube: step 09 with
+  `NYCOPT_CHUNK_POLICIES=baseline` under the historic env on the full
+  regenerated 1,000-SOW E_test (~66 SU), after the §A demand staging so the
+  cube carries the per-SOW utilization scaling, then
+  `scripts/supplemental/stage_etest_subset_baseline.py` per design. The stored
+  cube and its subset symlinks were simulated at 800 MGD.
+- [ ] **[HPC]** Searches: every stored Pareto set (the August HIST set, the
+  N = 100 production and moderate MC/HF sets, the `ffmp_vr` sets) was searched at
+  800 MGD and is superseded by the §2 campaign searches (HIST included: the
+  rerun must use the regenerated historic CSV). Never evaluate an old set
+  against new baselines or cubes; the §3 `.set` caveat applies doubly.
+- [ ] **[HPC]** E_test re-evaluation cubes of those sets
+  (`outputs/*/ffmp_obj8/reeval/etest_*`), the step-10 comparison tables under
+  `outputs/comparison/`, and every step-13/14 figure: regenerate from the new
+  sets; archive the old next to the HIST archive (`outputs/_archive_pre_nov3/`).
+- [ ] **[HPC + local]** Supplemental diagnostics that simulate, each superseded
+  together with its tables and figures:
+  - `etest_realization_precision.py` (per-SOW noise floors; `etr_per_sow_noise.csv`,
+    `etr_options.csv`, SI Table S1): rerun on the new baseline cube, then refresh
+    the quoted floors in manuscript §3.4.1, `campaign_design.md` §5 and
+    `research_project_summary.md`; the regret tolerance floors read the same file.
+  - `regret_tolerance_diagnostics.sh` pass A on the new incumbent cube
+    (`rtol_noise_floor.csv`), pass B after the re-evaluation (§3).
+  - `robustness_threshold_diagnostics.sh`, `robustness_threshold_anchor.py`,
+    `criteria_reanchoring.py` on the new historic step-05 attainment and the new
+    baseline cube (§3); the placements in `robustness_threshold_diagnostics.md`
+    §3 and `src/satisficing_criteria.py` are provisional until then.
+  - ε-calibration cubes (`epsilon_calibration.sh` with the three
+    `eps_calib_*.env`; `outputs/supplemental/epsilon_calibration/`, SI Text S5):
+    the ε vector does not change, but the cubes are the substrate of the
+    framing-convention screens below, so they are regenerated if those screens
+    are re-run; otherwise the disclosure sentence above is the only change.
+  - Framing-convention screens (`framing_convention_analysis.py`,
+    `satisfaction_factor.sh`; `framing_convention_diagnostics.md` "Measured
+    verdicts": k = 3 / k = 1 failing weeks, the 0.99 factor): NYC delivery
+    reliability is the axis the demand change moves most (failing weeks fall as
+    the curtailed caps stop binding), so re-screen k for saturation on the
+    regenerated cubes before the campaign reports it; refresh the verdict
+    sentences in `objective_definitions.md` and manuscript §3.2.2.
+  - Ensemble-size diagnostics (`ensemble_size_library_stage.sh`,
+    `ensemble_size_library_eval.sh`, `ensemble_size_analysis.sh`;
+    `ensemble_size_diagnostics.md`, SI Texts S4 and S5; the claim that N = 300
+    resolves every objective's paired difference within ε/2): the NYC objectives'
+    sampling variance changes with the demand; re-run Layer B on demand-staged
+    ladder ensembles, or restate the claim for the NYC axes from the new library.
+  - Transfer-evaluation matrix (`transfer_evaluation_run.py`,
+    `envs/transfer_evaluation.env`, N = 100 cells; `tev_path_consistency.csv`
+    cited in §3): superseded with the sets; re-run only once new sets exist (it
+    is also the §3 draw-sensitivity driver).
+  - Flood-objective diagnostics (`flood_objective_run.py`,
+    `flood_exceedance_baseline_figures.py`; `flood_objective_diagnostics.md`):
+    the local pass (34 policies on the historic record and `kn_50yr_n5`) ran at
+    800 MGD; storage and therefore spill and exceedance move with demand, so
+    re-run before quoting any of its numbers.
+  - Objective-dynamics figures (`objective_dynamics.py`,
+    `ensemble_objective_dynamics.py`; `objective_dynamics_diagnostics.md`):
+    re-render from the new baseline (they annotate delivery against demand).
+  - `objective_sensitivity_run.py` (random-DV single-trace discrimination;
+    `outputs/supplemental/objective_sensitivity/`) and the single-record
+    epsilons carried by `src/objectives.py` (IQR/10 on the historic record,
+    diagnostics only): re-run if used; low priority.
+  - `check_objective_determinism.py`
+    (`outputs/supplemental/objective_determinism/summary.csv`, the SI Text S1
+    numbers in §4): cheap local re-run under the new demand before quoting.
+  - `sim_selected_policies.sh` / `simulate_selected_policies.py` (full-model
+    traces behind figures 05/06 and the historic dynamics figures, §4): re-run
+    from the new sets.
+- [ ] **[local]** Numbers to refresh once the above exist: the per-SOW noise
+  floors (three places), the framing-convention verdicts, the criteria
+  placements, the HIST baseline attainment wherever the manuscript quotes it,
+  and `docs/notes/methods/campaign_design.md` §4 (the pre-search list now
+  includes the demand staging).
 
 ## 1. Anvil HPC rename for the Monte Carlo design
 
@@ -271,7 +382,8 @@ provenance.
 ## Parked (scope, not blockers)
 
 - [ ] Forward hook only: the deferred DU-factor presets (`src/ensembles.py`,
-  `du_factors`; see the Section 0 utilization-factor item). The per-realization
+  `du_factors`; the one live DU factor outside the forcing box is the E_test
+  utilization axis, `src/demand_utilization.py`). The per-realization
   diversion staging (`src/ensemble_prep.py::stage_nyc_demand`) is live.
 
 ## 5. Proposal revision follow-ups (2026-09-02)

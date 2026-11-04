@@ -141,3 +141,28 @@ def test_theta_alignment_guard():
     fm.assert_theta_alignment(np.zeros((4, 3)), raw)   # aligned: no raise
     with pytest.raises(ValueError):
         fm.assert_theta_alignment(np.zeros((5, 3)), raw)
+
+
+def test_classifier_recovers_a_planted_boundary_on_the_utilization_axis():
+    """Four theta axes (em, r1, r2, u): a boundary planted on u is recovered.
+
+    The appended entitlement-utilization axis is one more feature of the SAME
+    classifier; nothing in the fit assumes three climate axes.
+    """
+    rng = np.random.default_rng(11)
+    X = np.column_stack([
+        rng.uniform(0.7, 1.3, N),      # em (noise)
+        rng.uniform(0.0, 1.0, N),      # r1 (noise)
+        rng.uniform(0.0, 1.0, N),      # r2 (noise)
+        rng.uniform(0.45, 1.0, N),     # u
+    ])
+    y = X[:, 3] < 0.75                 # success iff demand is low enough
+    axes = AXES + ["u"]
+    fit = fm.fit_classifier(X, y, axes, space="theta")
+    assert fit.axes == axes and len(fit.importances) == 4
+    assert fit.axes[int(np.argmax(fit.importances))] == "u"
+    assert fit.cv_auc > 0.9
+    g1, g2, P = fm.probability_surface(fit, X, 0, 3, grid_res=20)
+    assert P.shape == (20, 20)
+    assert P[0, :].mean() > 0.7 and P[-1, :].mean() < 0.3     # rises as u falls
+    assert fm.top_axes(fit, 1) == [3]

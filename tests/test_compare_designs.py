@@ -416,6 +416,9 @@ def test_regret_artifacts_absent_without_a_baseline(tree):
     """
     assert "design_regret_tolerance_sweep" not in tree["written"]
     assert "design_regret_by_severity" not in tree["written"]
+    # No staged utilization factor on the configured E_test -> no utilization tables.
+    assert "design_regret_by_utilization" not in tree["written"]
+    assert "design_rescoring_by_utilization_band" not in tree["written"]
 
 
 ###############################################################################
@@ -554,6 +557,126 @@ def test_tolerance_ladder_uses_the_registered_annual_epsilons(regret_tree):
     # saturated curve.
     sweep = cd.regret_tolerance_sweep(regret_tree["runs"])
     assert sweep[sweep["tau_k"] == float(max(cd.REGRET_TAU_GRID))]["median"].min() < 1.0
+
+
+###############################################################################
+# NYC entitlement-utilization re-scoring (the utilization leg of Text S10)
+###############################################################################
+
+U_SLUG = "etest_synthetic_regret_u"
+#: One nominal u per regret-tree SOW, spread so the three bands hold two SOWs
+#: each and the ten equal-width bins are hit at 0, 1, 3, 5, 7, 9.
+U_BY_SOW = np.array([0.46, 0.55, 0.65, 0.75, 0.85, 0.99])
+
+
+def _stage_utilization(root: Path, slug: str, u, r: int = REG_R,
+                       with_u: bool = True) -> Path:
+    """A metadata-only staged E_test carrying (or lacking) the utilization keys."""
+    d = root / slug
+    d.mkdir(parents=True, exist_ok=True)
+    n_theta, n = len(u), len(u) * r
+    payload = {
+        "realization_ids": np.arange(n),
+        "theta_params": np.repeat(np.column_stack([
+            np.linspace(-0.2, 0.2, n_theta), np.full(n_theta, 0.2),
+            np.full(n_theta, 0.1)]), r, axis=0),
+        "theta_param_names": np.array(["m", "r1", "r2"]),
+        "mean_factor_a": np.ones((n, 12)),
+        "n_forcing_profiles": n_theta, "realizations_per_profile": r,
+    }
+    if with_u:
+        payload["demand_utilization"] = np.repeat(np.asarray(u, float), r)
+        payload["demand_scale_k"] = np.repeat(np.ones(n_theta), r)
+        payload["demand_scale_clipped"] = np.repeat(np.zeros(n_theta, bool), r)
+    np.savez(d / "forcing_profiles.npz", **payload)
+    return d
+
+
+class _USpec:
+    inflow_type = U_SLUG
+
+
+@pytest.fixture
+def staged_u(tmp_path, monkeypatch):
+    import config
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    _stage_utilization(tmp_path, U_SLUG, U_BY_SOW)
+    return tmp_path
+
+
+def test_utilization_band_rescoring_shape_and_counts(regret_tree, staged_u):
+    from src.demand_utilization import UTILIZATION_BAND_LABELS
+
+    bands = cd.rescoring_by_utilization_band(regret_tree["runs"], _USpec())
+    assert len(bands) == len(regret_tree["runs"]) * 3
+    assert set(bands["band"]) == set(UTILIZATION_BAND_LABELS)
+    assert (bands.groupby(["design", "draw", "seed"])["n_sow"].sum() == REG_N_SOW).all()
+    assert (bands["n_sow"] == 2).all()                       # two SOWs per band
+    assert bands["sat_best"].between(0, 1).all()
+    assert bands["no_harm_tau_best"].notna().all()           # baselines staged
+    assert bands["no_harm_tau_median"].between(0, 1).all()
+    assert (bands["u_lo"] < bands["u_hi"]).all()
+
+
+def test_regret_by_utilization_is_hand_computable(regret_tree, staged_u):
+    by_u = cd.regret_by_utilization(regret_tree["runs"], _USpec(), n_bins=10)
+    runs = regret_tree["runs"]
+    assert len(by_u) == len(runs) * 6                        # six populated bins
+    assert sorted(by_u["u_bin"].unique()) == [0, 1, 3, 5, 7, 9]
+    assert (by_u["n_sow"] == 1).all()
+    for name in REG_OBJS:
+        for pre in ("regret_mean", "gain_mean", "regret_mean_best", "gain_mean_best"):
+            assert f"{pre}__{name}" in by_u.columns
+
+    # designs[1] was written with harmful_sows = 2: solutions 0 and 1 incur
+    # regret in SOW 0 (reliability shortfall 0.87 - 0.60 = 0.27), solutions 2
+    # and 3 do not, so the median over solutions in bin 0 (SOW 0) is 0.135, and
+    # the max-robustness policy (solution 2, the first fully satisficing one)
+    # carries zero regret there. In the last bin (SOW 5) every policy gains
+    # 0.95 - 0.87 on reliability and 1.0 - 0.4 on flood.
+    d1 = by_u[by_u["design"] == regret_tree["designs"][1]].set_index("u_bin")
+    rel, flood = REG_OBJS
+    assert d1.loc[0, f"regret_mean__{rel}"] == pytest.approx(0.135)
+    assert d1.loc[0, f"regret_mean_best__{rel}"] == 0.0
+    assert d1.loc[0, "best_solution_id"] == 2
+    assert d1.loc[9, f"regret_mean__{rel}"] == 0.0
+    assert d1.loc[9, f"gain_mean__{rel}"] == pytest.approx(0.08)
+    assert d1.loc[9, f"gain_mean__{flood}"] == pytest.approx(0.6)
+    assert d1.loc[9, "sat_best"] == 1.0 and d1.loc[9, "no_harm_tau_best"] == 1.0
+    assert d1.loc[0, "sat_best"] == 1.0                      # solutions 2, 3 pass
+
+
+def test_utilization_rescoring_skips_a_legacy_staging_with_a_warning(regret_tree,
+                                                                     tmp_path,
+                                                                     monkeypatch):
+    import config
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    _stage_utilization(tmp_path, U_SLUG, U_BY_SOW, with_u=False)
+    with pytest.warns(UserWarning, match="utilization"):
+        assert cd.rescoring_by_utilization_band(regret_tree["runs"], _USpec()).empty
+    with pytest.warns(UserWarning, match="utilization"):
+        assert cd.regret_by_utilization(regret_tree["runs"], _USpec()).empty
+
+
+def test_utilization_rescoring_never_aligns_by_position(regret_tree, tmp_path,
+                                                        monkeypatch):
+    import config
+    monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
+    _stage_utilization(tmp_path, U_SLUG, U_BY_SOW[:5])      # 5 SOWs vs a 6-SOW cube
+    with pytest.warns(UserWarning, match="aligned by position"):
+        assert cd.rescoring_by_utilization_band(regret_tree["runs"], _USpec()).empty
+
+
+def test_run_comparison_writes_the_utilization_tables(regret_tree, staged_u,
+                                                      tmp_path, monkeypatch):
+    monkeypatch.setattr(cd.config, "REEVAL_ENSEMBLE_SPEC", _USpec())
+    written = cd.run_comparison(
+        formulation=FORMULATION, reeval_tag=REG_TAG, outputs_root=regret_tree["root"],
+        table_dir=tmp_path / "tables", fig_dir=tmp_path / "figs")
+    bands = pd.read_csv(written["design_rescoring_by_utilization_band"])
+    by_u = pd.read_csv(written["design_regret_by_utilization"])
+    assert len(bands) == len(regret_tree["runs"]) * 3
+    assert len(by_u) == len(regret_tree["runs"]) * 6
 
 
 def test_severity_decomposition_skips_when_no_forcing_is_staged(regret_tree):

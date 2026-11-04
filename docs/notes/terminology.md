@@ -14,11 +14,11 @@
 
 **Realization.** One generated or observed streamflow sequence, addressed by its global realization index (`regenerate_realization(root_seed, k)`); the unit of independence in every bootstrap and subsample. A **draw** `d{k}` is a design's construction re-run with a fresh seed, and a **seed** (`--array` of step 06) is one MM Borg trial on a fixed draw.
 
-**Re-evaluation ensemble.** `E_test`, preset `etest_kn_50yr_n25000` (`src/etest.py`: `E_TEST_N_THETA` = 1,000 SOWs × `E_TEST_R` = 25 realizations × `E_TEST_YEARS` = 50), re-evaluated on its leading `E_TEST_REEVAL_N_THETA` = 500 SOWs, the preset `etest_kn_50yr_n25000_first25ch` returned by `campaign_reeval_preset()` and passed as `NYCOPT_REEVAL_ENSEMBLE_PRESET` on every re-evaluation submission. Identifiers keep the word test (`E_test`, `etest_*`, `generate_test_ensemble`).
+**Re-evaluation ensemble.** `E_test`, preset `etest_kn_50yr_n25000` (`src/etest.py`: `E_TEST_N_THETA` = 1,000 SOWs × `E_TEST_R` = 25 realizations × `E_TEST_YEARS` = 50), re-evaluated on its leading `E_TEST_REEVAL_N_THETA` = 500 SOWs, the preset `etest_kn_50yr_n25000_first25ch` returned by `campaign_reeval_preset()` and passed as `NYCOPT_REEVAL_ENSEMBLE_PRESET` on every re-evaluation submission. Its fourth factor, the NYC entitlement utilization `u` (`src/demand_utilization.py`; npz keys `demand_utilization`, `demand_scale_k`, `demand_scale_clipped`; `demand_utilization_nominal.csv`), is appended per SOW by `scripts/supplemental/append_demand_utilization.py`. Identifiers keep the word test (`E_test`, `etest_*`, `generate_test_ensemble`).
 
 **State of the world (SOW).** One Latin hypercube point of `E_test` with its realizations: column `sow_id` of `reeval_raw.csv.gz`, labels `sow_labels` in `reeval_raw_meta.json`, substrate `sow_annual_unit`.
 
-**Forcing space.** The CMIP6 harmonic change-factor box of `forcing_parameterization.md` (`src/etest.py` bounds and margin), sampled only by `E_test`; the generator is stationary in every search design.
+**Forcing space.** The CMIP6 harmonic change-factor box of `forcing_parameterization.md` (`src/etest.py` bounds and margin), sampled only by `E_test`; the generator is stationary in every search design. The demand-utilization axis `u` is `E_test`'s fourth factor outside the forcing box (`src/demand_utilization.py`); search runs the unscaled demand series (k = 1).
 
 ## Hazard space
 

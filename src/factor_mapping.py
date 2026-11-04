@@ -11,9 +11,11 @@ figure output (orchestration lives in ``scripts/main/factor_mapping_run.py``).
 
 Two SOW coordinate systems are supported:
 
-- **theta space** (PRIMARY): the sampled DU forcing parameters
-  ``(e^m, r1, r2)``, the input space of the E_test design (Hadjimichael et
-  al. 2020; Gold et al. 2022; Lau et al. 2023). Three designed-orthogonal LHS
+- **theta space** (PRIMARY): the sampled DU coordinates of the E_test
+  design, the three climate-forcing amplitudes ``(e^m, r1, r2)`` plus, when
+  the staged E_test carries it, the NYC entitlement-utilization factor ``u``
+  (``src.demand_utilization``) -- the input space of the design (Hadjimichael
+  et al. 2020; Gold et al. 2022; Lau et al. 2023). Designed-orthogonal LHS
   axes, so no redundancy screen is needed.
 - **hazard space** (SUPPLEMENTAL): realized-sequence drought/flood descriptors,
   screened for redundancy first (:func:`screen_hazard_axes`); the space of the
@@ -159,11 +161,15 @@ def regret_matrix(raw: rob.RawCube, baseline: rob.RawCube,
 ###############################################################################
 
 def theta_features(tag: str) -> tuple[np.ndarray, list]:
-    """The E_test DU forcing coordinates ``(G, 3)`` and their names.
+    """The E_test DU coordinates ``(G, 3)`` or ``(G, 4)`` and their names.
 
     Columns ``["em", "r1", "r2"]``: the water-year volume multiplier
     ``e^m`` (the plotting convention of ``src.plotting.forcing_space``) and
-    the annual/semiannual harmonic amplitudes.
+    the annual/semiannual harmonic amplitudes. When the staged E_test carries
+    the NYC entitlement-utilization factor (``src.demand_utilization``; the
+    ``u`` key of :func:`~src.plotting.forcing_space.load_etest_sample`), a
+    fourth column ``"u"`` holds each SOW's nominal utilization; a legacy
+    staging without it returns the three climate columns only.
 
     Args:
         tag: The staged E_test ensemble tag (= the re-eval tag).
@@ -175,12 +181,16 @@ def theta_features(tag: str) -> tuple[np.ndarray, list]:
 
     sample = load_etest_sample(config.STAGED_ENSEMBLE_DIR / tag)
     theta, names = sample["theta"], sample["theta_names"]
-    X = np.column_stack([
+    cols = [
         np.exp(theta[:, names.index("m")]),
         theta[:, names.index("r1")],
         theta[:, names.index("r2")],
-    ])
-    return X, ["em", "r1", "r2"]
+    ]
+    out_names = ["em", "r1", "r2"]
+    if "u" in sample:
+        cols.append(np.asarray(sample["u"], dtype=float))
+        out_names.append("u")
+    return np.column_stack(cols), out_names
 
 
 def assert_theta_alignment(X: np.ndarray, raw: rob.RawCube) -> None:

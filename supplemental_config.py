@@ -1005,6 +1005,106 @@ def floodobj_figure_path(name: str) -> Path:
 
 
 ###############################################################################
+# NYC demand-covariate diagnostics
+# (scripts/supplemental/demand_covariate/{run,figures}.py;
+#  docs/notes/methods/demand_covariate_diagnostics.md)
+#
+# Measures what putting the NYC diversion regressions on the reconstruction's
+# reservoir-inflow covariate (training AND the historic extrapolation; Pywr-DRB
+# nyc_opt, 2026-11-04) changed: the historic demand series, the current FFMP
+# policy's NYC system outcomes and its eight annual-unit objective scores on the
+# historic record, old (USGS gauge-sum covariate) versus new, with everything
+# else identical (one full-model build; only the demand_nyc source is swapped),
+# plus the k = 1 utilization of one staged fixture before and after.
+###############################################################################
+
+
+def configure_dcv_env() -> None:
+    """Apply env knobs for the demand-covariate diagnostics.
+
+    Salinity and temperature LSTMs off (the eight active objectives use
+    neither); the ``historic`` scenario design; no simulation-window override
+    (the full historic trace, ``config.START_DATE`` to ``config.END_DATE``).
+    """
+    _apply_env(salinity="0", temperature="0")
+    os.environ.setdefault("NYCOPT_SCENARIO_DESIGN", "historic")
+
+
+#: Formulation whose default decision variables are the current FFMP policy.
+DCV_FORMULATION: str = "ffmp"
+
+#: Pywr-DRB commit whose shipped historic CSV, regressions and staged fixture
+#: demand used the USGS gauge-sum covariate (the "old" variant). ``run.py``
+#: recovers the old CSV from it with ``git show`` when the saved copy is absent;
+#: the old fit table and fixture HDF5 were produced by that code and are named
+#: in the error when missing.
+DCV_OLD_PYWRDRB_REF: str = "38edd57"
+DCV_PYWRDRB_CSV_RELPATH: str = "src/pywrdrb/data/diversions/diversion_nyc_extrapolated_mgd.csv"
+
+#: Staged k = 1 fixture whose demand series is compared before and after
+#: (``src/local_test_ensemble.py``); the "new" series is re-staged by the run.
+DCV_FIXTURE_SLUG: str = "kn_50yr_n5"
+
+#: The 1960s drought window of the storage figure.
+DCV_DROUGHT_1960S: tuple = ("1961-06-01", "1967-12-31")
+
+#: Storage-difference screen: a window is reported wherever |new - old|
+#: combined NYC storage exceeds this many percentage points of capacity (the
+#: search epsilon of the storage objective, nyc_storage_min_p01_pct: a
+#: difference the search would resolve) ...
+DCV_STORAGE_DIFF_THRESHOLD_PCT: float = 5.0
+#: ... exceedance runs separated by at most this many days merge into one window ...
+DCV_WINDOW_MERGE_GAP_DAYS: int = 180
+#: ... and each window is padded by this many days on both sides in its panel.
+DCV_WINDOW_PAD_DAYS: int = 120
+
+#: FFMP drought stages whose NYC delivery caps the demand series is screened
+#: against (share of days above factor x 800 MGD: 680 / 560 / 520 MGD).
+DCV_DROUGHT_CAP_LEVELS: tuple = ("level3", "level4", "level5")
+
+#: Eras of the historic record for the per-era demand summary, set by the gauge
+#: availability of the OLD covariate (the seven-gauge USGS sum): no Cannonsville
+#: inflow gauge (01423000) before Oct 1950, the Pepacton gauge 01414000 absent
+#: for most of 1950-1995, every gauge present from 1996, the observed River
+#: Master record (identical in both variants), and the extrapolated tail.
+DCV_ERAS: tuple = (
+    ("extrapolated_pre1950", "1945-12-01", "1950-09-30"),
+    ("extrapolated_1950_1995", "1950-10-01", "1995-12-31"),
+    ("extrapolated_1996_1999", "1996-01-01", "1999-11-30"),
+    ("observed_2000_2021", "1999-12-01", "2021-11-30"),
+    ("extrapolated_post2021", "2021-12-01", "2023-11-30"),
+)
+
+#: Daily flows below the Montague / Trenton target by more than this (MGD)
+#: count as a target shortfall day.
+DCV_TARGET_TOL_MGD: float = 0.01
+
+# ---------------------------------------------------------------------------
+# Output tree (gitignored, regenerable). ``inputs/`` holds the old-variant
+# artifacts saved before the covariate change.
+# ---------------------------------------------------------------------------
+DCV_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "demand_covariate"
+DCV_INPUTS_DIR: Path = DCV_OUTPUT_ROOT / "inputs"
+DCV_TABLES_DIR: Path = DCV_OUTPUT_ROOT / "tables"
+DCV_FIGURES_DIR: Path = DCV_OUTPUT_ROOT / "figures"
+DCV_OLD_CSV: Path = DCV_INPUTS_DIR / "diversion_nyc_extrapolated_mgd_usgs_covariate.csv"
+DCV_OLD_FIT_CSV: Path = DCV_INPUTS_DIR / "regression_fit_usgs_covariate.csv"
+DCV_OLD_FIXTURE_H5: Path = (
+    DCV_INPUTS_DIR / f"{DCV_FIXTURE_SLUG}_diversion_nyc_extrapolated_mgd_usgs_covariate.hdf5"
+)
+
+
+def dcv_table_path(name: str) -> Path:
+    """Path for a named table CSV."""
+    return DCV_TABLES_DIR / f"{name}.csv"
+
+
+def dcv_figure_path(name: str) -> Path:
+    """Path stub for a named figure (extension added by ``save_figure``)."""
+    return DCV_FIGURES_DIR / name
+
+
+###############################################################################
 # Robustness satisficing-threshold diagnostics
 # (docs/notes/methods/robustness_threshold_diagnostics.md)
 #

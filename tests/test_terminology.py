@@ -184,6 +184,17 @@ RETIRED_TERMS: dict[str, str] = {
     "held constant at the Decree maxima":
         "the time-dynamic extrapolated NYC demand; only NJ is a constant Decree "
         "quantity",
+    # E_test carries the NYC entitlement-utilization factor u as its fourth
+    # deeply uncertain axis (src/demand_utilization.py); the statements that
+    # the re-evaluation ensemble carries no demand factor are retired.
+    "samples no demand factor":
+        "the NYC entitlement-utilization axis u in [0.45, 1.0], the fourth deeply "
+        "uncertain factor of E_test (src/demand_utilization.py; "
+        "forcing_parameterization.md 'Demand-utilization axis')",
+    "no demand-growth axis":
+        "the NYC entitlement-utilization axis u in [0.45, 1.0], the fourth deeply "
+        "uncertain factor of E_test (src/demand_utilization.py; "
+        "forcing_parameterization.md 'Demand-utilization axis')",
 }
 
 #: A line may name a retired term if it is explicitly disclaiming it.

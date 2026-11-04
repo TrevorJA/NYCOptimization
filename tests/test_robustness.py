@@ -687,3 +687,72 @@ def test_run_records_the_regret_tolerance(tmp_path):
     # Synthetic objective names are not in the registry, so the ladder is None and
     # the tau column is gated off rather than silently computed at tau = 0.
     assert meta["regret_tau"] is None
+
+
+# ---------------------------------------------------------------------------
+# SOW-subset re-scoring (the shared mask path of the composition sensitivity)
+# ---------------------------------------------------------------------------
+
+def test_rescore_sow_subsets_is_hand_computable(tmp_path):
+    """Every column restricted to the masked SOWs, hand values from _REG_RECORDS.
+
+    sol 0: SOW0 passes both criteria (A 0.90 >= 0.9, B 5 <= 10) and is better
+    than the incumbent on both; SOW1 fails and is worse on both (D = -0.10,
+    -3.0, inside the tolerance _REG_TAU). sol 1 passes and gains everywhere.
+    """
+    raw, base = _regret_fixture(tmp_path)
+    groups = {"sow0": np.array([True, False]), "sow1": np.array([False, True]),
+              "both": np.array([True, True]), "none": np.array([False, False])}
+    out = rob.rescore_sow_subsets(raw, groups, baseline=base, tau=_REG_TAU)
+    assert len(out) == 4 * 2
+    row = lambda g, s: out[(out["group"] == g) & (out["solution_id"] == s)].iloc[0]  # noqa: E731
+
+    assert row("sow0", 0)["sat_multivariate_sow"] == 1.0
+    assert row("sow1", 0)["sat_multivariate_sow"] == 0.0
+    assert row("both", 0)["sat_multivariate_sow"] == 0.5
+    assert row("both", 1)["sat_multivariate_sow"] == 1.0
+    assert row("sow1", 0)["no_harm_freq_tau"] == 1.0          # within tolerance
+    assert row("sow0", 0)["regret_mean__A"] == 0.0
+    assert row("sow0", 0)["gain_mean__A"] == pytest.approx(0.10)
+    assert row("sow0", 0)["gain_mean__B"] == pytest.approx(5.0)
+    assert row("sow1", 0)["regret_mean__A"] == pytest.approx(0.10)
+    assert row("sow1", 0)["regret_mean__B"] == pytest.approx(3.0)
+    assert row("sow1", 0)["gain_mean__B"] == 0.0
+    assert row("both", 0)["regret_mean__B"] == pytest.approx(1.5)   # mean(0, 3)
+    assert row("both", 1)["gain_mean__A"] == pytest.approx(0.20)
+    assert (out["n_sow"][out["group"] == "none"] == 0).all()
+    assert out[out["group"] == "none"]["sat_multivariate_sow"].isna().all()
+    assert out[out["group"] == "none"]["regret_mean__A"].isna().all()
+
+
+def test_rescore_sow_subsets_without_a_baseline_has_only_the_satisficing_half(raw):
+    out = rob.rescore_sow_subsets(raw, {"all": np.array([True, True])})
+    assert list(out.columns) == ["group", "solution_id", "n_sow", "sat_multivariate_sow"]
+    # sol 2 / SOW 0 is NaN on A -> unsatisfied there; SOW1 fails A too.
+    assert out.set_index("solution_id")["sat_multivariate_sow"].to_dict() == {
+        0: 0.5, 1: 0.5, 2: 0.0}
+
+
+def test_rescore_sow_subsets_refuses_a_misaligned_mask(raw):
+    with pytest.raises(ValueError, match="aligned to raw.sow_labels"):
+        rob.rescore_sow_subsets(raw, {"bad": np.array([True, False, True])})
+    with pytest.raises(ValueError):
+        rob.rescore_sow_subsets(raw, {"bad": np.array([1, 0])})     # not boolean
+
+
+def test_utilization_groups_and_bins_align_by_label_not_position():
+    """Labels out of order and string keys (as reeval_raw_meta.json stores them)."""
+    from src.demand_utilization import UTILIZATION_BAND_LABELS
+
+    u_by_sow = {"0": 0.50, "1": 0.99, "2": 0.70, "3": 0.61}
+    labels = [3, 1, 0]                                  # cube keeps a subset, shuffled
+    groups = rob.utilization_groups(u_by_sow, labels)
+    assert list(groups) == list(UTILIZATION_BAND_LABELS)
+    assert groups[UTILIZATION_BAND_LABELS[0]].tolist() == [False, False, True]   # 0.50
+    assert groups[UTILIZATION_BAND_LABELS[1]].tolist() == [True, False, False]   # 0.61
+    assert groups[UTILIZATION_BAND_LABELS[2]].tolist() == [False, True, False]   # 0.99
+    bins, edges = rob.utilization_bins(u_by_sow, labels, n_bins=10)
+    assert len(edges) == 11 and edges[0] == 0.45 and edges[-1] == 1.0
+    assert bins.tolist() == [2, 9, 0]
+    with pytest.raises(KeyError):
+        rob.utilization_groups(u_by_sow, [0, 7])

@@ -159,19 +159,24 @@ See `notes/methods/experimental_design.md`.
 
 E_test is the **only carrier of deep uncertainty** in the study and the **largest
 ensemble by a wide margin**: generated as N_θ = 1,000 LHS points over the full range of
-the deeply-uncertain climate-forcing factors (the CMIP6 harmonic hypercube widened by
-25 %, with the annual-volume lower bound extended to a multiplier of 0.80) × R = 25
+the deeply-uncertain factors, the three climate-forcing amplitudes (the CMIP6 harmonic
+hypercube widened by 25 %, with the annual-volume lower bound extended to a multiplier
+of 0.80) and the NYC entitlement utilization u ∈ [0.45, 1.0] (an independent Latin
+hypercube column, applied as a scale on each realization's demand series with the
+800 MGD cap enforced after scaling; `notes/methods/forcing_parameterization.md`,
+"Demand-utilization axis") × R = 25
 realizations × L_test = 50 yr (25,000 realizations, `etest_kn_50yr_n25000`), of which
 the campaign re-evaluates the leading 500 SOWs (12,500 realizations, 625k
 simulated years, `etest_kn_50yr_n25000_first25ch`; a chunk-prefix subset of the randomly
-ordered design, sized from the literature for a 3-axis forcing space:
+ordered design, sized from the literature for a four-factor space:
 `notes/methods/campaign_design.md` §5). Each LHS point is a state of the world, and its
 realizations sample natural variability within it; the 50-yr records (vs L = 10 in
 search) test sustained operation — storage carryover across consecutive droughts and
 matured entitlement banking. Re-evaluation runs the **trimmed model**, like search: the
 policy-independent non-NYC releases are presimulated once per realization and reused
 for every Pareto set. Because the search ensembles are drawn from the unperturbed
-stationary generator while E_test spans a forced climate envelope, the re-evaluation is
+stationary generator at the model's nominal demand level (u ≈ 0.68) while E_test spans
+a forced climate envelope and the full utilization range, the re-evaluation is
 a **generalization test**: does hazard coverage of the natural-variability manifold
 produce policies that generalize to conditions never presented during search? E_test is
 structurally distinct from both search designs by construction; whether the design
@@ -260,8 +265,12 @@ as the co-primary RQ1 family; search aggregation = two-layer annual-unit scheme;
 framing conventions (failure-week counts, flood unit operator = mean, 0.99 weekly
 satisfaction factor); forcing space retains historical persistence (claims scoped
 accordingly); NYC demand is the time-dynamic extrapolated diversion series (per
-realization from its own inflows, 800 MGD monthly-mean cap; never a constant
-800 MGD) in search and re-evaluation, with NJ fixed at its 100 MGD allocation.
+realization from its own inflows, the regressions trained on the same
+reservoir-inflow covariate of the model's reconstruction, 800 MGD monthly-mean
+cap; never a constant 800 MGD) in search and re-evaluation, with NJ fixed at its 100 MGD allocation; E_test
+samples the NYC entitlement utilization u ∈ [0.45, 1.0] as its fourth deeply uncertain
+factor (a per-SOW scale k(u) on the demand series, cap enforced after scaling), while
+search runs the unscaled series (k = 1).
 
 **Budget.** The campaign is priced on the measured production basis (21,850 SU per
 N = 100 / 500k search, scaled by (N/100)^0.951) against the remaining Anvil balance of
@@ -274,7 +283,9 @@ seed 2 is submitted. A third seed does not fit. The variable-resolution `ffmp_N`
 a conditional SI extension that runs only on whatever SU remains at the end of the
 campaign. Table: `notes/methods/campaign_design.md` §6.
 
-**Remaining before campaign launch:** stage the search ensembles at N = 300 (steps
+**Remaining before campaign launch:** append the utilization column to E_test
+(`append_demand_utilization.py`), stage its scaled NYC demand series per chunk, and
+re-simulate the current-FFMP E_test cube; stage the search ensembles at N = 300 (steps
 02–04 for draws 0–1 of both matched designs, step 05 baselines) with
 `validate_staged_seasonality` build QC; re-verify the ε floors on the N = 300 ensembles;
 run the one-node batched-search memory smoke; then seed 1 of every design, which prices

@@ -100,6 +100,34 @@ def _subset_npz(pool_npz: Path, out_npz: Path, n_pool: int, n_theta_pool: int,
     return notes
 
 
+def _verify_demand_utilization_slice(pool_npz: Path, out_npz: Path, n_sub: int) -> None:
+    """Assert the sliced npz carries the NYC utilization keys as a length-``n_sub`` prefix.
+
+    Raises:
+        ValueError: If the parent lacks the keys (append them first) or the
+            slice is not the parent's leading ``n_sub`` values.
+    """
+    from src.demand_utilization import NPZ_KEYS
+
+    with np.load(pool_npz, allow_pickle=True) as z:
+        missing = [k for k in NPZ_KEYS if k not in z.files]
+        if missing:
+            raise ValueError(
+                f"{pool_npz} lacks the NYC utilization keys {missing}; run "
+                f"scripts/supplemental/append_demand_utilization.py on the parent before "
+                f"staging a subset.")
+        parent = {k: np.asarray(z[k])[:n_sub] for k in NPZ_KEYS}
+    with np.load(out_npz, allow_pickle=True) as z:
+        for key in NPZ_KEYS:
+            if key not in z.files:
+                raise ValueError(f"{out_npz} lost the utilization key {key!r} in the slice.")
+            arr = np.asarray(z[key])
+            if arr.shape[0] != n_sub or not np.array_equal(arr, parent[key]):
+                raise ValueError(
+                    f"{out_npz}: {key} is not the parent's leading {n_sub} values "
+                    f"(got shape {arr.shape}).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Stage a metadata-only chunk-prefix subset of a chunked E_test.")
@@ -213,6 +241,10 @@ def main() -> None:
     assert sow_ids is not None and n_sow == n_theta_sub and r == r_per_sow, (
         f"SOW grouping mismatch: n_sow={n_sow} (expected {n_theta_sub}), "
         f"R={r} (expected {r_per_sow})")
+    # The NYC utilization column is per realization, so the slicer carried it;
+    # the subset inherits the leading SOWs' values and the parent's provenance.
+    _verify_demand_utilization_slice(pool_dir / "forcing_profiles.npz",
+                                     out_dir / "forcing_profiles.npz", n_sub)
     assert_staged_etest_contract(out_slug)
 
     print(f"[etest-subset] staged '{out_slug}' at {out_dir}")

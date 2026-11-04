@@ -168,10 +168,14 @@ on each staged ensemble as build QC.
 #### 2.2 Test-ensemble staging (step 12 + supplemental)
 
 The held-out re-evaluation ensemble E_test (`etest_kn_50yr_n25000`: 1,000 LHS
-SOWs × 25 realizations × 50 yr, 50 staged chunks) is independent of steps
-02–07 and never enters search. Build it sharded, merge, stage the pywrdrb
-inputs per chunk (the one-time presim pass over E_test), then stage the
-500-SOW campaign prefix subset (metadata only, login node):
+SOWs over the three climate amplitudes and the NYC entitlement utilization `u`,
+× 25 realizations × 50 yr, 50 staged chunks) is independent of steps
+02–07 and never enters search. Build it sharded, merge, calibrate the demand
+scale and append the per-SOW utilization column (metadata only;
+`docs/notes/methods/forcing_parameterization.md`), stage the pywrdrb inputs per
+chunk (the one-time presim pass over E_test, including each SOW's scaled NYC
+demand series), merge the realized utilization, then stage the 500-SOW campaign
+prefix subset (metadata only, login node):
 
 ```bash
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
@@ -179,8 +183,11 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.
 sbatch --dependency=afterok:<shards_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
        workflow/supplemental/gen_etest_merge.sh
+python3 scripts/supplemental/demand_utilization_calibration.py                   # k(u) table, seconds
+python3 scripts/supplemental/append_demand_utilization.py --variant kn           # per-SOW utilization u, metadata only
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
        workflow/supplemental/prep_etest_chunks.sh
+python3 scripts/supplemental/merge_demand_utilization_realized.py --variant kn   # realized vs nominal u per SOW
 python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000   # -> etest_kn_50yr_n25000_first25ch
 ```
 
@@ -289,7 +296,7 @@ sbatch workflow/14_results_figures.sh
 ```
 
 Step order: `01` before `05`/`06`; `02`→`04` (with `03` for hazard filling)
-before `06`; `12`→`prep_etest_chunks`→`make_etest_subset` before `05`/`08`/`09`/`11`;
+before `06`; `12`→`demand_utilization_calibration`→`append_demand_utilization`→`prep_etest_chunks`→`merge_demand_utilization_realized`→`make_etest_subset` before `05`/`08`/`09`/`11`;
 `06`→`extract_runtime_archive`→`07`→`09`→`09b`→`10`/`11`/`13`/`14`. Chain on a
 cluster with `sbatch --dependency=afterok:<jobid>`. Outputs land under
 `outputs/{scenario}/{moea_slug}/`.

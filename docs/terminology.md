@@ -164,7 +164,7 @@ Status legend
 | Status | Term | Use and support |
 |---|---|---|
 | Adopted | **deep uncertainty / deeply uncertain** | Factors "for which expert opinion cannot know or cannot agree on the full set of outcomes and their associated likelihoods" (Hadjimichael et al., 2020; Lempert et al., 2003; Walker et al., 2013). Defined once. |
-| Adopted | **well-characterized uncertainty (WCU)** | Stochastic variability with reliable historical data or known distributions (Trindade et al., 2017). In this study, natural hydroclimatic variability is well characterized; the magnitude and seasonal structure of future streamflow change is deeply uncertain and is sampled along **three forcing dimensions** (annual flow volume, seasonal amplitude, and the shape of the snowmelt shoulder). Scope restrictions are stated as "demand growth is not included as an uncertainty" and "no financial factors are considered" (Trev, 2026-09-02). |
+| Adopted | **well-characterized uncertainty (WCU)** | Stochastic variability with reliable historical data or known distributions (Trindade et al., 2017). In this study, natural hydroclimatic variability is well characterized; the magnitude and seasonal structure of future streamflow change is deeply uncertain and is sampled along **three forcing dimensions** (annual flow volume, seasonal amplitude, and the shape of the snowmelt shoulder) and, as the fourth deeply uncertain factor of the re-evaluation ensemble, the **NYC entitlement utilization** u ∈ [0.45, 1.0]. Scope restrictions are stated as "demand growth above the Decree cap is excluded by law; the utilization of the entitlement is the fourth deeply uncertain factor of the re-evaluation" and "no financial factors are considered" (Trev, 2026-09-02; `docs/notes/methods/forcing_parameterization.md`, "Demand-utilization axis"). |
 | Adopted | **many-objective robust decision making (MORDM)** | The framework of Kasprzyk et al. (2013) whose re-evaluation step this study follows; named at first use of the re-evaluation approach. |
 | Adopted | **state of the world (SOW)** | "A fully specified world, comprised of one fully specified sampled vector of deeply uncertain factors and one streamflow time series" (Trindade et al., 2017). Here, one Latin hypercube point in the forcing space crossed with its stochastic realizations (structure as in Hadjimichael et al., 2020). Open, lowercase, abbreviated SOWs after first use. The unit of every robustness and regret fraction ("per-SOW"). |
 | Adopted | **deep uncertainty re-evaluation (DU re-evaluation)** | The evaluation of every Pareto-approximate policy on the common re-evaluation ensemble (Trindade et al., 2017). "Re-evaluate" is the verb of the Reed-group papers (AGU journals close it to "reevaluate"); "stress test" only as a verb and sparingly (Gold et al., 2023). |
@@ -188,7 +188,7 @@ Status legend
 | "No robustness value reported in this study is an expectation" and similar | omit; state only that every sampled SOW counts equally |
 | "stress test" as a noun | re-evaluation; DU re-evaluation |
 | "comprehensive" DU claims | the sampled deep uncertainty is hydroclimatic forcing only; scope stated |
-| "the single deeply uncertain dimension" | three deeply uncertain forcing dimensions |
+| "the single deeply uncertain dimension" | three deeply uncertain forcing dimensions plus the entitlement-utilization factor |
 
 ## E. Variability and uncertainty language
 

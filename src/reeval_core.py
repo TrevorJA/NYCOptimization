@@ -251,14 +251,67 @@ def sow_grouping(spec, realization_indices) -> tuple[list | None, int | None, in
     return sow_ids, len(set(sow_ids)), r_per_sow
 
 
+def sow_demand_utilization(spec, sow_labels) -> dict | None:
+    """Nominal NYC entitlement utilization ``u`` of each re-evaluated SOW.
+
+    Read from the staged ensemble's ``forcing_profiles.npz`` key
+    ``demand_utilization`` (one value per realization, repeated
+    ``realizations_per_profile`` times exactly like ``theta_params``; written
+    by ``scripts/supplemental/append_demand_utilization.py``). Each SOW label
+    is ``realization_id // R``, so the join is by label, never positional.
+
+    Args:
+        spec: The re-eval ``EnsembleSpec``.
+        sow_labels: The SOW labels the persisted matrix rows are keyed by.
+
+    Returns:
+        ``{str(sow_label): u}`` for every requested label, or ``None`` when the
+        spec is not an ensemble, no ``forcing_profiles.npz`` is staged, or the
+        staging carries no utilization factor (a legacy E_test).
+
+    Raises:
+        KeyError: If a requested SOW label has no utilization value in the
+            staged npz -- the re-eval ensemble and the staged factor disagree.
+    """
+    if spec is None or not getattr(spec, "is_ensemble", False) or sow_labels is None:
+        return None
+
+    from src.ensembles import staged_ensemble_dir
+
+    npz = staged_ensemble_dir(spec.inflow_type) / "forcing_profiles.npz"
+    if not npz.exists():
+        return None
+    with np.load(npz, allow_pickle=True) as z:
+        if "demand_utilization" not in z.files:
+            return None
+        u = np.asarray(z["demand_utilization"], dtype=float)
+        r_per_sow = int(z["realizations_per_profile"])
+        rid = (np.asarray(z["realization_ids"], dtype=int) if "realization_ids" in z.files
+               else np.arange(len(u)))
+    by_sow: dict[int, float] = {}
+    for g, val in zip(rid // r_per_sow, u):
+        by_sow.setdefault(int(g), float(val))
+    missing = [g for g in sow_labels if int(g) not in by_sow]
+    if missing:
+        raise KeyError(
+            f"{len(missing)} re-evaluated SOW(s) have no demand-utilization value in "
+            f"{npz} (e.g. {missing[:5]}); the staged factor does not cover the "
+            f"re-eval ensemble."
+        )
+    return {str(int(g)): by_sow[int(g)] for g in sow_labels}
+
+
 def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
     """Self-describing metadata sidecar for the persisted per-SOW matrix.
 
     Snapshots everything the offline scorer needs WITHOUT re-importing the
     live objective registry or honoring a changed ``NYCOPT_SAT_THRESHOLDS``:
     per-objective thresholds/kinds/directions, unit-operator provenance, the
-    objective column order, the SOW labels each matrix row maps to, and the
-    run provenance ``(scenario_design, slug, seed)``.
+    objective column order, the SOW labels each matrix row maps to, the
+    nominal NYC entitlement utilization ``u`` of each SOW when the re-eval
+    ensemble carries that factor (``sow_demand_utilization``, keyed by SOW
+    label; ``None`` for a legacy staging), and the run provenance
+    ``(scenario_design, slug, seed)``.
     """
     obj_set, spec, is_ensemble = resolve_reeval()
     ens_objs = list(obj_set)
@@ -274,10 +327,12 @@ def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
         sow_ids, n_sow, realizations_per_sow = sow_grouping(
             spec, realization_indices)
         sow_labels = sorted(set(sow_ids)) if sow_ids is not None else None
+        sow_u = sow_demand_utilization(spec, sow_labels)
     else:
         realization_indices = [0]
         sow_ids, n_sow, realizations_per_sow = None, None, None
         sow_labels = [0]
+        sow_u = None
 
     from config import active_scenario_name, derive_slug
     return {
@@ -297,6 +352,9 @@ def reeval_raw_meta(formulation: str, n_solutions: int, seed=None) -> dict:
         "sow_labels": sow_labels,
         "n_sow": n_sow,
         "realizations_per_sow": realizations_per_sow,
+        # Nominal NYC entitlement utilization per SOW label (the E_test demand
+        # factor, src.demand_utilization); None when the staging has none.
+        "sow_demand_utilization": sow_u,
         "thresholds": thresholds,
         "kinds": kinds,
         "directions": directions,

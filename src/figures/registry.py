@@ -107,7 +107,9 @@ class FigureSpec:
         kind: Companion-table subdir under ``figure_tables/``.
         needs: Data requirements, subset of
             {"cube", "scorecard", "figure_tables", "ensemble", "refset",
-            "fdc_cache", "factor_mapping"} -- drives skip-with-message.
+            "fdc_cache", "factor_mapping", "demand_calibration",
+            "demand_utilization", "demand_realized", "regret_by_utilization"}
+            -- drives skip-with-message (``scripts/main/figures.py``).
         caption: One-line description for ``--list``.
         per_focal: The figure is parameterized by the FOCAL criterion, so its
             stem carries the criterion key and renders under different
@@ -368,6 +370,46 @@ FIGURES: tuple[FigureSpec, ...] = (
         kind="search_outcomes", needs=frozenset(),
         caption="Per-design MOEA runtime convergence (per-design scales; "
                 "search-time values are never compared across designs).",
+    ),
+    # The NYC entitlement-utilization axis of E_test (src.demand_utilization).
+    FigureSpec(
+        name="demand_utilization_calibration",
+        builder=_lazy("src.plotting.demand_utilization",
+                      "fig_demand_utilization_calibration"),
+        tier="si", number=12, section="3.4.1", kind="demand_utilization",
+        needs=frozenset({"demand_calibration"}),
+        caption="Calibration u(k) of the NYC demand scale on the reference "
+                "record and the monthly demand climatology implied at four "
+                "utilization levels.",
+    ),
+    FigureSpec(
+        name="demand_utilization_sampling",
+        builder=_lazy("src.plotting.demand_utilization",
+                      "fig_demand_utilization_sampling"),
+        tier="si", number=13, section="3.4.1", kind="demand_utilization",
+        needs=frozenset({"ensemble", "demand_utilization"}),
+        caption="The sampled (e^m, u) and (r1, u) planes of E_test with the "
+                "sampling box.",
+    ),
+    FigureSpec(
+        name="demand_utilization_realized",
+        builder=_lazy("src.plotting.demand_utilization",
+                      "fig_demand_utilization_realized"),
+        tier="si", number=14, section="3.4.1", kind="demand_utilization",
+        needs=frozenset({"demand_realized"}),
+        caption="Nominal versus realized NYC entitlement utilization per "
+                "E_test SOW (realized: the staged demand series over "
+                "complete FFMP years).",
+    ),
+    FigureSpec(
+        name="regret_vs_utilization",
+        builder=_lazy("src.plotting.demand_utilization",
+                      "fig_regret_vs_utilization"),
+        tier="si", number=15, section="4.4", kind="demand_utilization",
+        needs=frozenset({"regret_by_utilization"}),
+        caption="Per-objective regret and gain against the FFMP incumbent "
+                "across NYC entitlement-utilization bins (how much of any "
+                "re-optimization gain is contingent on demand).",
     ),
 )
 

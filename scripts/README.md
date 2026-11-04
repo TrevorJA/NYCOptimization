@@ -11,7 +11,10 @@ Three buckets, by purpose:
 
 - **`supplemental/`** — Manuscript-relevant but not part of the linear
   pipeline: E_test subset staging (`make_etest_subset.py`,
-  `stage_etest_subset_baseline.py`), build QC (`validate_staged_seasonality.py`,
+  `stage_etest_subset_baseline.py`), the E_test demand-utilization axis
+  (`demand_utilization_calibration.py`, `append_demand_utilization.py`,
+  `merge_demand_utilization_realized.py`), the NYC demand-covariate
+  diagnostics (`demand_covariate/run.py`, `demand_covariate/figures.py`), build QC (`validate_staged_seasonality.py`,
   `verify_*.py`), calibration and diagnostic runners with their figure
   scripts, benchmarks. Driven by `workflow/supplemental/` and the root
   `supplemental_config.py`.

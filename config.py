@@ -285,12 +285,13 @@ PYWRDRB_FLOW_PREDICTION_MODE = "perfect_foresight"
 #
 # NYC demand is ALWAYS the time-dynamic extrapolated diversion series of
 # Pywr-DRB's ExtrapolatedDiversionPreprocessor (quarterly regressions of monthly
-# Delaware diversion on log monthly NYC inflow fitted to the 2000-2021 River
-# Master record, nearest-neighbour daily patterns, 800 MGD monthly-mean cap;
-# Hamilton et al. 2024 SI): per realization for ensembles ("custom", the
+# Delaware diversion on log monthly inflow to the three NYC reservoirs, fitted
+# to the 2000-2021 River Master record on the model's inflow reconstruction,
+# nearest-neighbour daily patterns, 800 MGD monthly-mean cap; Hamilton et al.
+# 2024 SI): per realization for ensembles ("custom", the
 # diversion_nyc_extrapolated_mgd.hdf5 that step 04 extrapolates from each
-# realization's own inflows) and pywrdrb's 1945-2023 historic-flow series for
-# the single trace ("historical"). A constant 800 MGD NYC demand is never used
+# realization's own reservoir inflows, the same covariate) and pywrdrb's
+# 1945-2023 series on the reconstruction for the single trace ("historical"). A constant 800 MGD NYC demand is never used
 # -- not in search, re-evaluation, baselines or diagnostics -- and
 # assert_time_dynamic_nyc_demand() refuses it at every model build. There is
 # no env knob. NJ demand is the 100 MGD Decree quantity held constant

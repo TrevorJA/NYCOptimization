@@ -29,12 +29,22 @@ per-realization preprocessing cost.
 The NYC demand series is the time-dynamic extrapolated diversion every
 ensemble simulation reads (``config.NYC_DEMAND_SOURCE_ENSEMBLE``): for each
 realization the quarterly diversion-on-log-inflow regressions, fitted once to
-the 2000-2021 River Master record, are applied to that realization's own NYC
-inflows, nearest-neighbour daily patterns are attached, and the 800 MGD
+the 2000-2021 River Master record on the reconstruction's NYC reservoir inflows,
+are applied to the same three-node inflow sum of that realization,
+nearest-neighbour daily patterns are attached, and the 800 MGD
 monthly-mean cap is enforced (:func:`stage_nyc_demand`). NJ demand is the
 constant 100 MGD Decree quantity (``config.NJ_DEMAND_SOURCE``), so no NJ
 diversion series or NJ-diversion forecast (``predicted_diversions_mgd.hdf5``)
 is staged.
+
+E_test chunks (``_meta.json`` ``kind == "forcing_pool_chunk"``) are the one
+case where the series is scaled: each realization's whole regression-structured
+series is multiplied by its SOW's demand scale ``k`` (the NYC entitlement
+utilization axis, ``src.demand_utilization``; read from the parent's
+``demand_utilization_nominal.csv``) BEFORE the cap, and the realized
+utilization of every staged realization is written to
+``demand_utilization_realized.csv`` in the chunk dir. Every other ensemble
+(search ensembles, local fixtures) is staged unscaled, ``k = 1``.
 """
 
 from __future__ import annotations
@@ -48,6 +58,105 @@ _FLOOD_INFLOW = "catchment_inflow_with_flood_nodes_mgd.hdf5"
 _PRESIM_RELEASES = "presimulated_releases_mgd.hdf5"
 _PREDICTED_INFLOWS = "predicted_inflows_mgd.hdf5"
 _NYC_DEMAND = "diversion_nyc_extrapolated_mgd.hdf5"
+#: Per-realization realized-utilization table written beside the demand HDF5 of
+#: an E_test chunk (merged into the parent dir by
+#: ``scripts/supplemental/merge_demand_utilization_realized.py``).
+_REALIZED_UTILIZATION = "demand_utilization_realized.csv"
+#: Per-SOW nominal table the append step writes into the parent E_test dir.
+_NOMINAL_UTILIZATION = "demand_utilization_nominal.csv"
+
+
+def chunk_demand_scales(spec) -> tuple[dict[str, float] | None, Any]:
+    """Per-realization NYC demand scales of an E_test chunk, or ``None`` otherwise.
+
+    A chunk's ``_meta.json`` (``kind == "forcing_pool_chunk"``) maps each local
+    realization to its global id (``global_realization_ids``) and so to its
+    SOW (``global_id // realizations_per_profile``), whose scale ``k`` comes
+    from the parent slug's ``demand_utilization_nominal.csv``.
+
+    Args:
+        spec: The staged ensemble's :class:`~src.ensembles.EnsembleSpec`.
+
+    Returns:
+        ``(scales, mapping)``: ``scales`` keyed by local realization id as a
+        string (what the Pywr-DRB ensemble preprocessor expects) and a frame
+        with columns ``local_id, global_id, sow, u_nominal, k`` aligned to
+        ``spec.realization_indices``; ``(None, None)`` for any ensemble that
+        is not an E_test chunk (staged unscaled, ``k = 1``).
+
+    Raises:
+        FileNotFoundError: If the chunk's parent carries no nominal table
+            (``append_demand_utilization.py`` has not run).
+        KeyError: If a SOW of the chunk is absent from the parent's table.
+    """
+    import json
+
+    import pandas as pd
+
+    from src.ensembles import staged_ensemble_dir
+
+    meta_path = staged_ensemble_dir(spec.inflow_type) / "_meta.json"
+    if not meta_path.exists():
+        return None, None
+    meta = json.loads(meta_path.read_text())
+    if meta.get("kind") != "forcing_pool_chunk":
+        return None, None
+    parent = str(meta["pool_slug"])
+    rpp = int(meta["realizations_per_profile"])
+    gids = [int(g) for g in meta["global_realization_ids"]]
+    table_path = staged_ensemble_dir(parent) / _NOMINAL_UTILIZATION
+    if not table_path.exists():
+        raise FileNotFoundError(
+            f"E_test chunk '{spec.inflow_type}' belongs to '{parent}', which carries no "
+            f"{_NOMINAL_UTILIZATION}: the NYC utilization column has not been appended. "
+            f"Run `python scripts/supplemental/append_demand_utilization.py --variant "
+            f"<variant>` on the parent before staging any chunk's demand series."
+        )
+    table = pd.read_csv(table_path).set_index("sow")
+    rows = []
+    for local in spec.realization_indices:
+        gid = gids[int(local)]
+        sow = gid // rpp
+        if sow not in table.index:
+            raise KeyError(
+                f"SOW {sow} (global realization {gid} of chunk '{spec.inflow_type}') is "
+                f"absent from {table_path}; the parent's table and the chunk disagree."
+            )
+        rows.append({"local_id": int(local), "global_id": gid, "sow": int(sow),
+                     "u_nominal": float(table.at[sow, "u"]), "k": float(table.at[sow, "k"])})
+    mapping = pd.DataFrame(rows)
+    scales = {str(r.local_id): float(r.k) for r in mapping.itertuples(index=False)}
+    return scales, mapping
+
+
+def write_realized_utilization(demand_h5: Path, mapping, out_csv: Path):
+    """Compute each staged realization's realized utilization and persist the table.
+
+    Args:
+        demand_h5: The staged ``diversion_nyc_extrapolated_mgd.hdf5``.
+        mapping: The frame returned by :func:`chunk_demand_scales`.
+        out_csv: Destination (``demand_utilization_realized.csv`` in the chunk dir).
+
+    Returns:
+        The written frame (``global_id, sow, u_nominal, k, u_realized``).
+    """
+    import h5py
+    import pandas as pd
+
+    from src.demand_utilization import realized_utilization
+
+    rows = []
+    with h5py.File(demand_h5, "r") as f:
+        for r in mapping.itertuples(index=False):
+            group = f[str(r.local_id)]
+            idx = pd.to_datetime(group["datetime"][:].astype(str))
+            series = pd.Series(group["aggregate"][:], index=idx, dtype=float)
+            rows.append({"global_id": int(r.global_id), "sow": int(r.sow),
+                         "u_nominal": float(r.u_nominal), "k": float(r.k),
+                         "u_realized": realized_utilization(series)})
+    frame = pd.DataFrame(rows).sort_values("global_id").reset_index(drop=True)
+    frame.to_csv(out_csv, index=False)
+    return frame
 
 
 def _rank_of(use_mpi: bool, comm) -> int:
@@ -74,6 +183,13 @@ def stage_nyc_demand(spec, *, use_mpi: bool = False, comm=None,
     simulation reads (``config.NYC_DEMAND_SOURCE_ENSEMBLE``). Idempotent unless
     ``force``; callable on its own for ensembles whose other step-04 inputs are
     already staged (``scripts/supplemental/stage_nyc_demand.py``).
+
+    For an E_test chunk the series is scaled per SOW before the cap by the
+    utilization axis's ``k`` (:func:`chunk_demand_scales`; the parent must have
+    been appended first, otherwise this fails loudly), and the realized
+    utilization of every realization is written to
+    ``demand_utilization_realized.csv`` beside the HDF5. Every other ensemble
+    is staged unscaled.
 
     Args:
         spec: An :class:`~src.ensembles.EnsembleSpec` with ``is_ensemble=True``
@@ -116,9 +232,16 @@ def stage_nyc_demand(spec, *, use_mpi: bool = False, comm=None,
             print(f"[ensemble_prep:{inflow_type}] NYC demand exists, skipping "
                   f"({out.name})", flush=True)
         return out
+    scales, mapping = chunk_demand_scales(spec)
     if rank == 0:
+        scaled = ""
+        if scales:
+            ks = list(scales.values())
+            scaled = (f" with per-SOW demand scales k in [{min(ks):.3f}, {max(ks):.3f}]"
+                      f" ({mapping['sow'].nunique()} SOWs)")
         print(f"[ensemble_prep:{inflow_type}] staging per-realization NYC demand "
-              f"({len(list(spec.realization_indices))} realizations) ...", flush=True)
+              f"({len(list(spec.realization_indices))} realizations){scaled} ...",
+              flush=True)
     demand_pp = ExtrapolatedDiversionEnsemblePreprocessor(
         loc="nyc",
         flow_type=inflow_type,
@@ -126,10 +249,17 @@ def stage_nyc_demand(spec, *, use_mpi: bool = False, comm=None,
         realization_ids=list(spec.realization_indices),
         use_mpi=use_mpi,
         comm=comm,
+        demand_scales=scales,
     )
     demand_pp.load()
     demand_pp.process()
     demand_pp.save()
+    if mapping is not None and rank == 0:
+        realized = write_realized_utilization(out, mapping, flows_dir / _REALIZED_UTILIZATION)
+        diff = realized["u_realized"] - realized["u_nominal"]
+        print(f"[ensemble_prep:{inflow_type}] realized - nominal u: mean {diff.mean():+.4f}, "
+              f"range [{diff.min():+.4f}, {diff.max():+.4f}] -> {_REALIZED_UTILIZATION}",
+              flush=True)
     return out
 
 

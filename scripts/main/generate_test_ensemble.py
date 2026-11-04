@@ -170,8 +170,12 @@ def main() -> None:
 
     if "profile_shard" not in extra:
         # A shard run stages no global artifacts; the contract is checked serially and post-merge.
-        assert_staged_etest_contract(variant.slug)
-    print(f"[etest] Done. Set NYCOPT_REEVAL_ENSEMBLE_PRESET={variant.slug} for steps 05/08/09/11.")
+        # The NYC utilization column is appended afterwards (append_demand_utilization.py),
+        # so the streamflow contract is checked without it here.
+        assert_staged_etest_contract(variant.slug, require_demand=False)
+    print(f"[etest] Done. Next: python scripts/supplemental/append_demand_utilization.py "
+          f"--variant {variant.name}, then stage the chunks; set "
+          f"NYCOPT_REEVAL_ENSEMBLE_PRESET={variant.reeval_slug} for steps 05/08/09/11.")
 
 
 if __name__ == "__main__":

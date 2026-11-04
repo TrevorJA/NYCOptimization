@@ -62,9 +62,15 @@ before `06` (`historic` skips `02`–`04`); `06`→`extract_runtime_archive.py
 
 `12` (or the sharded pair) builds E_test and is independent of `02`–`07` (it is
 not a scenario design and never enters search). It is followed by
-`supplemental/prep_etest_chunks.sh` (per-chunk step-04 staging; step 04 against
-the parent slug fails by design) and `scripts/supplemental/make_etest_subset.py`
-(the 500-SOW campaign prefix `etest_kn_50yr_n25000_first25ch`). All of that must
+`scripts/supplemental/append_demand_utilization.py --variant kn` (the per-SOW NYC
+entitlement-utilization column `u`, metadata only; step 04 reads the parent's
+`demand_utilization_nominal.csv` when it stages a chunk's demand series, so the
+append precedes the chunk staging), `supplemental/prep_etest_chunks.sh` (per-chunk
+step-04 staging; step 04 against the parent slug fails by design),
+`scripts/supplemental/merge_demand_utilization_realized.py --variant kn` (realized
+versus nominal `u` per SOW) and `scripts/supplemental/make_etest_subset.py`
+(the 500-SOW campaign prefix `etest_kn_50yr_n25000_first25ch`; the staged contract
+refuses an E_test without the utilization keys). All of that must
 run before `05`/`08`/`09`/`11`, which take
 `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` — and `05` must
 use the SAME preset as `08`/`09`, or the status-quo baseline lands under a
@@ -82,6 +88,41 @@ E_test chunk) and `supplemental/stage_nyc_demand.sh` (a design's search
 ensemble, array index = draw; `--preset NAME` for any staged slug) add it
 without repeating the presim pass. NJ demand is the constant 100 MGD Decree
 quantity.
+
+In E_test each SOW's NYC demand series is scaled by `k(u)` of its sampled
+entitlement utilization `u ∈ [0.45, 1.0]` before the 800 MGD monthly-mean cap
+(`src/demand_utilization.py`; `docs/notes/methods/forcing_parameterization.md`,
+"Demand-utilization axis"); `k(u)` comes from the calibration table that
+`scripts/supplemental/demand_utilization_calibration.py` writes under
+`outputs/diagnostics/demand_utilization/`, and the per-SOW `u` and `k` from the
+parent's `demand_utilization_nominal.csv` written by
+`scripts/supplemental/append_demand_utilization.py --variant kn`. Chunk staging
+(step 04 or `stage_nyc_demand_etest_chunks.sh`) writes each chunk's realized
+`demand_utilization_realized.csv`, which
+`scripts/supplemental/merge_demand_utilization_realized.py --variant kn` merges
+into the parent directory. Search ensembles run the unscaled series (`k = 1`).
+Order of operations on Anvil for an already-staged E_test:
+
+1. Pull `NYCOptimization`, `Pywr-DRB` and `NYCOptimization_scenario_generation`.
+2. `python scripts/supplemental/demand_utilization_calibration.py` (seconds).
+3. `python scripts/supplemental/append_demand_utilization.py --variant kn`
+   (metadata only, seconds), then
+   `python -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000 --force`
+   for `etest_kn_50yr_n25000_first25ch`.
+4. `sbatch workflow/supplemental/stage_nyc_demand_etest_chunks.sh` (50 tasks; about
+   1.3 s per 10-yr realization on one rank locally, so a few minutes per
+   500-realization chunk on 33 ranks), then
+   `python scripts/supplemental/merge_demand_utilization_realized.py --variant kn`.
+5. Re-run the current-FFMP baseline cube (step 09 with
+   `NYCOPT_CHUNK_POLICIES=baseline`, about 66 SU); the stored cube predates the
+   demand change.
+6. Re-run the satisficing-threshold diagnostic and the criteria re-anchoring on the
+   new baseline cube (`docs/notes/methods/robustness_threshold_diagnostics.md`).
+
+Re-evaluation cost per policy is unchanged (demand is a parameter lookup) and no
+streamflow is regenerated. For an E_test generated fresh, the append step sits
+between the merge and `prep_etest_chunks.sh`, which then stages the scaled series
+itself.
 
 ## Building a design's search ensemble (02–04)
 

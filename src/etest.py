@@ -17,6 +17,13 @@ The constants live here only, env-overridable. E_test needs no
 ``src.ensembles.PRESETS`` entry: ``_spec_from_staged_dir`` resolves any staged
 slug carrying a ``_meta.json``; the prefix subset is staged by
 ``scripts/supplemental/make_etest_subset.py`` without copying data.
+
+E_test carries a fourth deeply uncertain factor beside the three climate
+amplitudes: the NYC entitlement utilization ``u`` (``src.demand_utilization``),
+one Latin hypercube column per SOW appended to the staged metadata by
+``scripts/supplemental/append_demand_utilization.py`` and realized through a
+per-SOW demand scale when each chunk's NYC demand series is staged. The staged
+contract (:func:`assert_staged_etest_contract`) refuses an E_test without it.
 """
 
 from __future__ import annotations
@@ -29,6 +36,12 @@ from pathlib import Path
 
 from scengen.seeds import design_seed
 
+from src.demand_utilization import (
+    DEMAND_SCALE_MAX,
+    DEMAND_UTILIZATION_BOUNDS,
+    NPZ_KEYS as DEMAND_NPZ_KEYS,
+    PROVENANCE_KEYS as DEMAND_PROVENANCE_KEYS,
+)
 from src.scenario_designs import SCENARIO_YEARS, SEED_ROOT
 
 ###############################################################################
@@ -312,7 +325,7 @@ def assert_etest_contract() -> None:
 assert_etest_contract()
 
 
-def assert_staged_etest_contract(slug: str) -> dict:
+def assert_staged_etest_contract(slug: str, *, require_demand: bool = True) -> dict:
     """Verify a STAGED E_test directory records the construction it claims.
 
     The registry can be right and the staged artifact still wrong (a stale directory generated
@@ -320,19 +333,29 @@ def assert_staged_etest_contract(slug: str) -> dict:
     R = 1). Both failures are silent at re-eval time and would quietly void the SOW-unit metric, so
     the generator calls this immediately after staging.
 
+    With ``require_demand`` (the default, what every re-evaluation-side caller
+    wants) the staged metadata must also carry the NYC utilization column of
+    ``scripts/supplemental/append_demand_utilization.py`` at the registry's
+    bounds; the streamflow generator and the hazard-image pass, which run
+    before that step, pass ``require_demand=False``.
+
     Args:
         slug: Staged-ensemble slug.
+        require_demand: Also require the utilization keys in the npz and meta.
 
     Returns:
         The parsed ``_meta.json``.
 
     Raises:
         FileNotFoundError: If the slug is not staged.
-        AssertionError: If the staged meta is not an LHS x R>1 forcing design.
+        AssertionError: If the staged meta is not an LHS x R>1 forcing design, or
+            (with ``require_demand``) lacks the utilization column or records
+            other utilization bounds.
     """
     from src.ensembles import staged_ensemble_dir
 
-    meta_path = Path(staged_ensemble_dir(slug)) / "_meta.json"
+    staged_dir = Path(staged_ensemble_dir(slug))
+    meta_path = staged_dir / "_meta.json"
     if not meta_path.exists():
         raise FileNotFoundError(f"E_test '{slug}' is not staged ({meta_path} missing).")
     meta = json.loads(meta_path.read_text())
@@ -362,7 +385,85 @@ def assert_staged_etest_contract(slug: str) -> dict:
             f"{expected!r} (E_TEST_VOLUME_MULTIPLIER_MIN={E_TEST_VOLUME_MULTIPLIER_MIN}). The staged "
             f"flows were generated over another forcing box; regenerate rather than reuse them."
         )
+    if require_demand:
+        _assert_demand_utilization_staged(slug, staged_dir, meta)
     return meta
+
+
+def _assert_demand_utilization_staged(slug: str, staged_dir: Path, meta: dict) -> None:
+    """Require the utilization column and its provenance in a staged E_test.
+
+    Checks ``forcing_profiles.npz`` for the per-realization keys and the scalar
+    provenance, ``_meta.json`` for the same provenance, the recorded bounds and
+    scale cap against the registry, every ``u`` inside the bounds, and the
+    SOW-major repeat structure (one value per SOW, repeated R times).
+    """
+    import numpy as np
+
+    fix = ("Run `python scripts/supplemental/append_demand_utilization.py --variant "
+           "<variant>` on the parent E_test, then rebuild any prefix subset with "
+           "make_etest_subset.py --force.")
+    npz_path = staged_dir / "forcing_profiles.npz"
+    assert npz_path.exists(), (
+        f"Staged E_test '{slug}' has no forcing_profiles.npz, so it cannot carry the NYC "
+        f"utilization column. {fix}"
+    )
+    with np.load(npz_path, allow_pickle=True) as z:
+        missing = [k for k in DEMAND_NPZ_KEYS + DEMAND_PROVENANCE_KEYS if k not in z.files]
+        assert not missing, (
+            f"Staged E_test '{slug}' lacks the NYC utilization keys {missing} in "
+            f"forcing_profiles.npz; the fourth deeply uncertain factor was never appended. {fix}"
+        )
+        n = int(len(z["realization_ids"]))
+        rpp = int(z["realizations_per_profile"])
+        u = np.asarray(z["demand_utilization"], dtype=float)
+        k = np.asarray(z["demand_scale_k"], dtype=float)
+        clipped = np.asarray(z["demand_scale_clipped"], dtype=bool)
+        npz_bounds = [float(b) for b in np.asarray(z["demand_utilization_bounds"]).ravel()]
+        npz_kmax = float(z["demand_scale_max"])
+    for name, arr in (("demand_utilization", u), ("demand_scale_k", k),
+                      ("demand_scale_clipped", clipped)):
+        assert arr.shape == (n,), (
+            f"Staged E_test '{slug}': {name} has shape {arr.shape}, expected ({n},) (one value "
+            f"per realization, SOW values repeated R={rpp} times). {fix}"
+        )
+    lo, hi = DEMAND_UTILIZATION_BOUNDS
+    meta_missing = [k for k in DEMAND_PROVENANCE_KEYS if k not in meta]
+    assert not meta_missing, (
+        f"Staged E_test '{slug}' _meta.json lacks the utilization provenance {meta_missing}. {fix}"
+    )
+    meta_bounds = [float(b) for b in meta["demand_utilization_bounds"]]
+    for where, bounds in (("forcing_profiles.npz", npz_bounds), ("_meta.json", meta_bounds)):
+        assert len(bounds) == 2 and abs(bounds[0] - lo) < 1e-9 and abs(bounds[1] - hi) < 1e-9, (
+            f"Staged E_test '{slug}' records demand_utilization_bounds={bounds} in {where}, but "
+            f"the registry expects {list(DEMAND_UTILIZATION_BOUNDS)}. The column was drawn over "
+            f"another utilization range; re-append rather than reuse it (NYCOPT_FORCE=1). {fix}"
+        )
+    for where, kmax in (("forcing_profiles.npz", npz_kmax),
+                        ("_meta.json", float(meta["demand_scale_max"]))):
+        assert abs(kmax - DEMAND_SCALE_MAX) < 1e-9, (
+            f"Staged E_test '{slug}' records demand_scale_max={kmax} in {where}, expected "
+            f"{DEMAND_SCALE_MAX}. {fix}"
+        )
+    assert np.all(np.isfinite(u)) and u.min() >= lo - 1e-9 and u.max() <= hi + 1e-9, (
+        f"Staged E_test '{slug}': demand_utilization spans [{u.min()}, {u.max()}], outside the "
+        f"registry bounds {DEMAND_UTILIZATION_BOUNDS}. {fix}"
+    )
+    assert np.all(np.isfinite(k)) and k.min() > 0.0 and k.max() <= DEMAND_SCALE_MAX + 1e-9, (
+        f"Staged E_test '{slug}': demand_scale_k spans [{k.min()}, {k.max()}], outside "
+        f"(0, {DEMAND_SCALE_MAX}]. {fix}"
+    )
+    if rpp > 1 and n % rpp == 0:
+        blocks = u.reshape(n // rpp, rpp)
+        assert np.all(blocks == blocks[:, :1]), (
+            f"Staged E_test '{slug}': demand_utilization is not constant within each SOW's R={rpp} "
+            f"realizations; the column is one value per SOW. {fix}"
+        )
+    assert str(meta.get("demand_utilization_seed_domain", "")).endswith(":demand"), (
+        f"Staged E_test '{slug}' records demand_utilization_seed_domain="
+        f"{meta.get('demand_utilization_seed_domain')!r}; expected the variant's reserved "
+        f"'etest:*:demand' stream. {fix}"
+    )
 
 
 def _axis_bounds_match(recorded: dict, expected: dict, tol: float = 1e-9) -> bool:

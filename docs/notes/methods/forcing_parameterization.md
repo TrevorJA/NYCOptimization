@@ -3,7 +3,9 @@
 The climate forcing space is parameterized by an **interpretable low-order harmonic model** of
 the monthly change factor, sampled as a **deeply-uncertain (DMDU) hypercube** whose bounds are
 taken from the CMIP6 ensemble. It enters the study only through the held-out re-evaluation
-ensemble E_test (every campaign search design is stationary; manuscript SI Text S6). **Evidence /
+ensemble E_test (every campaign search design is stationary; manuscript SI Text S6); E_test also
+carries one non-climate factor, the NYC entitlement utilization `u` ("Demand-utilization axis"
+below). **Evidence /
 figures:** `outputs/diagnostics/forcing_parameterization/` (gitignored, regenerable):
 `SI_harmonic_fit.png`, `SI_harmonic_param_space.png`, `SI_harmonic_lhs_sampling.png`,
 `SI_harmonic_best_worst_fits.png`, `SI_harmonic_monthly_flow_comparison.png`, `cmip6_harmonic_params.csv`.
@@ -142,6 +144,92 @@ essentially unchanged (0.88–1.20×) and all three flood-axis spans *contract* 
 ~0.2 control-spans), because the CMIP6 envelope reduces CV in the winter/spring flood season. Three
 extra DU dimensions would therefore dilute LHS stratification without adding stress coverage. The
 axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitivity.
+
+## Demand-utilization axis
+
+E_test carries one non-climate factor beside the three climate amplitudes: the **NYC entitlement
+utilization** `u`, the average fraction of the 800 MGD Decree allocation that NYC calls on in a state
+of the world. Implementation: `src/demand_utilization.py`; Pywr-DRB
+`ExtrapolatedDiversionPreprocessor.demand_scale`; staging `src/ensemble_prep.py::stage_nyc_demand`.
+
+**Definition and range.** `u ∈ [0.45, 1.0]`. The floor sits just below the lowest River Master year on
+record (378 MGD in 2005-06 and 2018-19, u = 0.47); the ceiling is the legal cap, and nothing above 1.0
+is admissible: demand growth above the Decree allocation is excluded by law, and what is deeply
+uncertain is how much of the entitlement NYC uses. The River Master record brackets realized
+utilization at 0.47 to 0.83 of the entitlement (378 to 667 MGD) over 2000 to 2026.
+
+**Sampling.** One Latin hypercube column appended to the 1,000-point climate design: one value per SOW
+in SOW order `p = 0..999`, drawn with `scipy.stats.qmc.LatinHypercube(d=1, scramble=True)` and scaled
+to the range, seeded by `design_seed(SEED_ROOT, "etest:kn:demand", 0)` (the reserved domain
+`etest:kn:demand` of `scengen.seeds.SEED_DOMAINS`). An independent stratified column keeps the joint
+four-factor design `(m, r₁, r₂, u)` a Latin hypercube, so no streamflow is regenerated; the 500-SOW
+prefix subset inherits the first 500 values. The column lives beside `theta_params` in
+`forcing_profiles.npz` (per-realization keys `demand_utilization`, `demand_scale_k`,
+`demand_scale_clipped`, each value repeated `realizations_per_profile` times like `theta_params`,
+plus the provenance scalars `demand_utilization_bounds`, `demand_utilization_seed`,
+`demand_scale_max`, `demand_calibration_sha256`, which the parent and every chunk `_meta.json` also
+carry), never inside `theta_params`, and in `demand_utilization_nominal.csv` (`sow, u, k, clipped`)
+of the parent E_test directory. `scripts/supplemental/append_demand_utilization.py --variant kn`
+writes all of it (idempotent; it refuses an already-appended slug unless `NYCOPT_FORCE=1`), and
+`assert_staged_etest_contract` refuses a staged E_test whose npz or meta lacks the keys or records
+other bounds.
+
+**Mechanism: scale, then cap.** `u` is applied through a multiplicative scale `k(u)` on each
+realization's whole regression-structured demand series, regression predictions and residual draws
+alike, so the seasonal shape, the flow elasticity and the coefficient of variation of the series are
+preserved; the 800 MGD monthly-mean cap is enforced after scaling (Pywr-DRB
+`ExtrapolatedDiversionPreprocessor.demand_scale`, per realization through the ensemble class's
+`demand_scales`; the applied scale is stored as `demand_scale` beside `aggregate` in
+`diversion_nyc_extrapolated_mgd.hdf5`). The cap is never applied first. When step 04 (or
+`workflow/supplemental/stage_nyc_demand_etest_chunks.sh`) stages a chunk, it reads the parent's
+`demand_utilization_nominal.csv`, maps each local realization to its global id and SOW
+(`global_id // realizations_per_profile`), and passes that SOW's `k`; every other ensemble is staged
+at `k = 1`.
+
+**Calibration of `k(u)`.** The regressions' flow covariate is one quantity everywhere: the sum of
+the inflows at the three NYC reservoir nodes of the flow record, trained on the model's inflow
+reconstruction (`pub_nhmv10_BC_withObsScaled`) over the River Master record, applied to that same
+reconstruction for the historic series and to each synthetic realization's own inflows, so the
+historic and the ensemble demand series sit at the same utilization level
+(`demand_covariate_diagnostics.md`). `u` is the nominal utilization on the reference record, the
+reconstruction. The uncapped historic extrapolation (1945 to 2023, deterministic seeded draws) is
+generated once, and for a dense grid of `k` from 0.3 to 6.0, `u(k) = mean(cap₈₀₀(k · D_ref)) / 800` with the monthly-mean cap.
+The monotone table is inverted by a shape-preserving PCHIP interpolant to give `k(u)`; `k` is clipped
+at `k_max = 6.0` (`u = 0.998`) with a recorded clipped flag, and `u = 1.0` is the flat-800 limit.
+Measured on the reconstruction record: `k = 0.8 → u = 0.55`, `1.0 → 0.68`, `1.2 → 0.79`, `1.5 → 0.90`,
+`2.0 → 0.96`, `3.0 → 0.99`, `6.0 → 0.998`. The table
+(`outputs/diagnostics/demand_utilization/demand_utilization_calibration.csv`, written by
+`scripts/supplemental/demand_utilization_calibration.py` in seconds; regenerable, gitignored) is the
+single source of `k(u)`, its sha256 is recorded in the E_test metadata, and `k_from_u` fails if it is
+missing. SI figure `figS12_demand_utilization_calibration` shows `u(k)` and the implied monthly
+climatology at `u ∈ {0.45, 0.7, 0.9, 1.0}`.
+
+**Realized versus nominal.** Realized utilization differs from nominal by design. The quarterly
+regressions slope downward in every season (−209 / −126 / −127 / −113 MGD per unit ln inflow for
+DJF / MAM / JJA / SON; R² 0.33 / 0.27 / 0.52 / 0.36), so dry SOWs realize a few percentage points
+above nominal, and the stochastic residual draws add scatter. The coupling is kept: the realized `u`
+of each realization (mean over complete June–May FFMP years / 800, the objectives' unit) is written to
+`demand_utilization_realized.csv` in its chunk directory at staging, merged into the parent directory
+per realization and per SOW by `scripts/supplemental/merge_demand_utilization_realized.py --variant
+kn`, reported as a diagnostic (`figS14_demand_utilization_realized`), and never forced to equal
+nominal.
+
+**Why `u ≤ 1` and why search stays at `k = 1`.** Demand above the Decree allocation is excluded by
+law, so the axis is a utilization of a fixed entitlement, not a growth factor. Only E_test carries it.
+Every search ensemble runs the unscaled series, whose nominal utilization on the reference record is
+about 0.68, so the design comparison tests generalization from the model's stationary demand level
+to the full utilization range in both directions. The factor reaches the objectives through the NYC
+delivery entitlement `min(demand, allowance)` (`objective_definitions.md` §0): the FFMP writes its
+curtailments against the allocation, so the drought-protection value of the curtailment variables
+scales with `u`.
+
+**Analysis plumbing.** `src/factor_mapping.py::theta_features` returns `(em, r1, r2, u)` for an
+appended E_test; `reeval_raw_meta.json` records `sow_demand_utilization`; step 10 writes
+`design_rescoring_by_utilization_band.csv` (bands `u < 0.6`, `0.6 ≤ u < 0.8`, `u ≥ 0.8`) and
+`design_regret_by_utilization.csv` (ten equal-width bins; per-objective regret and gain against the
+current FFMP policy, the analysis that shows how much of any re-optimization gain is contingent on
+demand); SI figures `figS13_demand_utilization_sampling` (the `(e^m, u)` and `(r₁, u)` planes with
+the box) and `figS15_regret_vs_utilization` (`src/figures/registry.py`).
 
 ## Validation and limitations
 
