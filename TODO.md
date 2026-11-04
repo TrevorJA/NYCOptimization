@@ -285,10 +285,47 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   `extract_runtime_archive.py --merge --install` (installs `ffmp_obj8_merged.set`,
   the step-08/09 reference) and step 07 (coordinator-archive diagnostics; writes
   only `ffmp_obj8_diagnostics_reference.set`, either order).
-- [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b on `shared`, 16 ranks × 8 cpus,
-  batch 50, `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` on every
+- [ ] **[HPC]** Vet the step-09 re-evaluation geometry before any 09 submission
+  (desk assessment 2026-11-04, not yet verified on the cluster; implement or reject).
+  The documented layout (`shared`, 16 ranks × 8 cpus, batch 50: 09 header comment,
+  `workflow/envs/README.md` campaign line, `campaign_design.md` §5, the `ANVIL_NOTES.md`
+  rule of thumb) bills 8 cores per single-threaded rank (`nycopt_pin_threads` sets
+  OMP = 1; the pywr solve is serial), so 7 of every 8 billed cores idle. One
+  (policy, chunk) unit is 500 realizations × 50 yr = 25,000 scenario-years; the
+  trimmed-model cost surface
+  (`outputs/supplemental/ensemble_cost_experiment/tables/cost_surface.csv`, ~0.17 s per
+  scenario-year at N = 50, × 1.01–1.17 packing slowdown from
+  `anvil_scaling_experiment/tables/packing_summary.csv`) prices it at 62–72 core-min,
+  so 16 × 8 costs ~8.3 SU per unit (~415k SU at the 2,000-policy cap), not the
+  1.33 SU per unit / 33 SU per policy that `campaign_design.md` §6, `ANVIL_NOTES.md`
+  and the next item record. That measured figure is consistent only with dense
+  packing (the `--nodes=8 --ntasks-per-node=128` submission the 09 header comment still
+  describes); no per-unit wall-time log from the 16 measured jobs is on hand, so
+  confirm from one. The dense-packing OOM in `ANVIL_NOTES.md` is the batch, not the
+  rank count: batch 50 × 50 yr = 2,500 scenario-years per rank ≈ 1.5–1.8 GB
+  (`cost_surface.csv` neighbors 1.3–2.0 GB; `config.search_rank_rss_mb` 1.83),
+  × 128 ranks = 190–235 GB against the 217 GB line. Per-rank memory is bounded by
+  the batch, not the chunk (pywrdrb `FlowEnsemble` reads only the requested
+  realization columns; `run_simulation_ensemble_batched` frees each batch before the
+  next), and the per-model-run overhead (~5 s, `batch_summary.csv`) is 1–2 % at
+  batch 20–25. Proposed: 128 ranks per node on `wholenode` (8 nodes, 48 h) with
+  `NYCOPT_SEARCH_REALIZATION_BATCH=20–25` (~1.0–1.2 GB per rank, 140–155 GB per node;
+  ~1.25 SU per unit, ~62k SU at the cap, ~2.5 days per 8-node pass) and
+  `NYCOPT_CHUNK_UNIT_SECONDS=4500` so the wall guard (`NYCOPT_CHUNK_STOP_EPOCH`,
+  inert while `CHUNK_UNIT_SECONDS` is 0) stops a rank before a 60–75 min unit is
+  cut. Fallbacks: 96 × 1 batch 25 (~1.2–1.6 SU per unit), 64 × 2 batch 50
+  (~2.4). Vet by a one-node smoke on the subset preset: 128 ranks, batch 25, ~12
+  policies (`NYCOPT_CHUNK_POLICIES`), read `elapsed_s` and `rss_gb` from the
+  `chunk_reeval` per-unit lines; go if peak rank RSS ≤ ~1.5 GB and node RSS ≤ 217 GB,
+  otherwise 96 ranks or batch 20. Note `nycopt_check_memory` is not called by 09 and
+  sizes from the search spec anyway. Whichever geometry is adopted: re-derive the
+  SU-per-policy line from the smoke, fix the four records above, and re-check the
+  ~66 SU current-policy cube lines (§0 B, §2) that carry the same per-unit basis.
+- [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b at the geometry settled by the
+  item above (documented: `shared`, 16 ranks × 8 cpus, batch 50),
+  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` on every
   05/08/09/09b/10 line (deliberately not in the env files). ~66k SU at the
-  2,000-policy cap.
+  2,000-policy cap on the 33 SU-per-policy basis.
 - [ ] **[HPC]** Post-processing on the 500-SOW cube: steps 10, 13 and 14, the criteria
   re-anchoring audit (`criteria_reanchoring.py`), and the θ-subsample stability
   check (250 vs 500 SOWs).
