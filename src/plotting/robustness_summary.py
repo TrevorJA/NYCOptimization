@@ -52,10 +52,11 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
         binding objective).
     """
     from src.robustness import load_raw
+    from src.reeval_core import find_incumbent_cube
 
     reeval_dir = Path(reeval_dir)
     raw = load_raw(reeval_dir)
-    base = load_raw(reeval_dir / "baseline")
+    base = load_raw(find_incumbent_cube(reeval_dir))
 
     multi, uni = _sow_satisficing(raw)
     b_multi, b_uni = _sow_satisficing(base)

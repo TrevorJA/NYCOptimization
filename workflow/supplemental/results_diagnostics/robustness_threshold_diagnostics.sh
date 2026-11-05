@@ -19,8 +19,8 @@
 # tables + figures under outputs/supplemental/robustness_threshold_diagnostics/.
 #
 # Prerequisites:
-#   outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n12500/baseline/
-#       (step 10 with NYCOPT_CHUNK_POLICIES=baseline on E_test, historic env)
+#   outputs/baseline/reeval/etest_kn_50yr_n12500/
+#       (step 10 with NYCOPT_CHUNK_POLICIES=baseline on E_test, once for all designs)
 #   outputs/baseline/ffmp_baseline.hdf5          (run_baseline.py, historic)
 #   outputs/synthetic_ensembles/etest_kn_50yr_n12500/forcing_profiles.npz
 #

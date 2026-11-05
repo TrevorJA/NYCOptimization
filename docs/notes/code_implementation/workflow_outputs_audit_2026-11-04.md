@@ -477,3 +477,11 @@ numbers were renumbered mechanically but whose meaning had moved with F11 and
 the new step 08, in `compare_designs.py`, `robustness.py`, `scenario_discovery.py`,
 the epsilon re-filter scripts, two tests and four docs). The one item left is a
 dated 2026-10-23 log entry in `ANVIL_NOTES.md` that records pre-move paths.
+
+Follow-up (2026-11-04): the per-design incumbent cube convention adopted by the
+500-SOW commits meant three identical ~33 SU simulations. The cube now lives
+once per E_test tag at `outputs/baseline/reeval/{tag}/`
+(`src.reeval_core.incumbent_cube_dir`); every reader resolves it through
+`find_incumbent_cube` (explicit `NYCOPT_REEVAL_BASELINE_DIR`, then a legacy
+per-run `baseline/` leaf, then the shared location), so O3's original
+proposal stands after all.

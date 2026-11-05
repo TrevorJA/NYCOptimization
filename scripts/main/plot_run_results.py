@@ -44,6 +44,7 @@ import numpy as np
 import pandas as pd
 
 from config import FIGURES_DIR, baseline_objectives_csv
+from src.reeval_core import find_incumbent_cube
 from src.pareto_filter import filter_reference_set
 
 
@@ -165,7 +166,7 @@ def fig_du_distributions(reeval_dir, filt, out_dir):
     and the satisficing threshold. The raw-magnitude co-report (Huang 2025)."""
     import json
     opt = _load_reeval_long(reeval_dir)
-    base = _load_reeval_long(reeval_dir / "baseline")
+    base = _load_reeval_long(find_incumbent_cube(reeval_dir) or reeval_dir / "baseline")
     if opt is None:
         print("[fig3] no optimized reeval"); return
     meta = json.loads((reeval_dir / "reeval_raw_meta.json").read_text())

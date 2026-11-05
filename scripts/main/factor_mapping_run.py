@@ -58,6 +58,7 @@ import config  # noqa: E402
 from src import factor_mapping as fm  # noqa: E402
 from src import results_data as rd  # noqa: E402
 from src import robustness as rob  # noqa: E402
+from src.reeval_core import find_incumbent_cube  # noqa: E402
 from src.satisficing_criteria import NAMED_SETS, criterion_by_key  # noqa: E402
 
 
@@ -219,7 +220,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
             # appears: regret is defined against it, so its own label is zero
             # in every SOW by construction.
             if res.incumbent is not None and not cset.reference:
-                base = rob.load_raw(res.path / "baseline")
+                base = rob.load_raw(find_incumbent_cube(res.path))
                 R = fm.regret_matrix(res.raw, base, axes=cset.axes)  # (S, G)
 
                 # (1) the fig-8 selected policy, and (2) the policy this

@@ -27,7 +27,7 @@ wrappers on 2026-11-04: `staging/etest_demand_utilization.sh`, `staging/etest_cu
 E_test is 500 SOWs only (decision 2026-11-04): `etest_kn_50yr_n12500`, cut as the
 leading 25 chunks of the staged 1,000-SOW design (`etest_kn_50yr_n25000`, kept on disk
 as that parent only); every re-evaluation, diagnostic and figure reads the E_test slug,
-the baseline cube is computed per design on E_test itself, and the manuscript states
+the incumbent cube is computed once on E_test itself (`outputs/baseline/reeval/{tag}/`), and the manuscript states
 500 SOWs without the parent.
 
 Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_production.env`):
@@ -66,13 +66,13 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
   The realization-level `hazard_image.npz` E_test inherits from the parent at the cut
   stays on the retired 8-axis scoring; only the exploratory scenario discovery reads it (rescore
   before any scenario-discovery run).
-- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.2; once per design env,
-  ~33 SU each at the measured unit cost; geometry per the step-10 vet item in Section 2):
-  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=<env>,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/10_simulate_test_chunks.sh`
-  for `$H` and both matched-design envs (in-job merge; a baseline-policy run lands in
-  `outputs/{design}/ffmp_obj8/reeval/etest_kn_50yr_n12500/baseline/`, the leaf the regret
-  family of that design's step-10 policy run reads; no symlinks, no cross-design
-  staging). `RTD_REEVAL_BASELINE_DIR` already names the historic copy.
+- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.2; ONCE, ~33 SU at the
+  measured unit cost; geometry per the step-10 vet item in Section 2):
+  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/10_simulate_test_chunks.sh`
+  (in-job merge; the cube is design-independent and lands in
+  `outputs/baseline/reeval/etest_kn_50yr_n12500/`, which every design's step-11
+  scoring and every diagnostic resolve through `reeval_core.find_incumbent_cube`;
+  `RTD_REEVAL_BASELINE_DIR` names the same path).
 - [ ] **[HPC] 4. Historic step-06 baseline** (objective anchor; the cube above replaces
   the former `--reeval` leg, now opt-in via `NYCOPT_BASELINE_REEVAL=1`):
   `sbatch --export=ALL,NYCOPT_ENV_FILE=$H workflow/06_run_baseline.sh`
@@ -102,10 +102,8 @@ complete as of that date.
 **Unaffected (do not redo).** Everything that is streamflow-only: the P = 10⁶
 pools and smoke pools, the hazard images and step-03 selections, the HF design
 metrics, the hazard-axis selection, the persistence and CV-axis diagnostics, the
-dry-envelope diagnostic, the forcing-space figures, and the step-01 single-trace presim
-(the non-NYC STARFIT releases do not depend on NYC demand; verified current 2026-11-04).
-E_test IS reused: the 0.80 annual-volume extension of `3ddc64b` was reverted on
-2026-11-04 and the 2026-08-19 staging over the 0.866 box is the campaign E_test (rerun
+dry-envelope diagnostic, the forcing-space figures, and the step-01 single-trace presim (the non-NYC STARFIT releases do not depend on NYC demand; verified current 2026-11-04).
+E_test IS reused: the 0.80 annual-volume extension of `3ddc64b` was reverted on 2026-11-04 and the 2026-08-19 staging over the 0.866 box is the campaign E_test (rerun
 chain, item 2). The measured search
 cost basis (21,850 SU per N = 100 / 500k) also stands: demand is a parameter
 lookup; confirm from seed 1 rather than re-measure. The search ε vector is fixed
@@ -141,7 +139,7 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
   matched design's d0 baseline at N = 300 (with the §2 staging). Every pre-2026-11-04
   baseline is in `archive/2026-11-04_pre_demand_update/outputs/baseline/`.
 - [ ] **[HPC]** Current-FFMP E_test baseline cube: step 10 with
-  `NYCOPT_CHUNK_POLICIES=baseline` on E_test under each design env (~33 SU each;
+  `NYCOPT_CHUNK_POLICIES=baseline` on E_test, once for all designs (~33 SU;
   rerun chain item 3), after the §A demand staging so the cube carries the
   per-SOW utilization scaling. The old cubes are archived
   (`.../outputs/historic/ffmp_obj8_mm_full/reeval/`).

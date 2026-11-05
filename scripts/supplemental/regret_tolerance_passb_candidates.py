@@ -33,7 +33,8 @@ import pandas as pd
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
-import src.robustness as rob                                        # noqa: E402
+import src.robustness as rob
+from src.reeval_core import find_incumbent_cube                                        # noqa: E402
 import supplemental_config as sc                                    # noqa: E402
 from src.etest import campaign_reeval_preset                        # noqa: E402
 
@@ -72,7 +73,7 @@ class DesignCube:
              / REEVAL_TAG)
         self.design = design
         self.raw = rob.load_raw(p)
-        self.base = rob.load_raw(p / "baseline")
+        self.base = rob.load_raw(find_incumbent_cube(p))
         self.D = rob.incumbent_advantage(self.raw, self.base)      # (S, G, M)
         self.finite = np.isfinite(self.D)
         self.names = list(self.raw.obj_names)

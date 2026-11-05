@@ -16,7 +16,9 @@ slug, or staged directory with a ``_meta.json``). Outputs are written under
 """
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 
 import numpy as np
 
@@ -69,6 +71,44 @@ def reeval_output_dir(scenario: str, slug: str, spec, seed=None):
         d = d / f"seed_{seed:02d}"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+_CUBE_FILES = ("reeval_raw_meta.json", "reeval_raw.parquet", "reeval_raw.csv.gz")
+
+
+def incumbent_cube_dir(reeval_dir) -> Path:
+    """Canonical home of the current FFMP policy's cube on one E_test tag:
+    ``outputs/baseline/reeval/{tag}/``.
+
+    The cube is design-independent (one policy on the common ensemble), so
+    step 10 with ``NYCOPT_CHUNK_POLICIES=baseline`` simulates it ONCE, under any
+    design's env file, and every design's scoring reads it from here. ``tag``
+    is taken from ``reeval_dir`` (``.../reeval/{tag}[/seed_NN]``).
+    """
+    from config import OUTPUT_BASELINE_DIR
+    d = Path(reeval_dir)
+    tag = d.parent.name if d.name.startswith("seed_") else d.name
+    return OUTPUT_BASELINE_DIR / "reeval" / tag
+
+
+def find_incumbent_cube(reeval_dir) -> Path | None:
+    """The incumbent cube to score ``reeval_dir`` against, or ``None``.
+
+    Resolution: ``NYCOPT_REEVAL_BASELINE_DIR``, then a per-run
+    ``reeval/{tag}/baseline/`` leaf (cubes written before the shared location
+    existed), then :func:`incumbent_cube_dir`. A directory counts when it holds
+    a persisted cube; ``reeval_dir`` itself never does (the incumbent run has no
+    incumbent).
+    """
+    d = Path(reeval_dir)
+    env = os.environ.get("NYCOPT_REEVAL_BASELINE_DIR", "").strip()
+    candidates = ([Path(env)] if env else []) + [d / "baseline", incumbent_cube_dir(d)]
+    for c in candidates:
+        if c.resolve() == d.resolve():
+            continue
+        if any((c / f).exists() for f in _CUBE_FILES):
+            return c
+    return None
 
 
 def reeval_obj_names() -> list:

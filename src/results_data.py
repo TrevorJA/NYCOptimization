@@ -28,6 +28,7 @@ import pandas as pd
 
 import config
 from src import robustness as rob
+from src.reeval_core import find_incumbent_cube
 from src.plotting.style import DESIGN_ORDER
 
 
@@ -79,8 +80,8 @@ def load_design_results(
         scorecard = pd.read_csv(leaf / "robustness_scorecard.csv",
                                 index_col="solution_id")
         incumbent = None
-        baseline_dir = leaf / "baseline"
-        if (baseline_dir / "reeval_raw_meta.json").exists():
+        baseline_dir = find_incumbent_cube(leaf)
+        if baseline_dir is not None:
             incumbent = rob._aligned_baseline(raw, rob.load_raw(baseline_dir))
         out[design] = DesignResults(design, leaf, raw, scorecard, incumbent)
     return out

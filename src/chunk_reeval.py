@@ -325,19 +325,15 @@ def _persist_and_score(
     persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions, seed)
 
     # Pass the status-quo re-eval matrix if a baseline-policy run (step 10 with
-    # NYCOPT_CHUNK_POLICIES=baseline, or step 06 --reeval) staged one under this
-    # same reeval tag. Without it the incumbent-relative regret family warns and
-    # is silently dropped.
+    # NYCOPT_CHUNK_POLICIES=baseline, simulated once per E_test tag) exists for
+    # this tag. Without it the incumbent-relative regret family warns and is
+    # silently dropped.
     from config import REEVALUATION_SETTINGS
+    from src.reeval_core import find_incumbent_cube
 
-    baseline_dir = reeval_dir / "baseline"
-    has_baseline = any(
-        (baseline_dir / f).exists()
-        for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")
-    )
     robustness.run(
         reeval_dir,
-        baseline_dir=baseline_dir if has_baseline else None,
+        baseline_dir=find_incumbent_cube(reeval_dir),
         metrics=tuple(REEVALUATION_SETTINGS["robustness_metrics"]),
     )
     return reeval_dir
@@ -502,8 +498,9 @@ def _resolve_campaign(formulation: str, seed, reeval_dir: Path | None,
         reeval_dir = reeval_output_dir(active_scenario_name(), derive_slug(formulation),
                                        test_spec, seed)
         if baseline_policy:
-            reeval_dir = reeval_dir / "baseline"
-            reeval_dir.mkdir(exist_ok=True)
+            from src.reeval_core import incumbent_cube_dir
+            reeval_dir = incumbent_cube_dir(reeval_dir)   # shared across designs
+            reeval_dir.mkdir(parents=True, exist_ok=True)
     return obj_set, test_spec, chunks, n_sow, r_per_sow, Path(reeval_dir)
 
 
@@ -522,8 +519,10 @@ def simulate_test_chunks(
         realization_batch: Realizations per within-chunk simulation batch (default
             ``config.SEARCH_REALIZATION_BATCH``).
         reeval_dir: Output dir (default ``reeval_output_dir`` under the test ensemble's re-eval tag).
-        baseline_policy: ``dvs`` is the current FFMP policy alone; the default output
-            dir gains a ``baseline/`` leaf (the incumbent cube of the regret family).
+        baseline_policy: ``dvs`` is the current FFMP policy alone; the output
+            dir is the design-independent ``outputs/baseline/reeval/{tag}/``
+            (``reeval_core.incumbent_cube_dir``, the incumbent cube every
+            design's regret family reads).
 
     Returns:
         The re-eval output directory on rank 0 (``None`` when the merge is

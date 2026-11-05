@@ -194,10 +194,11 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
         The written figure path.
     """
     from src.robustness import load_raw, regret_magnitudes
+    from src.reeval_core import find_incumbent_cube
 
     reeval_dir = Path(reeval_dir)
     raw = load_raw(reeval_dir)
-    base = load_raw(reeval_dir / "baseline")
+    base = load_raw(find_incumbent_cube(reeval_dir))
     mags = regret_magnitudes(raw, base)
     if accepted_ids is not None:
         keep = [s for s in accepted_ids if s in mags.index]

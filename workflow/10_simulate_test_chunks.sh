@@ -33,7 +33,8 @@
 # NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=150 \
 #          workflow/10_simulate_test_chunks.sh
 #
-# Output: outputs/{scenario}/{slug}/reeval/{preset}[/seed_NN]/ (reeval_raw.parquet + meta).
+# Output: outputs/{scenario}/{slug}/reeval/{preset}[/seed_NN]/ (reeval_raw.parquet + meta);
+# the baseline policy goes to outputs/baseline/reeval/{preset}/, shared by every design.
 #
 #SBATCH --job-name=sim_test_chunks
 #SBATCH --account=ees260021

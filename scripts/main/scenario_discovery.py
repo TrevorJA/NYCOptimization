@@ -66,6 +66,7 @@ if str(PROJECT_DIR) not in sys.path:
 import config  # noqa: E402
 from src import factor_mapping as fm  # noqa: E402
 from src import robustness as rob  # noqa: E402
+from src.reeval_core import find_incumbent_cube  # noqa: E402
 from src.factor_mapping import (  # noqa: E402
     FactorMapFit, align_hazard_to_cube, cdf_transform, fit_classifier,
     screen_hazard_axes, select_compromise,
@@ -163,7 +164,7 @@ def _label_matrix(raw: rob.RawCube, baseline: rob.RawCube | None,
     if baseline is None:
         sys.exit(
             "[scenario_discovery] NYCOPT_SD_LABEL=regret needs the status-quo "
-            "re-eval cube beside the run (step 10 with NYCOPT_CHUNK_POLICIES=baseline on the SAME "
+            "re-eval cube (step 10 with NYCOPT_CHUNK_POLICIES=baseline on the SAME "
             "NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run). Refusing to fall back to "
             "a satisficing label -- that answers a different question."
         )
@@ -171,11 +172,9 @@ def _label_matrix(raw: rob.RawCube, baseline: rob.RawCube | None,
 
 
 def _load_baseline(reeval_dir: Path) -> rob.RawCube | None:
-    """Load the status-quo cube written beside a re-eval dir, or None."""
-    bdir = Path(reeval_dir) / "baseline"
-    if any((bdir / f).exists() for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
-        return rob.load_raw(bdir)
-    return None
+    """Load the status-quo cube for a re-eval dir's E_test tag, or None."""
+    bdir = find_incumbent_cube(reeval_dir)
+    return rob.load_raw(bdir) if bdir is not None else None
 
 
 def hazard_shift_stats(H: np.ndarray, y: np.ndarray, axes: list[str]) -> pd.DataFrame:

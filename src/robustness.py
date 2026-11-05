@@ -1307,17 +1307,16 @@ def main():
     else:
         parser.error("provide --reeval-dir or --formulation")
 
-    # Auto-detect the status-quo re-eval matrix (written by
-    # `run_baseline.py --reeval` under `<reeval_dir>/baseline`) so the regret
-    # family works without setting NYCOPT_REEVAL_BASELINE_DIR.
-    # NOTE: the baseline run (step 10 with NYCOPT_CHUNK_POLICIES=baseline) must use the SAME
-    # NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run, or the baseline lands under a different reeval tag and this finds
-    # nothing -- the metrics are then silently skipped.
+    # Auto-detect the status-quo cube (step 10 with NYCOPT_CHUNK_POLICIES=baseline,
+    # one per E_test tag under outputs/baseline/reeval/{tag}/) so the regret
+    # family works without --baseline-dir. The incumbent run must use the SAME
+    # NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run, or nothing is found and
+    # the metrics are silently skipped.
     baseline_dir = args.baseline_dir
     if baseline_dir is None:
-        auto = reeval_dir / "baseline"
-        if any((auto / f).exists() for f in
-               ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+        from src.reeval_core import find_incumbent_cube
+        auto = find_incumbent_cube(reeval_dir)
+        if auto is not None:
             baseline_dir = str(auto)
             print(f"[robustness] auto-detected baseline dir -> {baseline_dir}")
 

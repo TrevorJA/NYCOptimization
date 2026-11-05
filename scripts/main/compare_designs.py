@@ -76,6 +76,7 @@ if str(PROJECT_DIR) not in sys.path:
 import config  # noqa: E402
 import src.robustness as rob  # noqa: E402
 from src.plotting import style  # noqa: E402
+from src.reeval_core import find_incumbent_cube  # noqa: E402
 from src.reeval_core import reeval_tag as reeval_tag_of  # noqa: E402
 from src.satisficing_criteria import NAMED_SETS, nonbinding_threshold  # noqa: E402
 from src.scenario_designs import SCENARIO_DESIGNS, campaign_designs  # noqa: E402
@@ -877,18 +878,17 @@ SEVERITY_AXIS = os.environ.get("NYCOPT_COMPARE_SEVERITY_AXIS", "m")
 
 
 def _baseline_cube(run: ReevalRun):
-    """Load the status-quo cube written beside a run by step 10 with NYCOPT_CHUNK_POLICIES=baseline.
+    """Load the status-quo cube of the run's E_test tag (step 10 with NYCOPT_CHUNK_POLICIES=baseline).
 
     Returns ``None`` (with a warning) rather than raising, so a comparison over
     runs that predate the baseline still produces its satisficing half. The regret
     half is simply absent, and says so.
     """
-    bdir = run.path / "baseline"
-    if not any((bdir / f).exists() for f in
-               ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+    bdir = find_incumbent_cube(run.path)
+    if bdir is None:
         warnings.warn(
-            f"[compare] {run.design} draw={run.draw} seed={run.seed}: no baseline "
-            f"re-eval under {bdir}; regret metrics skipped for this run. The baseline "
+            f"[compare] {run.design} draw={run.draw} seed={run.seed}: no incumbent "
+            f"cube for tag {run.path.name}; regret metrics skipped for this run. The baseline "
             f"run ({B}) must use the SAME NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run."
         )
         return None
@@ -1031,11 +1031,8 @@ def _baseline_cube_if_present(run: ReevalRun):
     satisficing half is meaningful without a baseline (the regret half is
     then simply absent from the table).
     """
-    bdir = run.path / "baseline"
-    if not any((bdir / f).exists() for f in
-               ("reeval_raw.parquet", "reeval_raw.csv.gz")):
-        return None
-    return rob.load_raw(bdir)
+    bdir = find_incumbent_cube(run.path)
+    return rob.load_raw(bdir) if bdir is not None else None
 
 
 def _utilization_by_sow(spec, n_sow: int) -> dict | None:

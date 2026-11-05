@@ -214,7 +214,7 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazard_filling_stati
 ```
 
 The incumbent's per-SOW E_test cube, which the incumbent-relative regret family
-scores against, is simulated per design by step `10` with
+scores against, is simulated once for all designs by step `10` with
 `NYCOPT_CHUNK_POLICIES=baseline` (section 2.5).
 
 #### 2.4 MM-Borg optimization (step 07)

@@ -36,7 +36,7 @@
 
 **Per-SOW objective value** $J_i(x,\theta)$. Each SOW's realizations' unit-years pooled through the objective's own unit operator: `reeval_core.sow_objective_matrix`, persisted as `reeval_raw.csv.gz` (`solution_id`, `sow_id`, `objective`, `value`). Every robustness and regret column of `src/robustness.py` is a transformation of it.
 
-**Current FFMP policy.** `get_baseline_values("ffmp")`; its E_test cube (step 10 with `NYCOPT_CHUNK_POLICIES=baseline`) sits under `baseline/` beside each run. Identifiers keep `incumbent` (`incumbent_advantage`, `incumbent_spread`, `include_incumbent`).
+**Current FFMP policy.** `get_baseline_values("ffmp")`; its E_test cube (step 10 with `NYCOPT_CHUNK_POLICIES=baseline`, once per tag) sits under `outputs/baseline/reeval/{tag}/`. Identifiers keep `incumbent` (`incumbent_advantage`, `incumbent_spread`, `include_incumbent`).
 
 **Regret** (against the current FFMP policy in the same SOW). Columns `regret_mean__`, `regret_q90__`, `regret_cond__` and `gain_mean__` (`robustness.regret_magnitudes`), in natural units; the **regret frequencies** `harm_freq__` and `party_harm_freq__` and the **low-regret frequency** $\Pi_\tau$, `no_harm_freq_tau` (`robustness.regret_frequencies`), with $\tau_i = k \cdot \max(\epsilon_i, \tau_i^{\mathrm{floor}})$ pinned as `NYCOPT_REGRET_TAU` in the production env files.
 

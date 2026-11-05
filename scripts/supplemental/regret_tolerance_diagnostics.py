@@ -35,7 +35,8 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
 import supplemental_config as sc                                    # noqa: E402
-import src.robustness as rob                                        # noqa: E402
+import src.robustness as rob
+from src.reeval_core import find_incumbent_cube                                        # noqa: E402
 
 
 ###############################################################################
@@ -335,9 +336,8 @@ def paired_bootstrap_se(runs, design_a: str, design_b: str, k: float,
             if r.design != design:
                 continue
             raw = rob.load_raw(r.path)
-            bdir = r.path / "baseline"
-            if not any((bdir / f).exists()
-                       for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+            bdir = find_incumbent_cube(r.path)
+            if bdir is None:
                 continue
             base = rob.load_raw(bdir)
             if raw.n_sow <= 1 or base.n_sow <= 1:
@@ -427,9 +427,8 @@ def joint_vs_independent(runs, k: float) -> pd.DataFrame:
     floors = rob.adopted_floors()
     for r in runs:
         raw = rob.load_raw(r.path)
-        bdir = r.path / "baseline"
-        if not any((bdir / f).exists()
-                   for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
+        bdir = find_incumbent_cube(r.path)
+        if bdir is None:
             continue
         base = rob.load_raw(bdir)
         if raw.n_sow <= 1 or base.n_sow <= 1:

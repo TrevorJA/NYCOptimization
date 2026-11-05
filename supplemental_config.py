@@ -1142,11 +1142,10 @@ def configure_rtd_env() -> None:
 # Inputs (persisted artifacts; nothing here triggers a simulation)
 # ---------------------------------------------------------------------------
 #: Baseline-policy raw re-eval cube on E_test (reeval_raw.parquet + meta),
-#: written by step 10 with NYCOPT_CHUNK_POLICIES=baseline under the historic env
-#: (the cube is design-independent; any design's `baseline/` leaf is identical).
+#: written once per E_test tag by step 10 with NYCOPT_CHUNK_POLICIES=baseline
+#: (src.reeval_core.incumbent_cube_dir; design-independent).
 RTD_REEVAL_BASELINE_DIR: Path = (
-    _PROJECT_DIR / "outputs" / "historic" / "ffmp_obj8" / "reeval"
-    / campaign_reeval_preset() / "baseline")
+    _PROJECT_DIR / "outputs" / "baseline" / "reeval" / campaign_reeval_preset())
 
 #: E_test forcing profiles: theta_params (12500, 3) + theta_param_names
 #: ['m', 'r1', 'r2'] + realization_ids, one theta row per realization.

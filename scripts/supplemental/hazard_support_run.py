@@ -64,6 +64,7 @@ scfg.configure_hsd_env()
 
 import config  # noqa: E402
 from src import robustness as rob  # noqa: E402
+from src.reeval_core import find_incumbent_cube  # noqa: E402
 from src.ensembles import staged_ensemble_dir  # noqa: E402
 from src.factor_mapping import (  # noqa: E402
     cdf_transform, screen_hazard_axes, select_compromise,
@@ -602,8 +603,8 @@ def run_stage_b(sow: pd.DataFrame) -> None:
                              f"scores a different SOW set than the first run; "
                              f"strata masks cannot be shared.")
         base = None
-        bdir = r.path / "baseline"
-        if (bdir / "reeval_raw_meta.json").exists():
+        bdir = find_incumbent_cube(r.path)
+        if bdir is not None:
             base = rob.load_raw(bdir)
 
         noharm_sg = None

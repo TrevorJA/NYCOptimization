@@ -110,13 +110,14 @@ def run_baseline_reeval(formulation: str = "ffmp", seed=None):
     """
     from config import REEVAL_ENSEMBLE_SPEC, active_scenario_name, derive_slug
     from src.reeval_core import (
-        evaluate_solution_raw, persist_reeval_raw, reeval_output_dir, reeval_tag,
+        evaluate_solution_raw, incumbent_cube_dir, persist_reeval_raw,
+        reeval_output_dir, reeval_tag,
     )
 
     scenario = active_scenario_name()
     slug = derive_slug(formulation)
-    base_dir = (reeval_output_dir(scenario, slug, REEVAL_ENSEMBLE_SPEC, seed)
-                / "baseline")
+    base_dir = incumbent_cube_dir(
+        reeval_output_dir(scenario, slug, REEVAL_ENSEMBLE_SPEC, seed))
     base_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n--- Baseline re-eval ({formulation}) on common ensemble "

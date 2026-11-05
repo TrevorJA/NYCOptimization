@@ -66,10 +66,10 @@ E_test (`05`, or sharded `staging/etest_shards.sh` → `staging/etest_merge.sh`)
 is completed by the `staging/etest_*` chain (`submit_etest_staging.sh`; the
 root README lists the steps). Every re-evaluation step then takes
 `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`, and the incumbent cube
-must sit under the same tag as the policy-set run: step `10` with
-`NYCOPT_CHUNK_POLICIES=baseline` writes `reeval/{tag}/baseline/` under the
-design env it runs in (once per design), or the incumbent-relative regret
-family is silently skipped.
+must exist for the same tag as the policy-set runs: step `10` with
+`NYCOPT_CHUNK_POLICIES=baseline` writes it once, for every design, to
+`outputs/baseline/reeval/{tag}/` (under any design env), or the
+incumbent-relative regret family is silently skipped.
 
 NYC demand is the time-dynamic extrapolated diversion series in every
 simulation; a constant 800 MGD demand is never used and no env file selects a
