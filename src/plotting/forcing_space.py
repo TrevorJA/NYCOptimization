@@ -25,7 +25,7 @@ Panels
 (a) :func:`panel_harmonic_decomposition` - the model, built up one term at a time
 (b) :func:`panel_parameter_space`        - fitted CMIP6 params, LHS draws, sampling box
 (c) :func:`panel_monthly_change`         - monthly change factors: LHS envelope vs CMIP6
-(d) :func:`panel_flow_duration`          - change in flow duration curve: E_test vs CMIP6
+(d) :func:`panel_flow_duration`          - flow duration curves: E_test, CMIP6-shifted record, record
 
 Provenance rule
 ---------------
@@ -427,18 +427,42 @@ def panel_monthly_change(ax, fits: dict, sample: dict,
     ax.set_title("(c) Monthly streamflow change", loc="left")
 
 
-def _pct_change(future: np.ndarray, baseline: np.ndarray) -> np.ndarray:
-    """Percent change of ``future`` against ``baseline``, elementwise.
+def cmip6_shifted_historic_fdcs(fits: dict, exceedance: np.ndarray,
+                                nodes: tuple[str, ...]) -> np.ndarray:
+    """FDCs of the historical record after each CMIP6 run's change factors.
 
-    Broadcasting-friendly, so one baseline row serves a whole ensemble. Any
-    non-positive baseline flow is returned as NaN rather than a spike: on the
-    trimmed exceedance domain the aggregate NYC inflow is strictly positive, so
-    this is a guard, not a routine path.
+    Each run's raw monthly change factor ``a_j`` (the CMIP6 table that panels
+    (a)-(c) are fitted on) multiplies every day of the matching water-year
+    month of the reconstructed aggregate NYC inflow, and the scaled record is
+    reduced to a flow duration curve on ``exceedance``. This is the record-based
+    counterpart of the E_test realizations, which the generator drives with the
+    sampled harmonic change factors on the same record: the two sources share
+    one baseline, and the raw CMIP6 flows' hydrologic-model bias never enters
+    the panel. The raw factors are used rather than the harmonic fits so the
+    panel checks the parameterization instead of restating it.
+
+    Args:
+        fits: Output of :func:`load_cmip6_fits`.
+        exceedance: Exceedance grid in percent (the cache's ``exceedance``).
+        nodes: Catchments summed into the aggregate inflow (the cache's
+            ``nyc_nodes``, so the record matches the cached historical FDC).
+
+    Returns:
+        ``(K, len(exceedance))`` flows in MGD, rows in the order of ``fits["df"]``.
     """
-    baseline = np.asarray(baseline, dtype=float)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        out = 100.0 * (np.asarray(future, dtype=float) / baseline - 1.0)
-    return np.where(baseline > 0, out, np.nan)
+    from scengen import forcing_space as fs
+    from scripts.main.forcing_fdc_cache import fdc_on_grid
+    from src.load.historical_flows import load_historical_flows
+
+    flows = load_historical_flows(gage=False, period="full")
+    record = flows.loc[:, list(nodes)].sum(axis=1)
+    slot_of_month = np.empty(13, dtype=int)
+    for j, month in enumerate(fs.WATER_YEAR_MONTHS):
+        slot_of_month[month] = j
+    slot = slot_of_month[record.index.month]
+    base = record.to_numpy(dtype=float)
+    exceedance = np.asarray(exceedance, dtype=float)
+    return np.vstack([fdc_on_grid(base * a[slot], exceedance) for a in fits["A"]])
 
 
 def etest_cache_rows(cached_ids: np.ndarray, realization_ids: np.ndarray) -> np.ndarray:
@@ -473,67 +497,51 @@ def etest_cache_rows(cached_ids: np.ndarray, realization_ids: np.ndarray) -> np.
     return np.flatnonzero(np.isin(cached_ids, wanted))
 
 
-def panel_flow_duration(ax, cache, pctl: tuple[float, float], *,
-                        realization_ids: np.ndarray | None = None) -> None:
-    """(d) Change in the flow duration curve of aggregate NYC reservoir inflow.
+def panel_flow_duration(ax, cache, cmip6_fdc: np.ndarray, pctl: tuple[float, float],
+                        *, realization_ids: np.ndarray | None = None) -> None:
+    """(d) Flow duration curves of aggregate NYC reservoir inflow.
 
-    Plotted as the percent change in flow at each exceedance probability rather
-    than the absolute curves: on a log flow axis the three sources overlie each
-    other almost exactly, and it is the *shift* that the forcing space is
-    supposed to span.
+    Three sources on one log flow axis, all built on the reconstructed
+    historical record so they differ only by the forcing applied to it:
+
+        E_test   the staged realizations, the Kirsch-Nowak generator driven by
+                 the sampled harmonic change factors (the envelope also carries
+                 the generator's internal variability, which is part of the
+                 ensemble's spread and is not removed)
+        CMIP6    the record scaled by each run's raw monthly change factors
+                 (:func:`cmip6_shifted_historic_fdcs`), one line per run
+        record   the historical record itself
 
     Args:
         ax: Target axes.
-        cache: The FDC cache written by ``scripts/main/forcing_fdc_cache.py``.
+        cache: The FDC cache written by ``scripts/main/forcing_fdc_cache.py``
+            (E_test rows, the historical FDC and the exceedance grid).
+        cmip6_fdc: ``(K, n_grid)`` CMIP6-shifted record FDCs on the cache's
+            exceedance grid.
         pctl: Envelope percentiles (:func:`envelope_pctl`).
         realization_ids: Global ids of the staged E_test's realizations. When
             given, only their cache rows are drawn (:func:`etest_cache_rows`);
             ``None`` draws every cached row.
-
-    Each source is differenced against its OWN baseline, which is what makes the
-    two comparable:
-
-        E_test   against the reconstructed historical record it was generated
-                 from, so the change is the sampled forcing signal (plus the
-                 Kirsch-Nowak generator's internal variability, which is part of
-                 the ensemble's spread and is not removed)
-        CMIP6    against that run's own 1980-2019 historical sibling, so each
-                 hydrologic model's bias relative to the reconstruction cancels
-                 and the line is the model's projected change
-
-    This is the same baseline convention the monthly change factors of panels
-    (b)/(c) were fitted on, so panel (d) is an independent daily-flow check on
-    the parameterization rather than a restatement of it. The historical record
-    is the reference and therefore plots as the 0% line.
     """
     exceedance = np.asarray(cache["exceedance"], dtype=float)
     keep = (exceedance >= FDC_PLOT_DOMAIN[0]) & (exceedance <= FDC_PLOT_DOMAIN[1])
     exceedance = exceedance[keep]
 
-    if "cmip6_baseline_fdc" not in cache.files:
-        raise KeyError(
-            "FDC cache predates the change-based panel (d): it has no "
-            "'cmip6_baseline_fdc'. Rebuild it with "
-            "`sbatch --export=ALL,NYCOPT_FIG_REFRESH=1 workflow/13_main_figures.sh`."
-        )
-
-    historic = np.asarray(cache["historic_fdc"], dtype=float)[keep]
     etest = np.asarray(cache["etest_fdc"])
     if realization_ids is not None:
         etest = etest[etest_cache_rows(cache["etest_realization_ids"], realization_ids)]
-    etest_pct = _pct_change(etest[:, keep], historic)
-    cmip6_pct = _pct_change(np.asarray(cache["cmip6_fdc"])[:, keep],
-                            np.asarray(cache["cmip6_baseline_fdc"])[:, keep])
 
-    _draw_envelope(ax, exceedance, etest_pct, pctl, color=ETEST_COLOR)
-    for curve in cmip6_pct:
+    _draw_envelope(ax, exceedance, etest[:, keep], pctl, color=ETEST_COLOR)
+    for curve in np.asarray(cmip6_fdc, dtype=float)[:, keep]:
         ax.plot(exceedance, curve, color=CMIP6_COLOR, lw=0.7, alpha=0.55, zorder=3)
-    ax.axhline(0.0, color=HISTORIC_COLOR, lw=2.0, zorder=5)
+    ax.plot(exceedance, np.asarray(cache["historic_fdc"], dtype=float)[keep],
+            color=HISTORIC_COLOR, lw=2.0, zorder=5)
 
+    ax.set_yscale("log")
     ax.set_xlim(*FDC_PLOT_DOMAIN)
     ax.set_xlabel("Exceedance probability (%)")
-    ax.set_ylabel("Change in streamflow (%)")
-    ax.set_title("(d) Change in the flow duration curve", loc="left")
+    ax.set_ylabel("Aggregate NYC reservoir inflow (MGD)")
+    ax.set_title("(d) Flow duration curves", loc="left")
 
 
 # ---------------------------------------------------------------------------
@@ -578,15 +586,14 @@ def shared_legend_handles(pctl: tuple[float, float]) -> list:
                markeredgewidth=0.5, color="none", label=PERIOD_LABELS[p])
         for p in ("2020_2059", "2060_2099")
     ]
-    # The vermillion LINES of panels (c) and (d): one per CMIP6 run, each its
-    # own fitted change factor / own change against its own historical sibling.
+    # The vermillion LINES of panels (c) and (d): one per CMIP6 run, its fitted
+    # change factor in (c) and the record scaled by its raw change factors in (d).
     cmip6.append(
         Line2D([0], [0], lw=1.2, color=CMIP6_COLOR, alpha=0.75,
-               label="CMIP6 model-specific change")
+               label="Historical record × CMIP6 change factors")
     )
     historic = [
-        Line2D([0], [0], lw=2.0, color=HISTORIC_COLOR,
-               label="Historical record (panel d reference)")
+        Line2D([0], [0], lw=2.0, color=HISTORIC_COLOR, label="Historical record")
     ]
 
     rows = max(len(etest), len(cmip6), len(historic))

@@ -27,14 +27,17 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
         (a) the harmonic model, one term at a time, on a representative CMIP6 run
         (b) the fitted CMIP6 parameters, the E_test draws, and the sampling box
         (c) the monthly change factors the sample implies, against the CMIP6 fits
-        (d) the resulting change in the flow duration curve, against the
-            model-specific change of the raw CMIP6 flows
+        (d) the flow duration curves of the E_test realizations, against the
+            historical record and that record scaled by each CMIP6 run's
+            monthly change factors
 
     Panels (a)-(c) come from the CMIP6 change-factor table and the as-built
-    ``forcing_profiles.npz``; panel (d) reads the FDC cache produced by
-    ``scripts/main/forcing_fdc_cache.py``, keeping only the rows of the staged
-    E_test's own realizations. The cache must have been built on that E_test
-    or on the generated parent it was cut from, under the same forcing hash.
+    ``forcing_profiles.npz``; panel (d) reads the E_test rows and the historical
+    record from the FDC cache produced by ``scripts/main/forcing_fdc_cache.py``,
+    keeping only the staged E_test's own realizations, and scales the record by
+    the CMIP6 change factors at plot time. The cache must have been built on
+    that E_test or on the generated parent it was cut from, under the same
+    forcing hash.
     """
     import json
 
@@ -74,7 +77,9 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
                 f"FDC cache forcing_hash {str(cache['forcing_hash'])!r} does not "
                 f"match the staged E_test's {meta.get('forcing_hash')!r}."
             )
-        fspace.panel_flow_duration(axes[1, 1], cache, pctl,
+        cmip6_fdc = fspace.cmip6_shifted_historic_fdcs(
+            fits, cache["exceedance"], tuple(str(n) for n in cache["nyc_nodes"]))
+        fspace.panel_flow_duration(axes[1, 1], cache, cmip6_fdc, pctl,
                                    realization_ids=sample["realization_ids"])
 
     for ax in axes.flat:

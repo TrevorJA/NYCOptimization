@@ -1,7 +1,10 @@
 """Build the flow-duration-curve cache backing panel (d) of the forcing-space figure.
 
-Panel (d) compares three sources of daily aggregate NYC reservoir inflow on one
-flow duration curve (FDC) axis:
+Panel (d) draws the E_test envelope and the historical record from this cache
+on one flow duration curve (FDC) axis of daily aggregate NYC reservoir inflow.
+Its CMIP6 lines, the record scaled by each run's monthly change factors, are
+cheap and computed at plot time
+(``src.plotting.forcing_space.cmip6_shifted_historic_fdcs``). Cached sources:
 
     E_test    the re-evaluation ensemble's realizations (Kirsch-Nowak generator
               driven by the sampled harmonic forcing) - 12,500 x 50 years for
@@ -10,8 +13,9 @@ flow duration curve (FDC) axis:
               realization id (``src.plotting.forcing_space.etest_cache_rows``)
     CMIP6     the raw DBCCA-downscaled, PRMS/VIC5-simulated daily flows of the
               54 CMIP6 future runs - 40 years each, each paired with its OWN
-              1980-2019 historical sibling run so the figure can show a
-              model-specific change rather than a change plus model bias
+              1980-2019 historical sibling run. The raw-flow reference, kept
+              for diagnostics and not drawn in the main figure, where each
+              hydrologic model's bias against the reconstruction would dominate
     historic  the reconstructed historical record
 
 Reading the E_test daily flows costs ~5.5 GB of HDF5 I/O across the cut's 25
