@@ -112,12 +112,13 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
 - [x] Repos pulled (Pywr-DRB `9619a90`, scengen `c61fef8`); k(u) table and utilization column
   written 2026-11-04 (`etest_demand_utilization.sh` is the reproducible path; rerun with
   `NYCOPT_FORCE=1` only if `src/demand_utilization.py` constants change).
-- [ ] **[HPC]** E_test demand-utilization axis: on the REGENERATED E_test (rerun chain,
-  item 2): `append_demand_utilization.py --variant kn` after the merge, then
-  `prep_etest_chunks.sh` stages the k(u)-scaled series itself (no separate
-  `stage_nyc_demand_etest_chunks.sh` pass is needed for a fresh build), then
-  `merge_demand_utilization_realized.py --variant kn` and `make_etest_subset.py`.
-  A chunk without the file fails `staged_ensemble_missing` and the pywrdrb build.
+- [ ] **[HPC]** E_test demand-utilization axis on a FRESH build (the reused staging is
+  handled by the rerun chain, item 2): `append_demand_utilization.py --variant kn` after
+  the merge, then `prep_etest_chunks.sh` stages the k(u)-scaled series itself (no
+  separate `stage_nyc_demand_etest_chunks.sh` pass), then
+  `merge_demand_utilization_realized.py --variant kn`; `make_etest_subset.py` only when
+  E_test is cut from a larger generated design. A chunk without the file fails
+  `staged_ensemble_missing` and the pywrdrb build.
 - [ ] **[HPC]** Every already-staged ensemble that will be simulated again (none carries
   `diversion_nyc_extrapolated_mgd.hdf5` today):
   `workflow/supplemental/stage_nyc_demand.sh` (array index = draw, or `--preset SLUG`).
@@ -136,11 +137,10 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
   matched design's d0 baseline at N = 300 (with the §2 staging). Every pre-2026-11-04
   baseline is in `archive/2026-11-04_pre_demand_update/outputs/baseline/`.
 - [ ] **[HPC]** Current-FFMP E_test baseline cube: step 09 with
-  `NYCOPT_CHUNK_POLICIES=baseline` under the historic env on the full
-  regenerated 1,000-SOW E_test (~66 SU), after the §A demand staging so the
-  cube carries the per-SOW utilization scaling, then
-  `scripts/supplemental/stage_etest_subset_baseline.py` per design. The old
-  cubes are archived (`.../outputs/historic/ffmp_obj8_mm_full/reeval/`).
+  `NYCOPT_CHUNK_POLICIES=baseline` on E_test under each design env (~33 SU each;
+  rerun chain item 3), after the §A demand staging so the cube carries the
+  per-SOW utilization scaling. The old cubes are archived
+  (`.../outputs/historic/ffmp_obj8_mm_full/reeval/`).
 - [ ] **[HPC]** Searches: every stored Pareto set (the August HIST set, the
   N = 100 production and moderate MC/HF sets, the `ffmp_vr` sets) predates the
   current demand series and is superseded by the §2 campaign searches (HIST included: the
@@ -246,7 +246,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   SI Figures S12 to S16 re-render from it.
 - [ ] **[HPC]** Production leg of the dry-envelope diagnostic on the regenerated images:
   `sbatch --export=ALL,NYCOPT_DRYENV_PRODUCTION=1 workflow/supplemental/dry_envelope.sh`
-  (reads `etest_kn_50yr_n25000/hazard_image_subwindows.npz` + `forcing_profiles.npz` and
+  (reads `etest_kn_50yr_n12500/hazard_image_subwindows.npz` + `forcing_profiles.npz` and
   `statpool_10yr_n1000000_d0/hazard_image.npz`; writes `dryenv_production_{bins,reference}.csv`
   and figure `F2_dry_envelope_production`, the production confirmation of SI Figure S18 and
   the numbers quoted in SI Text S6). Minutes on `shared`.
@@ -335,7 +335,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   ~66 SU current-policy cube lines (§0 B, §2) that carry the same per-unit basis.
 - [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b at the geometry settled by the
   item above (documented: `shared`, 16 ranks × 8 cpus, batch 50),
-  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` on every
+  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500` on every
   05/08/09/09b/10 line (deliberately not in the env files). ~66k SU at the
   2,000-policy cap on the 33 SU-per-policy basis.
 - [ ] **[HPC]** Post-processing on the 500-SOW cube: steps 10, 13 and 14, the criteria
@@ -385,7 +385,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   shifts against ε with no variance estimate.
 - [ ] **[HPC]** Optional: nested-P saturation record (`nestedp_ladder.sh`) under the
   renamed hazard axes; hazard-support no-harm arm re-read with
-  `NYCOPT_HSD_REEVAL_TAG=etest_kn_50yr_n25000` (no simulation).
+  on the E_test tag (the default `HSD_REEVAL_TAG`; no simulation).
 
 ## 4. Figures and manuscript
 
