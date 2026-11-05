@@ -128,8 +128,11 @@ echo "=== ${TARGET}: preset ${PRESET} (${N_CHUNKS} chunks), policies ${POLICIES}
 
 JOB_ID=""
 if [[ "${TARGET}" == "baseline" ]]; then
+    # --ntasks-per-node, not --ntasks: the step-10 header carries
+    # --ntasks-per-node=16, which --ntasks does not override, so 25 tasks on one
+    # node are otherwise rejected ("Requested node configuration is not available").
     run sbatch --job-name=reeval_baseline \
-        --partition=shared --nodes=1 --ntasks="${N_CHUNKS}" --cpus-per-task=2 --time=03:00:00 \
+        --partition=shared --nodes=1 --ntasks-per-node="${N_CHUNKS}" --cpus-per-task=2 --time=03:00:00 \
         --export="${COMMON_EXPORT},NYCOPT_SEARCH_REALIZATION_BATCH=${BATCH},NYCOPT_CHUNK_MERGE=job,NYCOPT_CHUNK_UNIT_SECONDS=${UNIT_SECONDS}" \
         ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
         workflow/10_simulate_test_chunks.sh
