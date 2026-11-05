@@ -11,6 +11,33 @@ steps clearly ordered, and is every workflow a self-contained script rather than
 a long command line; (2) is the output hierarchy clear, well labelled and
 consistent.
 
+**Revision 2026-11-05** (after the "E_test only uses 500 SOWs" commits `24efa5b`
+to `8af48db` and the completion of the E_test chain through the cut). What
+changed and how it alters the recommendations:
+
+- E_test is now the registry object `etest_kn_50yr_n12500` (500 SOWs, 25 chunks),
+  staged 2026-11-05 (job 21951643) as a metadata-only cut whose chunk entries point
+  at chunks 000 to 024 of the 1,000-SOW design generated 2026-08-19
+  (`etest_kn_50yr_n25000`). The parent is read by nothing after the cut except the
+  cut wrapper's default `NYCOPT_ETEST_PARENT`; its chunks 025 to 049 (about
+  6.5 GB each, about 163 GB) are unused by any reader. New item O10 below.
+- `stage_etest_subset_baseline.{sh,py}` were deleted. The incumbent cube is now
+  simulated per design by step 09 with `NYCOPT_CHUNK_POLICIES=baseline` and lives
+  beside the policy cube it scores, at `outputs/{design}/ffmp_obj8/reeval/{tag}/baseline/`;
+  `RTD_REEVAL_BASELINE_DIR` is derived from `campaign_reeval_preset()` rather than a
+  literal. That is a coherent convention, so the cube relocation in O3 is withdrawn;
+  only the historic special case of `baseline_objectives_csv` remains (low priority).
+- `squeue` is empty. The remaining E_test work (sub-window hazard image, 25 tasks,
+  about 10 SU; the three baseline cubes, about 100 SU; the step-05 anchor) has not
+  been submitted, so no job constrains the structural moves. Every phase can run
+  now, before the HIST submit, except the step-09 helper, which still waits on the
+  geometry vet (TODO Section 2) that also gates the baseline cubes.
+- The supplemental layer has 45 scripts, not 46; the inventory below is adjusted.
+- New defect F11: `05_run_baseline.sh` runs the `--reeval` leg by default, which
+  cannot run on the chunked E_test preset; the TODO works around it with
+  `NYCOPT_BASELINE_SKIP_REEVAL=1`. The wrapper default should be inverted or the leg
+  removed now that step 09 writes the cube.
+
 ## 1. Cross-cutting findings
 
 1. **Step numbers do not encode order.** Step 12 (E_test generation) is a
@@ -71,6 +98,7 @@ All verified on disk on 2026-11-04. None affects a running job.
 | F8 | Fixed log names overwrite on rerun | `01_generate_presim.sh:15` (`logs/presim.out`), `05_run_baseline.sh:18` (`logs/baseline.out`) | add `%j` |
 | F9 | Experiment-name leak: the production pool slug variable is `NYCOPT_NESTEDP_POOL_SLUG` | `gen_pool_merge.sh:36`, `pool_verify.sh:44`, `nestedp_ladder.sh` | rename to `NYCOPT_POOL_SLUG` with a default |
 | F10 | Dead or misleading constants | `config.OUTPUT_REFERENCE_SETS_DIR` (config.py:148; fallback only in `src/reevaluate.py:81`, `reevaluate_mpi.py:84`), `supplemental_config.TEV_UNITS_ROOT` default points at an archived projects-space path (:1976), `config.py:959` docstring says `figures/{scenario}`, `config.py:150-151` comment on "diagnostics", `ANVIL_NOTES.md:70` records a symlink target that no longer exists | code and text |
+| F11 | Step-05 default runs the `--reeval` leg, which cannot run on the chunked E_test preset (the cube is written by step 09 since `69c3840`); the TODO works around it with `NYCOPT_BASELINE_SKIP_REEVAL=1` | `workflow/05_run_baseline.sh:30-36`, header `:8`; README table row 05 still says 05 persists the per-SOW matrix | invert the default (`NYCOPT_BASELINE_REEVAL=1` opts in) or drop the leg; fix the header and the README row |
 
 ## 3. Main workflow layer
 
@@ -98,8 +126,10 @@ positional identifiers, `--dry-run`, pass-through flags):
   in TODO is settled by the one-node smoke, so that one record exists.
 - `submit_search_staging.sh <design>`: 02 (array over K draws), 03 where the
   design has a pool, 04 (array), chained with `--dependency` and `--parsable`.
-- `submit_etest_staging.sh`: the completion chain (demand chunks, subset stage,
-  hazard image shards and merge, incumbent cube), chained the same way.
+- `submit_etest_staging.sh`: the E_test chain from a staged parent (demand
+  chunks, cut, hazard image shards and merge) and, once the geometry is settled,
+  the three per-design baseline cubes and the step-05 anchor, chained the same
+  way. As of 2026-11-05 only the hazard image, the cubes and the anchor remain.
 - Wrappers for the two bare-Python chain steps: `extract_runtime_archive.py
   --seed N` and `--merge --install` (one wrapper, mode by argument) and
   `validate_staged_seasonality.py`.
@@ -187,12 +217,11 @@ searching for them.
 
 ## 4. Supplemental layer
 
-### 4.1 Status summary (46 scripts)
+### 4.1 Status summary (45 scripts as of 2026-11-05)
 
 - Live on the campaign path: the E_test chain (`etest_demand_utilization`,
   `prep_etest_chunks`, `stage_nyc_demand_etest_chunks`, `etest_subset_stage`,
-  `etest_hazard_image_shards`, `etest_hazard_image_merge`,
-  `stage_etest_subset_baseline`), `stage_nyc_demand`, `staged_hazard_image`,
+  `etest_hazard_image_shards`, `etest_hazard_image_merge`), `stage_nyc_demand`, `staged_hazard_image`,
   `epsilon_ensemble_refilter`, `dry_envelope` (production leg pending),
   `hazard_axis_selection` (Anvil confirmation pending), `hf_design_metrics`
   (rerun pending), `regret_tolerance_diagnostics` and
@@ -214,7 +243,7 @@ searching for them.
 Scripts that cannot be submitted bare today (2 to 5 required `--export`
 variables, or positional arguments after the script path): `gen_pool_shards`,
 `gen_pool_merge`, `pool_verify`, `nestedp_ladder`, `hazard_selector_diagnostics`,
-`hazard_axis_selection`, `stage_etest_subset_baseline`,
+`hazard_axis_selection`,
 `ensemble_size_library_stage` (array sized by a Python one-liner),
 `ensemble_size_library_eval` (smoke needs four flags), `ensemble_cost_sweep`,
 `epsilon_ensemble_refilter`, `epsilon_refilter_sweep`, `sim_selected_policies`,
@@ -246,7 +275,7 @@ deletion in this pass) but list them in the README as unreferenced.
 |---|---|---|
 | `gen_pool_shards.sh`, `gen_pool_merge.sh`, `pool_verify.sh` | `staging/pool_shards.sh`, `staging/pool_merge.sh`, `staging/pool_verify.sh` | drop `gen_` so the three sort together |
 | `gen_etest_shards.sh`, `gen_etest_merge.sh` | `staging/etest_shards.sh`, `staging/etest_merge.sh` | drop `gen_` |
-| `etest_demand_utilization.sh`, `prep_etest_chunks.sh`, `stage_nyc_demand_etest_chunks.sh`, `etest_subset_stage.sh`, `etest_hazard_image_shards.sh`, `etest_hazard_image_merge.sh`, `stage_etest_subset_baseline.sh` | `staging/etest_demand_utilization.sh`, `staging/etest_prep_chunks.sh`, `staging/etest_stage_nyc_demand.sh`, `staging/etest_subset_stage.sh`, `staging/etest_hazard_image_shards.sh`, `staging/etest_hazard_image_merge.sh`, `staging/etest_subset_baseline.sh` | `etest_` first on all seven, so `ls staging/etest_*` lists the chain |
+| `etest_demand_utilization.sh`, `prep_etest_chunks.sh`, `stage_nyc_demand_etest_chunks.sh`, `etest_subset_stage.sh`, `etest_hazard_image_shards.sh`, `etest_hazard_image_merge.sh` | `staging/etest_demand_utilization.sh`, `staging/etest_prep_chunks.sh`, `staging/etest_stage_nyc_demand.sh`, `staging/etest_cut.sh`, `staging/etest_hazard_image_shards.sh`, `staging/etest_hazard_image_merge.sh` | `etest_` first on all six, so `ls staging/etest_*` lists the chain; `etest_cut` names what the wrapper does since `69c3840` (the Python keeps `make_etest_subset.py`) |
 | `stage_nyc_demand.sh`, `staged_hazard_image.sh` | `staging/ensemble_stage_nyc_demand.sh`, `staging/ensemble_hazard_image.sh` | `ensemble_` = acts on a staged search ensemble |
 | `hazard_axis_selection`, `hazard_selector_diagnostics`, `hf_design_metrics`, `hazard_support_decomposition`, `hazard_examples`, `dry_envelope`, `nestedp_smoke_calibrate`, `nestedp_ladder`, `ensemble_size_library_stage`, `ensemble_size_library_eval`, `ensemble_size_hazard`, `ensemble_size_analysis` | `design_diagnostics/<same>` | none |
 | `epsilon_calibration`, `epsilon_ensemble_refilter`, `epsilon_refilter_sweep`, `satisfaction_factor`, `objective_sensitivity`, `regret_tolerance_diagnostics`, `robustness_threshold_diagnostics`, `transfer_evaluation_check`, `transfer_evaluation_eval_array`, `transfer_evaluation_analysis` | `results_diagnostics/<same>` | none |
@@ -290,7 +319,10 @@ mapping section to wrapper to output root, ordered to match the README groups.
 outputs/
   presim/                                  C   step 01
   synthetic_ensembles/
-    etest_kn_50yr_n25000[__chunk000-049] -> projects space   C   (jobs 21950437, 21950524 writing now)
+    etest_kn_50yr_n12500                   C   E_test (home; metadata only, cut 2026-11-05 from the parent below)
+    etest_kn_50yr_n25000 -> projects space            S   parent metadata; read only by the cut wrapper's default
+    etest_kn_50yr_n25000__chunk000-024 -> projects space   C   the 25 chunks E_test points at (~6.5 GB each)
+    etest_kn_50yr_n25000__chunk025-049 -> projects space   S   unused by any reader (~163 GB)
     fixprob_10yr_n100_d{0,1,2}, hazfill_stat_abs_10yr_n100_d{0,1,2}   C (d2 unused)
     fixprob_10yr_n300_d0                   R   step-02 files only
     statpool_10yr_n1000000_d{0,1}          C   P = 1e6 pools;  statpool_10yr_n2000_d{0,1}  R smoke
@@ -345,14 +377,15 @@ fix.
 | # | Change | Code | Docs naming the old path | Risk |
 |---|---|---|---|---|
 | O1 | One figure root: point `plot_run_results.py:341`, `src/plotting/search_diagnostics.py:227`, `policy_dynamics_figures.py:63`, `simulate_selected_policies.py:42` at `config.figure_dir_for` | those four files; `.gitignore:21` comment | `README.md:326-332`, `TODO.md:388`, `archive/README.md` | low (nothing writes there now) |
-| O2 | `outputs/diagnostics/` to `outputs/reference/` (`forcing_fdc/`, `demand_utilization/`); `presim/` joins later | `src/demand_utilization.py:70`, `forcing_fdc_cache.py:49`, `figures_forcing_parameterization.py:59`, `etest_demand_utilization.sh` | workflow README, TODO, `campaign_design.md`, `forcing_parameterization.md` | low; presim must not move while 21950437, 21950524 and the HIST search run |
-| O3 | Incumbent cube to `outputs/baseline/reeval/{preset}/`; drop the historic special case in `baseline_objectives_csv` (`config.py:174-202`) | `config.py`, `stage_etest_subset_baseline.py:38`, `supplemental_config.RTD_REEVAL_BASELINE_DIR`, step-09 `baseline` policy routing in `simulate_test_chunks.py`, `run_baseline.py` | TODO rerun chain items 3 and 4, `robustness_threshold_diagnostics.md`, `ANVIL_NOTES.md`, `archive/README.md` | low now (items 3 and 4 not yet run), medium once cubes exist |
+| O2 | `outputs/diagnostics/` to `outputs/reference/` (`forcing_fdc/`, `demand_utilization/`, and `presim/` in the same move while no job runs) | `src/demand_utilization.py:70`, `forcing_fdc_cache.py:49`, `figures_forcing_parameterization.py:59`, `etest_demand_utilization.sh`, `config.PRESIM_DIR` (config.py:94) and its readers | workflow README, TODO, `campaign_design.md`, `forcing_parameterization.md` | low while `squeue` is empty (2026-11-05); presim must not move while any simulation job runs |
+| O3 | (revised 2026-11-05) Drop only the historic special case in `baseline_objectives_csv` (`config.py:174-202`, flat `outputs/baseline/ffmp_baseline_objectives.csv` versus `outputs/baseline/{scenario}/`). The incumbent-cube relocation is withdrawn: since `69c3840` the cube is simulated per design by step 09 and lives beside the policy cube at `outputs/{design}/ffmp_obj8/reeval/{tag}/baseline/`, which is where the regret family reads it | `config.py`, `run_baseline.py`, figure readers of the CSV | TODO item 4 | low |
 | O4 | `run_manifests/{scenario}/{slug}/seed{N}_{jobid}/`; move the 27 existing dirs to `archive/2026-11-04_pre_demand_update/outputs/run_manifests/` | `workflow/_common.sh:296-297` only | `README.md:251`, `workflow/README.md:23`, envs README, TODO, `archive/README.md` | low; do before the HIST submit |
 | O5 | Stale items to `archive/2026-11-05_output_audit/`: `profiling/`, `supplemental/hazfill_d0_restore_check/`, `anvil_scaling_experiment/packing/stale_pre_merge_7cdf527/`, `HPC_cost_calculator.xlsx` (or to `docs/`), the 14 `first10ch` and `smoke_*` hazard_support files, the two non-pattern logs | none | `archive/README.md` (new section) | low |
 | O6 | Route cube-less figure specs (no `cube` or `scorecard` in `needs`) to `comparison/{slug}/design/figure_tables/{kind}`; move today's two CSVs | `src/figures/registry.py:90-94` | none | low |
 | O7 | Bring the three flat supplemental writers into `supplemental_config` with `tables/` (`cv_axis_footprint`, `persistence_axis`, `historic_hazard_windows`) and the `epsilon_refilter` literals into an `EPSREF_OUTPUT_ROOT` | six scripts (`diagnose_cv_axis_footprint.py:73`, `diagnose_persistence_axis.py:68`, `check_cmip6_rho1_anchor_noise.py:69`, `verify_kirsch_baseline_persistence.py:51`, `compute_historic_hazard_windows.py:59`, `epsilon_ensemble_refilter.py:470`, `epsilon_refilter_sweep.py:286`) | `persistence_axis_diagnostics.md`, `forcing_parameterization.md`, `scenario_design_methods.md`, `hf_design_metrics.md` | low |
 | O8 | `logs/`: one stem rule (`{script_stem}_%j.out`, `_%A_%a.out` for arrays; fix 01, 05 and the `%x` stem of 06) and a pruning rule in `ANVIL_NOTES.md` (tar logs older than the last archive event into `archive/<date>/logs/`) | `#SBATCH` headers of 01, 05, 06 | workflow README | low |
 | O9 | `outputs/synthetic_ensembles/README.md` index | new file | none | none |
+| O10 | (new 2026-11-05) The parent's unused chunks 025 to 049 (~163 GB, projects space) and the parent metadata directory: either leave in place and record them in the O9 index as "parent, unused", or move the 25 unused chunk directories to `archive/2026-11-05_etest_parent_unused/` in projects space (a rename on the same file system, no copy). E_test's `chunk_index.json` names chunks 000 to 024 only, so neither option touches a live path. Keeping them preserves the option of a 1,000-SOW sensitivity | none (the cut wrapper default `NYCOPT_ETEST_PARENT` still resolves; `predicted_inflow_bitcheck` defaults to chunk 000) | `archive/README.md` if moved | none / low |
 
 ## 6. Decisions requested
 
@@ -362,32 +395,44 @@ fix.
 | D2 | Supplemental layout: subfolders by purpose (4.3), prefix scheme, or flat with a status table | subfolders |
 | D3 | Env naming: full design names, or keep `mc` and `hazfill_stat` with a stated table | full design names |
 | D4 | `outputs/diagnostics/` to `outputs/reference/` (with presim joining later) | yes |
-| D5 | Incumbent cube and historic baseline to `outputs/baseline/` (O3) | yes, before TODO rerun-chain items 3 and 4 run |
+| D5 | (revised) Only the historic special case of the baseline objectives CSV (O3); the cube stays per design beside its policy cube | yes, low priority, before TODO item 4 runs |
+| D10 | (new) Parent chunks 025 to 049: index only, or move to a dated archive folder in projects space (O10) | index only for now; archive once the campaign re-evaluation has run and no 1,000-SOW sensitivity is planned |
 | D6 | `run_manifests` nested by scenario and slug, old manifests archived (O4) | yes, before the HIST submit |
 | D7 | One figure root under `outputs/figures/` for every non-manuscript figure (O1) | yes |
 | D8 | Retire-to-folder for unreferenced envs (`envs/retired/`) and stale outputs (O5) | yes; nothing deleted |
 | D9 | Submit helpers for 09 + 09b, the staging chains, and wrappers for the two bare-Python chain steps (3.1) | yes; the 09 helper waits for the geometry smoke |
 
-## 7. Execution phases and sequencing constraints
+## 7. Execution phases and sequencing constraints (revised 2026-11-05)
 
-Constraints: jobs 21950437 (demand-chunk staging) and 21950524 (subset stage)
-write under `outputs/synthetic_ensembles/etest_kn_50yr_n25000*` and read
-`outputs/presim/`; the HIST search, once submitted, reads `presim/` and writes
-`outputs/historic/ffmp_obj8/` and a run manifest. A queued sbatch job holds its
-own copy of the script, so script moves do not affect it; path changes in
-`config.py` or `_common.sh` do, so those wait for the affected jobs.
+Constraints: `squeue` is empty and the E_test chain through the cut is complete,
+so no running job pins any path. The window before the HIST submit is therefore
+the cleanest moment for every structural move: once the search starts it reads
+`outputs/presim/` and `config.py` at run time and writes `outputs/historic/ffmp_obj8/`
+and a run manifest, and the three baseline cubes and the hazard image will write
+under `outputs/{design}/ffmp_obj8/reeval/` and the E_test directory. A queued sbatch
+job holds its own copy of the script, so script moves never affect it; path
+changes in `config.py` or `_common.sh` must land before a job that reads them is
+submitted, never while it runs.
 
-- **Phase 0, before the HIST submit (no decision needed except D6):** F1 to F10;
-  O4 (manifest layout, so the first campaign manifest lands in the new layout);
-  O8 log stems; O9 index. One commit.
-- **Phase 1, text and new files, any time:** the three submit helpers and two
-  wrappers (D9; the 09 helper after the geometry smoke); one replication
-  narrative; supplemental README status column; archive notes in the methods
-  docs; `_common.sh` cleanups (3.4).
-- **Phase 2, structural moves, after the queued E_test jobs finish:** D1
-  renumber, D2 subfolders, D3 env renames, `envs/retired/`, O1, O2 (without
-  presim), O3, O5, O6, O7. One commit per layer (workflow, envs, outputs), each
-  verified by `bash -n workflow/**/*.sh`, a grep for every old name, and a
-  `--dry-run` of each submit helper. `presim/` moves under `reference/` only after
-  the HIST search has finished.
-- **Local tests after each phase** on Trevor's machine, never on Anvil.
+Order, all before the HIST submit, one commit per phase:
+
+- **Phase 0, defects and the manifest layout:** F1 to F11; O4 (so the first
+  campaign manifest lands in the new layout); O8 log stems; O9 index with the
+  parent noted per D10.
+- **Phase 1, text and new files:** the two wrappers for the bare-Python chain
+  steps and the staging helpers (D9); one replication narrative with the root
+  README and the TODO pointing at it; supplemental README status column and the
+  seven missing entries; archive notes in the methods docs; `_common.sh` cleanups
+  (3.4). The step-09 helper is the one deferred item: it is written when the
+  geometry vet (TODO Section 2) lands, which also gates the baseline cubes.
+- **Phase 2, structural moves:** D1 renumber, D2 subfolders, D3 env renames,
+  `envs/retired/`, O1, O2 (presim included, since nothing runs), O3 (CSV special
+  case only), O5, O6, O7. One commit per layer (workflow, envs, outputs), each
+  verified by `bash -n` over every wrapper, a grep for every old name, and a
+  `--dry-run` of each submit helper.
+- **Independent review** of the three commits by a separate agent against this
+  document (every move map row, every reference list), then the local test suite
+  on Trevor's machine, then the HIST submit.
+
+If the HIST search must go first, Phase 0 alone is still safe beforehand, and
+Phase 2 waits until it has finished (about 12 h), because O2 moves `presim/`.
