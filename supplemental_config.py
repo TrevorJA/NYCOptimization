@@ -303,7 +303,7 @@ def epsilon_figure_path(name: str, design: "str | None" = None,
 
 ###############################################################################
 # Anvil parallel-scaling experiment
-# (workflow/supplemental/anvil_scaling_*.sh; manuscript supplement)
+# (workflow/supplemental/benchmarks/anvil_scaling_*.sh; manuscript supplement)
 #
 # Stage A (packing): on one exclusive 128-core node, sweep the number of
 #   concurrent MPI ranks K, each rank timing cold + warm evaluate() calls;
@@ -431,7 +431,7 @@ def packing_shard_path(k: int, batch: int, rank: int, job_id: str) -> Path:
 
 ###############################################################################
 # Ensemble-cost experiment: the t_eval(N, L, model) cost surface
-# (workflow/supplemental/ensemble_cost_*.sh)
+# (workflow/supplemental/benchmarks/ensemble_cost_*.sh)
 #
 # For every cell (N, L, model), K = ensemble_cost_cell_k ranks (the densest
 # memory-feasible packing) on one exclusive node each run 1 cold + M warm

@@ -266,7 +266,7 @@ def test_check_series_against_set_uses_the_sets_own_epsilons(tmp_path):
         check_series_against_set([a, b], set_file, n_vars=2)
 
 
-def test_step07_reference_set_is_never_the_campaign_reference_set():
+def test_step09_reference_set_is_never_the_campaign_reference_set():
     from src.diagnostics import COORDINATOR_ARTIFACT, diagnostics_reference_set_path
     out = diagnostics_reference_set_path("ffmp_obj8", scenario="historic")
     assert out.name == "ffmp_obj8_diagnostics_reference.set"

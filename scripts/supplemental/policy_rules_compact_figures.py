@@ -8,7 +8,7 @@ it exists under the explore figure directory; otherwise the balanced
 compromise plus spread-out members are chosen here with
 :mod:`src.solution_selection`.
 
-Outputs under ``figures/{scenario}/{slug}/policy_inspection/`` (override with
+Outputs under ``outputs/figures/{scenario}/{slug}/policy_inspection/`` (override with
 ``--out-dir``):
 
     rules_grid.png            the policy grid
@@ -82,7 +82,7 @@ def main() -> None:
     ap.add_argument("--set-file", default=None,
                     help="default outputs/{scenario}/{slug}/sets/{slug}_merged.set")
     ap.add_argument("--out-dir", default=None,
-                    help="default figures/{scenario}/{slug}/policy_inspection")
+                    help="default outputs/figures/{scenario}/{slug}/policy_inspection")
     ap.add_argument("--n-policies", type=int, default=3,
                     help="grid columns (highlighted policies, in order)")
     ap.add_argument("--legend", default="side", choices=["side", "bottom"],

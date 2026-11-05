@@ -462,7 +462,7 @@ def run_pass_a(baseline_dir=None) -> dict:
                for f in ("reeval_raw.parquet", "reeval_raw.csv.gz")):
         raise SystemExit(
             f"[rtol] no incumbent cube at {baseline_dir}. Pass A needs only the "
-            f"step-06 baseline re-evaluated on the test ensemble; run that first."
+            f"baseline cube on the test ensemble (step 10 with NYCOPT_CHUNK_POLICIES=baseline); run that first."
         )
     base = rob.load_raw(baseline_dir)
     if base.n_sow <= 1:

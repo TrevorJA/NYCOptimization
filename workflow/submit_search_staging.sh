@@ -58,12 +58,13 @@ POOL_N=1000000
 POOL_DIR="outputs/synthetic_ensembles/statpool_10yr_n${POOL_N}_d0"
 mkdir -p logs
 
-# submit <label> <dependency-or-empty> <sbatch args...>; prints the job id.
+# submit <label> <dependency-or-empty> <sbatch args...> <script>; prints the job id.
 submit() {
     local label="$1" dep="$2"; shift 2
+    local script="${!#}"; set -- "${@:1:$#-1}"
     local cmd=(sbatch --parsable)
     [[ -n "${dep}" ]] && cmd+=("--dependency=afterok:${dep}")
-    cmd+=("$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
+    cmd+=("$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} "${script}")
     echo "+ ${cmd[*]}" >&2
     if [[ "${DRY_RUN}" == "true" ]]; then
         echo "<${label}>"

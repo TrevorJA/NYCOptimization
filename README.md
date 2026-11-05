@@ -190,6 +190,7 @@ sbatch --dependency=afterok:<demand_u_jobid> \
 sbatch --dependency=afterok:<prep_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
        workflow/supplemental/staging/etest_cut.sh                       # cut etest_kn_50yr_n12500 from the parent + realized u per SOW
+bash workflow/submit_etest_staging.sh hazard --dependency=afterok:<cut_jobid>  # sub-window hazard image (shards, then merge)
 ```
 
 Every re-evaluation step (`10`, `11`, `12`, and the supplemental re-evaluation and scenario-discovery wrappers) takes
@@ -229,7 +230,7 @@ submission path for every campaign search (its header documents the sbatch
 line it issues; `--dry-run` prints it):
 
 ```bash
-# Matched designs (mc, hazfill_stat): seed 1 then, once seed 1 has priced the campaign, seed 2
+# Matched designs (monte_carlo, hazard_filling_stationary): seed 1 then, once seed 1 has priced the campaign, seed 2
 bash workflow/submit_production_search.sh monte_carlo 1               # 96 h
 bash workflow/submit_production_search.sh monte_carlo 2               # 72 h
 bash workflow/submit_production_search.sh hazard_filling_stationary 1

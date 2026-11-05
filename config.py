@@ -1084,7 +1084,7 @@ def results_slug(reeval_tag: str, formulation: str | None = None) -> str:
             f"no moea slug under {OUTPUTS_DIR} carries a re-eval on tag "
             f"'{reeval_tag}' for every campaign design "
             f"({', '.join(campaign_designs())}). "
-            f"Run the re-evaluation (workflow step 10) first, or set "
+            f"Run the re-evaluation (workflow steps 10 + 11) first, or set "
             f"{RESULTS_SLUG_ENV} if the outputs live under a nonstandard slug."
         )
     raise ValueError(

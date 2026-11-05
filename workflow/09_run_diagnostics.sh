@@ -7,7 +7,7 @@
 # sets/{slug}_diagnostics_reference.set as the epsilon-box merge of every
 # coordinator snapshot of every seed, scores one metrics/seed_SS_{slug}.metrics
 # per seed with MOEAFramework's MetricsEvaluator, and renders the search figures
-# under figures/{scenario}/{slug}/ (one line per seed on total NFE;
+# under outputs/figures/{scenario}/{slug}/ (one line per seed on total NFE;
 # src/diagnostics.py). All merges use the one epsilon-archive implementation in
 # src/sensitivity_common.py; MOEAFramework's mergers are not used.
 # The campaign reference set {slug}_merged.set of the step 10 re-evaluation

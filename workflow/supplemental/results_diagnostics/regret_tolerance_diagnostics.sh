@@ -12,7 +12,7 @@
 
 # Regret-tolerance diagnostics (docs/notes/methods/regret_tolerance_diagnostics.md;
 # scripts/supplemental/regret_tolerance_diagnostics.py). Zero simulation.
-# Pass A needs only the step-06 incumbent cube (RTOL_REEVAL_BASELINE_DIR);
+# Pass A needs only the incumbent cube (step 10 with NYCOPT_CHUNK_POLICIES=baseline; RTOL_REEVAL_BASELINE_DIR);
 # pass B needs the re-evaluated policy sets with their baseline/ subdirs on the
 # same preset and is skipped with a printed reason when they are absent.
 # Settings: supplemental_config.py (RTOL_ section), no CLI value flags.

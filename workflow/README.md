@@ -34,10 +34,10 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 |------|--------|-----------|----------|--------------|
 | 00 | `00_setup_borg_jars.sh` | login node (`bash`) | optional | Build one MOEAFramework problem JAR per formulation; rerun after changing the objective set |
 | 01 | `01_generate_presim.sh` | `shared`, 1×1, 30 min | optional | Full Pywr-DRB run once; save non-NYC (STARFIT) releases for the trimmed model |
-| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (two draws staged, `--array=0-1`: d0 is searched, d1 serves the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/gen_pool_shards.sh` → `staging/pool_merge.sh` → `pool_verify.sh` instead |
+| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (two draws staged, `--array=0-1`: d0 is searched, d1 serves the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/staging/pool_shards.sh` → `staging/pool_merge.sh` → `pool_verify.sh` instead |
 | 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) + `NYCOPT_CANDIDATE_POOL_N=1000000` | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
 | 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs, including the per-realization NYC demand series (MPI across realizations); `--preset NAME` stages an arbitrary ensemble |
-| 05 | `05_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build E_test serially: LHS over the FULL DU box widened 25 % on every axis (annual-volume multiplier 0.866 to 1.32), × R realizations per SOW, chunked, hazard image streamed. `NYCOPT_ETEST_VARIANT=kn` (default) is the campaign's E_test; `hmm` is an opt-in generator sensitivity. The sharded build is `supplemental/gen_etest_shards.sh` → `staging/etest_merge.sh` |
+| 05 | `05_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build E_test serially: LHS over the FULL DU box widened 25 % on every axis (annual-volume multiplier 0.866 to 1.32), × R realizations per SOW, chunked, hazard image streamed. `NYCOPT_ETEST_VARIANT=kn` (default) is the campaign's E_test; `hmm` is an opt-in generator sensitivity. The sharded build is `supplemental/staging/etest_shards.sh` → `staging/etest_merge.sh` |
 | 06 | `06_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy, the objective anchor; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble. The incumbent's per-SOW E_test cube comes from step 10 with `NYCOPT_CHUNK_POLICIES=baseline` |
 | 07 | `07_run_mmborg.sh` | `wholenode`; header 4×128 (`mm_moderate`); production passes `--nodes=12 --ntasks-per-node=128` (1,533 ranks) and a per-seed `--time` | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed, `DRAW=k` = ensemble draw (default 0; the campaign searches d0 only); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
 | 08 | `08_extract_reference_set.sh` | `shared`, 4 cpu, 1 h | **required** | Equal-NFE reference set from the island runtime files: `--seed N` extracts one seed's coordinator-archive snapshot at the reporting NFE; `--merge --install` unions the seeds and installs `{slug}_merged.set`, the step-10 input |
@@ -63,17 +63,8 @@ order after the seed-1 extraction)→`10`→`11`→`12`/`13`/`14`. Chain with
 staging chains, and the root README walks the sequence with the submit lines.
 
 E_test (`05`, or sharded `staging/etest_shards.sh` → `staging/etest_merge.sh`)
-is completed by `staging/etest_demand_utilization.sh` (the k(u) calibration
-table and the per-SOW utilization column `u`, metadata only),
-`staging/etest_prep_chunks.sh` (per-chunk step-04 staging including each SOW's
-k(u)-scaled NYC demand series; `staging/etest_stage_nyc_demand.sh` adds the
-series alone to chunks staged before it was part of the contract),
-`staging/etest_cut.sh` (cuts `etest_kn_50yr_n12500` as the leading 25 chunks of
-the larger generated design and merges realized versus nominal `u`; it follows
-the chunk staging because the staged contract requires the demand series in
-every chunk) and `staging/etest_hazard_image_shards.sh` →
-`staging/etest_hazard_image_merge.sh` (the sub-window hazard image);
-`submit_etest_staging.sh` chains them. Every re-evaluation step then takes
+is completed by the `staging/etest_*` chain (`submit_etest_staging.sh`; the
+root README lists the steps). Every re-evaluation step then takes
 `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`, and the incumbent cube
 must sit under the same tag as the policy-set run: step `10` with
 `NYCOPT_CHUNK_POLICIES=baseline` writes `reeval/{tag}/baseline/` under the

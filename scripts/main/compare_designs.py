@@ -877,7 +877,7 @@ SEVERITY_AXIS = os.environ.get("NYCOPT_COMPARE_SEVERITY_AXIS", "m")
 
 
 def _baseline_cube(run: ReevalRun):
-    """Load the status-quo cube written beside a run by workflow step 06.
+    """Load the status-quo cube written beside a run by step 10 with NYCOPT_CHUNK_POLICIES=baseline.
 
     Returns ``None`` (with a warning) rather than raising, so a comparison over
     runs that predate the baseline still produces its satisficing half. The regret
@@ -888,8 +888,8 @@ def _baseline_cube(run: ReevalRun):
                ("reeval_raw.parquet", "reeval_raw.csv.gz")):
         warnings.warn(
             f"[compare] {run.design} draw={run.draw} seed={run.seed}: no baseline "
-            f"re-eval under {bdir}; regret metrics skipped for this run. Step 06 "
-            f"must have run with the SAME NYCOPT_REEVAL_ENSEMBLE_PRESET as step 10."
+            f"re-eval under {bdir}; regret metrics skipped for this run. The baseline "
+            f"run ({B}) must use the SAME NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run."
         )
         return None
     return rob.load_raw(bdir)
@@ -1025,7 +1025,7 @@ def regret_by_severity(runs: list[ReevalRun], spec,
 
 
 def _baseline_cube_if_present(run: ReevalRun):
-    """The run's step-06 baseline cube, or ``None`` silently.
+    """The run's baseline cube (step 10, ``baseline`` policies), or ``None`` silently.
 
     The quiet companion of :func:`_baseline_cube` for re-scorings whose
     satisficing half is meaningful without a baseline (the regret half is
@@ -1681,7 +1681,7 @@ def run_comparison(formulation: str = "ffmp", reeval_tag: Optional[str] = None,
     agreement.to_csv(written["design_rank_agreement"], index=False)
 
     # --- 2b. incumbent-relative regret (RQ1) --------------------------------
-    # Absent when step 06 did not stage a baseline on the SAME re-eval ensemble;
+    # Absent when step 10 with NYCOPT_CHUNK_POLICIES=baseline did not run on the SAME re-eval ensemble;
     # the satisficing half of the comparison still completes, and the report says
     # the regret half is missing rather than quietly omitting it.
     regret_sweep = regret_tolerance_sweep(runs)
@@ -1759,8 +1759,8 @@ def _report(runs, sweep, agreement, flags, attain, regret_sweep,
     if regret_sweep is None or regret_sweep.empty:
         print("[compare] NO REGRET RESULTS: no run carries a status-quo baseline on "
               "this re-eval ensemble, so RQ1 (improvement over current operations "
-              "without degrading other outcomes) is UNANSWERED here. Re-run step 06 "
-              "with the same NYCOPT_REEVAL_ENSEMBLE_PRESET as step 10.")
+              "without degrading other outcomes) is UNANSWERED here. Run step 10 with NYCOPT_CHUNK_POLICIES=baseline "
+              "with the same NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run.")
     else:
         at0 = regret_sweep[regret_sweep["tau_k"] == 0.0]
         if not at0.empty:

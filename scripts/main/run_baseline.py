@@ -26,7 +26,6 @@ Usage:
 
 Outputs:
     outputs/baseline/{formulation}_baseline.hdf5
-    outputs/baseline/{formulation}_baseline_objectives.csv
     outputs/baseline/{scenario}/{formulation}_baseline_objectives.csv
         (--search-ensemble: the same policy scored on an ensemble scenario's
         search ensemble — the vector comparable to that scenario's fronts)

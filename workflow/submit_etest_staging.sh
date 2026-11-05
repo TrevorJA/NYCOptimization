@@ -19,9 +19,10 @@
 # Identity: the historic production env (no MOEA settings are read),
 # NYCOPT_ETEST_VARIANT=kn, and NYCOPT_ETEST_PARENT / NYCOPT_ETEST_SLUG =
 # etest_kn_50yr_n25000, the 1,000-SOW design whose chunks 000 to 024 are
-# E_test (override both with NYCOPT_ETEST_PARENT=<slug>). The steps are
-# idempotent or refuse to repeat work, so a chain can be resubmitted after a
-# failure. A fresh E_test build (05 or staging/etest_shards.sh -> etest_merge.sh,
+# E_test (override both with NYCOPT_ETEST_PARENT=<slug>). The hazard chain
+# resumes (shards are its markers); the demand chain refuses to repeat a step
+# whose product exists (NYCOPT_FORCE=1 on the first step overrides), so after
+# a failure resubmit from the failed step. A fresh E_test build (05 or staging/etest_shards.sh -> etest_merge.sh,
 # then etest_prep_chunks.sh, which stages the scaled series itself) needs only
 # the hazard chain and the cut.
 
@@ -29,7 +30,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 usage() {
-    sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit "${1:-2}"
 }
 
@@ -54,12 +55,13 @@ S=workflow/supplemental/staging
 [[ -f "${ENV_FILE}" ]] || { echo "ERROR: env file not found: ${ENV_FILE}" >&2; exit 2; }
 mkdir -p logs
 
-# submit <label> <dependency-or-empty> <sbatch args...>; prints the job id.
+# submit <label> <dependency-or-empty> <sbatch args...> <script>; prints the job id.
 submit() {
     local label="$1" dep="$2"; shift 2
+    local script="${!#}"; set -- "${@:1:$#-1}"
     local cmd=(sbatch --parsable)
     [[ -n "${dep}" ]] && cmd+=("--dependency=afterok:${dep}")
-    cmd+=("$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
+    cmd+=("$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} "${script}")
     echo "+ ${cmd[*]}" >&2
     if [[ "${DRY_RUN}" == "true" ]]; then
         echo "<${label}>"
@@ -71,7 +73,7 @@ submit() {
 LAST=""
 echo "=== E_test completion (${MODE}): parent ${PARENT}, variant ${VARIANT} ==="
 if [[ "${MODE}" == "demand" || "${MODE}" == "all" ]]; then
-    J1="$(submit demand_u "" --export=ALL,NYCOPT_ENV_FILE="${ENV_FILE}",NYCOPT_ETEST_VARIANT="${VARIANT}" \
+    J1="$(submit demand_u "" --export=ALL,NYCOPT_ENV_FILE="${ENV_FILE}",NYCOPT_ETEST_VARIANT="${VARIANT}",NYCOPT_ETEST_SLUG="${PARENT}" \
           "${S}/etest_demand_utilization.sh")"
     J2="$(submit demand_chunks "${J1}" \
           --export=ALL,NYCOPT_ENV_FILE="${ENV_FILE}",NYCOPT_ETEST_SLUG="${PARENT}" \

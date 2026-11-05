@@ -9,7 +9,7 @@
 # persisted per-SOW re-eval cubes and scored CSVs — no simulation.
 #
 # Requires: every campaign design's re-eval on the common E_test tag
-# (workflow step 10) with robustness_scorecard.csv (+ the
+# (workflow steps 10 + 11) with robustness_scorecard.csv (+ the
 # robustness_scorecard_criteria.csv companion) and baseline/ cubes.
 #
 # Everything comes from the environment — no positional args, no value flags:

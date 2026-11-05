@@ -11,7 +11,7 @@ Substrates per scenario, from outputs/{scenario}/{slug}/sets/:
   - seed_NN_{slug}.set        Borg's own final archive (the 'adopted' row must
                               reproduce its membership)
   - {slug}_merged_raw.set     the plain-dominance cross-seed union, the
-                              filtering substrate (step 09 writes the
+                              filtering substrate (step 08 writes the
                               epsilon-box-filtered {slug}_merged.set alongside;
                               the 'adopted' union row must reproduce its count)
 
@@ -307,7 +307,7 @@ def validate_scenario(scenario: str, results: dict, archives: dict,
         _, objs = load_reference_set(merged, n_vars, n_objs=n_objs)
         ok = adopted["union"] == len(objs)
         print(f"[check:{scenario}] adopted on union: {adopted['union']} vs "
-              f"step-09 merged.set {len(objs)} -> {'PASS' if ok else 'FAIL'}")
+              f"step-08 merged.set {len(objs)} -> {'PASS' if ok else 'FAIL'}")
 
 
 def combined_table(all_results: dict, out_dir: Path,
@@ -329,7 +329,7 @@ def combined_table(all_results: dict, out_dir: Path,
         for sc in scenarios:
             r = all_results[sc][label]
             n = r["sizes"].get("union")
-            if n is None:  # step 09 not run for this scenario yet
+            if n is None:  # step 08 not run for this scenario yet
                 seed_sizes = [v for a, v in r["sizes"].items()
                               if a.startswith("seed")]
                 n = max(seed_sizes) if seed_sizes else None

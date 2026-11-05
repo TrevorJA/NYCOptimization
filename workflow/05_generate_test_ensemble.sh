@@ -3,7 +3,7 @@
 # DU box, N_theta=500 SOWs x R=25 realizations x L=50 yr in 25 chunks of 500
 # realizations, hazard image streamed during generation (scenario discovery needs it).
 # Sizing lives in src/etest.py (env-overridable via NYCOPT_ETEST_*) and nowhere
-# else. Independent of the staging, baseline and search steps (02 to 04, 06, 07, 09); the sharded build is
+# else. Independent of the staging, baseline and search steps (02 to 04, 06 to 09); the sharded build is
 # workflow/supplemental/staging/etest_shards.sh. (The campaign E_test was not built
 # by this step: it is cut from the larger design generated 2026-08-19 by
 # scripts/supplemental/make_etest_subset.py, metadata only.)

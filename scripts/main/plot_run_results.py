@@ -23,9 +23,9 @@ reliability >= 0.5 -- see :mod:`src.pareto_filter`):
   6. Operating rules: the FFMP decision variables of a few representative policies
      (NYC-diversion-priority, Montague-flow-priority, most-robust) vs baseline.
 
-All figures land under ``figures/{scenario}/{slug}/``. Every panel is wrapped so
+All figures land under ``outputs/figures/{scenario}/{slug}/``. Every panel is wrapped so
 one failure never blocks the others. Figures 1 (a-d) and 2 also work after step
-07 alone; 3-6 need step 10 (the re-eval + robustness outputs).
+09 alone; 3-6 need steps 10 + 11 (the re-eval + robustness outputs).
 
 Usage (from repo root, venv active):
   python3 -m scripts.main.plot_run_results \

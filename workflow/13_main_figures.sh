@@ -5,7 +5,7 @@
 # cache behind Figure 3 (d) first when it is missing (~11 GB of E_test daily
 # flows across 50 staged chunks; NYCOPT_FIG_REFRESH=1 forces a rebuild). The
 # SI tier renders in step 14; off-pipeline diagnostic figures keep their own
-# drivers under workflow/supplemental/si_figures_*.sh.
+# drivers under workflow/supplemental/figures/si_figures_*.sh.
 #
 # Requires: the staged campaign E_test (step 05) with forcing_profiles.npz and
 # its daily chunk directories, and the sibling CMIP6_multimodel_streamflow repo.

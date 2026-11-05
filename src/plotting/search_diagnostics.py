@@ -12,7 +12,7 @@ Every convergence line is a seed's coordinator archive (the epsilon-box merge
 of its island archives at each snapshot, ``src.diagnostics``); islands are
 never drawn individually. The NFE axis is total NFE across islands.
 
-Figures (under ``figures/{scenario}/{slug}/``):
+Figures (under ``outputs/figures/{scenario}/{slug}/``):
 
   search_01_parallel_axes_seeds.png
       Each seed's equal-NFE archive (its controller ``.set`` when the seed ran

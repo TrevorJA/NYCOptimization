@@ -163,7 +163,7 @@ def part3_moea_crosscheck(run_dir, slug, names, eps, scratch_dir):
     v = _vector(eps, names, CANDIDATES[PREFERRED])
     # Inputs must be MOEAFramework-written result files: the Borg C-written
     # seed .set files lack the '#' entry terminator and parse as zero
-    # entries. The step-09 per-seed merged sets are the CLI-native twins.
+    # entries. The step-08 per-seed merged sets are the CLI-native twins.
     seed_sets = sorted((run_dir / "sets").glob(f"{slug}_seed*_merged.set"))
     out = Path(scratch_dir) / f"{slug}_crosscheck_{PREFERRED}.set"
     cmd = [get_cli_path(), "ResultFileMerger",

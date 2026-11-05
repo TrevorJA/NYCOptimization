@@ -151,7 +151,7 @@ SI panels: (A) $\tau^{\text{floor}}$ against $\epsilon_i$ and the rungs per
 objective, (B) $\Pi_\tau(k)$ per design and seed with the starved, informative
 and saturated bands shaded, (C) the seed-level null and the paired-bootstrap CI
 at $k_{\text{headline}}$ with $\delta$ marked, plus the two rules quoted
-verbatim from `supplemental_config`. Order: pass A on the step-06 current FFMP policy
+verbatim from `supplemental_config`. Order: pass A on the current FFMP policy's cube (step 10, `baseline` policies)
 cube before any re-evaluated policy set is inspected, then the campaign and
 step 10, then pass B, which computes $\delta$ only when `RTOL_ADOPTED_K` is
 already set.

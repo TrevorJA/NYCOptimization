@@ -37,7 +37,7 @@
 # Override with a trailing --time=... (the last --time sbatch sees wins).
 #
 # The campaign searches draw 0 only (DRAW=0 for the ensemble designs; historic
-# accepts draw 0 only). The pre-flight inside 06 refuses a (design, seed) whose
+# accepts draw 0 only). The pre-flight inside 07 refuses a (design, seed) whose
 # .set file already exists unless NYCOPT_OVERWRITE=1 is exported.
 
 set -euo pipefail
@@ -86,7 +86,7 @@ NODES=12
 NTASKS_PER_NODE=128
 
 [[ -f "${ENV_FILE}" ]] || { echo "ERROR: env file not found: ${ENV_FILE}" >&2; exit 2; }
-[[ -d logs ]] || mkdir -p logs   # the #SBATCH --output path in 06 requires it
+[[ -d logs ]] || mkdir -p logs   # the #SBATCH --output path in 07 requires it
 
 CMD=(sbatch
     --job-name="prod_${TAG}"

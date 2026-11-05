@@ -5,7 +5,7 @@ policy-set run directory written by ``simulate_selected_policies.py``
 (``src.policy_simulation``), once per requested period. Figure-only: it reads
 the HDF5 runs and never simulates.
 
-Outputs ``policy_dynamics_{period}.png`` under ``figures/{scenario}/{slug}/
+Outputs ``policy_dynamics_{period}.png`` under ``outputs/figures/{scenario}/{slug}/
 dynamics/`` (override with ``--out-dir``).
 
 Usage (from repo root, venv active):
@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
+import config  # noqa: E402
 from src.plotting.policy_dynamics import (
     DEFAULT_PANELS, DROUGHT_PERIODS, PANELS, REQUIRED_RESULTS_SETS,
     plot_policy_dynamics,
@@ -44,7 +45,7 @@ def main() -> None:
                     help="policy-set run directory; default "
                          "outputs/{scenario}/{slug}/timeseries/{tag}")
     ap.add_argument("--out-dir", default=None,
-                    help="default figures/{scenario}/{slug}/dynamics")
+                    help="default outputs/figures/{scenario}/{slug}/dynamics")
     ap.add_argument("--periods", nargs="*", default=["drought_1960s", "drought_2002"],
                     choices=list(DROUGHT_PERIODS),
                     help="named periods (src.plotting.policy_dynamics.DROUGHT_PERIODS)")
@@ -60,7 +61,7 @@ def main() -> None:
     run_dir = Path(args.run_dir) if args.run_dir else default_run_dir(
         args.scenario, args.slug, args.tag)
     out_dir = Path(args.out_dir) if args.out_dir else (
-        PROJECT_DIR / "outputs" / "figures" / args.scenario / args.slug / "dynamics")
+        config.FIGURES_DIR / args.scenario / args.slug / "dynamics")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     manifest, runs = load_policy_runs(run_dir, REQUIRED_RESULTS_SETS, args.policies)

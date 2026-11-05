@@ -467,3 +467,13 @@ Deviations from the recommendations, each a smaller change than proposed:
   tag in fifteen docstrings.
 - D10: index only; the parent's unused chunks stay in place.
 - D9: the step-10 + 11 helper waits for the geometry vet (TODO §2).
+
+Independent review (separate agent, 2026-11-04, after the moves): twenty
+findings, nineteen fixed in the working tree (pass-through sbatch flags were
+emitted after the script path in the two new staging helpers; the E_test demand
+chain appended the utilization column to the registry slug rather than the
+parent; the `NYCOPT_CLUSTER` gate defaulted to Hopper; and sentences whose step
+numbers were renumbered mechanically but whose meaning had moved with F11 and
+the new step 08, in `compare_designs.py`, `robustness.py`, `scenario_discovery.py`,
+the epsilon re-filter scripts, two tests and four docs). The one item left is a
+dated 2026-10-23 log entry in `ANVIL_NOTES.md` that records pre-move paths.

@@ -21,7 +21,7 @@
 # (SLURM_SUBMIT_DIR is taken as the root when present).
 #
 # Run identity is env-file driven: there is NO default env file. Steps whose
-# meaning depends on a chosen experiment (07/10/11 and the supplemental re-evaluation and
+# meaning depends on a chosen experiment (07/08/10/11 and the supplemental re-evaluation and
 # scenario-discovery wrappers) pass "required" and abort with a listing of workflow/envs/*.env when NYCOPT_ENV_FILE is unset.
 
 # Repo root: SLURM_SUBMIT_DIR when submitted from the root; otherwise derived
@@ -54,7 +54,7 @@ NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-128}"
 NYCOPT_SLURM_ACCOUNT="${NYCOPT_SLURM_ACCOUNT:-ees260021}"
 
 _nycopt_set_mpi_flags() {
-    if [[ -z "${NYCOPT_MPI_MCA_FLAGS}" && "${NYCOPT_CLUSTER:-hopper}" == "hopper" ]]; then
+    if [[ -z "${NYCOPT_MPI_MCA_FLAGS}" && "${NYCOPT_CLUSTER:-anvil}" == "hopper" ]]; then
         NYCOPT_MPI_MCA_FLAGS="--mca pml ob1 --mca btl self,vader,tcp"
     fi
 }
@@ -73,7 +73,7 @@ nycopt_setup_env() {
     mkdir -p logs
     # shellcheck disable=SC1091
     source /etc/profile.d/lmod.sh 2>/dev/null || true
-    if [[ "${NYCOPT_CLUSTER:-hopper}" == "hopper" ]]; then
+    if [[ "${NYCOPT_CLUSTER:-anvil}" == "hopper" ]]; then   # env files set it; anvil otherwise
         module load "${NYCOPT_PYTHON_MODULE}" 2>/dev/null || true
     fi
     if [[ -f venv/bin/activate ]]; then

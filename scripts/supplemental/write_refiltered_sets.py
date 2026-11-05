@@ -2,7 +2,7 @@
 write_refiltered_sets.py - Re-filter of production reference sets under the registry epsilons.
 
 Writes `{slug}_merged_{suffix}.set` per scenario: the epsilon-box nondominated
-archive of the step-09 raw union (`{slug}_merged_raw.set`) under the current
+archive of the step-08 raw union (`{slug}_merged_raw.set`) under the current
 registry epsilon vector (config.get_epsilons()); the originals are untouched.
 Follows the line-preserving rewrite convention of
 `src.diagnostics.epsilon_box_filter_set` (header comments kept, retained data

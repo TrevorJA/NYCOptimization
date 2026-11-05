@@ -27,7 +27,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
-from config import OUTPUTS_DIR, figure_dir_for, figure_dir_for
+from config import OUTPUTS_DIR, figure_dir_for
 from src.policy_simulation import (
     PolicySet, default_run_dir, read_selection_labels, simulate_policy_set,
 )

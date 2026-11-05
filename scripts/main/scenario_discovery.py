@@ -163,8 +163,8 @@ def _label_matrix(raw: rob.RawCube, baseline: rob.RawCube | None,
     if baseline is None:
         sys.exit(
             "[scenario_discovery] NYCOPT_SD_LABEL=regret needs the status-quo "
-            "re-eval cube beside the run (workflow step 06 with the SAME "
-            "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 10). Refusing to fall back to "
+            "re-eval cube beside the run (step 10 with NYCOPT_CHUNK_POLICIES=baseline on the SAME "
+            "NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run). Refusing to fall back to "
             "a satisficing label -- that answers a different question."
         )
     return fm.regret_matrix(raw, baseline)

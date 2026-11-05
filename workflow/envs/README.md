@@ -30,17 +30,10 @@ submission and never pinned here, so the common E_test is a recorded choice.
 
 ## Usage
 
-```bash
-# One optimization = one independent job (array index = Borg seed). Production
-# searches go through the submit helper, which holds the 12-node geometry and
-# the per-seed --time (workflow/submit_production_search.sh --dry-run shows the line):
-bash workflow/submit_production_search.sh monte_carlo 1
-
-# Chunked re-evaluation on the common held-out ensemble (campaign path, then step 11):
-sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:00 \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
-       workflow/10_simulate_test_chunks.sh
-```
+Every submission passes the env file as
+`sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/<file>.env ...`; the submit
+helpers under `workflow/` do so for the campaign searches and the staging chains,
+and the root README gives the full sequence.
 
 ## Currently shipped env files
 
