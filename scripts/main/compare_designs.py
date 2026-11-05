@@ -889,7 +889,8 @@ def _baseline_cube(run: ReevalRun):
         warnings.warn(
             f"[compare] {run.design} draw={run.draw} seed={run.seed}: no incumbent "
             f"cube for tag {run.path.name}; regret metrics skipped for this run. The baseline "
-            f"run ({B}) must use the SAME NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run."
+            f"run (step 10 with NYCOPT_CHUNK_POLICIES=baseline) must use the SAME "
+            f"NYCOPT_REEVAL_ENSEMBLE_PRESET as the policy run."
         )
         return None
     return rob.load_raw(bdir)
