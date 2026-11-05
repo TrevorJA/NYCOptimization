@@ -11,7 +11,12 @@
 # each chunk dir. Cheap: the extrapolation is a regression plus a
 # nearest-neighbour month match per realization, no system simulation.
 #
-# Submit (slug via env, default the campaign E_test):
+# Chunk dirs are named after the GENERATED design ({slug}__chunkJJJ). The default
+# slug is the registry's E_test; when E_test is cut from a larger parent (the
+# campaign: etest_kn_50yr_n25000, whose chunks 0-24 are E_test) pass
+# NYCOPT_ETEST_SLUG=<parent>. One array task per E_test chunk (25).
+#
+# Submit:
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \
 #          workflow/supplemental/stage_nyc_demand_etest_chunks.sh
 #
@@ -21,7 +26,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=33
 #SBATCH --time=00:40:00
-#SBATCH --array=0-49
+#SBATCH --array=0-24
 #SBATCH --output=logs/stage_nyc_demand_chunk_%A_%a.out
 #SBATCH --error=logs/stage_nyc_demand_chunk_%A_%a.err
 set -euo pipefail
@@ -31,7 +36,7 @@ nycopt_setup_env
 nycopt_source_env_file optional
 nycopt_pin_threads
 
-ETEST_SLUG="${NYCOPT_ETEST_SLUG:-etest_kn_50yr_n25000}"
+ETEST_SLUG="${NYCOPT_ETEST_SLUG:-$(python3 -c "from src.etest import E_TEST_VARIANT, get_etest_variant; print(get_etest_variant(E_TEST_VARIANT).slug)")}"
 PRESET="$(printf '%s__chunk%03d' "${ETEST_SLUG}" "${SLURM_ARRAY_TASK_ID}")"
 
 NTASKS="${SLURM_NTASKS:-1}"

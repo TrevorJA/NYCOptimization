@@ -19,7 +19,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 #SBATCH --time=05:00:00
-#SBATCH --array=0-49
+#SBATCH --array=0-24
 #SBATCH --output=logs/gen_etest_shard_%A_%a.out
 #SBATCH --error=logs/gen_etest_shard_%A_%a.err
 set -euo pipefail
@@ -35,7 +35,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
 export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
 
-export NYCOPT_ENSEMBLE_SHARD_COUNT="${NYCOPT_ENSEMBLE_SHARD_COUNT:-50}"
+export NYCOPT_ENSEMBLE_SHARD_COUNT="${NYCOPT_ENSEMBLE_SHARD_COUNT:-25}"
 export NYCOPT_ENSEMBLE_SHARD_INDEX="${SLURM_ARRAY_TASK_ID}"
 
 echo "[gen_etest_shard] variant=${VARIANT} shard ${NYCOPT_ENSEMBLE_SHARD_INDEX}/${NYCOPT_ENSEMBLE_SHARD_COUNT}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"

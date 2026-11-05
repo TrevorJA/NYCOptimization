@@ -20,8 +20,8 @@
 # Figures regenerate from tables.
 #
 # Prerequisites (stage A):
-#   outputs/synthetic_ensembles/etest_kn_50yr_n25000/hazard_image_subwindows.npz
-#   outputs/synthetic_ensembles/etest_kn_50yr_n25000/{hazard_image,forcing_profiles}.npz
+#   outputs/synthetic_ensembles/etest_kn_50yr_n12500/hazard_image_subwindows.npz
+#   outputs/synthetic_ensembles/etest_kn_50yr_n12500/{hazard_image,forcing_profiles}.npz
 #   outputs/synthetic_ensembles/statpool_10yr_n1000000_d{0,1,2}/hazard_image.npz
 # Stage B additionally needs the matched designs' re-eval leaves on the tag and
 # a sourced production env file (NYCOPT_REGRET_TAU, NYCOPT_CRITERIA_VARIANT).

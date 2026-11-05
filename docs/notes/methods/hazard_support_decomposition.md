@@ -118,12 +118,12 @@ can reach (the pool deficit).
 
 **Inputs.** The persisted per-SOW cubes of every (design, draw, seed)
 re-evaluation run on the campaign re-evaluation preset
-(`HSD_REEVAL_TAG`, the `etest_kn_50yr_n25000_first25ch` subset named by
+(`HSD_REEVAL_TAG`, the E_test slug `etest_kn_50yr_n12500` named by
 `src/etest.py::campaign_reeval_preset()`), discovered by
 `compare_designs.discover_runs` / `src.results_data`, the current FFMP policy's cube
 beside each run (`baseline/`), and the stage-A stratum labels consumed
-unchanged. Stage A labels all 1,000 generated SOWs and the re-evaluated 500 are
-their nested prefix.
+unchanged. Stage A labels the same 500 E_test SOWs (`HSD_ETEST_SLUG`), so the
+labels join stage B by SOW id.
 
 **Endpoints, per run × stratum, computed on the stratum's SOWs only.**
 
@@ -218,7 +218,8 @@ SOWs near the 0.05 cut and the split sizes move by fewer than 20 SOWs.
 The excursion is predominantly wet-forced and flood-side. `out_frac`
 correlates positively with the volume multiplier (Spearman r ≈ 0.57 with e^m,
 0.45 with r1), and the dominant excursion axis is `flood_peak_discharge` for
-447 of 1,000 SOWs (then `flood_pulse_duration`, 158). Dry-forced drought
+447 of 1,000 SOWs (then `flood_pulse_duration`, 158; measured on the 1,000-SOW
+image of 2026-08, before E_test was fixed at its leading 500). Dry-forced drought
 excursions are real but thin. The dry tercile's sub-window q99 exceeds the pool
 band on drought magnitude (60.2 vs 49.0) and development rate (2.26 vs 1.98, computed before the June 1 recompute), so only
 the top few percent of dry-tercile windows leave support. The stationary pool's

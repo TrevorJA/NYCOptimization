@@ -22,7 +22,7 @@
 # their volume multiplier and scores their sub-window drought tails against
 # the P=1e6 pool image. Requires images scored under the CURRENT rules (the
 # reader refuses any other), i.e. run AFTER the June 1 recompute of
-#   outputs/synthetic_ensembles/etest_kn_50yr_n25000/hazard_image_subwindows.npz
+#   outputs/synthetic_ensembles/etest_kn_50yr_n12500/hazard_image_subwindows.npz
 #   outputs/synthetic_ensembles/statpool_10yr_n1000000_d0/hazard_image.npz
 #
 # Submit:

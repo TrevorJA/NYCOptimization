@@ -19,10 +19,10 @@
 # tables + figures under outputs/supplemental/robustness_threshold_diagnostics/.
 #
 # Prerequisites:
-#   outputs/historic/ffmp_obj8_mm_full/reeval/etest_kn_50yr_n25000/baseline/
-#       (step 05 run_baseline.py --reeval on E_test)
+#   outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n12500/baseline/
+#       (step 09 with NYCOPT_CHUNK_POLICIES=baseline on E_test, historic env)
 #   outputs/baseline/ffmp_baseline.hdf5          (run_baseline.py, historic)
-#   outputs/synthetic_ensembles/etest_kn_50yr_n25000/forcing_profiles.npz
+#   outputs/synthetic_ensembles/etest_kn_50yr_n12500/forcing_profiles.npz
 #
 # All settings live in supplemental_config.py (RTD_ section) — no CLI value
 # flags. The anchor JSON cache makes the first step near-instant on reruns

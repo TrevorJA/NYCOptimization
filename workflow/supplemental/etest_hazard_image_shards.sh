@@ -18,7 +18,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=00:30:00
-#SBATCH --array=0-49
+#SBATCH --array=0-24
 #SBATCH --output=logs/etest_hazimg_shard_%A_%a.out
 #SBATCH --error=logs/etest_hazimg_shard_%A_%a.err
 set -euo pipefail

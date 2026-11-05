@@ -251,20 +251,22 @@ def test_fig_sampling_refuses_a_legacy_staging(tmp_path, monkeypatch):
                                             tmp_path / "fig", tmp_path)
 
 
-def test_fig_realized_reads_the_parent_of_a_subset(tmp_path, monkeypatch):
+def test_fig_realized_reads_the_tag_directory(tmp_path, monkeypatch):
+    """The realized table is read from the re-eval tag's own staged directory:
+    an E_test cut from a larger design carries its own merged tables, so no
+    reader follows ``subset_of`` to a parent."""
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)
-    parent = _stage(tmp_path, "etest_kn_10yr_n18", n_theta=6, r=3, u=U6)
-    _stage(tmp_path, "etest_kn_10yr_n18_first1ch", n_theta=2, r=3, u=U6[:2],
-           subset_of="etest_kn_10yr_n18")
+    _stage(tmp_path, "etest_kn_10yr_n36", n_theta=12, r=3, u=np.linspace(0.5, 0.9, 12))
+    tag = _stage(tmp_path, "etest_kn_10yr_n18", n_theta=6, r=3, u=U6,
+                 subset_of="etest_kn_10yr_n36")
     pd.DataFrame({
         "sow": np.arange(6), "u_nominal": U6, "k": 1.0 + U6, "clipped": False,
         "u_realized_mean": U6 + 0.02, "u_realized_min": U6 - 0.01,
         "u_realized_max": U6 + 0.05, "n_realizations": 3,
-    }).to_csv(parent / "demand_utilization_realized_by_sow.csv", index=False)
-    assert dup._parent_dir("etest_kn_10yr_n18_first1ch") == parent
+    }).to_csv(tag / "demand_utilization_realized_by_sow.csv", index=False)
     table_dir = tmp_path / "tables"
     table_dir.mkdir()
-    out = dup.fig_demand_utilization_realized(_ctx("etest_kn_10yr_n18_first1ch"),
+    out = dup.fig_demand_utilization_realized(_ctx("etest_kn_10yr_n18"),
                                               tmp_path / "fig", table_dir)
     assert (tmp_path / "fig.png").is_file()
     rows = pd.read_csv(table_dir / "demand_utilization_realized.csv")
