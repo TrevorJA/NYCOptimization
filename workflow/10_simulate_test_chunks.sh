@@ -26,12 +26,15 @@
 #   NYCOPT_CHUNK_UNIT_SECONDS        measured per-unit wall (enables the
 #                                    stop-before-the-wall guard)
 #
-# Campaign submission (chain identical resubmissions, each resumes, then 11):
-#   sbatch --nodes=8 --ntasks-per-node=128 --time=24:00:00 \
-#          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env,\
-# NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=<merged.ref>,\
-# NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=150 \
-#          workflow/10_simulate_test_chunks.sh
+# Campaign submission: through the helper, never typed at the prompt:
+#   bash workflow/submit_reeval_chunks.sh <design> [--nodes N]   # steps 10 + 11
+#   bash workflow/submit_reeval_chunks.sh baseline              # incumbent cube
+# Measured geometry (ANVIL_NOTES.md, 2026-11-05): `wholenode`, 128 single-
+# threaded ranks per node, NYCOPT_SEARCH_REALIZATION_BATCH=25 (~1.2 GB per
+# rank; batch 50 measured at 1.54 GB), NYCOPT_CHUNK_MERGE=off, step 11 chained;
+# ~80 min and 1.3 SU per (policy, chunk) unit. A truncated pass is resumed by
+# resubmitting (--no-merge), then --merge-only. Dense packing is the 33 SU per
+# policy basis; 16 ranks x 8 cpus on `shared` bills 8x for the same wall.
 #
 # Output: outputs/{scenario}/{slug}/reeval/{preset}[/seed_NN]/ (reeval_raw.parquet + meta);
 # the baseline policy goes to outputs/baseline/reeval/{preset}/, shared by every design.

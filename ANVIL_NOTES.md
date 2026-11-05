@@ -44,7 +44,7 @@ current campaign.
 | P=2,000 smoke pool | ~18 SU | ~1 h | 8 cpus / 32 GB header |
 | E_test generation, 100 shards | 1.4k SU | | `gen_etest_shard` |
 | E_test presim chunks, 100 tasks | 1.6k SU | | `prep_etest_chunk` |
-| Chunked re-evaluation (`sim_master_chunks`) | 33 SU per policy on 500 SOWs | | 16 jobs, 28.6k SU to date |
+| Chunked re-evaluation (`sim_master_chunks`, 128 ranks per node on `wholenode`) | 1.27–1.33 SU per (policy, chunk) unit = 33 SU per policy on 500 SOWs | ~80 min per unit per rank | jobs 19845823/19845825/19859233 (2026-08-13, 8–14 nodes); 28.6k SU to date; node RSS 197 GB at batch 50 |
 | Historic single-trace evaluation | ~31 s | | for re-evaluation sizing |
 
 ## Runtime rules of thumb
@@ -52,8 +52,13 @@ current campaign.
 - Pool generation is single-threaded at ~2.2 s per 10-yr realization
   (20,000 realizations per shard at 50 shards). Wall time per shard scales
   as P / shard count; total SU is nearly independent of the count.
-- Step-10 chunk re-evaluation OOMs under dense packing; use ~8 cpus per rank
-  with an explicit batch (16 × 8, batch = 50 works).
+- Step-10 chunk re-evaluation: 128 single-threaded ranks per node on `wholenode`
+  with an explicit realization batch (25 adopted; 50 measured at 1.54 GB per
+  rank). The 2026-08-08 OOMs (jobs 19733674/19733773) were batch 100 (~2.8 GB
+  per rank), not the rank count. The 16 ranks × 8 cpus `shared` layout (jobs
+  19738752, 20037455) takes the same ~80 min per unit but bills 8 cores per
+  rank: 10.8 SU per unit. One-policy cubes: `shared`, one rank per chunk × 2
+  cpus. Geometry lives in `workflow/submit_reeval_chunks.sh`.
 - Full-node searches at N = 300 project to 44–51 h to the 125k-per-island
   snapshot on 12 nodes (measured basis).
 
@@ -123,3 +128,14 @@ current campaign.
   resubmitted as 21951643, COMPLETED in 8 s: `etest_kn_50yr_n12500` staged (leading 25
   chunks of `etest_kn_50yr_n25000`), contract passed, realized utilization merged.
   Balance unchanged in substance (~591.6k).
+- 2026-11-05: step-10 geometry settled from sacct, no new jobs. The three dense
+  `wholenode` re-evaluations of 2026-08-13 (19845823: 8 nodes, 12.3 h, 991 policies x
+  10 chunks; 19845825: 8 nodes, 9.8 h, 784 x 10; 19859233: 14 nodes, 2.5 h, 335 x 10)
+  cost 1.27/1.28/1.33 SU per (policy, chunk) unit at ~76-80 min per unit per rank with
+  node RSS 197 GB (1.54 GB per rank): that is the "33 SU per policy" basis. The
+  `shared` 16 x 8 jobs (19738752, 20037455: 50 units in 4 h 14 m, 541 SU) run the same
+  81 min per unit but bill 10.8 SU per unit. The 2026-08-08 OOMs were batch 100 RSS,
+  not page cache (the dense nodes exceeded physical memory in RSS + cache and ran).
+  Adopted: `submit_reeval_chunks.sh` (wholenode 128 ranks/node, batch 25, chained
+  step 11; baseline cube on `shared` 25 x 2 cpus, ~75 SU instead of ~350 at 16 x 8).
+  Balance 591,730.

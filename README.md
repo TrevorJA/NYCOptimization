@@ -177,12 +177,10 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_producti
 # MOEAFramework runtime diagnostics on the per-seed coordinator archive (six indicators vs total NFE)
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env workflow/09_run_diagnostics.sh
 
-# Chunked E_test re-evaluation of the reference set (shared partition, 16 ranks x 8 cpus, batch 50), then merge
-sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:00 \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
-       workflow/10_simulate_test_chunks.sh          # resumable: resubmit the same line until every unit is written
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set \
-       workflow/11_merge_test_chunks.sh
+# Chunked E_test re-evaluation of the installed set (wholenode, 128 ranks per node, batch 25), then the chained merge
+bash workflow/submit_reeval_chunks.sh monte_carlo              # --nodes N sets only the wall; --dry-run prints the lines
+bash workflow/submit_reeval_chunks.sh monte_carlo --no-merge   # resumed pass if the wall truncated the first
+bash workflow/submit_reeval_chunks.sh monte_carlo --merge-only # once every unit is written
 ```
 
 Repeat for each campaign env file with the **same** preset (`supplemental/results_diagnostics/reevaluate_unchunked.sh` is the unchunked alternative that also persists simulation timeseries). Then:

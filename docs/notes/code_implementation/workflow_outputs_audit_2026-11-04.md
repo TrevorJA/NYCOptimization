@@ -466,7 +466,7 @@ Deviations from the recommendations, each a smaller change than proposed:
 - 4.2: the local-only rule is stated once in the workflow README instead of a
   tag in fifteen docstrings.
 - D10: index only; the parent's unused chunks stay in place.
-- D9: the step-10 + 11 helper waits for the geometry vet (TODO §2).
+- D9: `submit_reeval_chunks.sh` added 2026-11-05 once the geometry was settled from the August accounting (TODO §2).
 
 Independent review (separate agent, 2026-11-04, after the moves): twenty
 findings, nineteen fixed in the working tree (pass-through sbatch flags were
