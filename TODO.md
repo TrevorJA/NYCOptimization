@@ -11,7 +11,7 @@ State at the end of the 2026-11-04 preparation session. Done: git review and out
 inventory; every pre-2026-11-04 simulation output moved to `archive/` (repo-root symlink
 into projects space, `archive/README.md`; `outputs/` now holds only streamflow data,
 presim, the cost experiments and `run_manifests/`); fresh projects-space homes and
-`outputs/diagnostics/demand_utilization/` (k(u) table, S12) written; the 0.80
+`outputs/reference/demand_utilization/` (k(u) table, S12) written; the 0.80
 annual-volume extension REVERTED (decision 2026-11-04; the box is the plain widened
 CMIP6 range, e^m = 0.866 to 1.32, `src/etest.py`), so the E_test staged 2026-08-19 is
 reused: moved back from the archive, its retired sub-window hazard image set aside,
@@ -76,7 +76,7 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
 - [ ] **[HPC] 4. Historic step-06 baseline** (objective anchor; the cube above replaces
   the former `--reeval` leg, now opt-in via `NYCOPT_BASELINE_REEVAL=1`):
   `sbatch --export=ALL,NYCOPT_ENV_FILE=$H workflow/06_run_baseline.sh`
-  -> `outputs/baseline/ffmp_baseline_objectives.csv` (now the Trenton deficit column).
+  -> `outputs/baseline/historic/ffmp_baseline_objectives.csv` (now the Trenton deficit column).
 - [ ] **[HPC] 5. After HIST seed 1 (and seed 2)**: `extract_runtime_archive.py --seed 1`,
   the ε re-filter, seed 2, `--merge --install`, step 09, steps 10 + 11 on
   `etest_kn_50yr_n12500`, then 10/13/14 (Section 2 items).
@@ -337,6 +337,9 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   sizes from the search spec anyway. Whichever geometry is adopted: re-derive the
   SU-per-policy line from the smoke, fix the four records above, and re-check the
   ~66 SU current-policy cube lines (§0 B, §2) that carry the same per-unit basis.
+  Then write `workflow/submit_reeval_chunks.sh <design>` (steps 10 + 11 at the
+  adopted geometry, the pattern of `submit_production_search.sh`) so no step-10 line
+  is typed at the prompt.
 - [ ] **[HPC]** E_test re-evaluation: steps 10 + 11 at the geometry settled by the
   item above (documented: `shared`, 16 ranks × 8 cpus, batch 50),
   `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500` on every
@@ -393,7 +396,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
 
 ## 4. Figures and manuscript
 
-- [ ] **[local]** Historic dynamics figures (`figures/historic/ffmp_obj8/dynamics/`,
+- [ ] **[local]** Historic dynamics figures (`outputs/figures/historic/ffmp_obj8/dynamics/`,
   1960s and 2002 droughts): decide which periods/panels go to the SI and whether to
   add panels (Trenton, NJ diversion, drought level) via the `PANELS` registry; render
   them from the campaign HIST set (Section 0: pre-2026-11-04 results are superseded).

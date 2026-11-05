@@ -1,5 +1,7 @@
 # Framing-Convention Diagnostics (SI)
 
+> Outputs cited under `outputs/supplemental/framing_convention/` were archived on 2026-11-04 (`archive/2026-11-04_pre_demand_update/`, pre-demand-update results); they regenerate under the current campaign.
+
 Offline screens that fix the formulation's conventions from measured
 sensitivity rather than assertion: the annual failure-week count k, the weekly
 satisfaction factor, the flood unit operator and the flood objective's

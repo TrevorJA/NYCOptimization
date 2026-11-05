@@ -19,7 +19,7 @@ Configuration (no CLI value flags):
     NYCOPT_PERSVERIFY_YEARS    years per realization    (default 50)
     NYCOPT_PERSVERIFY_SEED     master seed              (default 20260729)
 
-Outputs -> ``outputs/supplemental/persistence_axis/baseline_verification/``:
+Outputs -> ``outputs/supplemental/persistence_axis/tables/baseline_verification/``:
     realization_metrics.csv   per-realization metrics
     findings.json             ensemble summaries vs historical references
 """
@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 
 import config
+import supplemental_config as scfg
 
 from src.ensemble_generation import _fit_kirsch, _load_masked_flows
 
@@ -48,7 +49,7 @@ SEED = int(os.environ.get("NYCOPT_PERSVERIFY_SEED", "20260729"))
 
 NYC = ["cannonsville", "pepacton", "neversink"]
 
-OUT_DIR = config.OUTPUTS_DIR / "supplemental" / "persistence_axis" / "baseline_verification"
+OUT_DIR = scfg.PAX_OUTPUT_ROOT / "tables" / "baseline_verification"
 
 
 def _annual_rho1(ann: np.ndarray) -> float:

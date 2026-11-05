@@ -3,7 +3,7 @@
 # predicted-inflow kernel (pywrdrb PredictedInflowEnsemblePreprocessor).
 #
 # Regenerates one staged E_test chunk's predicted inflows on the vectorized
-# path (same 33-rank MPI layout as step 04) into outputs/tmp_bitcheck/, then
+# path (same 33-rank MPI layout as step 04) into outputs/supplemental/predicted_inflow_bitcheck/scratch/, then
 # bit-compares every dataset against the staged production artifact (produced
 # by the scalar path). Exact equality expected; any nonzero diff is reported
 # per column against the 1% robust-range cross-era tolerance and the job exits

@@ -1,5 +1,7 @@
 # Transfer Evaluation Across Scenario-Design Search Ensembles (supplemental)
 
+> Outputs cited under `outputs/supplemental/transfer_evaluation/` were archived on 2026-11-04 (`archive/2026-11-04_pre_demand_update/`, pre-demand-update results); they regenerate under the current campaign.
+
 *Asks what each scenario design's Pareto-approximate set looks like when it is evaluated under
 the **other** designs' search ensembles, and answers it entirely with metrics the study already
 uses: Pareto dominance over the FFMP baseline, epsilon-nondominated merged reference sets, and

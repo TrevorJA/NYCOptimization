@@ -33,6 +33,11 @@ import config
 #: Valid tiers, in display order.
 TIERS = ("manuscript", "si", "exploratory")
 
+#: Data needs produced by the re-evaluation on one E_test tag; a figure
+#: without any of them is design support (``FigureContext.tables``).
+TAG_BOUND_NEEDS = frozenset({"cube", "scorecard", "criteria_scorecard",
+                             "factor_mapping", "regret_by_utilization"})
+
 
 class FigureContext:
     """Lazy accessors for everything figure builders consume.
@@ -87,9 +92,19 @@ class FigureContext:
         """The cross-design table root for this slug + tag."""
         return config.OUTPUTS_DIR / "comparison" / self.slug / self.tag
 
-    def tables(self, kind: str) -> Path:
-        """The companion-CSV dir for one figure kind (created)."""
-        p = self.comparison_dir() / "figure_tables" / kind
+    def tables(self, kind: str, needs: frozenset = frozenset()) -> Path:
+        """The companion-CSV dir for one figure kind (created).
+
+        A figure whose ``needs`` include a re-evaluation product files under
+        ``comparison/{slug}/{tag}/``; one that reads only staged ensembles,
+        search sets or calibration tables is design support and files under
+        ``comparison/{slug}/design/``, independent of any re-evaluation tag.
+        """
+        if needs & TAG_BOUND_NEEDS:
+            root = self.comparison_dir()
+        else:
+            root = config.OUTPUTS_DIR / "comparison" / self.slug / "design"
+        p = root / "figure_tables" / kind
         p.mkdir(parents=True, exist_ok=True)
         return p
 

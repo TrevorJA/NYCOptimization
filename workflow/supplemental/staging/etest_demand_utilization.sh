@@ -2,7 +2,7 @@
 # E_test demand-utilization axis, metadata only (no streamflow, no simulation):
 #   1. scripts/supplemental/demand_utilization_calibration.py — tabulates u(k) for
 #      the NYC utilization axis once from Pywr-DRB's extrapolation preprocessor
-#      (outputs/diagnostics/demand_utilization/, SI figure S12); deterministic,
+#      (outputs/reference/demand_utilization/, SI figure S12); deterministic,
 #      so re-running it is a no-op in substance.
 #   2. scripts/supplemental/append_demand_utilization.py --variant VARIANT — draws
 #      the per-SOW utilization column u from the reserved `{seed_domain}:demand`

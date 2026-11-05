@@ -42,9 +42,7 @@ source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/wo
 nycopt_setup_env
 nycopt_source_env_file optional
 
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
-export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
-export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
+nycopt_full_threads 4
 
 FIGURES="${FIGURES:-}"
 

@@ -13,7 +13,7 @@ formula behind the per-SOW values in the E_test re-eval cube (the N = 1 case).
 This is the apples-to-apples anchor for the satisficing thresholds, which act
 on per-SOW annual-unit objective values. It is the seam that keeps
 ``robustness_threshold_figures.py`` pywrdrb-free. The persisted
-``outputs/baseline/ffmp_baseline_objectives.csv`` lives in the SAME metric
+``outputs/baseline/historic/ffmp_baseline_objectives.csv`` lives in the SAME metric
 space and serves as a cross-check in the comparison table.
 
 Configuration lives in supplemental_config.py (RTD_* section) — no CLI value

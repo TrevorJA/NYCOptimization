@@ -126,23 +126,23 @@ The deeply uncertain climate forcing enters this study only in the held-out re-e
 
 **Harmonic parameterization.** Each of 54 CMIP6 future-run change profiles, the ratio of future to historical monthly mean flow computed per model run, is fit with a second-order harmonic in the log change factor. The three sampled coordinates are the annual-mean level and the two harmonic amplitude ratios, which govern annual volume, seasonal amplitude, and the snowmelt-shoulder shape; the median per-profile shape $R^2$ is 0.85. The harmonic phases are held fixed at the fit to the CMIP6 ensemble-mean profile, because individual-run phases, especially the semiannual phase, are noisy, and sampling them would add dimensions that encode fit noise rather than climate information. The re-evaluation ensemble samples the three amplitudes by Latin hypercube over their full empirical range across the 54 runs, widened by a 25 percent margin on every axis, so that the annual-volume multiplier spans 0.866 to 1.32. Figures S12 through S16 show the harmonic fit quality, the fitted parameter space, and the sampled envelope.
 
-![Figure S12](../../outputs/diagnostics/forcing_parameterization/SI_harmonic_fit.png)
+![Figure S12](../../outputs/reference/forcing_parameterization/SI_harmonic_fit.png)
 
 **Figure S12.** Second-order harmonic fit to the CMIP6 ensemble-mean monthly change profile.
 
-![Figure S13](../../outputs/diagnostics/forcing_parameterization/SI_harmonic_best_worst_fits.png)
+![Figure S13](../../outputs/reference/forcing_parameterization/SI_harmonic_best_worst_fits.png)
 
 **Figure S13.** Best and worst individual-run harmonic fits across the 54 CMIP6 change profiles.
 
-![Figure S14](../../outputs/diagnostics/forcing_parameterization/SI_harmonic_param_space.png)
+![Figure S14](../../outputs/reference/forcing_parameterization/SI_harmonic_param_space.png)
 
 **Figure S14.** The fitted harmonic parameter space of the 54 CMIP6 change profiles.
 
-![Figure S15](../../outputs/diagnostics/forcing_parameterization/SI_harmonic_lhs_sampling.png)
+![Figure S15](../../outputs/reference/forcing_parameterization/SI_harmonic_lhs_sampling.png)
 
 **Figure S15.** The Latin hypercube sampling envelope over the fitted amplitudes, widened by the 25 percent margin, relative to the CMIP6-fitted points.
 
-![Figure S16](../../outputs/diagnostics/forcing_parameterization/SI_harmonic_monthly_flow_comparison.png)
+![Figure S16](../../outputs/reference/forcing_parameterization/SI_harmonic_monthly_flow_comparison.png)
 
 **Figure S16.** Monthly-flow envelopes implied by the sampled forcing space, compared with the CMIP6 change profiles.
 

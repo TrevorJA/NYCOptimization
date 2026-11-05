@@ -60,7 +60,7 @@ def main() -> None:
     run_dir = Path(args.run_dir) if args.run_dir else default_run_dir(
         args.scenario, args.slug, args.tag)
     out_dir = Path(args.out_dir) if args.out_dir else (
-        PROJECT_DIR / "figures" / args.scenario / args.slug / "dynamics")
+        PROJECT_DIR / "outputs" / "figures" / args.scenario / args.slug / "dynamics")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     manifest, runs = load_policy_runs(run_dir, REQUIRED_RESULTS_SETS, args.policies)

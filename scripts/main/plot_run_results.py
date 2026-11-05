@@ -43,7 +43,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from config import baseline_objectives_csv
+from config import FIGURES_DIR, baseline_objectives_csv
 from src.pareto_filter import filter_reference_set
 
 
@@ -338,7 +338,7 @@ def main():
 
     run_dir = _run_dir(args.scenario, args.slug)
     reeval_dir = run_dir / "reeval" / args.preset
-    out_dir = Path("figures") / args.scenario / args.slug
+    out_dir = FIGURES_DIR / args.scenario / args.slug
     out_dir.mkdir(parents=True, exist_ok=True)
     ref_set = _reeval_ref_set(run_dir, args.slug)
     print(f"run_dir={run_dir}\nreeval_dir={reeval_dir}\nref_set={ref_set}\n"

@@ -49,7 +49,7 @@ fi
 # The NYC utilization column (the fourth E_test factor) is appended to the
 # parent metadata before any chunk's demand series is staged: step 04 reads the
 # parent's nominal table to scale each chunk's demand per SOW.
-if [[ ! -f "outputs/diagnostics/demand_utilization/demand_utilization_calibration.csv" ]]; then
+if [[ ! -f "outputs/reference/demand_utilization/demand_utilization_calibration.csv" ]]; then
     python3 -u scripts/supplemental/demand_utilization_calibration.py
 fi
 if ! python3 -c "import numpy as np, sys; z = np.load('outputs/synthetic_ensembles/${POOL}/forcing_profiles.npz', allow_pickle=True); sys.exit(0 if 'demand_utilization' in z.files else 1)"; then

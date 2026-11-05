@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from config import (ACTIVE_MOEA_CONFIG, active_scenario_name,
+from config import (ACTIVE_MOEA_CONFIG, FIGURES_DIR, active_scenario_name,
                     baseline_objectives_csv, run_output_dir)
 from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
@@ -224,7 +224,7 @@ def render_search_diagnostics(slug: str, scenario: str = None) -> Path:
         scenario = active_scenario_name()
     formulation = formulation_for(slug)
     run_dir = Path("outputs") / scenario / slug
-    out_dir = Path("figures") / scenario / slug
+    out_dir = FIGURES_DIR / scenario / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     seeds = discover_seeds(slug, scenario=scenario)
     total_nfe = reporting_total_nfe()

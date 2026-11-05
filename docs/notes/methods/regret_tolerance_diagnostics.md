@@ -1,5 +1,7 @@
 # Regret-Tolerance Diagnostics
 
+> Outputs cited under `outputs/supplemental/regret_tolerance_diagnostics/` were archived on 2026-11-04 (`archive/2026-11-04_pre_demand_update/`, pre-demand-update results); they regenerate under the current campaign.
+
 Fixes the two free parameters of the regret comparison
 (`objective_definitions.md` §3.2b): the regret tolerance
 $\tau_i = k\,u_i$ with $u_i = \max(\epsilon_i, \tau_i^{\text{floor}})$, and the

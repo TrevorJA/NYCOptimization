@@ -39,6 +39,7 @@ from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_
 from src.load.reference_set import load_reference_set
 from src.sensitivity_common import epsilon_nondominated
 from config import get_epsilons
+import supplemental_config as scfg
 
 # Candidate grids per axis, keyed by objective name (active-set order
 # preserved); unlisted axes keep the adopted value.
@@ -283,7 +284,7 @@ def main():
     args = ap.parse_args()
 
     run_dir = Path("outputs") / args.scenario / args.slug
-    out_dir = Path("outputs/supplemental/epsilon_refilter") / f"{args.scenario}_{args.slug}"
+    out_dir = scfg.EPSREF_OUTPUT_ROOT / f"{args.scenario}_{args.slug}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     names = get_obj_names()

@@ -67,7 +67,7 @@ DEMAND_UTILIZATION_SEED_DOMAIN: str = "etest:kn:demand"
 NYC_ALLOCATION_MGD: float = float(config.NYC_DECREE_DIVERSION_CAP_MGD)
 
 #: Where the calibration artifacts live (gitignored, regenerable).
-DEMAND_UTILIZATION_DIR: Path = config.OUTPUTS_DIR / "diagnostics" / "demand_utilization"
+DEMAND_UTILIZATION_DIR: Path = config.REFERENCE_DIR / "demand_utilization"
 CALIBRATION_CSV: Path = DEMAND_UTILIZATION_DIR / "demand_utilization_calibration.csv"
 REFERENCE_SERIES_CSV: Path = DEMAND_UTILIZATION_DIR / "demand_reference_uncapped_mgd.csv"
 

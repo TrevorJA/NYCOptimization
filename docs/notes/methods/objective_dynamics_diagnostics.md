@@ -1,5 +1,7 @@
 # Objective-Dynamics Anatomy Figures
 
+> Outputs cited under `outputs/supplemental/objective_dynamics/` were archived on 2026-11-04 (`archive/2026-11-04_pre_demand_update/`, pre-demand-update results); they regenerate under the current campaign.
+
 Two local diagnostic suites draw the operational dynamics behind each objective
 (NYC delivery, Montague flow, Trenton flow, NYC storage, downstream flooding)
 for the default FFMP baseline and one interpretable storage-conservative

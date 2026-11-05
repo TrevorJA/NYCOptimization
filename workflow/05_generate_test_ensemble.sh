@@ -38,9 +38,7 @@ nycopt_source_env_file optional
 VARIANT="${NYCOPT_ETEST_VARIANT:-kn}"
 
 # Generator is single-process; let BLAS use the full allocation (no pinning).
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
-export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
+nycopt_full_threads 8
 
 echo "[gen_etest] variant=${VARIANT}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 python3 -u -m scripts.main.generate_test_ensemble --variant "${VARIANT}"

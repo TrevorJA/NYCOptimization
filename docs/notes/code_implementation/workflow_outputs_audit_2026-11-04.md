@@ -1,7 +1,8 @@
 # Workflow and output organization audit (2026-11-04)
 
-Status: recommendations awaiting approval. Nothing was moved, renamed, or deleted
-in this pass. Three read-only passes were run in parallel on Anvil (main workflow
+Status: executed 2026-11-04 (all phases; see the closing section). The step
+numbers, script paths and env-file names quoted in Sections 1 to 7 are the
+pre-cleanup ones and are kept as the record of what was found. Three read-only passes were run in parallel on Anvil (main workflow
 layer; supplemental layer; output and figure trees), followed by a verification
 of every concrete defect reported. Approved items are executed in the phases of
 Section 7; the move maps in Sections 4 and 5 are the execution specification.
@@ -436,3 +437,33 @@ Order, all before the HIST submit, one commit per phase:
 
 If the HIST search must go first, Phase 0 alone is still safe beforehand, and
 Phase 2 waits until it has finished (about 12 h), because O2 moves `presim/`.
+
+## 8. Outcome (2026-11-04)
+
+Executed in three commits plus a working-tree change set (the commits are
+Trevor's to make): Phase 0 (defects F1 to F11, O4, O8, O9); the workflow layer
+(D1 full renumber with the new step 08 wrapper, D2 subfolders, D3 env renames,
+`envs/retired/`, the two staging submit helpers, the seasonality-check wrapper,
+one replication narrative in the root README with the workflow README as the
+per-step reference); the output layer (O1, O2, O3, O5, O6, O7) and the
+`_common.sh` cleanups (3.4), archive notes in seven methods docs, and
+`outputs/synthetic_ensembles/README.md` (untracked, like `archive/README.md`).
+
+Deviations from the recommendations, each a smaller change than proposed:
+
+- O2 keeps the subfolder name `forcing_parameterization` under
+  `outputs/reference/` (not `forcing_fdc`), since the SI figure writer and the
+  FDC cache share it and the SI image links only change their parent.
+- O3 moves only the historic objectives CSV to `outputs/baseline/historic/`;
+  the single-trace HDF5 trace stays flat (it is scenario-independent).
+- F7: the `hazard_examples.sh` and `hf_design_metrics.sh` prerequisites name
+  the N = 300 slugs that the pending restage (TODO §2) will produce, so they
+  stand; `robustness_threshold_diagnostics.sh` had already been corrected by the
+  500-SOW commits.
+- 3.4: no manifest write was added to the re-evaluation steps (their meta
+  files already record the identity); the Hopper branches are keyed on
+  `NYCOPT_CLUSTER` rather than removed.
+- 4.2: the local-only rule is stated once in the workflow README instead of a
+  tag in fifteen docstrings.
+- D10: index only; the parent's unused chunks stay in place.
+- D9: the step-10 + 11 helper waits for the geometry vet (TODO §2).

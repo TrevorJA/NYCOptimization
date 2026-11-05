@@ -25,7 +25,7 @@ Configuration (no CLI value flags):
     NYCOPT_PERSDIAG_YEARS    years per realization     (default 50)
     NYCOPT_PERSDIAG_SEED     root seed                 (default 20260728)
 
-Outputs -> ``outputs/supplemental/persistence_axis/``:
+Outputs -> ``outputs/supplemental/persistence_axis/{tables,figures}/``:
     settings_summary.csv   per-(phi, lam) gain/distortion metrics
     persistence_axis.png   rho1 response curve + distortion panel
     findings.json          headline numbers
@@ -50,6 +50,7 @@ import numpy as np
 import pandas as pd
 
 import config
+import supplemental_config as scfg
 from scengen.persistence import persistent_bootstrap_indices, wetness_rank_order
 
 from src.ensemble_generation import _fit_kirsch, _load_masked_flows
@@ -65,7 +66,9 @@ SETTINGS: list[tuple[float, float]] = [
     (0.5, 0.35), (0.9, 0.35),
 ]
 
-OUT_DIR = config.OUTPUTS_DIR / "supplemental" / "persistence_axis"
+OUT_DIR = scfg.PAX_OUTPUT_ROOT
+TABLES_DIR = OUT_DIR / "tables"
+FIG_DIR = OUT_DIR / "figures"
 
 
 def _annual_rho1(ann: np.ndarray) -> float:
@@ -126,7 +129,8 @@ def _distortion_metrics(frames: list[pd.DataFrame]) -> dict:
 
 
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    TABLES_DIR.mkdir(parents=True, exist_ok=True)
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     Q_gage, _, _ = _load_masked_flows("pub_nhmv10_BC_withObsScaled")
     Q_gen = Q_gage.loc["1945-10-01":"2022-09-30"]
@@ -177,7 +181,7 @@ def main() -> None:
               f"std_drift={row['std_drift_max_rel']:.3f}")
 
     out = pd.DataFrame(rows)
-    out.to_csv(OUT_DIR / "settings_summary.csv", index=False)
+    out.to_csv(TABLES_DIR / "settings_summary.csv", index=False)
 
     main_curve = out[(out.phi == 0.8)]
     ctrl = out.iloc[0]
@@ -204,7 +208,7 @@ def main() -> None:
     ax2.legend(frameon=False, fontsize=8)
     ax2.set_title("distortion: within-year / cross-site structure")
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "persistence_axis.png", dpi=200)
+    fig.savefig(FIG_DIR / "persistence_axis.png", dpi=200)
 
     findings = {
         "R": R, "years": YEARS, "seed": SEED,
@@ -212,7 +216,7 @@ def main() -> None:
         "cmip6_future_rho1_p5_p50_p95": [-0.10, 0.08, 0.40],
         "settings": out.round(4).to_dict("records"),
     }
-    (OUT_DIR / "findings.json").write_text(json.dumps(findings, indent=2))
+    (TABLES_DIR / "findings.json").write_text(json.dumps(findings, indent=2))
     print(out.round(3).to_string(index=False))
     print(f"[persdiag] wrote {OUT_DIR}")
 

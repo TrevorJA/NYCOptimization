@@ -28,8 +28,8 @@ Usage:
     python scripts/main/generate_presim.py
 
 Outputs:
-    outputs/presim/presimulated_releases_mgd.csv
-    outputs/presim/presimulated_releases_mgd_metadata.json
+    outputs/reference/presim/presimulated_releases_mgd.csv
+    outputs/reference/presim/presimulated_releases_mgd_metadata.json
 """
 
 import sys

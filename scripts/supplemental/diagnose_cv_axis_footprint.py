@@ -25,7 +25,7 @@ Configuration (no CLI value flags):
     NYCOPT_CVDIAG_YEARS     realization length, years  (default 10)
     NYCOPT_CVDIAG_SEED      root seed                  (default 20260728)
 
-Outputs -> ``outputs/supplemental/cv_axis_footprint/``:
+Outputs -> ``outputs/supplemental/cv_axis_footprint/{tables,figures}/``:
     hazard_images.npz      H_off, H_on (N x 8), axis names, theta matrices
     footprint_summary.csv  per-axis footprint stats (both runs) + widening ratios
     paired_deltas.csv      per-realization per-axis deltas (ON - OFF)
@@ -51,6 +51,7 @@ import numpy as np
 import pandas as pd
 
 import config
+import supplemental_config as scfg
 from scengen.forcing_ensemble import ForcingEnsembleConfig
 from scengen.hazard_filling import daily_to_monthly
 from scengen.hazard_metrics import DEFAULT_NYC_INFLOW_NODES
@@ -70,7 +71,9 @@ YEARS = int(os.environ.get("NYCOPT_CVDIAG_YEARS", "10"))
 SEED = int(os.environ.get("NYCOPT_CVDIAG_SEED", "20260728"))
 BLOCK = 16  # profiles per generation block (bounds peak memory)
 
-OUT_DIR = config.OUTPUTS_DIR / "supplemental" / "cv_axis_footprint"
+OUT_DIR = scfg.CVF_OUTPUT_ROOT
+TABLES_DIR = OUT_DIR / "tables"
+FIG_DIR = OUT_DIR / "figures"
 
 
 def _diag_config(*, variance_axis: bool) -> ForcingEnsembleConfig:
@@ -142,7 +145,8 @@ def _footprint_stats(H: np.ndarray, axes: list[str], label: str) -> pd.DataFrame
 
 
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    TABLES_DIR.mkdir(parents=True, exist_ok=True)
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"[cvdiag] OFF run (c = a): N_theta={N_THETA}, L={YEARS} yr, seed={SEED}")
     H_off, axes, theta_off, names_off = _hazard_image(_diag_config(variance_axis=False))
@@ -153,7 +157,7 @@ def main() -> None:
     np.testing.assert_allclose(theta_off, theta_on[:, : theta_off.shape[1]])
 
     np.savez(
-        OUT_DIR / "hazard_images.npz",
+        TABLES_DIR / "hazard_images.npz",
         H_off=H_off, H_on=H_on, hazard_axes=np.array(axes),
         theta_off=theta_off, theta_on=theta_on,
         theta_names_off=np.array(names_off), theta_names_on=np.array(names_on),
@@ -179,11 +183,11 @@ def main() -> None:
     summary["p95_shift_in_off_spans"] = (
         (summary["p95_on"] - summary["p95_off"]) / summary["span_off"]
     )
-    summary.to_csv(OUT_DIR / "footprint_summary.csv", index=False)
+    summary.to_csv(TABLES_DIR / "footprint_summary.csv", index=False)
 
     deltas = pd.DataFrame(H_on - H_off, columns=axes)
     deltas.insert(0, "realization", np.arange(N_THETA))
-    deltas.to_csv(OUT_DIR / "paired_deltas.csv", index=False)
+    deltas.to_csv(TABLES_DIR / "paired_deltas.csv", index=False)
 
     # Figure: per-axis footprint (min-max whisker + p5-p95 bar), normalized by OFF span.
     fig, ax = plt.subplots(figsize=(9, 4.5))
@@ -204,7 +208,7 @@ def main() -> None:
     )
     ax.legend(frameon=False, fontsize=8)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "cv_axis_footprint.png", dpi=200)
+    fig.savefig(FIG_DIR / "cv_axis_footprint.png", dpi=200)
 
     findings = {
         "n_theta": N_THETA, "years": YEARS, "seed": SEED,
@@ -216,7 +220,7 @@ def main() -> None:
             zip(summary["axis"], summary["p95_shift_in_off_spans"])
         ),
     }
-    (OUT_DIR / "findings.json").write_text(json.dumps(findings, indent=2))
+    (TABLES_DIR / "findings.json").write_text(json.dumps(findings, indent=2))
     print(summary.round(3).to_string(index=False))
     print(f"[cvdiag] wrote {OUT_DIR}")
 

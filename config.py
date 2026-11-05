@@ -90,8 +90,12 @@ SI_FIG_DIR = PROJECT_DIR / "figures" / "si"
 # Borg shared libraries (user must compile and place here)
 BORG_DIR = PROJECT_DIR / "lib" / "borg"
 
-# Pywr-DRB pre-simulated releases for trimmed model
-PRESIM_DIR = OUTPUTS_DIR / "presim"
+# Pipeline-wide derived inputs (regenerable, read by many steps): the
+# presimulated non-NYC releases (step 01), the demand-utilization
+# calibration (src.demand_utilization) and the forcing-parameterization
+# caches and SI figures (scripts/main/forcing_fdc_cache.py).
+REFERENCE_DIR = OUTPUTS_DIR / "reference"
+PRESIM_DIR = REFERENCE_DIR / "presim"
 PRESIM_FILE = PRESIM_DIR / "presimulated_releases_mgd.csv"
 
 # Staged synthetic-ensemble inputs, one directory per slug under
@@ -143,7 +147,7 @@ SALINITY_LSTM_MODEL = _parse_path_env(
 # and {artifact} is the output type (sets, runtime, metrics, reeval,
 # diagnostics, ...). Cross-design comparison reads across {scenario} dirs.
 #
-# A few non-run outputs keep a flat top-level home (manifests, presim,
+# A few non-run outputs keep a flat top-level home (manifests, reference/,
 # baselines). Per-run diagnostics use run_output_dir(scenario, slug,
 # "diagnostics"); off-pipeline experiments live under outputs/supplemental/
 # (supplemental_config.py).
@@ -176,29 +180,24 @@ def baseline_objectives_csv(formulation: str = "ffmp",
     """Path of the baseline FFMP objective vector comparable to a scenario.
 
     A baseline vector is only comparable to a front evaluated on the SAME
-    substrate, so the file is scenario-partitioned: the historic baseline
-    (single trace, full model, step 06 default path) keeps its legacy flat
-    location, while every other scenario design points at the same default
-    policy scored on that design's search ensemble (step 06
-    ``--search-ensemble``). Consumers get "no file" — not a historic-record
-    vector — when a scenario has not been scored yet.
+    substrate, so the file is scenario-partitioned: the historic design scores
+    the default policy on its single trace (step 06 default path), every other
+    design on its own search ensemble (step 06 ``--search-ensemble``).
+    Consumers get "no file" — not a historic-record vector — when a scenario
+    has not been scored yet. The historic single-trace HDF5 trace stays flat
+    at ``outputs/baseline/{formulation}_baseline.hdf5``.
 
     Args:
         formulation: Problem formulation name.
         scenario: Scenario-design name; defaults to the active design.
 
     Returns:
-        ``outputs/baseline/{formulation}_baseline_objectives.csv`` for the
-        historic design, else
         ``outputs/baseline/{scenario}/{formulation}_baseline_objectives.csv``
         (parent NOT created — this is a locator, not a writer).
     """
     if scenario is None:
         scenario = active_scenario_name()
-    name = f"{formulation}_baseline_objectives.csv"
-    if scenario == "historic":
-        return OUTPUT_BASELINE_DIR / name
-    return OUTPUT_BASELINE_DIR / scenario / name
+    return OUTPUT_BASELINE_DIR / scenario / f"{formulation}_baseline_objectives.csv"
 
 
 #: Per-run figure kinds routed to the stable results tree.

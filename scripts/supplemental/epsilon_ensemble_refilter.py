@@ -45,6 +45,7 @@ from src.formulations import (get_obj_names, get_obj_directions,  # noqa: E402
 from src.load.reference_set import load_reference_set  # noqa: E402
 from src.sensitivity_common import epsilon_nondominated  # noqa: E402
 from config import get_epsilons  # noqa: E402
+import supplemental_config as scfg  # noqa: E402
 
 #: Objective-family membership, by registry-name pattern (order-robust).
 GROUPS = {
@@ -467,7 +468,7 @@ def main():
     eps_adopted = np.array(get_epsilons(), dtype=float)
     n_vars = get_n_vars("ffmp")
     n_objs = get_n_objs()
-    root = Path("outputs/supplemental/epsilon_refilter")
+    root = scfg.EPSREF_OUTPUT_ROOT
 
     all_results, all_archives = {}, {}
     for scenario in args.scenarios:

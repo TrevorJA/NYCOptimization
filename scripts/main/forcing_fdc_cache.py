@@ -17,7 +17,7 @@ compute-then-plot split. It stores ONE FDC ROW PER REALIZATION rather than a
 pre-reduced band, so the envelope definition (min-max, 5th-95th, ...) stays a
 plot-time choice and re-rendering never re-reads the ensemble.
 
-Written to ``outputs/diagnostics/forcing_parameterization/fdc_cache.npz``.
+Written to ``outputs/reference/forcing_parameterization/fdc_cache.npz``.
 
 Run through srun/sbatch, never on a login node::
 
@@ -44,9 +44,9 @@ import config
 #: cache (500 x 25,000 float32 = 50 MB).
 N_GRID: int = 500
 
-#: Cache location. Under ``outputs/diagnostics/`` alongside the SI forcing
+#: Cache location. Under ``outputs/reference/`` alongside the SI forcing
 #: figures; gitignored and regenerable.
-DEFAULT_CACHE = (config.OUTPUTS_DIR / "diagnostics" / "forcing_parameterization"
+DEFAULT_CACHE = (config.REFERENCE_DIR / "forcing_parameterization"
                  / "fdc_cache.npz")
 
 #: Directory of per-run CMIP6 pywrdrb inputs (sibling repo). Same daily

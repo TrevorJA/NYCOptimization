@@ -2,7 +2,7 @@
 
 Thin command-line wrapper around :mod:`src.policy_simulation`. By default it
 simulates the highlighted policies of an ``explore_results`` selection table
-(``figures/{scenario}/{slug}/selected_solutions.csv``: the balanced compromise
+(``outputs/figures/_exploratory/{scenario}/{slug}/explore/selected_solutions.csv``: the balanced compromise
 and the diverse picks shown in ``explore_02_selected_policies.png``) from the
 matching reference set, plus the incumbent FFMP policy, on the historic trace
 with the full Pywr-DRB model, and keeps the complete HDF5 output of each run
@@ -27,7 +27,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
-from config import OUTPUTS_DIR
+from config import OUTPUTS_DIR, figure_dir_for, figure_dir_for
 from src.policy_simulation import (
     PolicySet, default_run_dir, read_selection_labels, simulate_policy_set,
 )
@@ -39,7 +39,7 @@ def build_policy_set(args: argparse.Namespace) -> PolicySet:
         OUTPUTS_DIR / args.scenario / args.slug / "sets"
         / f"{args.slug}_merged.set")
     selection_csv = Path(args.selection_csv) if args.selection_csv else (
-        PROJECT_DIR / "figures" / args.scenario / args.slug
+        figure_dir_for(args.scenario, args.slug, "explore")
         / "selected_solutions.csv")
     if args.rows:
         labels = (read_selection_labels(selection_csv, highlighted_only=False)
@@ -65,7 +65,7 @@ def main() -> None:
                          "sets/{slug}_merged.set")
     ap.add_argument("--selection-csv", default=None,
                     help="selection table (row_index, label); default "
-                         "figures/{scenario}/{slug}/selected_solutions.csv")
+                         "outputs/figures/_exploratory/{scenario}/{slug}/explore/selected_solutions.csv")
     ap.add_argument("--rows", type=int, nargs="*", default=None,
                     help="explicit reference-set rows instead of the table")
     ap.add_argument("--all-rules", action="store_true",

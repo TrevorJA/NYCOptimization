@@ -1,5 +1,7 @@
 # Epsilon Calibration
 
+> Outputs cited under `outputs/supplemental/epsilon_calibration/` were archived on 2026-11-04 (`archive/2026-11-04_pre_demand_update/`, pre-demand-update results); they regenerate under the current campaign.
+
 Calibrates the annual-unit search epsilons, the values Borg's ε-dominance
 archive uses. `config.get_epsilons()` reads
 `src/objectives_ensemble._ANNUAL_REGISTRY_SPEC` at runtime and the MOEAFramework

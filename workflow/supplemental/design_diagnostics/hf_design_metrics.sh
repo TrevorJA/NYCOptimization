@@ -26,7 +26,7 @@
 #     (or the HF images, which embed the candidate H)
 #   outputs/synthetic_ensembles/hazfill_stat_abs_10yr_n300_d{0,1,2}/{hazard_image.npz,_meta.json}
 #   outputs/synthetic_ensembles/fixprob_10yr_n300_d{0,1,2}/hazard_image.npz (skipped if absent)
-#   outputs/supplemental/historic_hazard_windows/hazard_windows_10yr.npz (skipped if absent)
+#   outputs/supplemental/historic_hazard_windows/tables/hazard_windows_10yr.npz (skipped if absent)
 #
 # Submit (from repo root):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_size_diagnostics.env \

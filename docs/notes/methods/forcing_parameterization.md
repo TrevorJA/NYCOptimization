@@ -6,7 +6,7 @@ taken from the CMIP6 ensemble. It enters the study only through the held-out re-
 ensemble E_test (every campaign search design is stationary; manuscript SI Text S6); E_test also
 carries one non-climate factor, the NYC entitlement utilization `u` ("Demand-utilization axis"
 below). **Evidence /
-figures:** `outputs/diagnostics/forcing_parameterization/` (gitignored, regenerable):
+figures:** `outputs/reference/forcing_parameterization/` (gitignored, regenerable):
 `SI_harmonic_fit.png`, `SI_harmonic_param_space.png`, `SI_harmonic_lhs_sampling.png`,
 `SI_harmonic_best_worst_fits.png`, `SI_harmonic_monthly_flow_comparison.png`, `cmip6_harmonic_params.csv`.
 
@@ -197,7 +197,7 @@ The monotone table is inverted by a shape-preserving PCHIP interpolant to give `
 at `k_max = 6.0` (`u = 0.998`) with a recorded clipped flag, and `u = 1.0` is the flat-800 limit.
 Measured on the reconstruction record: `k = 0.8 → u = 0.55`, `1.0 → 0.68`, `1.2 → 0.79`, `1.5 → 0.90`,
 `2.0 → 0.96`, `3.0 → 0.99`, `6.0 → 0.998`. The table
-(`outputs/diagnostics/demand_utilization/demand_utilization_calibration.csv`, written by
+(`outputs/reference/demand_utilization/demand_utilization_calibration.csv`, written by
 `scripts/supplemental/demand_utilization_calibration.py` in seconds; regenerable, gitignored) is the
 single source of `k(u)`, its sha256 is recorded in the E_test metadata, and `k_from_u` fails if it is
 missing. SI figure `figS12_demand_utilization_calibration` shows `u(k)` and the implied monthly

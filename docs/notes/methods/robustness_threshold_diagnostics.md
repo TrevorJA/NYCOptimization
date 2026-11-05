@@ -1,5 +1,7 @@
 # Robustness Satisficing-Threshold Diagnostics (SI)
 
+> Outputs cited under `outputs/supplemental/robustness_threshold_diagnostics/` were archived on 2026-11-04 (`archive/2026-11-04_pre_demand_update/`, pre-demand-update results); they regenerate under the current campaign.
+
 Places the satisficing criteria against the current FFMP policy's persisted
 $E_{\text{test}}$ re-evaluation cube of per-SOW annual-unit objective values.
 Zero simulation. Code: `scripts/supplemental/robustness_threshold_anchor.py`
@@ -90,7 +92,7 @@ figures script requires the cube's SOW means to equal the shipped
   `cache/historic_anchor_annual_metrics.json`), its quantile position in the
   per-SOW distribution, an `in_sow_support` flag, and a near-historic check
   within the `RTD_NEAR_HISTORIC_K` SOWs closest to $\theta = 0$. The persisted
-  `outputs/baseline/ffmp_baseline_objectives.csv` rides along as a cross-check
+  `outputs/baseline/historic/ffmp_baseline_objectives.csv` rides along as a cross-check
   column. The flood anchor is the observed WY2001–2023 exceedance,
   1.17 ft·d/yr (`flood_objective/tables/A_sim_vs_obs.csv`).
 - **Conjunction diagnostics** (`S_rtd_conjunction`; `rtd_joint_satisficing.csv`,

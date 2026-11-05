@@ -110,7 +110,7 @@ def _render(spec: FigureSpec, ctx: FigureContext) -> bool:
     style.FIGURE_FORMATS = ("png",)
 
     out_stub = spec.out_dir() / spec.stem
-    table_dir = ctx.tables(spec.kind)
+    table_dir = ctx.tables(spec.kind, spec.needs)
     print(f"[figures] building {spec.stem} ({spec.tier}, section {spec.section})")
     try:
         spec.builder(ctx, out_stub, table_dir)

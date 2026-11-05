@@ -26,8 +26,8 @@ node-scaling factor, 605k model basis, against ~600k remaining.
 
 ## Log hygiene
 
-Every wrapper logs to `logs/{script_stem}_%j.out` (`_%A_%a` for arrays; the
-MM-Borg launcher adds the job name). At each archive event, tar the logs older
+Every wrapper logs to `logs/{job_name}_%j.out` (`_%A_%a` for arrays; the MM-Borg
+launcher adds the submit-time job name). At each archive event, tar the logs older
 than that event into `archive/<date>_<reason>/logs/` so `logs/` holds only the
 current campaign.
 

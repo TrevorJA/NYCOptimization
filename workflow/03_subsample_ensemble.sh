@@ -39,9 +39,7 @@ nycopt_setup_env
 nycopt_source_env_file optional
 
 # Selector is single-process; let BLAS use the full allocation (no pinning).
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
-export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
+nycopt_full_threads 8
 
 echo "[select_hazfill] design=${NYCOPT_SCENARIO_DESIGN:-<default>}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 python3 -u scripts/main/select_hazard_filling.py

@@ -47,17 +47,16 @@ nycopt_source_env_file required
 : "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set E_test explicitly — the SAME preset step 10 re-evaluated on}"
 FORMULATION="${FORMULATION:-ffmp}"
 SEED="${SEED:-}"
-# DRAW is the cross-step identifier (steps 07/10); ENSEMBLE_DRAW kept as
-# this step's documented name.
-ENSEMBLE_DRAW="${DRAW:-${ENSEMBLE_DRAW:-0}}"
+# Ensemble-draw identifier (same contract as steps 07/10).
+export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 DESIGNS="${DESIGNS:-}"
 
-ARGS="--formulation ${FORMULATION} --draw ${ENSEMBLE_DRAW}"
+ARGS="--formulation ${FORMULATION} --draw ${NYCOPT_ENSEMBLE_DRAW}"
 [[ -n "${SEED}" ]]    && ARGS="${ARGS} --seed ${SEED}"
 [[ -n "${DESIGNS}" ]] && ARGS="${ARGS} --designs ${DESIGNS}"
 
 echo "=== Scenario discovery (hazard space): formulation=${FORMULATION}" \
-     "E_test=${NYCOPT_REEVAL_ENSEMBLE_PRESET} draw=${ENSEMBLE_DRAW}" \
+     "E_test=${NYCOPT_REEVAL_ENSEMBLE_PRESET} draw=${NYCOPT_ENSEMBLE_DRAW}" \
      "designs=${DESIGNS:-<campaign>} ==="
 
 python3 scripts/main/scenario_discovery.py ${ARGS}

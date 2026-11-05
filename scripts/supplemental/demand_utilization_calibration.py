@@ -4,7 +4,7 @@ Generates the uncapped historic-flow NYC demand extrapolation once (Pywr-DRB's
 ``ExtrapolatedDiversionPreprocessor``, deterministic seeded draws), tabulates
 the nominal utilization ``u(k) = mean(cap_800(k * D_ref)) / 800`` of every
 scale ``k`` on the dense grid of ``src.demand_utilization.CALIBRATION_K_GRID``,
-and persists, under ``outputs/diagnostics/demand_utilization/`` (gitignored,
+and persists, under ``outputs/reference/demand_utilization/`` (gitignored,
 regenerable):
 
     demand_utilization_calibration.csv     columns k, u (the table ``k_from_u`` inverts)

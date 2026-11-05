@@ -21,7 +21,7 @@ Feeds the historical-record marker layer of the ensemble-composition figure
 (manuscript figure 4; ``src/plotting/ensemble_composition.py``).
 
 Writes a cached ``hazard_windows_{L}yr.npz`` under
-``outputs/supplemental/historic_hazard_windows/`` carrying the supplement
+``outputs/supplemental/historic_hazard_windows/tables/`` carrying the supplement
 (``scengen.hazard_metrics.SUPPLEMENT_METRICS``) and its anchor month, reference
 start, scenario stamp, dry-axis cut and dry-axis scoring rule as provenance; the
 loader recomputes when any of them does not match the current convention. Pass
@@ -44,6 +44,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 import config  # noqa: E402
+import supplemental_config as scfg  # noqa: E402
 from config import METRIC_EXCLUSION_MONTHS, SCENARIO_YEARS  # noqa: E402
 from scripts.main.compute_etest_hazard_image import _reference_series  # noqa: E402
 from src.load.historical_flows import load_historical_flows  # noqa: E402
@@ -55,10 +56,7 @@ FLOWTYPE = "pub_nhmv10_BC_withObsScaled"
 #: window starts in (see the module docstring).
 WINDOW_ANCHOR_MONTH = pd.Timestamp(config.ENSEMBLE_START_DATE).month
 
-CACHE_PATH = (
-    config.OUTPUTS_DIR / "supplemental" / "historic_hazard_windows"
-    / f"hazard_windows_{SCENARIO_YEARS}yr.npz"
-)
+CACHE_PATH = scfg.HHW_OUTPUT_ROOT / "tables" / f"hazard_windows_{SCENARIO_YEARS}yr.npz"
 
 
 def _first_anchor(idx: pd.DatetimeIndex) -> pd.Timestamp:

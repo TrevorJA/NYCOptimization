@@ -47,9 +47,7 @@ nycopt_source_env_file optional
 export NYCOPT_ENSEMBLE_DRAW="${SLURM_ARRAY_TASK_ID:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 
 # Generator is single-process; let BLAS use the full allocation (no pinning).
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
-export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
+nycopt_full_threads 8
 
 echo "[gen_ensemble] design=${NYCOPT_SCENARIO_DESIGN:-<default>} draw=${NYCOPT_ENSEMBLE_DRAW}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 python3 -u scripts/main/generate_stochastic_ensemble.py --draw "${NYCOPT_ENSEMBLE_DRAW}"

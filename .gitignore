@@ -15,8 +15,8 @@ venv/
 # ============================================================================
 outputs/
 
-# Top-level figures: exploratory per-scenario figures are machine-local;
-# only the final manuscript figure set is synced.
+# Top-level figures/: only the final manuscript set is synced (the SI tier
+# renders to figures/si/; every other figure lives under outputs/figures/).
 figures/*
 !figures/manuscript/
 

@@ -41,6 +41,13 @@ _PROJECT_DIR: Path = Path(__file__).resolve().parent
 #: writes under its own subdirectory.
 SUPPLEMENTAL_OUTPUT_ROOT: Path = _PROJECT_DIR / "outputs" / "supplemental"
 
+#: Roots of the wrapper-less local diagnostics and the post-search re-filter;
+#: each writes tables/ (and figures/) like every other experiment.
+CVF_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "cv_axis_footprint"
+PAX_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "persistence_axis"
+HHW_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "historic_hazard_windows"
+EPSREF_OUTPUT_ROOT: Path = SUPPLEMENTAL_OUTPUT_ROOT / "epsilon_refilter"
+
 
 def _apply_env(*, salinity: str, temperature: str,
                sim_start: "str | None" = None,
@@ -1152,7 +1159,7 @@ RTD_FORCING_NPZ: Path = (
 #: cross-checks the anchor recompute.
 RTD_BASELINE_HDF5: Path = _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline.hdf5"
 RTD_BASELINE_ANNUAL_CSV: Path = (
-    _PROJECT_DIR / "outputs" / "baseline" / "ffmp_baseline_objectives.csv")
+    _PROJECT_DIR / "outputs" / "baseline" / "historic" / "ffmp_baseline_objectives.csv")
 
 # ---------------------------------------------------------------------------
 # Analysis settings
@@ -2079,7 +2086,7 @@ def hfm_mc_slug(draw: int) -> str:
 
 #: Historical disjoint 10-year window cache (compute_historic_hazard_windows.py).
 HFM_HISTORIC_WINDOWS_PATH: Path = (
-    SUPPLEMENTAL_OUTPUT_ROOT / "historic_hazard_windows" / f"hazard_windows_{HFM_YEARS}yr.npz"
+    HHW_OUTPUT_ROOT / "tables" / f"hazard_windows_{HFM_YEARS}yr.npz"
 )
 
 # ---------------------------------------------------------------------------

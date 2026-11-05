@@ -28,7 +28,7 @@ Configuration (no CLI value flags):
     NYCOPT_ANCHORNOISE_NMC     Monte Carlo replicates  (default 4000)
     NYCOPT_ANCHORNOISE_SEED    root seed               (default 20260729)
 
-Outputs -> ``outputs/supplemental/persistence_axis/anchor_noise/``:
+Outputs -> ``outputs/supplemental/persistence_axis/tables/anchor_noise/`` (figure under ``figures/``):
     run_rho1.csv        per-run water-year rho1 (baselines + futures)
     sibling_delta.csv   per-future-run sibling-matched delta-rho1
     anchor_noise.png    observed deltas vs null band; future-rho1 ECDF vs null
@@ -55,6 +55,7 @@ import numpy as np
 import pandas as pd
 
 import config
+import supplemental_config as scfg
 
 NMC = int(os.environ.get("NYCOPT_ANCHORNOISE_NMC", "4000"))
 SEED = int(os.environ.get("NYCOPT_ANCHORNOISE_SEED", "20260729"))
@@ -66,7 +67,8 @@ RUN_RE = re.compile(
     r"_DBCCA_Daymet_(?P<y0>\d{4})_(?P<y1>\d{4})$"
 )
 
-OUT_DIR = config.OUTPUTS_DIR / "supplemental" / "persistence_axis" / "anchor_noise"
+OUT_DIR = scfg.PAX_OUTPUT_ROOT / "tables" / "anchor_noise"
+FIG_DIR = scfg.PAX_OUTPUT_ROOT / "figures"
 
 
 def _annual_rho1(ann: np.ndarray) -> float:
@@ -139,6 +141,7 @@ def _null_stats(deltas_layout: list[int], n_years: int, rho: float,
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     runs = _discover_runs()
     rho1, n_wy = zip(*(_run_wy_rho1(CMIP6_INPUTS / r) for r in runs["run"]))
@@ -258,7 +261,7 @@ def main() -> None:
     ax2.legend(frameon=False, fontsize=8)
     ax2.set_title("future-run rho1 distribution vs null tail")
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "anchor_noise.png", dpi=200)
+    fig.savefig(FIG_DIR / "anchor_noise.png", dpi=200)
 
     findings = {"NMC": NMC, "seed": SEED, "rho_pooled_bias_corrected": rho_bc,
                 "observed": obs, "nulls": nulls}

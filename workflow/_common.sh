@@ -6,8 +6,8 @@
 #
 #   nycopt_setup_env                      every script
 #   nycopt_source_env_file required|optional
-#   nycopt_pin_threads                    MPI / simulation steps (NOT steps
-#                                         02/03, which want full BLAS threads)
+#   nycopt_pin_threads                    MPI / simulation steps
+#   nycopt_full_threads                   single-process steps (full BLAS)
 #   nycopt_read_run_identity              MM-Borg only; needs FORMULATION, SEED
 #   nycopt_check_allocation               MM-Borg only; SLURM_NTASKS vs config
 #   nycopt_check_memory                   MM-Borg only; node RSS vs safety line
@@ -28,10 +28,10 @@
 # from this file's location (workflow/_common.sh -> parent dir).
 NYCOPT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-# Cluster constants.
-# The python module exists on Hopper; on Anvil there is no such module and the
-# conda env's PATH (propagated by sbatch --export=ALL) supplies python3, so the
-# module load below is a no-op there. Override via NYCOPT_PYTHON_MODULE.
+# Cluster constants. Hopper-only settings (the python module, the TCP MPI
+# transport) are keyed on NYCOPT_CLUSTER=hopper; Anvil takes the conda env's
+# python3 (propagated by sbatch --export=ALL, or activated below) and its
+# default fabric.
 NYCOPT_PYTHON_MODULE="${NYCOPT_PYTHON_MODULE:-python/3.11.5}"
 # Anvil fallback when the submitting shell did not have the env active: the
 # project env is the conda env named "venv" under the anaconda module.
@@ -73,7 +73,9 @@ nycopt_setup_env() {
     mkdir -p logs
     # shellcheck disable=SC1091
     source /etc/profile.d/lmod.sh 2>/dev/null || true
-    module load "${NYCOPT_PYTHON_MODULE}" 2>/dev/null || true
+    if [[ "${NYCOPT_CLUSTER:-hopper}" == "hopper" ]]; then
+        module load "${NYCOPT_PYTHON_MODULE}" 2>/dev/null || true
+    fi
     if [[ -f venv/bin/activate ]]; then
         # shellcheck disable=SC1091
         source venv/bin/activate
@@ -138,14 +140,21 @@ nycopt_source_env_file() {
 }
 
 # Pin BLAS/OpenMP to one thread per rank (prevents contention across MPI
-# ranks). Steps that want full BLAS parallelism (02/03) skip this and set
-# OMP_NUM_THREADS to the allocation size themselves.
+# ranks). Single-process steps call nycopt_full_threads instead.
 nycopt_pin_threads() {
     export OMP_NUM_THREADS=1
     export MKL_NUM_THREADS=1
     export OPENBLAS_NUM_THREADS=1
     export BLIS_NUM_THREADS=1
     export NUMEXPR_NUM_THREADS=1
+}
+
+# Let BLAS use the whole allocation of a single-process step (generators,
+# selectors, figure drivers): $1 = thread count when not under SLURM.
+nycopt_full_threads() {
+    export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-${1:-8}}"
+    export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
+    export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
 }
 
 # Read the run identity back from config.py (single source of truth) so the

@@ -6,7 +6,7 @@ fit quality across the whole ensemble, the best and worst individual fits, the
 full parameter space including the phases that are NOT sampled, and the two
 sampling boxes side by side.
 
-Writes to ``outputs/diagnostics/forcing_parameterization/``:
+Writes to ``outputs/reference/forcing_parameterization/``:
 
     cmip6_harmonic_params.csv                  per-run fitted params + shape R2
     SI_harmonic_fit.png                        decomposition, all fits, fit quality
@@ -56,7 +56,7 @@ W = fspace.OMEGA
 SSP_C = {"245": "#2c7fb8", "370": "#d95f0e"}
 PER_M = fspace.PERIOD_MARKERS
 
-OUT = config.OUTPUTS_DIR / "diagnostics" / "forcing_parameterization"
+OUT = config.REFERENCE_DIR / "forcing_parameterization"
 
 
 def _cmip_scatter(ax, df, x, y):
