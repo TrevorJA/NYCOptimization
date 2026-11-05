@@ -22,7 +22,7 @@
 # env-overridable via NYCOPT_SD_*.
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
 #          workflow/11_scenario_discovery.sh
 #
 # Output: outputs/comparison/{slug}/{tag}/scenario_discovery/ tables + the

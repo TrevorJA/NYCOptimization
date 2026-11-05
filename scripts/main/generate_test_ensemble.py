@@ -174,7 +174,7 @@ def main() -> None:
         assert_staged_etest_contract(variant.slug, require_demand=False)
     print(f"[etest] Done. Next: python scripts/supplemental/append_demand_utilization.py "
           f"--variant {variant.name}, then stage the chunks; set "
-          f"NYCOPT_REEVAL_ENSEMBLE_PRESET={variant.reeval_slug} for steps 05/08/09/11.")
+          f"NYCOPT_REEVAL_ENSEMBLE_PRESET={variant.slug} for steps 05/08/09/11.")
 
 
 if __name__ == "__main__":

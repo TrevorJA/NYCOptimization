@@ -1,11 +1,12 @@
 #!/bin/bash
 # Step 12: Generate the held-out test ensemble E_test — LHS over the widened
-# DU box, N_theta=1000 SOWs x R=25 realizations x L=50 yr in 50 chunks of 500
+# DU box, N_theta=500 SOWs x R=25 realizations x L=50 yr in 25 chunks of 500
 # realizations, hazard image streamed during generation (step 11 needs it).
-# The campaign re-evaluates on the leading 500 SOWs (25 chunks;
-# scripts/supplemental/make_etest_subset.py). Sizing lives in src/etest.py
-# (env-overridable via NYCOPT_ETEST_*) and nowhere else. Independent of steps
-# 02-07; the sharded build is workflow/supplemental/gen_etest_shards.sh.
+# Sizing lives in src/etest.py (env-overridable via NYCOPT_ETEST_*) and nowhere
+# else. Independent of steps 02-07; the sharded build is
+# workflow/supplemental/gen_etest_shards.sh. (The campaign E_test was not built
+# by this step: it is cut from the larger design generated 2026-08-19 by
+# scripts/supplemental/make_etest_subset.py, metadata only.)
 #
 # Env inputs: NYCOPT_ETEST_VARIANT (kn = the campaign variant, default; hmm =
 # opt-in generator-structure sensitivity), NYCOPT_ENV_FILE (optional),
@@ -16,8 +17,7 @@
 #          workflow/12_generate_test_ensemble.sh
 #
 # Output: outputs/synthetic_ensembles/etest_{gen}_{L}yr_n{N}[__chunkJJJ]/;
-# NYCOPT_REEVAL_ENSEMBLE_PRESET then names that slug (or its prefix subset)
-# for steps 05/08/09/10/11.
+# NYCOPT_REEVAL_ENSEMBLE_PRESET then names that slug for steps 05/08/09/10/11.
 #
 #SBATCH --job-name=gen_etest
 #SBATCH --account=ees260021

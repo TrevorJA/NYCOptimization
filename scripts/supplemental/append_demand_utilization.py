@@ -177,16 +177,20 @@ def main() -> None:
         description="Append the NYC utilization column to a staged E_test (metadata only).")
     parser.add_argument("--variant", default=None,
                         help="E_test variant (default: src.etest.E_TEST_VARIANT).")
+    parser.add_argument("--slug", default=None,
+                        help="Generated design to append to (default: the variant's slug; "
+                             "pass the parent slug when E_test is cut from a larger design).")
     args = parser.parse_args()
 
     from src.etest import E_TEST_VARIANT, get_etest_variant
 
     variant = get_etest_variant(args.variant or E_TEST_VARIANT)
+    slug = args.slug or variant.slug
     force = os.environ.get("NYCOPT_FORCE", "0") == "1"
-    append_demand_utilization(variant.slug, force=force)
-    print(f"[append-u] next: python -m scripts.supplemental.make_etest_subset "
-          f"--pool {variant.slug} --force, then "
-          f"sbatch workflow/supplemental/stage_nyc_demand_etest_chunks.sh")
+    append_demand_utilization(slug, force=force)
+    print(f"[append-u] next: stage each chunk's scaled demand series "
+          f"(prep_etest_chunks.sh, or stage_nyc_demand_etest_chunks.sh for chunks staged "
+          f"earlier); an E_test cut from '{slug}' is re-cut by make_etest_subset.py --force.")
 
 
 if __name__ == "__main__":

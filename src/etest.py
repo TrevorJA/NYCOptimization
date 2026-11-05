@@ -6,16 +6,19 @@ search and is never a control, so the search side's i.i.d. requirement does not
 apply. Construction: LHS over the widened DU forcing box (:data:`E_TEST_BOUND_PCT`,
 :data:`E_TEST_MARGIN`, strictly containing the search box; its annual-volume axis
 spans e^m = 0.866 to 1.32, with no per-axis override), and ``R > 1`` realizations
-per SOW, which is what makes the SOW-unit robustness metric computable. Generated: ``N_theta = 1000`` x ``R = 25`` x ``L = 50`` yr in 50
-staged chunks of 500 realizations; the campaign re-evaluates the leading
-``E_TEST_REEVAL_N_THETA = 500`` SOWs (the first 25 chunks,
-:func:`campaign_reeval_preset` -> ``etest_kn_50yr_n25000_first25ch``). The
-sizing rationale is in ``docs/notes/methods/campaign_design.md``.
+per SOW, which is what makes the SOW-unit robustness metric computable. Sizing:
+``N_theta = 500`` x ``R = 25`` x ``L = 50`` yr in 25 staged chunks of 500
+realizations (:func:`campaign_reeval_preset` -> ``etest_kn_50yr_n12500``, the
+one slug every re-evaluation step, diagnostic and figure reads). The sizing
+rationale is in ``docs/notes/methods/campaign_design.md``.
 
 The constants live here only, env-overridable. E_test needs no
 ``src.ensembles.PRESETS`` entry: ``_spec_from_staged_dir`` resolves any staged
-slug carrying a ``_meta.json``; the prefix subset is staged by
-``scripts/supplemental/make_etest_subset.py`` without copying data.
+slug carrying a ``_meta.json``. A staged E_test may be cut as the chunk prefix
+of a larger generated design (``scripts/supplemental/make_etest_subset.py``,
+metadata only, no data copied; its ``_meta.json`` records ``subset_of``). The
+campaign E_test is the leading 25 chunks of the 1,000-SOW design generated
+2026-08-19 (``etest_kn_50yr_n25000``), which stays on disk only as that parent.
 
 E_test carries a fourth deeply uncertain factor beside the three climate
 amplitudes: the NYC entitlement utilization ``u`` (``src.demand_utilization``),
@@ -46,14 +49,9 @@ from src.scenario_designs import SCENARIO_YEARS, SEED_ROOT
 # Sizing (rationale in campaign_design.md)
 ###############################################################################
 
-#: Number of LHS design points (deeply-uncertain states of the world) generated for E_test.
-E_TEST_N_THETA: int = int(os.environ.get("NYCOPT_ETEST_N_THETA", "1000"))
-
-#: Number of SOWs the campaign re-evaluates on: the leading E_TEST_REEVAL_N_THETA of the generated
-#: LHS points (a chunk-prefix subset; LHS rows are randomly ordered, so the prefix is a well-spread
-#: subsample). Precision of the SOW-unit robustness metric is governed by this number. Must fill
-#: whole chunks (checked in ``assert_etest_contract``).
-E_TEST_REEVAL_N_THETA: int = int(os.environ.get("NYCOPT_ETEST_REEVAL_N_THETA", "500"))
+#: Number of LHS design points (deeply-uncertain states of the world) in E_test. The cross-SOW
+#: precision of every robustness metric is governed by this number (campaign_design.md §5).
+E_TEST_N_THETA: int = int(os.environ.get("NYCOPT_ETEST_N_THETA", "500"))
 
 #: Realizations generated per LHS point (R_test). Must be > 1: with R = 1 there is no within-SOW
 #: sample, so the SOW unit collapses onto the realization unit.
@@ -148,21 +146,9 @@ class ETestVariant:
         return design_seed(SEED_ROOT, self.seed_domain, 0)
 
     @property
-    def reeval_n_chunks(self) -> int:
-        """Leading chunks that hold the re-evaluated ``E_TEST_REEVAL_N_THETA`` SOWs."""
-        if not self.chunk_size:
-            raise ValueError(f"E_test variant '{self.name}' is not chunked.")
-        return E_TEST_REEVAL_N_THETA * self.realizations_per_theta // self.chunk_size
-
-    @property
-    def reeval_slug(self) -> str:
-        """Slug of the re-evaluated prefix subset, e.g. ``etest_kn_50yr_n25000_first25ch``.
-
-        Equals :attr:`slug` when the whole generated design is re-evaluated.
-        """
-        if E_TEST_REEVAL_N_THETA >= self.n_theta:
-            return self.slug
-        return f"{self.slug}_first{self.reeval_n_chunks}ch"
+    def n_chunks(self) -> int:
+        """Staged daily chunks, ``n_realizations / chunk_size`` (0 when not chunked)."""
+        return self.n_realizations // self.chunk_size if self.chunk_size else 0
 
 
 E_TEST_VARIANTS: dict[str, ETestVariant] = {
@@ -219,9 +205,9 @@ def campaign_reeval_preset() -> str:
     """The ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` value of the campaign re-evaluation.
 
     Returns:
-        The campaign variant's :attr:`ETestVariant.reeval_slug`.
+        The campaign variant's :attr:`ETestVariant.slug` (``etest_kn_50yr_n12500``).
     """
-    return campaign_etest_variant().reeval_slug
+    return campaign_etest_variant().slug
 
 
 def get_etest_variant(name: str) -> ETestVariant:
@@ -292,15 +278,10 @@ def assert_etest_contract() -> None:
                 f"E_test variant '{v.name}': chunk_size ({v.chunk_size}) must be a multiple of "
                 f"R_test ({v.realizations_per_theta}) so a SOW is never split across chunks."
             )
-            assert (E_TEST_REEVAL_N_THETA * v.realizations_per_theta) % v.chunk_size == 0, (
-                f"E_test variant '{v.name}': the re-evaluated SOW count "
-                f"({E_TEST_REEVAL_N_THETA}) must fill whole chunks of {v.chunk_size} "
-                f"realizations (R = {v.realizations_per_theta})."
+            assert v.n_realizations % v.chunk_size == 0, (
+                f"E_test variant '{v.name}': N_theta x R = {v.n_realizations} must fill whole "
+                f"chunks of {v.chunk_size} realizations."
             )
-        assert 0 < E_TEST_REEVAL_N_THETA <= v.n_theta, (
-            f"E_test variant '{v.name}': re-evaluated SOWs ({E_TEST_REEVAL_N_THETA}) must lie in "
-            f"(0, N_theta = {v.n_theta}]; the prefix subset cannot exceed the generated design."
-        )
 
 
 assert_etest_contract()
@@ -378,8 +359,8 @@ def _assert_demand_utilization_staged(slug: str, staged_dir: Path, meta: dict) -
     import numpy as np
 
     fix = ("Run `python scripts/supplemental/append_demand_utilization.py --variant "
-           "<variant>` on the parent E_test, then rebuild any prefix subset with "
-           "make_etest_subset.py --force.")
+           "<variant>` on the generated design, then re-cut an E_test staged as its "
+           "chunk prefix with make_etest_subset.py --force.")
     npz_path = staged_dir / "forcing_profiles.npz"
     assert npz_path.exists(), (
         f"Staged E_test '{slug}' has no forcing_profiles.npz, so it cannot carry the NYC "

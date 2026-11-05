@@ -63,7 +63,7 @@ done
 
 echo "[subset-check] staging metadata-only subset ${SUB}"
 python3 -u -m scripts.supplemental.make_etest_subset \
-    --pool "${POOL}" --n-chunks 1 --force
+    --pool "${POOL}" --n-chunks 1 --out-slug "${SUB}" --force
 
 export NYCOPT_CHUNK_POLICIES=baseline
 
@@ -92,8 +92,9 @@ from src.reeval_core import reeval_output_dir
 
 pool, sub = os.environ["POOL"], os.environ["SUB"]
 scen, slug = active_scenario_name(), derive_slug("ffmp")
-d_full = reeval_output_dir(scen, slug, get_ensemble_spec(pool), 93)
-d_sub = reeval_output_dir(scen, slug, get_ensemble_spec(sub), 94)
+# A baseline-policy run lands in the tag's baseline/ leaf (src.chunk_reeval).
+d_full = reeval_output_dir(scen, slug, get_ensemble_spec(pool), 93) / "baseline"
+d_sub = reeval_output_dir(scen, slug, get_ensemble_spec(sub), 94) / "baseline"
 
 def load(d: Path) -> pd.DataFrame:
     p = d / "reeval_raw.parquet"

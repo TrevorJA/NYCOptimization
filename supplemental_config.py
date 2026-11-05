@@ -1135,15 +1135,16 @@ def configure_rtd_env() -> None:
 # Inputs (persisted artifacts; nothing here triggers a simulation)
 # ---------------------------------------------------------------------------
 #: Baseline-policy raw re-eval cube on E_test (reeval_raw.parquet + meta),
-#: written by step 05 `run_baseline.py --reeval`.
+#: written by step 09 with NYCOPT_CHUNK_POLICIES=baseline under the historic env
+#: (the cube is design-independent; any design's `baseline/` leaf is identical).
 RTD_REEVAL_BASELINE_DIR: Path = (
-    _PROJECT_DIR / "outputs" / "historic" / "ffmp_obj8_mm_full" / "reeval"
-    / "etest_kn_50yr_n25000" / "baseline")
+    _PROJECT_DIR / "outputs" / "historic" / "ffmp_obj8" / "reeval"
+    / campaign_reeval_preset() / "baseline")
 
-#: E_test forcing profiles: theta_params (25000, 3) + theta_param_names
+#: E_test forcing profiles: theta_params (12500, 3) + theta_param_names
 #: ['m', 'r1', 'r2'] + realization_ids, one theta row per realization.
 RTD_FORCING_NPZ: Path = (
-    _PROJECT_DIR / "outputs" / "synthetic_ensembles" / "etest_kn_50yr_n25000"
+    _PROJECT_DIR / "outputs" / "synthetic_ensembles" / campaign_reeval_preset()
     / "forcing_profiles.npz")
 
 #: Persisted historic-trace baseline simulation (full model) and its
@@ -1435,9 +1436,10 @@ HSD_SMOKE_N_SOW: int = 200
 # ---------------------------------------------------------------------------
 # Inputs (persisted artifacts; nothing here triggers a simulation)
 # ---------------------------------------------------------------------------
-#: The staged E_test slug (sub-window hazard image + forcing profiles).
+#: The staged E_test slug (sub-window hazard image + forcing profiles): the
+#: campaign E_test, the same 500 SOWs every re-evaluation runs on.
 HSD_ETEST_SLUG: str = os.environ.get("NYCOPT_HSD_ETEST_SLUG",
-                                     "etest_kn_50yr_n25000")
+                                     campaign_reeval_preset())
 
 #: Candidate-pool slugs, one per ensemble draw, in draw order. The FIRST entry
 #: supplies the primary stratum labels; the rest are the cross-draw agreement
@@ -1452,9 +1454,9 @@ HSD_POOL_SLUGS: tuple = tuple(
 HSD_HAZFILL_SLUGS: tuple = tuple(f"hazfill_stat_abs_10yr_n100_d{k}"
                                  for k in range(2))
 
-#: The re-eval tag stage B discovers runs under (default: the campaign
-#: re-evaluation subset) and the moea formulation identity. Stage-B artifacts
-#: carry this tag in their filenames.
+#: The re-eval tag stage B discovers runs under (default: the campaign E_test)
+#: and the moea formulation identity. Stage-B artifacts carry this tag in their
+#: filenames.
 HSD_REEVAL_TAG: str = os.environ.get("NYCOPT_HSD_REEVAL_TAG",
                                      campaign_reeval_preset())
 HSD_FORMULATION: str = "ffmp"
@@ -2461,7 +2463,7 @@ ETR_N_THETA_LEVELS: tuple = (250, 500, 1000)
 ETR_UNITS_PER_REALIZATION: int = 49
 
 #: Realizations per SOW the persisted pass-A noise floor was measured at
-#: (the 1,000-SOW current-policy cube on etest_kn_50yr_n25000).
+#: (the current-policy cube on E_test).
 ETR_NOISE_FLOOR_R: int = 25
 ETR_NOISE_FLOOR_CSV: Path = RTOL_TABLES_DIR / "rtol_noise_floor.csv"
 ETR_THRESHOLD_SWEEP_CSV: Path = RTD_TABLES_DIR / "rtd_threshold_sweep.csv"
@@ -2470,12 +2472,14 @@ ETR_FALSE_HARM_Z: float = RTOL_FALSE_HARM_Z
 
 #: Cost basis (SU). Measured: 1.33 SU per (policy, chunk) unit on the chunked
 #: path, one chunk = 500 realizations x 50 yr (campaign_design.md §5); the
-#: full-model presim pass over the staged E_test, ~70 SU
+#: full-model presim pass over the generated design, ~70 SU
 #: (workflow/supplemental/prep_etest_chunks.sh); the current-policy baseline,
 #: 33 SU per design on 500 SOWs x 25. Bounded by allocation, unmeasured: the
 #: sub-window hazard image shards (50 x 0.5 h x 4 cpus = 100 core-h). Estimate,
 #: unmeasured: E_test generation, scaled from the P=1e6 pool's ~600 core-h per
-#: 10^7 realization-years (SI Text S8.5) to the staged 1.25 x 10^6.
+#: 10^7 realization-years (SI Text S8.5) to the 1.25 x 10^6 of the design
+#: generated 2026-08-19 (1,000 SOWs; E_test is its leading 500). The
+#: regeneration options below are priced at that generated scale.
 ETR_SU_PER_POLICY_CHUNK: float = 1.33
 ETR_CHUNK_REALIZATIONS: int = 500
 ETR_POLICY_CAP: int = 2000

@@ -106,11 +106,13 @@ def main() -> None:
         description="Merge the per-chunk realized-utilization tables of an E_test.")
     parser.add_argument("--variant", default=None,
                         help="E_test variant (default: src.etest.E_TEST_VARIANT).")
+    parser.add_argument("--slug", default=None,
+                        help="Chunked E_test slug to merge (default: the variant's slug).")
     args = parser.parse_args()
 
     from src.etest import E_TEST_VARIANT, get_etest_variant
 
-    merge_realized(get_etest_variant(args.variant or E_TEST_VARIANT).slug)
+    merge_realized(args.slug or get_etest_variant(args.variant or E_TEST_VARIANT).slug)
 
 
 if __name__ == "__main__":

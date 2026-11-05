@@ -56,22 +56,6 @@ _MONTH_LABELS: tuple[str, ...] = ("J", "F", "M", "A", "M", "J", "J", "A", "S", "
 _REALIZED_COLOR: str = fspace.ETEST_COLOR
 
 
-def _parent_dir(tag: str) -> Path:
-    """The staged directory holding a re-eval tag's per-SOW demand tables.
-
-    A chunk-prefix subset (``make_etest_subset.py``) records its parent slug
-    as ``subset_of``; the nominal and realized utilization CSVs live in the
-    parent directory only.
-    """
-    tag_dir = config.STAGED_ENSEMBLE_DIR / tag
-    meta_path = tag_dir / "_meta.json"
-    if meta_path.exists():
-        parent = json.loads(meta_path.read_text()).get("subset_of")
-        if parent:
-            return config.STAGED_ENSEMBLE_DIR / str(parent)
-    return tag_dir
-
-
 def _band_lines(ax, *, axis: str) -> None:
     """Dotted lines at the utilization-band edges on one axis."""
     from src.demand_utilization import UTILIZATION_BAND_EDGES
@@ -267,13 +251,13 @@ def fig_demand_utilization_realized(ctx, out_stub: Path, table_dir: Path) -> dic
     Raises:
         FileNotFoundError: If the merged per-SOW table is absent.
     """
-    parent = _parent_dir(ctx.tag)
+    parent = config.STAGED_ENSEMBLE_DIR / ctx.tag
     path = parent / "demand_utilization_realized_by_sow.csv"
     if not path.is_file():
         raise FileNotFoundError(
             f"{path} missing: stage the E_test chunks' demand series with the "
-            f"utilization scales, then merge the realized tables "
-            f"(scripts/supplemental, append_demand_utilization.py and its merge helper)."
+            f"utilization scales, then merge the realized tables into '{ctx.tag}' "
+            f"(scripts/supplemental/merge_demand_utilization_realized.py)."
         )
     df = pd.read_csv(path).sort_values("sow").reset_index(drop=True)
     required = {"sow", "u_nominal", "u_realized_mean", "u_realized_min", "u_realized_max"}

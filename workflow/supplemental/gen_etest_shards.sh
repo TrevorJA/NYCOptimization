@@ -4,10 +4,10 @@
 # shard union equals a serial step-12 generation. Each shard writes its daily
 # chunk dir(s) plus a hazard-image shard npz (the completion marker: rerunning
 # a finished shard is a no-op; delete the npz to force). Shard boundaries must
-# align to chunk boundaries (campaign sizing: 50 chunks, so any shard count
-# dividing 50 works; the default 50 shards is one chunk each).
+# align to chunk boundaries (registry sizing: 25 chunks, so any shard count
+# dividing 25 works; the default 25 shards is one chunk each).
 #
-# Submit (defaults: kn variant, 50 shards), then chain gen_etest_merge.sh:
+# Submit (defaults: kn variant, 25 shards), then chain gen_etest_merge.sh:
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_ETEST_VARIANT=kn \
 #          workflow/supplemental/gen_etest_shards.sh
 #

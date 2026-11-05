@@ -50,7 +50,7 @@ import supplemental_config as scfg  # noqa: E402
 scfg.configure_dryenv_env()
 
 import config  # noqa: E402
-from src.etest import E_TEST_R, E_TEST_REEVAL_N_THETA, E_TEST_YEARS  # noqa: E402
+from src.etest import E_TEST_N_THETA, E_TEST_R, E_TEST_YEARS  # noqa: E402
 
 TABLES = scfg.ETR_TABLES_DIR
 
@@ -131,7 +131,7 @@ def cross_sow_table() -> pd.DataFrame:
 def options_table() -> pd.DataFrame:
     """SU pricing of the E_test options against the remaining balance."""
     per_real_year = scfg.ETR_SU_PER_POLICY_CHUNK / (scfg.ETR_CHUNK_REALIZATIONS * E_TEST_YEARS)
-    n_theta = E_TEST_REEVAL_N_THETA
+    n_theta = E_TEST_N_THETA
     cap = scfg.ETR_POLICY_CAP
 
     def reeval_su(R: int) -> float:
@@ -150,9 +150,9 @@ def options_table() -> pd.DataFrame:
     opts = [
         ("A_keep_R25_current_box", E_TEST_R, False, "re-score the stale hazard images only"),
         ("B_keep_R25_drier_bound", E_TEST_R, True,
-         "regenerate the 1,000 x 25 design over a wider box"),
-        ("C_R50_current_box", 50, True, "regenerate as 1,000 x 50 (or 500 x 50)"),
-        ("D_R50_drier_bound", 50, True, "regenerate as 1,000 x 50 over a wider box"),
+         "regenerate the design at R = 25 over a wider box"),
+        ("C_R50_current_box", 50, True, "regenerate the design at R = 50"),
+        ("D_R50_drier_bound", 50, True, "regenerate the design at R = 50 over a wider box"),
     ]
     rows = []
     for name, R, regen, note in opts:

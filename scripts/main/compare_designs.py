@@ -45,7 +45,7 @@ identifiers.
 
 Run::
 
-    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
         python scripts/main/compare_designs.py --formulation ffmp
 """
 
