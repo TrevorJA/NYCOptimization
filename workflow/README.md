@@ -111,10 +111,10 @@ Order of operations on Anvil for an already-staged E_test:
    1.3 s per 10-yr realization on one rank locally, so a few minutes per
    500-realization chunk on 33 ranks).
 4. `sbatch --dependency=afterok:<array> workflow/supplemental/etest_subset_stage.sh`
-   (realized `u` per SOW, then `etest_kn_50yr_n25000_first25ch`; the subset needs
-   the demand series in every chunk, so it follows step 3).
+   (cuts `etest_kn_50yr_n12500` from the parent, then realized `u` per SOW; the cut
+   needs the demand series in every chunk, so it follows step 3).
 5. Re-run the current-FFMP baseline cube (step 09 with
-   `NYCOPT_CHUNK_POLICIES=baseline`, about 66 SU); the stored cube predates the
+   `NYCOPT_CHUNK_POLICIES=baseline`, once per design env, about 33 SU each); the stored cube predates the
    demand change.
 6. Re-run the satisficing-threshold diagnostic and the criteria re-anchoring on the
    new baseline cube (`docs/notes/methods/robustness_threshold_diagnostics.md`).
@@ -240,11 +240,10 @@ All settings live in the root `supplemental_config.py`; env identities in
   table + utilization column) → `prep_etest_chunks.sh` (per-chunk step-04 staging
   of E_test, scaled demand included; `stage_nyc_demand_etest_chunks.sh` adds the
   demand series alone to chunks staged before it existed) →
-  `etest_subset_stage.sh` (realized `u`, the 500-SOW prefix subset);
-  `etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` (E_test
-  sub-window hazard image); `stage_etest_subset_baseline.sh` (incumbent cube
-  under a subset tag, per design env); `etest_subset_reeval_check.sh`
-  (acceptance check of the prefix-subset path on a mini fixture).
+  `etest_subset_stage.sh` (cuts E_test from a larger generated design, then
+  realized `u`); `etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh`
+  (E_test sub-window hazard image); `etest_subset_reeval_check.sh` (acceptance
+  check of the chunk-prefix path on a mini fixture).
 - **Calibration**: `epsilon_calibration.sh` (per-design ε floors),
   `epsilon_ensemble_refilter.sh` and `epsilon_refilter_sweep.sh`
   (archive-cardinality re-filters of completed sets, no simulation),
