@@ -68,15 +68,16 @@ parent's `demand_utilization_nominal.csv` when it stages a chunk's demand series
 so the append precedes the chunk staging), `supplemental/prep_etest_chunks.sh`
 (per-chunk step-04 staging including the scaled demand series; step 04 against
 the parent slug fails by design) and `supplemental/etest_subset_stage.sh`
-(realized versus nominal `u` per SOW, then the 500-SOW campaign prefix
-`etest_kn_50yr_n25000_first25ch`; the staged contract refuses an E_test without
-the utilization keys or the demand series in every chunk, so the subset follows
-the chunk staging). All of that must run before `05`/`08`/`09`/`11`, which take
-`NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` — and `05` must
-use the SAME preset as `08`/`09`, or the status-quo baseline lands under a
-different re-eval tag and the incumbent-relative regret family is silently
-skipped. `supplemental/stage_etest_subset_baseline.sh` symlinks an existing
-incumbent cube under a subset tag without re-simulating (once per design env).
+(cuts E_test, `etest_kn_50yr_n12500`, as the leading 25 chunks of the generated
+parent, metadata only, then the realized versus nominal `u` per SOW; the staged
+contract refuses an E_test without the utilization keys or the demand series in
+every chunk, so the cut follows the chunk staging). All of that must run before
+`05`/`08`/`09`/`11`, which take `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`
+— and `05` must use the SAME preset as `08`/`09`, or the status-quo baseline lands
+under a different re-eval tag and the incumbent-relative regret family is silently
+skipped. The incumbent cube is written once by step 09 with
+`NYCOPT_CHUNK_POLICIES=baseline` under the historic env; it is design-independent
+(`supplemental_config.RTD_REEVAL_BASELINE_DIR`).
 
 NYC demand is the time-dynamic extrapolated diversion series in every
 simulation (search, baselines, re-evaluation, diagnostics); a constant 800 MGD
@@ -110,8 +111,8 @@ Order of operations on Anvil for an already-staged E_test:
    1.3 s per 10-yr realization on one rank locally, so a few minutes per
    500-realization chunk on 33 ranks).
 4. `sbatch --dependency=afterok:<array> workflow/supplemental/etest_subset_stage.sh`
-   (realized `u` per SOW, then `etest_kn_50yr_n25000_first25ch`; the subset needs
-   the demand series in every chunk, so it follows step 3).
+   (cuts `etest_kn_50yr_n12500` from the parent, then the realized `u` per SOW; the
+   cut needs the demand series in every chunk, so it follows step 3).
 5. Re-run the current-FFMP baseline cube (step 09 with
    `NYCOPT_CHUNK_POLICIES=baseline`, about 66 SU); the stored cube predates the
    demand change.
@@ -248,10 +249,9 @@ All settings live in the root `supplemental_config.py`; env identities in
   table + utilization column) → `prep_etest_chunks.sh` (per-chunk step-04 staging
   of E_test, scaled demand included; `stage_nyc_demand_etest_chunks.sh` adds the
   demand series alone to chunks staged before it existed) →
-  `etest_subset_stage.sh` (realized `u`, the 500-SOW prefix subset);
+  `etest_subset_stage.sh` (cuts E_test from the parent, realized `u`);
   `etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` (E_test
-  sub-window hazard image); `stage_etest_subset_baseline.sh` (incumbent cube
-  under a subset tag, per design env); `etest_subset_reeval_check.sh`
+  sub-window hazard image); `etest_subset_reeval_check.sh`
   (acceptance check of the prefix-subset path on a mini fixture).
 - **Calibration**: `epsilon_calibration.sh` (per-design ε floors),
   `epsilon_ensemble_refilter.sh` and `epsilon_refilter_sweep.sh`

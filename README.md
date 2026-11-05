@@ -191,11 +191,11 @@ sbatch --dependency=afterok:<demand_u_jobid> \
        workflow/supplemental/prep_etest_chunks.sh                        # step-04 inputs + scaled NYC demand per chunk
 sbatch --dependency=afterok:<prep_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/etest_subset_stage.sh                       # realized u per SOW + etest_kn_50yr_n25000_first25ch
+       workflow/supplemental/etest_subset_stage.sh                       # cuts etest_kn_50yr_n12500 from the parent + realized u per SOW
 ```
 
 Every re-evaluation step (`05`, `08`, `09`, `09b`, `10`, `11`) takes
-`NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` explicitly. It
+`NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500` explicitly. It
 is deliberately never defaulted and never set in an env file, so cross-design
 comparability is a recorded choice.
 
@@ -208,11 +208,11 @@ regret family can be scored. Run it once per campaign env file, scenario-matched
 (`--search-ensemble`) for the two ensemble designs:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
        workflow/05_run_baseline.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
        workflow/05_run_baseline.sh --search-ensemble
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
        workflow/05_run_baseline.sh --search-ensemble
 ```
 
@@ -279,9 +279,9 @@ sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env wo
 
 # Chunked E_test re-evaluation of the reference set (shared partition, 16 ranks x 8 cpus, batch 50), then merge
 sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:00 \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
+       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
        workflow/09_simulate_test_chunks.sh          # resumable: resubmit the same line until every unit is written
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set \
        workflow/09b_merge_test_chunks.sh
 ```
 
@@ -290,8 +290,8 @@ Repeat for each campaign env file with the **same** preset. Step `08`
 persists simulation timeseries; the campaign path is `09` + `09b`. Then:
 
 ```bash
-sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch workflow/10_compare_designs.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 workflow/10_compare_designs.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
        workflow/11_scenario_discovery.sh
 sbatch workflow/13_main_figures.sh
 sbatch workflow/14_results_figures.sh

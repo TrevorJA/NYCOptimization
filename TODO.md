@@ -22,9 +22,10 @@ rerun); the problem JARs need no rebuild (only DV and objective COUNTS enter the
 still 8; `00_setup_borg_jars.sh` header); Pywr-DRB `nyc_opt` at `9619a90` and scengen
 `main` at `c61fef8`, clean and in sync, both editable in `venv`; `squeue` empty; balance
 591,765 SU. Every step below is an sbatch wrapper under `workflow/`; nothing runs on
-the login node and no bare `srun` one-liners (the three metadata-only E_test steps got
-wrappers on 2026-11-04: `etest_demand_utilization.sh`, `etest_subset_stage.sh`,
-`stage_etest_subset_baseline.sh`).
+the login node and no bare `srun` one-liners (the metadata-only E_test steps got
+wrappers on 2026-11-04: `etest_demand_utilization.sh`, `etest_subset_stage.sh`). E_test
+is `etest_kn_50yr_n12500` (500 SOWs, the leading 25 chunks of the 1,000-SOW parent
+generated 2026-08-19; `69c3840`), the one preset every re-evaluation step takes.
 
 Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_production.env`):
 
@@ -46,10 +47,12 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
   1. [x] `stage_nyc_demand_etest_chunks.sh`, array 21950437: 50 of 50 tasks COMPLETED
      2026-11-05 00:14 UTC (each chunk carries its k(u)-scaled
      `diversion_nyc_extrapolated_mgd.hdf5` and `demand_utilization_realized.csv`)
-  2. [ ] `etest_subset_stage.sh` submitted as job 21950524 (afterok on the array)
-     (realized `u` per SOW, then `etest_kn_50yr_n25000_first25ch`; runs
-     `assert_staged_etest_contract` with the utilization keys, the first real check of
-     the reverted contract on the staged meta)
+  2. [x] `etest_subset_stage.sh`, job 21951643, COMPLETED 2026-11-05 00:25 UTC (job
+     21950524 ran the pre-merge wrapper and failed on step order): `etest_kn_50yr_n12500`
+     cut from the parent (25 of 50 chunks, 500 SOWs x R = 25, `subset_of` recorded),
+     `assert_staged_etest_contract` passed with the utilization keys on the reused
+     2026-08-19 meta; realized minus nominal u: mean -0.027, range [-0.066, +0.008],
+     24 SOWs above nominal.
   3. (folded into 2)
   4. `J5=$(sbatch --parsable --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_shards.sh)`;
      `sbatch --dependency=afterok:$J5 --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_merge.sh`
@@ -58,20 +61,18 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
      `forcing_profiles.npz`) and the `dry_envelope.sh` production leg (Section 2).
   The realization-level `hazard_image.npz` of the parent stays on the retired 8-axis
   scoring; only the exploratory step 11 reads it (rescore before any step-11 run).
-- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.1 to 2.3; ~66 SU):
-  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/09_simulate_test_chunks.sh`
-  (in-job merge; lands in `outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n25000/baseline/`),
-  then once per design env
-  `sbatch --export=ALL,NYCOPT_ENV_FILE=<env>,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_BASELINE_SRC=outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n25000/baseline workflow/supplemental/stage_etest_subset_baseline.sh`,
-  and point `RTD_REEVAL_BASELINE_DIR` (`supplemental_config.py`, currently the archived
-  `ffmp_obj8_mm_full` path) at the new cube.
+- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.1 to 2.2; ~33 SU on 500 SOWs):
+  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/09_simulate_test_chunks.sh`
+  (in-job merge; lands in `outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n12500/baseline/`,
+  which is `supplemental_config.RTD_REEVAL_BASELINE_DIR`; design-independent, so no
+  per-design copy is needed).
 - [ ] **[HPC] 4. Historic step-05 baseline** (objective anchor; `--reeval` cannot run on a
   chunked preset, so skip it here, the cube above replaces it):
   `sbatch --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_BASELINE_SKIP_REEVAL=1 workflow/05_run_baseline.sh`
   -> `outputs/baseline/ffmp_baseline_objectives.csv` (now the Trenton deficit column).
 - [ ] **[HPC] 5. After HIST seed 1 (and seed 2)**: `extract_runtime_archive.py --seed 1`,
   the ε re-filter, seed 2, `--merge --install`, step 07, steps 09 + 09b on
-  `etest_kn_50yr_n25000_first25ch`, then 10/13/14 (Section 2 items).
+  `etest_kn_50yr_n12500`, then 10/13/14 (Section 2 items).
 
 Day target: item 1 submitted, items 2.1 to 2.4 done or submitted, item 3 chained as 2.1 lands. Matched-design staging at N = 300 (Section 2) is independent and can
 queue alongside.
@@ -132,11 +133,10 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
   matched design's d0 baseline at N = 300 (with the §2 staging). Every pre-2026-11-04
   baseline is in `archive/2026-11-04_pre_demand_update/outputs/baseline/`.
 - [ ] **[HPC]** Current-FFMP E_test baseline cube: step 09 with
-  `NYCOPT_CHUNK_POLICIES=baseline` under the historic env on the full
-  regenerated 1,000-SOW E_test (~66 SU), after the §A demand staging so the
-  cube carries the per-SOW utilization scaling, then
-  `scripts/supplemental/stage_etest_subset_baseline.py` per design. The old
-  cubes are archived (`.../outputs/historic/ffmp_obj8_mm_full/reeval/`).
+  `NYCOPT_CHUNK_POLICIES=baseline` under the historic env on E_test
+  (`etest_kn_50yr_n12500`, ~33 SU), after the §A demand staging so the cube
+  carries the per-SOW utilization scaling (rerun chain, item 3). The old cubes
+  are archived (`.../outputs/historic/ffmp_obj8_mm_full/reeval/`).
 - [ ] **[HPC]** Searches: every stored Pareto set (the August HIST set, the
   N = 100 production and moderate MC/HF sets, the `ffmp_vr` sets) predates the
   current demand series and is superseded by the §2 campaign searches (HIST included: the
@@ -331,7 +331,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   ~66 SU current-policy cube lines (§0 B, §2) that carry the same per-unit basis.
 - [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b at the geometry settled by the
   item above (documented: `shared`, 16 ranks × 8 cpus, batch 50),
-  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch` on every
+  `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500` on every
   05/08/09/09b/10 line (deliberately not in the env files). ~66k SU at the
   2,000-policy cap on the 33 SU-per-policy basis.
 - [ ] **[HPC]** Post-processing on the 500-SOW cube: steps 10, 13 and 14, the criteria

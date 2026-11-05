@@ -109,3 +109,9 @@ node-scaling factor, 605k model basis, against ~600k remaining.
   aside in the archive, utilization column appended by `srun` job 21947556 (2 cores, seconds;
   u in [0.450, 0.999], k in [0.653, 6.0], 4 SOWs clipped at k = 6). Remaining E_test chain is
   ~0.1k SU (chunk demand staging, sub-window image) plus the 66 SU baseline cube.
+- 2026-11-05: E_test completion chain. `stage_nyc_demand_etest_chunks.sh` array 21950437
+  (50 x 33 ranks, shared): all 50 tasks COMPLETED by 00:14 UTC, ~2-3 min each (~100 SU).
+  `etest_subset_stage.sh` job 21950524 FAILED in 6 s (pre-merge wrapper order; no cost);
+  resubmitted as 21951643, COMPLETED in 8 s: `etest_kn_50yr_n12500` staged (leading 25
+  chunks of `etest_kn_50yr_n25000`), contract passed, realized utilization merged.
+  Balance unchanged in substance (~591.6k).
