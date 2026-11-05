@@ -22,9 +22,13 @@ rerun); the problem JARs need no rebuild (only DV and objective COUNTS enter the
 still 8; `00_setup_borg_jars.sh` header); Pywr-DRB `nyc_opt` at `9619a90` and scengen
 `main` at `c61fef8`, clean and in sync, both editable in `venv`; `squeue` empty; balance
 591,765 SU. Every step below is an sbatch wrapper under `workflow/`; nothing runs on
-the login node and no bare `srun` one-liners (the three metadata-only E_test steps got
-wrappers on 2026-11-04: `etest_demand_utilization.sh`, `etest_subset_stage.sh`,
-`stage_etest_subset_baseline.sh`).
+the login node and no bare `srun` one-liners (the metadata-only E_test steps got
+wrappers on 2026-11-04: `etest_demand_utilization.sh`, `etest_subset_stage.sh`).
+E_test is 500 SOWs only (decision 2026-11-04): `etest_kn_50yr_n12500`, cut as the
+leading 25 chunks of the staged 1,000-SOW design (`etest_kn_50yr_n25000`, kept on disk
+as that parent only); every re-evaluation, diagnostic and figure reads the E_test slug,
+the baseline cube is computed per design on E_test itself, and the manuscript states
+500 SOWs without the parent.
 
 Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_production.env`):
 
@@ -45,9 +49,9 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
      (50 tasks x 33 ranks; writes each chunk's k(u)-scaled
      `diversion_nyc_extrapolated_mgd.hdf5` and `demand_utilization_realized.csv`)
   2. `sbatch --dependency=afterok:21950437 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_subset_stage.sh`
-     (realized `u` per SOW, then `etest_kn_50yr_n25000_first25ch`; runs
-     `assert_staged_etest_contract` with the utilization keys, the first real check of
-     the reverted contract on the staged meta)
+     (cuts `etest_kn_50yr_n12500` from `etest_kn_50yr_n25000`, then realized `u` per
+     SOW into the E_test dir; runs `assert_staged_etest_contract` with the utilization
+     keys, the first real check of the reverted contract on the staged meta)
   3. (folded into 2)
   4. `J5=$(sbatch --parsable --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_shards.sh)`;
      `sbatch --dependency=afterok:$J5 --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_merge.sh`
