@@ -55,25 +55,27 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
   3. (folded into 2)
   4. `J5=$(sbatch --parsable --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_shards.sh)`;
      `sbatch --dependency=afterok:$J5 --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_merge.sh`
-     (~21 SU; the retired-scoring image was moved to the archive, so the merge writes fresh)
+     (after 2.2: 25 tasks over the E_test chunks, ~10 SU, written into the E_test dir;
+     the parent's retired-scoring image was moved to the archive)
   5. later: `si_figures_design.sh` (Figure 3, S12 to S16 from the staged
      `forcing_profiles.npz`) and the `dry_envelope.sh` production leg (Section 2).
-  The realization-level `hazard_image.npz` of the parent stays on the retired 8-axis
-  scoring; only the exploratory step 11 reads it (rescore before any step-11 run).
-- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.1 to 2.3; ~66 SU):
-  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/09_simulate_test_chunks.sh`
-  (in-job merge; lands in `outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n25000/baseline/`),
-  then once per design env
-  `sbatch --export=ALL,NYCOPT_ENV_FILE=<env>,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_BASELINE_SRC=outputs/historic/ffmp_obj8/reeval/etest_kn_50yr_n25000/baseline workflow/supplemental/stage_etest_subset_baseline.sh`,
-  and point `RTD_REEVAL_BASELINE_DIR` (`supplemental_config.py`, currently the archived
-  `ffmp_obj8_mm_full` path) at the new cube.
+  The realization-level `hazard_image.npz` E_test inherits from the parent at the cut
+  stays on the retired 8-axis scoring; only the exploratory step 11 reads it (rescore
+  before any step-11 run).
+- [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.2; once per design env,
+  ~33 SU each at the measured unit cost; geometry per the step-09 vet item in Section 2):
+  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=<env>,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/09_simulate_test_chunks.sh`
+  for `$H` and both matched-design envs (in-job merge; a baseline-policy run lands in
+  `outputs/{design}/ffmp_obj8/reeval/etest_kn_50yr_n12500/baseline/`, the leaf the regret
+  family of that design's step-09 policy run reads; no symlinks, no cross-design
+  staging). `RTD_REEVAL_BASELINE_DIR` already names the historic copy.
 - [ ] **[HPC] 4. Historic step-05 baseline** (objective anchor; `--reeval` cannot run on a
   chunked preset, so skip it here, the cube above replaces it):
   `sbatch --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_BASELINE_SKIP_REEVAL=1 workflow/05_run_baseline.sh`
   -> `outputs/baseline/ffmp_baseline_objectives.csv` (now the Trenton deficit column).
 - [ ] **[HPC] 5. After HIST seed 1 (and seed 2)**: `extract_runtime_archive.py --seed 1`,
   the ε re-filter, seed 2, `--merge --install`, step 07, steps 09 + 09b on
-  `etest_kn_50yr_n25000_first25ch`, then 10/13/14 (Section 2 items).
+  `etest_kn_50yr_n12500`, then 10/13/14 (Section 2 items).
 
 Day target: item 1 submitted, items 2.1 to 2.4 done or submitted, item 3 chained as 2.1 lands. Matched-design staging at N = 300 (Section 2) is independent and can
 queue alongside.
