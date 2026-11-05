@@ -13,9 +13,13 @@
 # env-file headers). NYCOPT_OVERWRITE=1 relaunches a (design, slug, seed)
 # whose .set file already exists; otherwise the pre-flight refuses.
 #
-# Submit (from repo root; production needs --nodes=12 --ntasks-per-node=128):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
-#          --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
+# Submit (from repo root). Production searches go through the submit helper,
+# which holds the 12 x 128 geometry and the per-seed --time and issues the
+# sbatch line (`--dry-run` prints it):
+#   bash workflow/submit_production_search.sh <historic|monte_carlo|hazard_filling_stationary> <1|2>
+# Non-production runs pass the env file and overrides directly, e.g.
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12 \
+#          --array=1 workflow/06_run_mmborg.sh
 #
 # Geometry: the MPI rank count comes from the MOEA config
 # (MOEAConfig.total_ntasks_mpi -> mpirun -np); the #SBATCH lines below are only

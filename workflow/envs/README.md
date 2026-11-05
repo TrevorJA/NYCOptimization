@@ -30,10 +30,10 @@ submission and never pinned here, so the common E_test is a recorded choice.
 ## Usage
 
 ```bash
-# One optimization = one independent job (array index = Borg seed); production
-# needs the 12-node geometry and a per-seed --time (see each file's header):
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
-       --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
+# One optimization = one independent job (array index = Borg seed). Production
+# searches go through the submit helper, which holds the 12-node geometry and
+# the per-seed --time (workflow/submit_production_search.sh --dry-run shows the line):
+bash workflow/submit_production_search.sh monte_carlo 1
 
 # Chunked re-evaluation on the common held-out ensemble (campaign path, then 09b):
 sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:00 \

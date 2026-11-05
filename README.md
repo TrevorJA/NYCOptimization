@@ -226,22 +226,21 @@ campaign runs S = 2 seeds per design on draw 0 under the `production` MOEA
 config (4 islands × 382 workers = 1,533 ranks on 12 nodes); seed 1 runs 750k
 NFE and seed 2 500k, and both are reported at 500k
 (`docs/notes/methods/campaign_design.md`). The step-06 header is sized for the
-smaller `mm_moderate` config, so pass the production geometry and a per-seed
-`--time` explicitly (these lines are also in each env file's header):
+smaller `mm_moderate` config, so the production geometry (12 × 128) and the
+per-seed `--time` are held by `workflow/submit_production_search.sh`, the one
+submission path for every campaign search (its header documents the sbatch
+line it issues; `--dry-run` prints it):
 
 ```bash
 # Matched designs (mc, hazfill_stat): seed 1 then, once seed 1 has priced the campaign, seed 2
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
-       --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
-       --array=2 --nodes=12 --ntasks-per-node=128 --time=72:00:00 workflow/06_run_mmborg.sh
-# (same two lines with ffmp_obj8_hazfill_stat_production.env)
+bash workflow/submit_production_search.sh monte_carlo 1               # 96 h
+bash workflow/submit_production_search.sh monte_carlo 2               # 72 h
+bash workflow/submit_production_search.sh hazard_filling_stationary 1
+bash workflow/submit_production_search.sh hazard_filling_stationary 2
 
 # Historic reference: single trace, NFE-bounded, ~15x cheaper
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-       --array=1 --nodes=12 --ntasks-per-node=128 --time=12:00:00 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-       --array=2 --nodes=12 --ntasks-per-node=128 --time=08:00:00 workflow/06_run_mmborg.sh
+bash workflow/submit_production_search.sh historic 1                  # 12 h
+bash workflow/submit_production_search.sh historic 2                  # 8 h
 ```
 
 Every job starts with a config-derived pre-flight that echoes the resolved run

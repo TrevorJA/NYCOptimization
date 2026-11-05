@@ -157,18 +157,19 @@ per (env file × seed), no campaign wrapper. `DRAW=k` selects the staged
 ensemble draw (default 0) and the `--array` index is the Borg seed. The
 campaign searches draw 0 with S = 2 seeds per design, submitted one seed at a
 time (seed 1 runs 750k NFE, seed 2 500k; `docs/notes/methods/campaign_design.md`
-§2). The three production submit lines (also in each env file's header):
+§2). Every production search is submitted through `submit_production_search.sh`,
+which records the 12 × 128 geometry and the per-seed wall request (matched
+designs 96 h / 72 h; historic 12 h / 8 h) and issues the single sbatch line for
+one (design, seed):
 
 ```bash
 # Matched designs: seed 1 prices the campaign; submit seed 2 after it
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
-       --array=1 --nodes=12 --ntasks-per-node=128 --time=96:00:00 workflow/06_run_mmborg.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,DRAW=0 \
-       --array=2 --nodes=12 --ntasks-per-node=128 --time=72:00:00 workflow/06_run_mmborg.sh
-# (identical lines with ffmp_obj8_hazfill_stat_production.env)
-# Historic reference (NFE-bounded, single trace): 12 h for seed 1, 8 h for seed 2
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-       --array=1 --nodes=12 --ntasks-per-node=128 --time=12:00:00 workflow/06_run_mmborg.sh
+bash workflow/submit_production_search.sh monte_carlo 1
+bash workflow/submit_production_search.sh hazard_filling_stationary 1
+# Historic reference (NFE-bounded, single trace)
+bash workflow/submit_production_search.sh historic 1
+bash workflow/submit_production_search.sh historic 2 --dependency=afterok:<seed-1 jobid>
+# --dry-run prints the sbatch line; trailing arguments pass through to sbatch
 # Variable-resolution FFMP (non-campaign SI extension, leftover allocation only):
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12 \
        --array=1 workflow/06_run_mmborg.sh
@@ -217,6 +218,14 @@ allows up to 16 nodes (2,048 cores) and 96 h. The `wide` queue reaches 56
 nodes but only 12 h. Seeds (`--array`) and experiments (env files) scale
 horizontally as fully independent jobs with no cross-job coordination. Shorter
 pilots can pass `sbatch --time=...`.
+
+## Submission helpers (login node; they issue sbatch, they are not jobs)
+
+- `submit_production_search.sh <design> <seed> [--dry-run] [sbatch args]` — the
+  one submission path for a campaign search (step 06, `production` config);
+  design ∈ {historic, monte_carlo, hazard_filling_stationary} (hist/mc/hf),
+  seed ∈ {1, 2}. Holds the 12 × 128 geometry and per-seed wall request so no
+  production job is ever typed at the prompt.
 
 ## Development utilities (not replication)
 

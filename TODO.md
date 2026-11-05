@@ -34,17 +34,19 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
 - [ ] **[HPC] 1. HIST production, seed 1** (single trace, needs only the regenerated
   historic CSV; ~6.3k SU at 8.35 SU per 1,000 NFE; the step-06 duplicate guard is clear
   because `outputs/historic/` is archived):
-  `sbatch --export=ALL,NYCOPT_ENV_FILE=$H --array=1 --nodes=12 --ntasks-per-node=128 --time=12:00:00 workflow/06_run_mmborg.sh`.
+  `bash workflow/submit_production_search.sh historic 1`
+  (the helper holds the 12 x 128 geometry and the 12 h wall; `--dry-run` prints the line).
   Optional first: `bash workflow/submit_smoke.sh ffmp` (debug queue, 2 x 40, verifies the
   model build with the new demand series before the 12-node queue wait). Seed 2
-  (`--array=2 --time=08:00:00`) after seed 1 lands.
+  (`bash workflow/submit_production_search.sh historic 2 --dependency=afterok:<seed-1 jobid>`,
+  8 h) after seed 1 lands.
 - [ ] **[HPC] 2. E_test completion** (no regeneration; the staged flows and presim are reused).
   The staging contract lists the demand series as a required chunk file, so the chunk
   staging precedes the subset build (the reverse order was refused on 2026-11-04):
-  1. [x] `stage_nyc_demand_etest_chunks.sh` submitted 2026-11-04 as array 21950437
-     (50 tasks x 33 ranks; writes each chunk's k(u)-scaled
+  1. [x] `stage_nyc_demand_etest_chunks.sh`, array 21950437: 50 of 50 tasks COMPLETED
+     2026-11-05 00:14 UTC (each chunk carries its k(u)-scaled
      `diversion_nyc_extrapolated_mgd.hdf5` and `demand_utilization_realized.csv`)
-  2. `sbatch --dependency=afterok:21950437 --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_subset_stage.sh`
+  2. [ ] `etest_subset_stage.sh` submitted as job 21950524 (afterok on the array)
      (realized `u` per SOW, then `etest_kn_50yr_n25000_first25ch`; runs
      `assert_staged_etest_contract` with the utilization keys, the first real check of
      the reverted contract on the staged meta)
@@ -287,7 +289,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   (`epsilon_ensemble_refilter.py`, selection rule: finest grouped vector whose
   largest-design union x1.35 is <= 1,000, `--max-size`); apply the §5 cap rule
   if the merged union exceeds ~2,000.
-- [ ] **[HPC]** Seed 2 per design (500k NFE), then
+- [ ] **[HPC]** Seed 2 per design (500k NFE; `submit_production_search.sh <design> 2`), then
   `extract_runtime_archive.py --merge --install` (installs `ffmp_obj8_merged.set`,
   the step-08/09 reference) and step 07 (coordinator-archive diagnostics; writes
   only `ffmp_obj8_diagnostics_reference.set`, either order).
