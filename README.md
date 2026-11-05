@@ -167,15 +167,16 @@ on each staged ensemble as build QC.
 
 #### 2.2 Test-ensemble staging (step 12 + supplemental)
 
-The held-out re-evaluation ensemble E_test (`etest_kn_50yr_n25000`: 1,000 LHS
+The held-out re-evaluation ensemble E_test (`etest_kn_50yr_n12500`: 500 LHS
 SOWs over the three climate amplitudes and the NYC entitlement utilization `u`,
-× 25 realizations × 50 yr, 50 staged chunks) is independent of steps
+× 25 realizations × 50 yr, 25 staged chunks) is independent of steps
 02–07 and never enters search. Build it sharded, merge, calibrate the demand
 scale and append the per-SOW utilization column (metadata only;
 `docs/notes/methods/forcing_parameterization.md`), stage the pywrdrb inputs per
 chunk (the one-time presim pass over E_test, including each SOW's scaled NYC
-demand series), merge the realized utilization, then stage the 500-SOW campaign
-prefix subset (metadata only, login node):
+demand series), then merge the realized utilization. The campaign E_test is cut
+from the larger design generated 2026-08-19 (`etest_kn_50yr_n25000`, 50 chunks)
+by `etest_subset_stage.sh` (metadata only; nothing reads the parent afterwards):
 
 ```bash
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
@@ -191,7 +192,7 @@ sbatch --dependency=afterok:<demand_u_jobid> \
        workflow/supplemental/prep_etest_chunks.sh                        # step-04 inputs + scaled NYC demand per chunk
 sbatch --dependency=afterok:<prep_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/etest_subset_stage.sh                       # cuts etest_kn_50yr_n12500 from the parent + realized u per SOW
+       workflow/supplemental/etest_subset_stage.sh                       # cut etest_kn_50yr_n12500 from the parent + realized u per SOW
 ```
 
 Every re-evaluation step (`05`, `08`, `09`, `09b`, `10`, `11`) takes

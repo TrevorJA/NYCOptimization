@@ -81,8 +81,8 @@ def _need_available(need: str, ctx: FigureContext) -> bool:
         with np.load(npz, allow_pickle=True) as z:
             return "demand_utilization" in z.files
     if need == "demand_realized":
-        from src.plotting.demand_utilization import _parent_dir
-        return (_parent_dir(ctx.tag) / "demand_utilization_realized_by_sow.csv").is_file()
+        return (config.STAGED_ENSEMBLE_DIR / ctx.tag
+                / "demand_utilization_realized_by_sow.csv").is_file()
     if need == "regret_by_utilization":
         return (ctx.comparison_dir() / "design_regret_by_utilization.csv").is_file()
     return True
