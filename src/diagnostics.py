@@ -7,7 +7,7 @@ exchange solutions through the controller (periodic updates, guidance after
 stagnation), so their archives are coupled and a line per island overstates
 the number of convergence trajectories. The controller writes no runtime
 file (``BORG_Controller_run`` in lib/borg/borgmm.c only returns its archive
-at shutdown), so step 07 reconstructs the coordinator archive at every
+at shutdown), so step 09 reconstructs the coordinator archive at every
 snapshot from the island runtime files, which all record the same NFE grid.
 
 Workflow (``run_full_diagnostics``):
@@ -28,7 +28,7 @@ Workflow (``run_full_diagnostics``):
        tail beyond the reporting NFE, and it is distinct from the campaign
        reference set ``{slug}_merged.set`` that
        ``scripts/main/extract_runtime_archive.py --merge --install`` writes
-       for the step 08/09 re-evaluation; step 07 never writes that name.
+       for the step 10 re-evaluation; step 09 never writes that name.
     3. MetricsEvaluator: coordinator series + reference set -> one
        ``metrics/seed_SS_{slug}.metrics`` per seed (hypervolume, generational
        distance, inverted generational distance, spacing, additive
@@ -176,7 +176,7 @@ def coordinator_series_files(slug: str, scenario: str = None) -> list[Path]:
 
 
 def diagnostics_reference_set_path(slug: str, scenario: str = None) -> Path:
-    """``sets/{slug}_diagnostics_reference.set``, the step-07 reference set.
+    """``sets/{slug}_diagnostics_reference.set``, the step-09 reference set.
 
     Never the campaign reference set ``{slug}_merged.set`` (written only by
     ``extract_runtime_archive.py --merge --install`` and consumed by step

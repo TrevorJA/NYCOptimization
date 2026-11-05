@@ -3,7 +3,7 @@
 Builds a small SYNTHETIC multi-design re-eval tree in ``tmp_path`` -- several
 campaign designs x draws x seeds, each with its own per-SOW (S, G, M) matrix in
 the unified-metric-currency long format -- runs ``src.robustness`` over it to
-produce the per-run artifacts exactly as workflow step 08 would, then drives
+produce the per-run artifacts exactly as workflow step 10 would, then drives
 ``scripts/main/compare_designs.run_comparison`` on it.
 
 Asserts that the deliverables are produced with the right shapes:
@@ -491,7 +491,7 @@ def _write_regret_run(out_dir: Path, harmful_sows: int) -> None:
         dict(REG_META, solution_ids=[0], n_solutions=1,
              n_realizations=REG_N_SOW * REG_R)))
 
-    # Score it exactly as workflow step 08 would, so the scorecard carries the
+    # Score it exactly as workflow step 10 would, so the scorecard carries the
     # regret columns the comparison layer and the plane figure read.
     rob.run(out_dir, baseline_dir=bdir,
             metrics=("satisficing_multivariate_sow", "satisficing_univariate_sow",

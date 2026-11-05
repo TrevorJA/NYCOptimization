@@ -252,7 +252,7 @@ def criterion_by_key(key: str) -> CriterionSet:
 
 
 #: The default FOCAL criterion for policy-level robustness figures and the
-#: step-11 satisficing label: the all-parties compromise set.
+#: scenario-discovery satisficing label: the all-parties compromise set.
 DEFAULT_FOCAL_KEY = "compromise"
 
 #: Env var selecting the FOCAL criterion. Default = :data:`DEFAULT_FOCAL_KEY`.

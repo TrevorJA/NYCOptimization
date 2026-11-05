@@ -1,6 +1,6 @@
 # Hazard Filling design metrics (supplemental diagnostic)
 
-*Definition of the Hazard Filling (HF) design's measurable properties and of the diagnostic that computes them on hazard images. Machinery: `scengen/subsample.py` (`lhs_nn_assignment`, the pairing-preserving selection), `scengen/selector_diagnostics.py` (`knn_min_sum_assignment`, the certified exact assignment), `scripts/supplemental/hf_design_metrics_run.py` and `hf_design_metrics_figures.py`; wrapper `workflow/supplemental/hf_design_metrics.sh`; settings `supplemental_config.py` (`HFM_*`). Outputs: `outputs/supplemental/hf_design_metrics/{tables,figures}`. Selection recipe: `scenario_design_methods.md` §4.3; measure statement: §4.5. Terminology: `docs/terminology.md` §C.*
+*Definition of the Hazard Filling (HF) design's measurable properties and of the diagnostic that computes them on hazard images. Machinery: `scengen/subsample.py` (`lhs_nn_assignment`, the pairing-preserving selection), `scengen/selector_diagnostics.py` (`knn_min_sum_assignment`, the certified exact assignment), `scripts/supplemental/hf_design_metrics_run.py` and `hf_design_metrics_figures.py`; wrapper `workflow/supplemental/design_diagnostics/hf_design_metrics.sh`; settings `supplemental_config.py` (`HFM_*`). Outputs: `outputs/supplemental/hf_design_metrics/{tables,figures}`. Selection recipe: `scenario_design_methods.md` §4.3; measure statement: §4.5. Terminology: `docs/terminology.md` §C.*
 
 ---
 
@@ -62,7 +62,7 @@ Tables (`smoke_` prefix under `NYCOPT_HFM_SMOKE=1`): `hfm_summary.csv` (one row 
 
 Figures (PNG): `F1_marginals_range` (per-axis scaled ECDFs of every set with the random band, the candidate p90, historical ticks, and span bars); `F2_coverage_diversity` (ECDFs of the coverage distances with the minimax marked and of the MST edge lengths; the headline statistics as ratios to random); `F3_target_displacement` (displacement ECDFs of the sequential rule, the exact assignment, and the free lower bound; greedy against exact per target); `F4_measure_weights` (sorted $N w_i$ with $n_{\text{eff}}/N$; $w_i$ against the drought-magnitude coordinate).
 
-Run: `sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_size_diagnostics.env workflow/supplemental/hf_design_metrics.sh` on Anvil (about a minute per draw on 8 threads; 16 GB); locally `NYCOPT_HFM_SMOKE=1 python scripts/supplemental/hf_design_metrics_run.py` then `hf_design_metrics_figures.py` on the staged P = 300 / N = 40 images. Tests: `tests/test_hf_design_metrics.py` (pure helpers and the smoke identity) and, in `scengen`, `tests/test_subsample.py` (pinned regression of the selection) and `tests/test_selector_diagnostics.py` (certificate against the dense assignment).
+Run: `sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ensemble_size_diagnostics.env workflow/supplemental/design_diagnostics/hf_design_metrics.sh` on Anvil (about a minute per draw on 8 threads; 16 GB); locally `NYCOPT_HFM_SMOKE=1 python scripts/supplemental/hf_design_metrics_run.py` then `hf_design_metrics_figures.py` on the staged P = 300 / N = 40 images. Tests: `tests/test_hf_design_metrics.py` (pure helpers and the smoke identity) and, in `scengen`, `tests/test_subsample.py` (pinned regression of the selection) and `tests/test_selector_diagnostics.py` (certificate against the dense assignment).
 
 ## 8. Results
 

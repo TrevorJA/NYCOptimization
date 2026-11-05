@@ -24,14 +24,14 @@ Tables (same directory):
                                highlighted policies
 
 Figures 05/06 read the full-model HDF5 runs written by
-``workflow/supplemental/sim_selected_policies.sh`` (``src.policy_simulation``)
+``workflow/supplemental/figures/sim_selected_policies.sh`` (``src.policy_simulation``)
 under ``outputs/{scenario}/{slug}/timeseries/selected_policies/``; the baseline
 and the highlighted representatives are simulated by that job in one model mode.
 
 Usage (from repo root, venv active):
     python3 -m scripts.main.explore_results --slug <slug>     # selection, cheap figures
     sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env> \
-        workflow/supplemental/sim_selected_policies.sh --slug <slug>   # HDF5 runs
+        workflow/supplemental/figures/sim_selected_policies.sh --slug <slug>   # HDF5 runs
     python3 -m scripts.main.explore_results --slug <slug>     # adds figures 05/06
 """
 from __future__ import annotations
@@ -95,7 +95,7 @@ def _load_baseline(formulation: str, scenario: str,
     """Scenario-matched baseline vector aligned to the front's objectives.
 
     Resolves through ``config.baseline_objectives_csv`` so an ensemble
-    scenario reads the baseline scored on its own search ensemble (step 05
+    scenario reads the baseline scored on its own search ensemble (step 06
     ``--search-ensemble``), never the historic-record vector. The header must
     equal the active objective set exactly (hard error).
 
@@ -109,7 +109,7 @@ def _load_baseline(formulation: str, scenario: str,
             f"baseline objectives not found: {path}\n"
             f"Score the baseline on this scenario's search ensemble first:\n"
             f"  sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env> \\\n"
-            f"      workflow/05_run_baseline.sh --search-ensemble\n"
+            f"      workflow/06_run_baseline.sh --search-ensemble\n"
             f"(or pass --no-baseline to skip the comparison)")
     df = pd.read_csv(path)
     if list(df.columns) != list(obj_names):
@@ -117,7 +117,7 @@ def _load_baseline(formulation: str, scenario: str,
             f"{path}: baseline objective columns do not match the active "
             f"objective set.\n  baseline: {list(df.columns)}\n"
             f"  expected: {list(obj_names)}\n"
-            f"Re-run workflow/05_run_baseline.sh under this objective set."
+            f"Re-run workflow/06_run_baseline.sh under this objective set."
         )
     return df.iloc[0][list(obj_names)].to_numpy(dtype=float)
 
@@ -314,7 +314,7 @@ def main() -> int:
                          "scenario-matched baseline from "
                          "config.baseline_objectives_csv — for ensemble "
                          "scenarios that is the search-ensemble-scored vector "
-                         "(step 05 --search-ensemble), never the historic-"
+                         "(step 06 --search-ensemble), never the historic-"
                          "record one.")
     ap.add_argument("--figures", nargs="*", default=None,
                     help="Render only these figure names (e.g. "
@@ -325,7 +325,7 @@ def main() -> int:
                     help="Policy-set run directory holding the HDF5 traces "
                          "(default outputs/{scenario}/{slug}/timeseries/"
                          "selected_policies, written by "
-                         "workflow/supplemental/sim_selected_policies.sh)")
+                         "workflow/supplemental/figures/sim_selected_policies.sh)")
     args = ap.parse_args()
     global _FIGURE_FILTER
     _FIGURE_FILTER = set(args.figures) if args.figures else None
@@ -433,7 +433,7 @@ def main() -> int:
         print(f"\n[timeseries] no complete trace set under {run_dir} for the "
               f"current selection; skipped.\n  Produce it with: "
               f"sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env> "
-              f"workflow/supplemental/sim_selected_policies.sh --slug {args.slug}")
+              f"workflow/supplemental/figures/sim_selected_policies.sh --slug {args.slug}")
         return 0
 
     from src.plotting.historic_timeseries import plot_historic_timeseries

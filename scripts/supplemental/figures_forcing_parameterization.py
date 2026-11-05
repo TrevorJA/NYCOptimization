@@ -26,7 +26,7 @@ names the box it draws.
 
 Run through the SI figure driver::
 
-    sbatch workflow/supplemental/si_figures_design.sh
+    sbatch workflow/supplemental/figures/si_figures_design.sh
     # or, directly:
     python3 scripts/supplemental/figures_forcing_parameterization.py
 """

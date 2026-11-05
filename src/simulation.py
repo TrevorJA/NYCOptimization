@@ -7,7 +7,7 @@ re-evaluation (``evaluate_annual_units``) both run in memory: the model dict
 is cached and patched per evaluation, a temporary JSON model file is written
 to a per-rank temp dir (pywr.Model.load requires a file), and an
 InMemoryRecorder captures results to numpy arrays. HDF5 output is written
-only by the step-05 baseline (``run_simulation_to_disk``).
+only by the step-06 baseline (``run_simulation_to_disk``).
 """
 
 import os
@@ -1594,7 +1594,7 @@ def check_dv_feasibility(nyc_config, ensemble_spec, *, probe_index=None):
 
 
 ###############################################################################
-# Disk-Based Simulation (step-05 baseline)
+# Disk-Based Simulation (step-06 baseline)
 ###############################################################################
 
 def run_simulation_to_disk(nyc_config, output_file: Path,

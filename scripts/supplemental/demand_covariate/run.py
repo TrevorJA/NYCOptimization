@@ -14,7 +14,7 @@ versus new, with everything else identical:
      k = 1 utilization of the ``DCV_FIXTURE_SLUG`` fixture before (saved HDF5)
      and after (re-staged live), so the HIST-versus-ensemble consistency is
      measured, not asserted.
-  2. NYC system outcomes of the current FFMP policy from the step-05 baseline
+  2. NYC system outcomes of the current FFMP policy from the step-06 baseline
      configuration (full model, single trace, default decision variables): one
      cached model dict, deep-copied and patched with only the ``demand_nyc``
      source swapped. Combined storage, FFMP-year minimum storage, days and
@@ -26,7 +26,7 @@ versus new, with everything else identical:
      the same way for the storage figures and the outcome tables only; it is
      never a demand source anywhere else (``config.assert_time_dynamic_nyc_demand``).
   3. The eight active annual-unit objectives (``config.get_objective_set()``,
-     the step-05 computation) under both demands, the difference in units of
+     the step-06 computation) under both demands, the difference in units of
      each objective's epsilon.
 
 Outputs -> outputs/supplemental/demand_covariate/tables (figures.py renders).
@@ -321,7 +321,7 @@ def fixture_utilization_table() -> pd.DataFrame:
 
 
 ###############################################################################
-# Simulation: the step-05 baseline configuration with the demand source swapped
+# Simulation: the step-06 baseline configuration with the demand source swapped
 ###############################################################################
 
 def current_policy_config():
@@ -333,7 +333,7 @@ def current_policy_config():
 def simulate(nyc_config, demand_csv: Path | None) -> dict:
     """Full-model single-trace run of ``nyc_config`` with ``demand_nyc`` read from ``demand_csv``.
 
-    Mirrors ``src.simulation.run_simulation_inmemory`` (the step-05 path): the
+    Mirrors ``src.simulation.run_simulation_inmemory`` (the step-06 path): the
     cached full-model dict is deep-copied and patched, then only the
     ``demand_nyc`` parameter is replaced: the dataframe source's ``url`` points
     at ``demand_csv``, or, for ``None``, a constant at the 800 MGD allocation

@@ -1,7 +1,7 @@
 """merge_test_chunks.py - Standalone merge for the chunked test-ensemble re-eval.
 
 Merges the per-(solution, chunk) unit files a ``NYCOPT_CHUNK_MERGE=off``
-simulate run (workflow step 09) left under ``partial/units/`` into the re-eval
+simulate run (workflow step 10) left under ``partial/units/`` into the re-eval
 cube + robustness scorecards, via :func:`src.chunk_reeval.merge_test_chunks`.
 Single process; resumable (stateless over the unit files, overwrites its own
 outputs). Refuses on missing units unless ``NYCOPT_CHUNK_MERGE_ALLOW_PARTIAL=1``.
@@ -11,7 +11,7 @@ The campaign identity (env file, ``NYCOPT_REEVAL_ENSEMBLE_PRESET``,
 set defines the solution ids the units are keyed by. ``--formulation`` and
 ``--seed`` are identifiers, everything else is env (no CLI value flags).
 
-Launch via workflow/09b_merge_test_chunks.sh.
+Launch via workflow/11_merge_test_chunks.sh.
 """
 
 from __future__ import annotations

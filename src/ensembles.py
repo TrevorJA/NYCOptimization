@@ -140,7 +140,7 @@ PRESETS: dict[str, EnsembleSpec] = {
 
 # The held-out test ensemble E_test needs no entry here: ``_spec_from_staged_dir``
 # resolves any staged directory carrying a ``_meta.json`` by slug, so
-# ``NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`` resolves once step 12
+# ``NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`` resolves once step 05
 # (or the chunk-prefix staging of ``make_etest_subset.py``) has staged it.
 # E_test is an ``EnsembleSpec``, never a ``ScenarioDesign``: it never enters search.
 
@@ -219,7 +219,7 @@ def _spec_from_staged_dir(slug: str) -> EnsembleSpec | None:
     """Build an ``EnsembleSpec`` from a staged ensemble's ``_meta.json``, or None.
 
     Any directory ``STAGED_ENSEMBLE_DIR/{slug}/`` that carries a ``_meta.json``
-    written by a generator (step 02, step 03 or step 12) resolves to an
+    written by a generator (step 02, step 03 or step 05) resolves to an
     ensemble of ``n_realizations`` realizations numbered ``0..N-1``.
     """
     import json

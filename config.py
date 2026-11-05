@@ -177,9 +177,9 @@ def baseline_objectives_csv(formulation: str = "ffmp",
 
     A baseline vector is only comparable to a front evaluated on the SAME
     substrate, so the file is scenario-partitioned: the historic baseline
-    (single trace, full model, step 05 default path) keeps its legacy flat
+    (single trace, full model, step 06 default path) keeps its legacy flat
     location, while every other scenario design points at the same default
-    policy scored on that design's search ensemble (step 05
+    policy scored on that design's search ensemble (step 06
     ``--search-ensemble``). Consumers get "no file" — not a historic-record
     vector — when a scenario has not been scored yet.
 
@@ -246,7 +246,7 @@ def figure_dir_for(scenario: str, moea_slug: str, kind: str) -> Path:
 # Simulation Settings
 ###############################################################################
 
-# HISTORIC-design simulation window ONLY (step-01 presim slice, step-05
+# HISTORIC-design simulation window ONLY (step-01 presim slice, step-06
 # baseline): December-anchored bounds of the reconstructed record (which spans
 # 1945-01-01..2023-12-31), sharing the synthetic epoch's December anchor so the
 # 6-month metric exclusion ends on June 1 (the FFMP operating-year boundary).
@@ -270,7 +270,7 @@ INFLOW_TYPE = os.environ.get("NYCOPT_INFLOW_TYPE", "pub_nhmv10_BC_withObsScaled"
 # step 04 presimulates them once per staged realization and every policy
 # evaluation reuses them. The full model (all reservoirs simulated live) is
 # used only for the presim pass (step 01/04) and the single-trace historic
-# baseline (step 05); the env knob exists so benchmarks and those jobs can
+# baseline (step 06); the env knob exists so benchmarks and those jobs can
 # select it without editing this file.
 USE_TRIMMED_MODEL = _parse_bool_env("NYCOPT_USE_TRIMMED_MODEL", True)
 INITIAL_VOLUME_FRAC = 0.80
@@ -688,7 +688,7 @@ REEVALUATION_SETTINGS = {
 # Cluster Target
 ###############################################################################
 # Selects the SLURM template family (Anvil for production, Hopper for smoke
-# tests). workflow/_common.sh and workflow/08_reevaluate.sh consult this value when
+# tests). workflow/_common.sh and workflow/supplemental/results_diagnostics/reevaluate_unchunked.sh consult this value when
 # they need cluster-specific defaults (MCA flags, node sizing).
 
 CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
@@ -816,7 +816,7 @@ def search_node_rss_gb(ranks_per_node: int, n_realizations: int,
 # (src/simulation.py::run_simulation_ensemble_inmemory). Logging only.
 SIM_PHASE_TIMING = _parse_int_env("NYCOPT_SIM_PHASE_TIMING", 0)
 
-# --- Chunked re-evaluation (step 09, src/chunk_reeval.py) execution knobs ---
+# --- Chunked re-evaluation (step 10, src/chunk_reeval.py) execution knobs ---
 # None of these change results: unit rows are keyed by (solution id, GLOBAL
 # realization id, objective), so layout, scheduling and merge placement cannot
 # alter the merged cube (tests/test_chunk_reeval.py). Single documented copy.
@@ -827,7 +827,7 @@ SIM_PHASE_TIMING = _parse_int_env("NYCOPT_SIM_PHASE_TIMING", 0)
 # CHUNK_SCHEDULE     claim: ranks pull units via O_CREAT|O_EXCL claim files;
 #                    interleave: static strided; contiguous: static blocks.
 # CHUNK_MERGE        job: rank 0 merges after all ranks finish; off: ranks only
-#                    write units (merge via workflow/09b_merge_test_chunks.sh).
+#                    write units (merge via workflow/11_merge_test_chunks.sh).
 # CHUNK_MERGE_ALLOW_PARTIAL  1: merge with missing units as NaN rows.
 # CHUNK_DONE_DEADLINE_S      await_all_done deadline for the in-job merge.
 # CHUNK_RETRY_FAILED 1: a resume re-attempts units whose previous run raised.
@@ -1085,7 +1085,7 @@ def results_slug(reeval_tag: str, formulation: str | None = None) -> str:
             f"no moea slug under {OUTPUTS_DIR} carries a re-eval on tag "
             f"'{reeval_tag}' for every campaign design "
             f"({', '.join(campaign_designs())}). "
-            f"Run the re-evaluation (workflow steps 08/09) first, or set "
+            f"Run the re-evaluation (workflow step 10) first, or set "
             f"{RESULTS_SLUG_ENV} if the outputs live under a nonstandard slug."
         )
     raise ValueError(

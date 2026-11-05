@@ -1,0 +1,111 @@
+#!/bin/bash
+# Unchunked re-evaluation (supplemental; the campaign path is steps 10 + 11):
+# re-evaluate Pareto-optimal policies on the COMMON held-out ensemble so scores
+# are comparable across scenario designs. Runs the TRIMMED model,
+# like search: the non-NYC STARFIT releases are policy-independent and are
+# presimulated once per realization by step 04 (the staged ensemble must carry
+# presimulated_releases_mgd.hdf5), then reused for every Pareto set.
+#
+# Everything comes from env vars / the env file — no positional args:
+#   NYCOPT_ENV_FILE                required — the design being re-evaluated
+#   NYCOPT_REEVAL_ENSEMBLE_PRESET  required — the common held-out ensemble
+#                                  (campaign: etest_kn_50yr_n12500);
+#                                  explicit so cross-design comparability is a
+#                                  recorded choice, never a silent default
+#   NYCOPT_REEVAL_MODE             single | mpi (from env file; default single)
+#   FORMULATION                    identifier, default ffmp
+#   DRAW                           optional, default 0 — ensemble draw of the
+#                                  searched run (selects the "_d{k}" slug for
+#                                  k>0, like step 07)
+#   SEED                           optional, per-seed output subdir
+#   MAX_SOLUTIONS                  default 0 = all Pareto solutions
+#   NYCOPT_REEVAL_SCORE=1          opt-in offline robustness scoring
+#   NYCOPT_REEVAL_BASELINE_DIR     optional — incumbent cube for the
+#                                  incumbent-relative regret family
+#                                  (auto-detected under reeval/{tag}/baseline)
+#
+# Submit (from repo root):
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_REEVAL_SCORE=1 \
+#          workflow/supplemental/results_diagnostics/reevaluate_unchunked.sh
+#
+# Local / single-node (no SLURM allocation needed):
+#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
+#   NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 NYCOPT_REEVAL_MODE=single \
+#   bash workflow/supplemental/results_diagnostics/reevaluate_unchunked.sh
+#
+# The SBATCH geometry below is sized for the MPI path (4 nodes x 16 ranks = 64,
+# matching the env's NYCOPT_REEVAL_NODES x NYCOPT_REEVAL_RANKS). Rescale a run
+# without editing this file via `sbatch --nodes=N --ntasks-per-node=M ...`;
+# `mpirun -np` follows the actual allocation (SLURM_NTASKS).
+#
+#SBATCH --job-name=reevaluate
+#SBATCH --account=ees260021
+#SBATCH --partition=wholenode
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=1
+#SBATCH --exclusive
+#SBATCH --time=08:00:00
+#SBATCH --output=logs/reevaluate_%j.out
+#SBATCH --error=logs/reevaluate_%j.err
+set -euo pipefail
+
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/workflow/_common.sh"
+nycopt_setup_env
+nycopt_source_env_file required
+# Ensemble-draw identifier (same contract as step 07): selects which searched
+# run's outputs to re-evaluate — the slug gains "_d{k}" for k>0.
+export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
+nycopt_pin_threads
+
+: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the common held-out re-eval ensemble explicitly, e.g. etest_kn_50yr_n12500}"
+FORMULATION="${FORMULATION:-ffmp}"
+MAX_SOLUTIONS="${MAX_SOLUTIONS:-0}"
+SEED="${SEED:-}"
+MODE="${NYCOPT_REEVAL_MODE:-single}"
+NJOBS="${SLURM_CPUS_ON_NODE:-1}"
+
+ARGS="--formulation ${FORMULATION} --max ${MAX_SOLUTIONS} --njobs ${NJOBS}"
+[[ -n "${SEED}" ]] && ARGS="${ARGS} --seed ${SEED}"
+
+echo "=== Re-evaluation: formulation=${FORMULATION} draw=${NYCOPT_ENSEMBLE_DRAW}" \
+     "mode=${MODE} seed=${SEED:-all} ensemble=${NYCOPT_REEVAL_ENSEMBLE_PRESET} ==="
+
+case "${MODE}" in
+    single)
+        # Single-node multiprocessing.Pool across this node's cores. For
+        # interactive/local use, invoke with `bash` (no SLURM allocation needed).
+        echo "[reevaluate] single-node mode, ${NJOBS} worker(s)"
+        python3 -m src.reevaluate ${ARGS}
+        ;;
+    mpi)
+        # Multi-node MPI: one rank per solution slice (src.reevaluate_mpi). -np is
+        # the ACTUAL SLURM allocation, so the launch cannot over/under-subscribe
+        # the SBATCH geometry above. Requires a SLURM allocation.
+        : "${SLURM_NTASKS:?mpi mode needs a SLURM allocation — submit with sbatch, or set NYCOPT_REEVAL_MODE=single}"
+        echo "[reevaluate] MPI mode, ${SLURM_NTASKS} ranks"
+        mpirun -np "${SLURM_NTASKS}" ${NYCOPT_MPI_MCA_FLAGS} \
+            python3 -m src.reevaluate_mpi ${ARGS}
+        ;;
+    *)
+        echo "ERROR: unknown NYCOPT_REEVAL_MODE='${MODE}' (expected 'single' or 'mpi')" >&2
+        exit 1
+        ;;
+esac
+
+# ---- Optional offline robustness scoring (opt-in) ----
+# Scores the persisted raw matrix (reeval_raw.parquet) into the robustness
+# scorecard. Cheap, no re-simulation. The incumbent-relative regret family
+# needs the incumbent's cube on the same preset (step 06 `run_baseline.py
+# --reeval`); pass its directory via NYCOPT_REEVAL_BASELINE_DIR if it is not
+# under reeval/{tag}/baseline.
+if [[ "${NYCOPT_REEVAL_SCORE:-0}" == "1" ]]; then
+    echo "=== Robustness scoring ==="
+    SCORE_ARGS="--formulation ${FORMULATION}"
+    [[ -n "${SEED}" ]] && SCORE_ARGS="${SCORE_ARGS} --seed ${SEED}"
+    [[ -n "${NYCOPT_REEVAL_BASELINE_DIR:-}" ]] && \
+        SCORE_ARGS="${SCORE_ARGS} --baseline-dir ${NYCOPT_REEVAL_BASELINE_DIR}"
+    python3 -m src.robustness ${SCORE_ARGS}
+fi
+
+echo "=== Completed: $(date) ==="

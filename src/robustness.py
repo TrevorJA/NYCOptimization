@@ -116,7 +116,7 @@ def load_raw(reeval_dir) -> RawCube:
         raise ValueError(
             f"{meta_path} predates the per-SOW annual-unit substrate (it has "
             f"no 'obj_names'). Old whole-trace cubes are not scoreable under "
-            f"the unified metric currency — re-run workflow steps 05 and "
+            f"the unified metric currency — re-run workflow steps 06 and "
             f"08/09 to regenerate this re-eval."
         )
 
@@ -355,7 +355,7 @@ def _aligned_baseline(raw: RawCube, baseline: RawCube) -> np.ndarray:
             f"SOWs but the policy cube scores {len(raw.sow_labels)}; "
             f"{len(uncovered)} SOWs are uncovered (first few: "
             f"{uncovered[:8]}). A NaN incumbent row reads as regret for every "
-            f"policy — re-run step 05 on the same test ensemble."
+            f"policy — re-run step 06 on the same test ensemble."
         )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -1133,8 +1133,8 @@ def score_robustness(raw: RawCube, baseline: Optional[RawCube] = None,
         warnings.warn(
             f"{', '.join(wanted_baseline)} requested but no baseline re-eval was "
             "found; skipping. The baseline must be simulated on the SAME "
-            "re-eval ensemble (workflow step 05 with the same "
-            "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08), or it lands under a "
+            "re-eval ensemble (workflow step 06 with the same "
+            "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 10), or it lands under a "
             "different reeval tag and auto-detection silently finds nothing."
         )
     elif baseline is not None:
@@ -1310,8 +1310,8 @@ def main():
     # Auto-detect the status-quo re-eval matrix (written by
     # `run_baseline.py --reeval` under `<reeval_dir>/baseline`) so the regret
     # family works without setting NYCOPT_REEVAL_BASELINE_DIR.
-    # NOTE: step 05 must be run with the SAME NYCOPT_REEVAL_ENSEMBLE_PRESET as
-    # step 08, or the baseline lands under a different reeval tag and this finds
+    # NOTE: step 06 must be run with the SAME NYCOPT_REEVAL_ENSEMBLE_PRESET as
+    # step 10, or the baseline lands under a different reeval tag and this finds
     # nothing -- the metrics are then silently skipped.
     baseline_dir = args.baseline_dir
     if baseline_dir is None:

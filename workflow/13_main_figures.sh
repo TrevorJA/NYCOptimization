@@ -7,7 +7,7 @@
 # SI tier renders in step 14; off-pipeline diagnostic figures keep their own
 # drivers under workflow/supplemental/si_figures_*.sh.
 #
-# Requires: the staged campaign E_test (step 12) with forcing_profiles.npz and
+# Requires: the staged campaign E_test (step 05) with forcing_profiles.npz and
 # its daily chunk directories, and the sibling CMIP6_multimodel_streamflow repo.
 #
 # Env inputs (no positional args, no value flags):

@@ -1,7 +1,7 @@
 """
 hypervolume_convergence.py - Hypervolume vs total NFE, one line per seed.
 
-Reads the per-seed coordinator-series metrics written by step 07
+Reads the per-seed coordinator-series metrics written by step 09
 (``metrics/seed_SS_{slug}.metrics``, MOEAFramework MetricsEvaluator) and the
 ``//NFE=`` markers of the sibling coordinator series
 (``runtime_coordinator/seed_SS_{slug}.runtime``), which carry total NFE

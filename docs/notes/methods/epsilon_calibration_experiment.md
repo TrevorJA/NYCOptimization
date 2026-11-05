@@ -21,7 +21,7 @@ in two stages.
 ### Stage 1, per-objective floors
 
 Scripts `scripts/supplemental/epsilon_calibration_{run,figures}.py`, launcher
-`workflow/supplemental/epsilon_calibration.sh` (one job per design, selected by
+`workflow/supplemental/results_diagnostics/epsilon_calibration.sh` (one job per design, selected by
 `NYCOPT_ENV_FILE=workflow/envs/eps_calib_*.env`), settings `EPS_*` in
 `supplemental_config.py`, outputs `outputs/supplemental/epsilon_calibration/`.
 
@@ -75,9 +75,9 @@ Scripts `scripts/supplemental/epsilon_calibration_{run,figures}.py`, launcher
 Ensemble-averaged objectives are far smoother than the single record, so
 floor-level precisions over-resolve converged ensemble fronts.
 `scripts/supplemental/epsilon_ensemble_refilter.py` (launcher
-`workflow/supplemental/epsilon_ensemble_refilter.sh`, outputs
+`workflow/supplemental/results_diagnostics/epsilon_ensemble_refilter.sh`, outputs
 `outputs/supplemental/epsilon_refilter/`) re-filters converged search archives
-(each seed's `.set` and the step-07 plain union) under grouped candidate
+(each seed's `.set` and the step-09 plain union) under grouped candidate
 vectors, one ε per family, with an exact ε-box filter cross-checked against
 `sensitivity_common.epsilon_nondominated` and Borg's own archive membership.
 The adopted vector is the candidate whose largest merged front stays inside the
@@ -111,10 +111,10 @@ under a new vector to new filenames, never over production artifacts.
 ## Merger behaviour
 
 MOEAFramework v5 `ResultFileMerger` merges by plain Pareto dominance regardless
-of `--epsilon`, so step 07 ε-box-filters the cross-seed `{slug}_merged.set` in
-place under the campaign vector (`src/diagnostics.py::epsilon_box_filter_set` at the time; since 2026-10-23 step 07 builds its reference set directly with the same filter,
+of `--epsilon`, so step 09 ε-box-filters the cross-seed `{slug}_merged.set` in
+place under the campaign vector (`src/diagnostics.py::epsilon_box_filter_set` at the time; since 2026-10-23 step 09 builds its reference set directly with the same filter,
 plain union kept as `*_raw.set`) before computing metrics, and that filtered
-file is the reference set the step 08/09 re-evaluation consumes. The merge,
+file is the reference set the step 10 re-evaluation consumes. The merge,
 ε-filter, re-evaluate ordering therefore holds for every configuration by
 construction.
 

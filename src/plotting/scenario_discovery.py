@@ -59,7 +59,7 @@ def plot_scenario_discovery(reeval_dir, ensemble_dir, solution_id, out_file,
     """Pass/fail scatter of one policy across the DU theta-factor ranges.
 
     Args:
-        reeval_dir: Step-08 re-eval dir (the cube).
+        reeval_dir: Step-10 re-eval dir (the cube).
         ensemble_dir: Staged E_test dir (``outputs/synthetic_ensembles/<tag>``),
             holding ``forcing_profiles.npz`` with the sampled theta.
         solution_id: Policy to diagnose (typically the most-robust acceptable one).

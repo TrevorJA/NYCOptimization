@@ -22,7 +22,7 @@ npz already carries the keys is refused unless ``NYCOPT_FORCE=1``. The prefix
 subset is NOT appended here: rebuild it afterwards with
 ``python -m scripts.supplemental.make_etest_subset --pool {slug} --force`` so
 it inherits the first SOWs' values. Then stage the scaled demand per chunk
-(``workflow/supplemental/stage_nyc_demand_etest_chunks.sh``).
+(``workflow/supplemental/staging/etest_stage_nyc_demand.sh``).
 
 Usage (identifier flag only):
     python scripts/supplemental/append_demand_utilization.py --variant kn
@@ -189,7 +189,7 @@ def main() -> None:
     force = os.environ.get("NYCOPT_FORCE", "0") == "1"
     append_demand_utilization(slug, force=force)
     print(f"[append-u] next: stage each chunk's scaled demand series "
-          f"(prep_etest_chunks.sh, or stage_nyc_demand_etest_chunks.sh for chunks staged "
+          f"(staging/etest_prep_chunks.sh, or staging/etest_stage_nyc_demand.sh for chunks staged "
           f"earlier); an E_test cut from '{slug}' is re-cut by make_etest_subset.py --force.")
 
 

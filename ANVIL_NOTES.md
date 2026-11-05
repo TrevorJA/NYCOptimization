@@ -45,14 +45,14 @@ current campaign.
 | E_test generation, 100 shards | 1.4k SU | | `gen_etest_shard` |
 | E_test presim chunks, 100 tasks | 1.6k SU | | `prep_etest_chunk` |
 | Chunked re-evaluation (`sim_master_chunks`) | 33 SU per policy on 500 SOWs | | 16 jobs, 28.6k SU to date |
-| Historic single-trace evaluation | ~31 s | | for step-08 reeval sizing |
+| Historic single-trace evaluation | ~31 s | | for re-evaluation sizing |
 
 ## Runtime rules of thumb
 
 - Pool generation is single-threaded at ~2.2 s per 10-yr realization
   (20,000 realizations per shard at 50 shards). Wall time per shard scales
   as P / shard count; total SU is nearly independent of the count.
-- Step-09 chunk re-evaluation OOMs under dense packing; use ~8 cpus per rank
+- Step-10 chunk re-evaluation OOMs under dense packing; use ~8 cpus per rank
   with an explicit batch (16 × 8, batch = 50 works).
 - Full-node searches at N = 300 project to 44–51 h to the 125k-per-island
   snapshot on 12 nodes (measured basis).
@@ -84,17 +84,17 @@ current campaign.
 - 2026-10-16: selection regenerated under the current baseline (rows 1947, 2205,
   2013); job 21393749 simulated the three new rows (2 min 35 s, ~0.1 SU), baseline
   reused; the superseded row_1393/1682/115 runs were deleted.
-- 2026-10-23: coordinator-archive diagnostics (step 07 rewrite; Reed guidance).
+- 2026-10-23: coordinator-archive diagnostics (step 09 rewrite; Reed guidance).
   Shared partition, 2-4 cores: test jobs 21595978, 21596972, 21597370, 21597990
-  (<1 min each), 21597369 (first step-07 attempt, 4 min), 21597752 (tests + full
-  step 07 on `monte_carlo/ffmp_obj8` seed 1: 6 min 23 s on 4 cores; series build
+  (<1 min each), 21597369 (first step-09 attempt, 4 min), 21597752 (tests + full
+  step 09 on `monte_carlo/ffmp_obj8` seed 1: 6 min 23 s on 4 cores; series build
   ~3 min, MetricsEvaluator 50 snapshots at ~2.4 s each, figures), 21598097
   (legacy merge check, 49 s: under the August-11 search vector the Python merge
   of the four final island archives reproduces the controller `.set` exactly,
   6,353 rows, identical epsilon boxes, 50 within-box representatives differ).
-  Family total ~15 core-minutes, ~1 SU. Step 07 per seed is now ~6 min on 4
+  Family total ~15 core-minutes, ~1 SU. Step 09 per seed is now ~6 min on 4
   cores, so the production diagnostics are negligible.
-- 2026-10-23: historic step 07 rerun (job 21599089, 1 min 52 s, 4 cores) and the
+- 2026-10-23: historic step 09 rerun (job 21599089, 1 min 52 s, 4 cores) and the
   `explore_*` suite of `figures/historic/ffmp_obj8` regenerated (job 21600863, 57 s,
   2 cores) under the August objective list (`trenton_flow_reliability_weekly` fifth)
   that the archive and `outputs/baseline/ffmp_baseline_objectives.csv` share; the
@@ -117,9 +117,9 @@ current campaign.
   aside in the archive, utilization column appended by `srun` job 21947556 (2 cores, seconds;
   u in [0.450, 0.999], k in [0.653, 6.0], 4 SOWs clipped at k = 6). Remaining E_test chain is
   ~0.1k SU (chunk demand staging, sub-window image) plus the 66 SU baseline cube.
-- 2026-11-05: E_test completion chain. `stage_nyc_demand_etest_chunks.sh` array 21950437
+- 2026-11-05: E_test completion chain. `staging/etest_stage_nyc_demand.sh` array 21950437
   (50 x 33 ranks, shared): all 50 tasks COMPLETED by 00:14 UTC, ~2-3 min each (~100 SU).
-  `etest_subset_stage.sh` job 21950524 FAILED in 6 s (pre-merge wrapper order; no cost);
+  `staging/etest_cut.sh` job 21950524 FAILED in 6 s (pre-merge wrapper order; no cost);
   resubmitted as 21951643, COMPLETED in 8 s: `etest_kn_50yr_n12500` staged (leading 25
   chunks of `etest_kn_50yr_n25000`), contract passed, realized utilization merged.
   Balance unchanged in substance (~591.6k).

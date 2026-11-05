@@ -1,7 +1,7 @@
 # workflow/ — Experiment pipeline
 
-Everything submittable lives here: numbered pipeline steps (`00`–`14`, plus
-`09b`), shared setup functions (`_common.sh`), per-experiment run configs
+Everything submittable lives here: numbered pipeline steps (`00`–`14`),
+shared setup functions (`_common.sh`), per-experiment run configs
 (`envs/`), and off-pipeline staging, calibration, and diagnostic drivers
 (`supplemental/`). Submit all jobs **from the repo root**. The top-level
 [README](../README.md) walks the full replication sequence; this file documents
@@ -20,8 +20,9 @@ A run's identity — **scenario design** (`NYCOPT_SCENARIO_DESIGN`,
 (`FORMULATION`, `SEED`, `DRAW`); every value comes from the env file + config
 registries, and `_common.sh` reads the resolved identity back from `config.py`
 so shell and Python agree on a single source of truth. Steps
-`06`/`08`/`09`/`09b`/`11` require the env file explicitly; the others fall back
-to `config.py` defaults.
+`07`/`08`/`10`/`11` (and the supplemental re-evaluation and scenario-discovery
+wrappers) require the env file explicitly; the others fall back to `config.py`
+defaults.
 
 Outputs land under `outputs/{scenario}/{moea_slug}/{artifact}/`; every MM-Borg
 job writes a reproducibility manifest (config + env snapshots, git state) to
@@ -33,18 +34,17 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 |------|--------|-----------|----------|--------------|
 | 00 | `00_setup_borg_jars.sh` | login node (`bash`) | optional | Build one MOEAFramework problem JAR per formulation; rerun after changing the objective set |
 | 01 | `01_generate_presim.sh` | `shared`, 1×1, 30 min | optional | Full Pywr-DRB run once; save non-NYC (STARFIT) releases for the trimmed model |
-| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (two draws staged, `--array=0-1`: d0 is searched, d1 serves the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh` instead |
+| 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (two draws staged, `--array=0-1`: d0 is searched, d1 serves the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/gen_pool_shards.sh` → `staging/pool_merge.sh` → `pool_verify.sh` instead |
 | 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) + `NYCOPT_CANDIDATE_POOL_N=1000000` | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
 | 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs, including the per-realization NYC demand series (MPI across realizations); `--preset NAME` stages an arbitrary ensemble |
-| 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy, the objective anchor; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble. The incumbent's per-SOW E_test cube comes from step 09 with `NYCOPT_CHUNK_POLICIES=baseline` |
-| 06 | `06_run_mmborg.sh` | `wholenode`; header 4×128 (`mm_moderate`); production passes `--nodes=12 --ntasks-per-node=128` (1,533 ranks) and a per-seed `--time` | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed, `DRAW=k` = ensemble draw (default 0; the campaign searches d0 only); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
-| 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics on the per-seed coordinator archive (island runtime files merged snapshot by snapshot with the project's epsilon archive; six MOEAFramework indicators vs total NFE; diagnostics reference set `{slug}_diagnostics_reference.set`, never the campaign `{slug}_merged.set`); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
-| 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Unchunked re-evaluation of Pareto policies on the common held-out ensemble with the trimmed model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |
-| 09 | `09_simulate_test_chunks.sh` | header `wholenode` 4×16, 12 h; campaign runs `shared`, 16 ranks × 8 cpus, batch 50 | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`, `NYCOPT_CHUNK_POLICIES`) | Chunked, metrics-only E_test re-evaluation (MPI chunk-and-aggregate, resumable); the campaign path, with `NYCOPT_CHUNK_MERGE=off` |
-| 09b | `09b_merge_test_chunks.sh` | `shared`, 8 cpu, 128 G, 4 h | **required** (same identity as the 09 submission) | Merge the per-(solution, chunk) units into the re-eval cube + robustness scorecards |
-| 10 | `10_compare_designs.sh` | `shared`, 4 cpu, 1 h (or `bash`) | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Cross-design comparison of the re-evaluated Pareto sets (criterion sweep, scorecards, ranking stability) |
-| 11 | `11_scenario_discovery.sh` | `shared`, 4 cpu, 1 h (or `bash`) | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Exploratory, outside the manuscript plan: scenario discovery on E_test failures in hazard space and the coverage-deficit test |
-| 12 | `12_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build E_test serially: LHS over the FULL DU box widened 25 % on every axis (annual-volume multiplier 0.866 to 1.32), × R realizations per SOW, chunked, hazard image streamed. `NYCOPT_ETEST_VARIANT=kn` (default) is the campaign's E_test; `hmm` is an opt-in generator sensitivity. The sharded build is `supplemental/gen_etest_shards.sh` → `gen_etest_merge.sh` |
+| 05 | `05_generate_test_ensemble.sh` | `shared`, 8 cpu, 12 h | optional | Build E_test serially: LHS over the FULL DU box widened 25 % on every axis (annual-volume multiplier 0.866 to 1.32), × R realizations per SOW, chunked, hazard image streamed. `NYCOPT_ETEST_VARIANT=kn` (default) is the campaign's E_test; `hmm` is an opt-in generator sensitivity. The sharded build is `supplemental/gen_etest_shards.sh` → `staging/etest_merge.sh` |
+| 06 | `06_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy, the objective anchor; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble. The incumbent's per-SOW E_test cube comes from step 10 with `NYCOPT_CHUNK_POLICIES=baseline` |
+| 07 | `07_run_mmborg.sh` | `wholenode`; header 4×128 (`mm_moderate`); production passes `--nodes=12 --ntasks-per-node=128` (1,533 ranks) and a per-seed `--time` | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed, `DRAW=k` = ensemble draw (default 0; the campaign searches d0 only); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
+| 08 | `08_extract_reference_set.sh` | `shared`, 4 cpu, 1 h | **required** | Equal-NFE reference set from the island runtime files: `--seed N` extracts one seed's coordinator-archive snapshot at the reporting NFE; `--merge --install` unions the seeds and installs `{slug}_merged.set`, the step-10 input |
+| 09 | `09_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics on the per-seed coordinator archive (island runtime files merged snapshot by snapshot with the project's epsilon archive; six MOEAFramework indicators vs total NFE; diagnostics reference set `{slug}_diagnostics_reference.set`, never the campaign `{slug}_merged.set`); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
+| 10 | `10_simulate_test_chunks.sh` | header `wholenode` 4×16, 12 h; campaign runs `shared`, 16 ranks × 8 cpus, batch 50 | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`, `NYCOPT_CHUNK_POLICIES`) | Chunked, metrics-only E_test re-evaluation (MPI chunk-and-aggregate, resumable); the campaign path, with `NYCOPT_CHUNK_MERGE=off`; `NYCOPT_CHUNK_POLICIES=baseline` simulates the incumbent cube |
+| 11 | `11_merge_test_chunks.sh` | `shared`, 8 cpu, 128 G, 4 h | **required** (same identity as the 10 submission) | Merge the per-(solution, chunk) units into the re-eval cube + robustness scorecards |
+| 12 | `12_compare_designs.sh` | `shared`, 4 cpu, 1 h (or `bash`) | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Cross-design comparison of the re-evaluated Pareto sets (criterion sweep, scorecards, ranking stability) |
 | 13 | `13_main_figures.sh` | `shared`, 4 cpu, 2 h | optional | Render the manuscript-tier figures from `src/figures/registry.py` |
 | 14 | `14_results_figures.sh` | `shared`, 4 cpu, 30 min | optional | Render the SI-tier figures from the same registry |
 
@@ -55,74 +55,43 @@ files are diagnostic dumps, the Borg checkpoint is disabled, and every search
 is sized to finish inside one job (`docs/notes/methods/campaign_design.md`).
 `shared` bills per core; `wholenode` bills whole 128-core nodes.
 
-Step order: `01` before `05`/`06`; `02`→`04` (with `03` for hazard filling)
-before `06` (`historic` skips `02`–`04`); `06`→`extract_runtime_archive.py
---seed 1` and `--merge --install`→`07` (either order)→`09`→`09b`→`10`/`11`/`13`/`14`. Chain with
-`sbatch --dependency=afterok:<jobid>`.
+Step order: `01` before `06`/`07`; `02`→`04` (`03` for hazard filling;
+`historic` skips them) before `07`; `05` and the `supplemental/staging/etest_*`
+chain before `10`; `07`→`08 --seed 1`→`08 --merge --install`→`09` (either
+order after the seed-1 extraction)→`10`→`11`→`12`/`13`/`14`. Chain with
+`sbatch --dependency=afterok:<jobid>`; the submit helpers below do so for the
+staging chains, and the root README walks the sequence with the submit lines.
 
-`12` (or the sharded pair) builds E_test and is independent of `02`–`07` (it is
-not a scenario design and never enters search). It is followed by
-`supplemental/etest_demand_utilization.sh` (the k(u) calibration table and the
-per-SOW NYC entitlement-utilization column `u`, metadata only; step 04 reads the
-parent's `demand_utilization_nominal.csv` when it stages a chunk's demand series,
-so the append precedes the chunk staging), `supplemental/prep_etest_chunks.sh`
-(per-chunk step-04 staging including the scaled demand series; step 04 against
-the parent slug fails by design) and `supplemental/etest_subset_stage.sh`
-(cuts E_test, `etest_kn_50yr_n12500`, as the leading 25 chunks of a larger
-generated design, then merges realized versus nominal `u` per SOW; the staged
-contract refuses an E_test without the utilization keys or the demand series in
-every chunk, so the cut follows the chunk staging). All of that must run before
-`05`/`08`/`09`/`11`, which take `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`
-— and the incumbent cube must sit under the SAME tag as the policy-set run: step
-09 with `NYCOPT_CHUNK_POLICIES=baseline` writes `reeval/{tag}/baseline/` under
-the design env it runs in (once per design, about 33 SU), or the
-incumbent-relative regret family is silently skipped.
+E_test (`05`, or sharded `staging/etest_shards.sh` → `staging/etest_merge.sh`)
+is completed by `staging/etest_demand_utilization.sh` (the k(u) calibration
+table and the per-SOW utilization column `u`, metadata only),
+`staging/etest_prep_chunks.sh` (per-chunk step-04 staging including each SOW's
+k(u)-scaled NYC demand series; `staging/etest_stage_nyc_demand.sh` adds the
+series alone to chunks staged before it was part of the contract),
+`staging/etest_cut.sh` (cuts `etest_kn_50yr_n12500` as the leading 25 chunks of
+the larger generated design and merges realized versus nominal `u`; it follows
+the chunk staging because the staged contract requires the demand series in
+every chunk) and `staging/etest_hazard_image_shards.sh` →
+`staging/etest_hazard_image_merge.sh` (the sub-window hazard image);
+`submit_etest_staging.sh` chains them. Every re-evaluation step then takes
+`NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`, and the incumbent cube
+must sit under the same tag as the policy-set run: step `10` with
+`NYCOPT_CHUNK_POLICIES=baseline` writes `reeval/{tag}/baseline/` under the
+design env it runs in (once per design), or the incumbent-relative regret
+family is silently skipped.
 
 NYC demand is the time-dynamic extrapolated diversion series in every
-simulation (search, baselines, re-evaluation, diagnostics); a constant 800 MGD
-NYC demand is never used and no env file selects a demand source. Step 04
-stages the per-realization series (`diversion_nyc_extrapolated_mgd.hdf5`) with
-the other inputs. For ensembles staged before the series was part of the
-contract, `supplemental/stage_nyc_demand_etest_chunks.sh` (one array task per
-E_test chunk) and `supplemental/stage_nyc_demand.sh` (a design's search
-ensemble, array index = draw; `--preset NAME` for any staged slug) add it
-without repeating the presim pass. NJ demand is the constant 100 MGD Decree
-quantity.
-
-In E_test each SOW's NYC demand series is scaled by `k(u)` of its sampled
-entitlement utilization `u ∈ [0.45, 1.0]` before the 800 MGD monthly-mean cap
+simulation; a constant 800 MGD demand is never used and no env file selects a
+demand source. Step 04 stages the per-realization series
+(`diversion_nyc_extrapolated_mgd.hdf5`); `staging/ensemble_stage_nyc_demand.sh`
+adds it to a search ensemble staged before the series was part of the contract
+(array index = draw; `--preset NAME` for any staged slug). In E_test each SOW's
+series is scaled by `k(u)` of its sampled entitlement utilization
+`u ∈ [0.45, 1.0]` before the 800 MGD monthly-mean cap
 (`src/demand_utilization.py`; `docs/notes/methods/forcing_parameterization.md`,
-"Demand-utilization axis"); `k(u)` comes from the calibration table that
-`scripts/supplemental/demand_utilization_calibration.py` writes under
-`outputs/diagnostics/demand_utilization/`, and the per-SOW `u` and `k` from the
-parent's `demand_utilization_nominal.csv` written by
-`scripts/supplemental/append_demand_utilization.py --variant kn`. Chunk staging
-(step 04 or `stage_nyc_demand_etest_chunks.sh`) writes each chunk's realized
-`demand_utilization_realized.csv`, which
-`scripts/supplemental/merge_demand_utilization_realized.py --variant kn` merges
-into the parent directory. Search ensembles run the unscaled series (`k = 1`).
-Order of operations on Anvil for an already-staged E_test:
-
-1. Pull `NYCOptimization`, `Pywr-DRB` and `NYCOptimization_scenario_generation`.
-2. `sbatch workflow/supplemental/etest_demand_utilization.sh` (calibration table +
-   utilization column, metadata only, seconds).
-3. `sbatch workflow/supplemental/stage_nyc_demand_etest_chunks.sh` (25 tasks, with
-   `NYCOPT_ETEST_SLUG=<parent>` when the chunks are named after a larger parent; about
-   1.3 s per 10-yr realization on one rank locally, so a few minutes per
-   500-realization chunk on 33 ranks).
-4. `sbatch --dependency=afterok:<array> workflow/supplemental/etest_subset_stage.sh`
-   (cuts `etest_kn_50yr_n12500` from the parent, then realized `u` per SOW; the cut
-   needs the demand series in every chunk, so it follows step 3).
-5. Re-run the current-FFMP baseline cube (step 09 with
-   `NYCOPT_CHUNK_POLICIES=baseline`, once per design env, about 33 SU each); the stored cube predates the
-   demand change.
-6. Re-run the satisficing-threshold diagnostic and the criteria re-anchoring on the
-   new baseline cube (`docs/notes/methods/robustness_threshold_diagnostics.md`).
-
-Re-evaluation cost per policy is unchanged (demand is a parameter lookup) and no
-streamflow is regenerated. For an E_test generated fresh, the append step sits
-between the merge and `prep_etest_chunks.sh`, which then stages the scaled series
-itself.
+"Demand-utilization axis"; the calibration table lives under
+`outputs/reference/demand_utilization/`); search ensembles run the unscaled
+series (`k = 1`). NJ demand is the constant 100 MGD Decree quantity.
 
 ## Building a design's search ensemble (02–04)
 
@@ -173,14 +142,14 @@ bash workflow/submit_production_search.sh historic 2 --dependency=afterok:<seed-
 # --dry-run prints the sbatch line; trailing arguments pass through to sbatch
 # Variable-resolution FFMP (non-campaign SI extension, leftover allocation only):
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_vr_obj8.env,FORMULATION=ffmp_12 \
-       --array=1 workflow/06_run_mmborg.sh
+       --array=1 workflow/07_run_mmborg.sh
 ```
 
 What has already run is readable from the output tree alone: draw k > 0
 appends `_d{k}` to the moea slug (draw 0 is the unsuffixed default), each
 completed seed writes `outputs/{scenario}/{moea_slug}/sets/seed_{SS}_{slug}.set`,
 and every job records its full identity (including the draw) in
-`outputs/run_manifests/`. The step-06 pre-flight refuses to relaunch a
+`outputs/run_manifests/`. The step-07 pre-flight refuses to relaunch a
 (design, slug, seed) whose `.set` file already exists — pass
 `NYCOPT_OVERWRITE=1` to deliberately redo one. A crashed run leaves no `.set`
 file and may simply be resubmitted.
@@ -190,14 +159,14 @@ file and may simply be resubmitted.
 The MPI rank count has a single source per step; the `#SBATCH` lines are only
 the container for it:
 
-- **MM-Borg (06)**: ranks = `MOEAConfig.total_ntasks_mpi`
+- **MM-Borg (07)**: ranks = `MOEAConfig.total_ntasks_mpi`
   (`1 + islands × (workers + 1)`, from `src/moea_config.py`). `_common.sh`
   reads it back for `mpirun -np`, and `nycopt_check_allocation` aborts before
   the search starts if the allocation is smaller — printing the exact
   `--nodes/--ntasks-per-node` to resubmit with — and warns when a whole
   node or more would sit idle. `nycopt_check_memory` aborts if the design's
   projected node RSS at this packing exceeds the safety line.
-- **All other MPI steps (04, 08, 09, supplemental)**: ranks =
+- **All other MPI steps (04, 10, supplemental)**: ranks =
   `SLURM_NTASKS`, the actual allocation — a mismatch is impossible by
   construction; rescale with `sbatch --nodes=N --ntasks-per-node=M` and the
   launch follows.
@@ -223,10 +192,17 @@ pilots can pass `sbatch --time=...`.
 ## Submission helpers (login node; they issue sbatch, they are not jobs)
 
 - `submit_production_search.sh <design> <seed> [--dry-run] [sbatch args]` — the
-  one submission path for a campaign search (step 06, `production` config);
+  one submission path for a campaign search (step 07, `production` config);
   design ∈ {historic, monte_carlo, hazard_filling_stationary} (hist/mc/hf),
   seed ∈ {1, 2}. Holds the 12 × 128 geometry and per-seed wall request so no
   production job is ever typed at the prompt.
+- `submit_search_staging.sh <design> [--dry-run] [sbatch args]` — steps 02→04
+  (`monte_carlo`) or 03→04 from the built pool (`hazard_filling_stationary`),
+  arrays over the K = 2 staged draws, chained with `--dependency`.
+- `submit_etest_staging.sh <demand|hazard|all> [--dry-run] [sbatch args]` — the
+  E_test completion chain under `supplemental/staging/` from the staged parent.
+- A helper for steps 10 + 11 follows once the re-evaluation geometry is settled
+  (`TODO.md` §2); until then the step-10 header documents the submission.
 
 ## Development utilities (not replication)
 
@@ -240,48 +216,64 @@ pilots can pass `sbatch --time=...`.
 
 ## `supplemental/` — off-pipeline drivers, by purpose
 
-All settings live in the root `supplemental_config.py`; env identities in
-`envs/`.
+One subfolder per purpose. Settings live in the root `supplemental_config.py`,
+env identities in `envs/`. Status: **live** (campaign path or a rerun pending),
+**done** (replication path, outputs kept), **closed** (finished; results kept
+or archived), **optional** (never run), **superseded**.
 
-- **Staging (on the replication path)**: `gen_pool_shards.sh` → `gen_pool_merge.sh`
-  → `pool_verify.sh` (the P = 10⁶ candidate pool, sharded); `gen_etest_shards.sh`
-  → `gen_etest_merge.sh` (E_test, sharded) → `etest_demand_utilization.sh` (k(u)
-  table + utilization column) → `prep_etest_chunks.sh` (per-chunk step-04 staging
-  of E_test, scaled demand included; `stage_nyc_demand_etest_chunks.sh` adds the
-  demand series alone to chunks staged before it existed) →
-  `etest_subset_stage.sh` (cuts E_test from a larger generated design, then
-  realized `u`); `etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh`
-  (E_test sub-window hazard image); `etest_subset_reeval_check.sh` (acceptance
-  check of the chunk-prefix path on a mini fixture).
-- **Calibration**: `epsilon_calibration.sh` (per-design ε floors),
-  `epsilon_ensemble_refilter.sh` and `epsilon_refilter_sweep.sh`
-  (archive-cardinality re-filters of completed sets, no simulation),
-  `satisfaction_factor.sh` (weekly satisfaction-factor sweep).
-- **Sizing and cost**: `ensemble_size_library_stage.sh` → `ensemble_size_library_eval.sh`
-  → `ensemble_size_hazard.sh` → `ensemble_size_analysis.sh` (the ensemble-size
-  diagnostics, `envs/ensemble_size_diagnostics.env`); `ensemble_cost_stage_submit.sh`
-  + `ensemble_cost_sweep.sh` (the t_eval(N, L, model) cost surface);
-  `anvil_scaling_packing.sh`, `anvil_scaling_borg_submit.sh` + `anvil_scaling_borg.sh`
-  (node packing and MM Borg strong scaling); `nestedp_smoke_calibrate.sh` +
-  `nestedp_ladder.sh` (nested-pool-size saturation of the selector);
-  `dry_envelope.sh` (drought hazard at the dry end of the E_test forcing box,
-  stream-only; `NYCOPT_DRYENV_PRODUCTION=1` re-reads the staged E_test
-  sub-window image and the P = 10⁶ pool image after the hazard recompute).
-- **Post-cube diagnostics**: `regret_tolerance_diagnostics.sh`,
-  `robustness_threshold_diagnostics.sh`, `hazard_support_decomposition.sh`,
-  `objective_sensitivity.sh` (historic random-DV sensitivity),
-  `predicted_inflow_bitcheck.sh` (vectorized forecast kernel acceptance).
-- **Figures**: `si_figures_design.sh` (pre-campaign design support),
-  `si_figures_results.sh` (needs campaign outputs), `sim_selected_policies.sh`
-  (selected policies on the historic trace), `hazard_examples.sh` (the hazard
-  metrics on example HF realizations; needs the staged HF ensemble of steps
-  02–03).
+- **`staging/`** — replication path. `pool_shards.sh` → `pool_merge.sh` →
+  `pool_verify.sh` (the P = 10⁶ candidate pool, sharded; done);
+  `etest_shards.sh` → `etest_merge.sh` (E_test, sharded; done);
+  `etest_demand_utilization.sh` → `etest_stage_nyc_demand.sh` → `etest_cut.sh` →
+  `etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` (the E_test
+  completion chain, `submit_etest_staging.sh`; live); `etest_prep_chunks.sh`
+  (per-chunk step-04 staging of a freshly built E_test; done);
+  `ensemble_stage_nyc_demand.sh` (adds the NYC demand series to a search
+  ensemble staged before it was part of the contract; live);
+  `ensemble_hazard_image.sh` (post-hoc hazard image of a staged MC ensemble; live).
+- **`design_diagnostics/`** — hazard space and ensemble sizing, no policy
+  simulation. `hazard_axis_selection.sh` (live; Anvil confirmation pending),
+  `hazard_selector_diagnostics.sh` (closed), `hf_design_metrics.sh` (live; rerun
+  on the N = 300 restage), `hazard_support_decomposition.sh` (closed),
+  `hazard_examples.sh` (live; figure driver on the staged HF ensemble),
+  `dry_envelope.sh` (live; production leg pending),
+  `ensemble_size_library_stage.sh` → `ensemble_size_library_eval.sh` →
+  `ensemble_size_hazard.sh` → `ensemble_size_analysis.sh` (closed;
+  `envs/ensemble_size_diagnostics.env`), `nestedp_smoke_calibrate.sh` +
+  `nestedp_ladder.sh` (optional).
+- **`results_diagnostics/`** — on search sets or re-evaluation cubes.
+  `reevaluate_unchunked.sh` (unchunked re-evaluation that also persists
+  timeseries; the campaign path is steps 10 + 11), `scenario_discovery.sh`
+  (exploratory, outside the manuscript plan), `epsilon_calibration.sh` (closed;
+  ε fixed), `epsilon_ensemble_refilter.sh` (live; the post-search re-filter),
+  `epsilon_refilter_sweep.sh` (superseded), `satisfaction_factor.sh` and
+  `objective_sensitivity.sh` (closed), `regret_tolerance_diagnostics.sh` and
+  `robustness_threshold_diagnostics.sh` (live; rerun on the new cube),
+  `transfer_evaluation_check.sh` → `transfer_evaluation_eval_array.sh` →
+  `transfer_evaluation_analysis.sh` (closed; also the SI draw-sensitivity driver).
+- **`benchmarks/`** — closed; tables kept under `outputs/supplemental/`.
+  `anvil_scaling_packing.sh`, `anvil_scaling_borg_submit.sh` +
+  `anvil_scaling_borg.sh` (node packing and MM Borg strong scaling),
+  `ensemble_cost_stage_submit.sh` + `ensemble_cost_sweep.sh` (the
+  t_eval(N, L, model) cost surface).
+- **`checks/`** — `validate_staged_seasonality.sh` (build QC after any ensemble
+  is staged; live), `predicted_inflow_bitcheck.sh` (forecast-kernel acceptance;
+  closed), `etest_subset_reeval_check.sh` (chunk-prefix path on a mini fixture;
+  closed).
+- **`figures/`** — `si_figures_design.sh` (design-support SI figures; live),
+  `si_figures_results.sh` (needs campaign outputs; live),
+  `sim_selected_policies.sh` (selected policies on the historic trace; live).
+
+Python under `scripts/supplemental/` without a wrapper runs on the local
+machine; its docstring says so. `policy_dynamics_figures.py`,
+`policy_rules_compact_figures.py` and `simulation_api_check.py` are referenced
+nowhere and are kept as is.
 
 ## Verifying changes locally (no HPC)
 
 ```bash
 # Shell syntax
-bash -n workflow/*.sh workflow/_common.sh workflow/supplemental/*.sh
+bash -n workflow/*.sh workflow/_common.sh workflow/supplemental/*/*.sh
 
 # Config import + slug per env file
 for f in workflow/envs/*.env; do

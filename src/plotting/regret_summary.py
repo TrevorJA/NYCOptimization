@@ -184,7 +184,7 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
     is the drill-down behind the unit-free plane: which party pays, and how much.
 
     Args:
-        reeval_dir: Step-08 re-eval dir (holds ``reeval_raw*`` and ``baseline/``).
+        reeval_dir: Step-10 re-eval dir (holds ``reeval_raw*`` and ``baseline/``).
         out_file: Output stub.
         accepted_ids: Restrict to these ``solution_id``\\ s (e.g. the stakeholder
             screen from :mod:`src.pareto_filter`); None keeps every policy.

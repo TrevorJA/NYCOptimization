@@ -31,7 +31,7 @@ run sbatch \
     --partition=wholenode --nodes=1 --ntasks-per-node=128 --exclusive --time=02:00:00 \
     --job-name="smoke_search_batch" \
     --export=ALL,NYCOPT_ENV_FILE=workflow/envs/smoke_search_batch.env,FORMULATION=ffmp,RUN_SLUG=smoke_search_batch_ffmp,NTASKS_MPI=127,NYCOPT_MEM_SAMPLE_S="${NYCOPT_MEM_SAMPLE_S:-30}" \
-    workflow/06_run_mmborg.sh
+    workflow/07_run_mmborg.sh
 
 echo "=== Search memory smoke submitted ==="
 [[ "${DRY_RUN}" == "true" ]] && echo "(dry-run — no job actually submitted)"

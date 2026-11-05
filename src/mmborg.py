@@ -119,7 +119,7 @@ def run_mmborg(
             ``config.derive_slug(formulation)``.
         checkpoint_base: Path base for new checkpoint files. Plumbing only:
             the campaign never sets it (MM Borg islands share one checkpoint
-            file, which races; disabled by default in workflow step 06), so
+            file, which races; disabled by default in workflow step 07), so
             no production run is resumable.
         restore_checkpoint: Path to existing checkpoint file to restore from.
 
@@ -244,7 +244,7 @@ def _write_set_file(result, set_file: Path, formulation_name: str, seed: int):
 
     The header records the epsilon vector the search ran with
     (``# Epsilons:``): the archive is an epsilon-box archive under that
-    vector only, and step 07 reads it back to check its coordinator series
+    vector only, and step 09 reads it back to check its coordinator series
     against this file (``src.diagnostics.check_series_against_set``).
     """
     var_names = get_var_names(formulation_name)

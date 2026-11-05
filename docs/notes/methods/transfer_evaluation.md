@@ -33,7 +33,7 @@ The expectation on (b) is that an ensemble's merged reference set is built mostl
 optimized under that ensemble. The result of interest is the degree, and any departure from it.
 
 **Scope guards.** This is supplemental and exploratory. Nothing here is routed into
-`src.robustness` or the step-10 scorecards: robustness in this study is defined on `E_test`
+`src.robustness` or the step-12 scorecards: robustness in this study is defined on `E_test`
 states of the world, and a transfer cell has no SOW structure and no deep-uncertainty forcing.
 No numbered pipeline step is added, and no manuscript figure depends on any of it. The campaign
 modules (`src/chunk_reeval.py`, `src/reeval_core.py`, `config.py`, every campaign wrapper) are
@@ -116,7 +116,7 @@ cell-major so a node's ranks re-read one staged target through the page cache an
 `src.simulation` model-dict cache.
 
 Memory is not a constraint: `config.search_rank_rss_mb(100, 10)` gives 1.09 GB per rank, so 128
-ranks per node is 136 GB against the 218 GB safety line. The step-09 page-cache failure mode
+ranks per node is 136 GB against the 218 GB safety line. The step-10 page-cache failure mode
 does not apply, because these targets are 178–233 MB rather than 7.3 GB and are shared across
 the ranks working one cell.
 
@@ -413,9 +413,9 @@ and leave-one-out panels that make the one-axis attribution explicit.
 ## 10. Run sequence
 
 ```
-# 1. path-consistency check (shared, 30 ranks)     workflow/supplemental/transfer_evaluation_check.sh
-# 2. the nine-cell matrix (shared, array 0-39)     workflow/supplemental/transfer_evaluation_eval_array.sh
-# 3. merge, analyze, figures (shared)              workflow/supplemental/transfer_evaluation_analysis.sh
+# 1. path-consistency check (shared, 30 ranks)     workflow/supplemental/results_diagnostics/transfer_evaluation_check.sh
+# 2. the nine-cell matrix (shared, array 0-39)     workflow/supplemental/results_diagnostics/transfer_evaluation_eval_array.sh
+# 3. merge, analyze, figures (shared)              workflow/supplemental/results_diagnostics/transfer_evaluation_analysis.sh
 #
 # Every wrapper takes --export=ALL,NYCOPT_ENV_FILE=workflow/envs/transfer_evaluation.env.
 # Smoke: add NYCOPT_TEV_SMOKE=1 (artifacts carry a smoke_ prefix).

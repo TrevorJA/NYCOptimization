@@ -20,7 +20,7 @@ images exist):
      pre-declared strata (in_support <= 0.05 < boundary < 0.50 <=
      out_of_support), attribute excursions to axes, and join the forcing
      coordinates theta = (m, r1, r2).
-  3. Persist the SOW-level pool coverage deficit in the step-11 rank space
+  3. Persist the SOW-level pool coverage deficit in the scenario-discovery rank space
      (the complement of the search-ensemble deficit of
      ``scripts/main/scenario_discovery.py`` - same screened axes, same
      ``cdf_transform`` anchoring, same ``coverage_deficit`` code).
@@ -37,7 +37,7 @@ flags. Smoke mode (``NYCOPT_HSD_SMOKE=1``) uses the P = 2,000 smoke pools and
 the first ``HSD_SMOKE_N_SOW`` SOWs, and prefixes every artifact with
 ``smoke_``.
 
-Run (wrapper: ``workflow/supplemental/hazard_support_decomposition.sh``)::
+Run (wrapper: ``workflow/supplemental/design_diagnostics/hazard_support_decomposition.sh``)::
 
     python scripts/supplemental/hazard_support_run.py
 """
@@ -312,7 +312,7 @@ def _theta_table(n_sow: int) -> pd.DataFrame:
 
 
 def _pool_deficit(etest_full: dict, pool: dict, n_sow: int) -> tuple:
-    """SOW-level distance to the nearest POOL member in the step-11 rank space.
+    """SOW-level distance to the nearest POOL member in the scenario-discovery rank space.
 
     Mirrors ``scenario_discovery`` exactly: axes screened on the
     realization-level E_test image, SOW coordinates = within-SOW mean of the
@@ -698,7 +698,7 @@ def run_stage_b(sow: pd.DataFrame) -> None:
             .reindex(list(scfg.HSD_STRATA_NAMES), fill_value=0))
     xtab.to_csv(scfg.hsd_table_path("hsd_partition_agreement", tagged=True))
 
-    # Pool-deficit failure association (descriptive; the step-11 complement).
+    # Pool-deficit failure association (descriptive; the scenario-discovery complement).
     deficit_rows = []
     pool_deficit = aligned["pool_deficit_d0"].to_numpy(dtype=float)
     focal = focal_criterion()

@@ -13,11 +13,11 @@ Two experiments share this worker, selected by ``NYCOPT_BENCH_EXPERIMENT``:
 
     packing        The Anvil packing sweep: ONE ensemble shape, ladder over the
                    ranks-per-node K. Sets the campaign's packing density.
-                   (workflow/supplemental/anvil_scaling_packing.sh)
+                   (workflow/supplemental/benchmarks/anvil_scaling_packing.sh)
     ensemble_cost  The ensemble-cost surface: the ensemble SHAPE (N realizations
                    x L years) and the model variant (trimmed = search, full =
                    re-evaluation) are swept, each cell at its memory-feasible K.
-                   Prices the campaign. (workflow/supplemental/ensemble_cost_sweep.sh)
+                   Prices the campaign. (workflow/supplemental/benchmarks/ensemble_cost_sweep.sh)
 
 The experiments differ only in which env knobs the calling SLURM script varies
 and where the shards land; the timed code path is identical so the two are

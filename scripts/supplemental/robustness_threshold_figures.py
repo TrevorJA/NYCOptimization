@@ -1,7 +1,7 @@
 """robustness_threshold_figures.py - Satisficing-threshold placement diagnostics.
 
 Reduces the incumbent FFMP policy's persisted E_test re-eval cube (1,000
-theta-SOWs; step 05 ``--reeval``; per-SOW annual-unit objective values) into
+theta-SOWs; step 10 with ``NYCOPT_CHUNK_POLICIES=baseline``; per-SOW annual-unit objective values) into
 the SI threshold-placement evidence for the satisficing thresholds
 (``objectives_ensemble._DEFAULT_THRESHOLDS``):
 
@@ -58,7 +58,7 @@ Configuration lives in supplemental_config.py (RTD_* section) — no CLI value
 flags.
 
 Usage (never on a login node):
-    sbatch workflow/supplemental/robustness_threshold_diagnostics.sh
+    sbatch workflow/supplemental/results_diagnostics/robustness_threshold_diagnostics.sh
 """
 
 from __future__ import annotations
@@ -510,7 +510,7 @@ def load_anchor(obj_names) -> dict:
     if not scfg.RTD_ANCHOR_CACHE.exists():
         sys.exit(
             f"[rtd] missing anchor cache {scfg.RTD_ANCHOR_CACHE} — run\n"
-            "    sbatch workflow/supplemental/robustness_threshold_diagnostics.sh\n"
+            "    sbatch workflow/supplemental/results_diagnostics/robustness_threshold_diagnostics.sh\n"
             "(or scripts/supplemental/robustness_threshold_anchor.py on a "
             "compute node) first.")
     with open(scfg.RTD_ANCHOR_CACHE) as f:

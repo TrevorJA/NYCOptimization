@@ -13,13 +13,13 @@
 #
 # Env inputs: NYCOPT_ENV_FILE (optional; the design via NYCOPT_SCENARIO_DESIGN),
 # NYCOPT_CANDIDATE_POOL_N (hazard-filling pool size; campaign 1000000, see
-# workflow/supplemental/gen_pool_shards.sh for the sharded build),
+# workflow/supplemental/staging/pool_shards.sh for the sharded build),
 # NYCOPT_ENSEMBLE_FORCE=1 to overwrite an already-staged slug.
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env \
 #          --array=0-1 workflow/02_generate_ensemble.sh
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazard_filling_stationary_production.env \
 #          --array=0-1 workflow/02_generate_ensemble.sh
 #
 # Output: outputs/synthetic_ensembles/{slug}/ per draw (search ensemble, or

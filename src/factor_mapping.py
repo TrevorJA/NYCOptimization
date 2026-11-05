@@ -1,7 +1,7 @@
 """
 factor_mapping.py - Success/failure surface classification over SOW spaces.
 
-The scenario-discovery classification layer, shared by the step-11 mechanism
+The scenario-discovery classification layer, shared by the scenario-discovery mechanism
 test (`scripts/main/scenario_discovery.py`) and the factor-map figure sequence:
 label each held-out E_test SOW success/failure for a policy under a satisficing
 criterion set, fit a gradient-boosted classifier of that label on the SOW's
@@ -19,7 +19,7 @@ Two SOW coordinate systems are supported:
   axes, so no redundancy screen is needed.
 - **hazard space** (SUPPLEMENTAL): realized-sequence drought/flood descriptors,
   screened for redundancy first (:func:`screen_hazard_axes`); the space of the
-  step-11 coverage-deficit mechanism test.
+  scenario-discovery coverage-deficit mechanism test.
 
 Classifier: ``GradientBoostingClassifier`` with 250 trees, ``max_depth=2``,
 ``learning_rate=0.1`` (between Lau et al. 2023 and Gold et al. 2022).
@@ -340,7 +340,7 @@ class FactorMapFit:
 
     ``predict_proba`` maps ``(n, m)`` points to the probability of the
     POSITIVE class of the labels it was fit on (success for factor maps,
-    failure for the step-11 mechanism test -- orientation is the caller's).
+    failure for the scenario-discovery mechanism test -- orientation is the caller's).
 
     Attributes:
         space: ``"theta"`` or ``"hazard"``.

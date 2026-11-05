@@ -12,7 +12,7 @@
 
 **Candidate ensemble.** The $P$ i.i.d. realizations the HF design selects from: slug `statpool_10yr_n{P}_d{k}`, size `NYCOPT_CANDIDATE_POOL_N`, built by `workflow/supplemental/gen_pool_*.sh`. Only its hazard image (`hazard_image.npz`) and seeds are stored, and the selected members are regenerated on demand. Slugs, variables and script names keep the word pool.
 
-**Realization.** One generated or observed streamflow sequence, addressed by its global realization index (`regenerate_realization(root_seed, k)`); the unit of independence in every bootstrap and subsample. A **draw** `d{k}` is a design's construction re-run with a fresh seed, and a **seed** (`--array` of step 06) is one MM Borg trial on a fixed draw.
+**Realization.** One generated or observed streamflow sequence, addressed by its global realization index (`regenerate_realization(root_seed, k)`); the unit of independence in every bootstrap and subsample. A **draw** `d{k}` is a design's construction re-run with a fresh seed, and a **seed** (`--array` of step 07) is one MM Borg trial on a fixed draw.
 
 **Re-evaluation ensemble.** `E_test`, preset `etest_kn_50yr_n12500` (`src/etest.py`: `E_TEST_N_THETA` = 500 SOWs × `E_TEST_R` = 25 realizations × `E_TEST_YEARS` = 50, 25 chunks of 500 realizations), the one slug returned by `campaign_reeval_preset()`, passed as `NYCOPT_REEVAL_ENSEMBLE_PRESET` on every re-evaluation submission and read by every E_test diagnostic and figure. It is staged as the leading 25 chunks of a larger generated design (`campaign_design.md` §5, "Staging"); nothing reads the parent. Its fourth factor, the NYC entitlement utilization `u` (`src/demand_utilization.py`; npz keys `demand_utilization`, `demand_scale_k`, `demand_scale_clipped`; `demand_utilization_nominal.csv`), is appended per SOW by `scripts/supplemental/append_demand_utilization.py`. Identifiers keep the word test (`E_test`, `etest_*`, `generate_test_ensemble`).
 
@@ -36,7 +36,7 @@
 
 **Per-SOW objective value** $J_i(x,\theta)$. Each SOW's realizations' unit-years pooled through the objective's own unit operator: `reeval_core.sow_objective_matrix`, persisted as `reeval_raw.csv.gz` (`solution_id`, `sow_id`, `objective`, `value`). Every robustness and regret column of `src/robustness.py` is a transformation of it.
 
-**Current FFMP policy.** `get_baseline_values("ffmp")`; its step-05 re-evaluation cube sits under `baseline/` beside each run. Identifiers keep `incumbent` (`incumbent_advantage`, `incumbent_spread`, `include_incumbent`).
+**Current FFMP policy.** `get_baseline_values("ffmp")`; its E_test cube (step 10 with `NYCOPT_CHUNK_POLICIES=baseline`) sits under `baseline/` beside each run. Identifiers keep `incumbent` (`incumbent_advantage`, `incumbent_spread`, `include_incumbent`).
 
 **Regret** (against the current FFMP policy in the same SOW). Columns `regret_mean__`, `regret_q90__`, `regret_cond__` and `gain_mean__` (`robustness.regret_magnitudes`), in natural units; the **regret frequencies** `harm_freq__` and `party_harm_freq__` and the **low-regret frequency** $\Pi_\tau$, `no_harm_freq_tau` (`robustness.regret_frequencies`), with $\tau_i = k \cdot \max(\epsilon_i, \tau_i^{\mathrm{floor}})$ pinned as `NYCOPT_REGRET_TAU` in the production env files.
 

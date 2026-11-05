@@ -12,7 +12,7 @@ Policies (env ``NYCOPT_CHUNK_POLICIES``):
                              policy-set run under the same tag scores regret against.
     a ``.ref`` path          - a reference set of Pareto policies (var1..varN [obj...] per line).
 
-Launch (env-driven; via workflow/09_simulate_test_chunks.sh):
+Launch (env-driven; via workflow/10_simulate_test_chunks.sh):
 
     NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \\
     mpirun -np 64 python3 -m scripts.main.simulate_test_chunks --formulation ffmp

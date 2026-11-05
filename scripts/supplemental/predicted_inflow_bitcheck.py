@@ -14,7 +14,7 @@ manual review before the vectorized path is accepted. The scratch file is
 deleted afterwards on success (kept on mismatch for inspection).
 
 Run only under sbatch/srun (compute nodes), via
-workflow/supplemental/predicted_inflow_bitcheck.sh.
+workflow/supplemental/checks/predicted_inflow_bitcheck.sh.
 
 Configuration via env (no CLI value flags):
 

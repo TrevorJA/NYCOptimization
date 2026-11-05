@@ -172,7 +172,7 @@ def figure_path(name: str, ext: str) -> Path:
 ###############################################################################
 # Epsilon-calibration experiment
 # (docs/notes/methods/epsilon_calibration_experiment.md;
-#  workflow/supplemental/epsilon_calibration.sh)
+#  workflow/supplemental/results_diagnostics/epsilon_calibration.sh)
 #
 # Calibrates the annual-unit search epsilons on the campaign search measures.
 # One sbatch job per scenario design (design from the sourced NYCOPT_ENV_FILE):
@@ -1112,7 +1112,7 @@ def dcv_figure_path(name: str) -> Path:
 # (docs/notes/methods/robustness_threshold_diagnostics.md)
 #
 # Satisficing-threshold placement diagnostics: reduce the incumbent's E_test
-# cube (step 05 --reeval), the E_test forcing factors and the historic-trace
+# cube (step 10 with NYCOPT_CHUNK_POLICIES=baseline), the E_test forcing factors and the historic-trace
 # anchor into the SI tables. Zero simulation, two scripts:
 #   robustness_threshold_anchor.py   annual-unit anchor -> JSON cache
 #   robustness_threshold_figures.py  tables + SI figures
@@ -1135,7 +1135,7 @@ def configure_rtd_env() -> None:
 # Inputs (persisted artifacts; nothing here triggers a simulation)
 # ---------------------------------------------------------------------------
 #: Baseline-policy raw re-eval cube on E_test (reeval_raw.parquet + meta),
-#: written by step 09 with NYCOPT_CHUNK_POLICIES=baseline under the historic env
+#: written by step 10 with NYCOPT_CHUNK_POLICIES=baseline under the historic env
 #: (the cube is design-independent; any design's `baseline/` leaf is identical).
 RTD_REEVAL_BASELINE_DIR: Path = (
     _PROJECT_DIR / "outputs" / "historic" / "ffmp_obj8" / "reeval"
@@ -1831,7 +1831,7 @@ def esd_library_path() -> Path:
 #   2. the epsilon-nondominated merged reference set per target ensemble, and
 #      how much of it each optimization contributed;
 #   3. hypervolume of each set under each ensemble, on one shared reference.
-# Supplemental and exploratory: nothing here feeds src.robustness, the step-10
+# Supplemental and exploratory: nothing here feeds src.robustness, the step-12
 # scorecards, or any manuscript figure.
 ###############################################################################
 
@@ -2016,7 +2016,7 @@ def tev_cell_dir(source: str, target_slug: str) -> Path:
 # Hazard Filling (HF) design metrics (HFM)
 # (docs/notes/methods/hf_design_metrics.md; drivers
 #  scripts/supplemental/hf_design_metrics_run.py and hf_design_metrics_figures.py;
-#  wrapper workflow/supplemental/hf_design_metrics.sh)
+#  wrapper workflow/supplemental/design_diagnostics/hf_design_metrics.sh)
 #
 # Measures, on hazard images alone (no simulation), the properties that define
 # the HF search ensemble: the target displacement of the sequential selection
@@ -2186,7 +2186,7 @@ SELDIAG_FAR_TARGET_DISTANCE: float = 0.25
 # Hazard-axis selection (HAXSEL)
 # (docs/notes/methods/hazard_axis_selection.md; drivers
 #  scripts/supplemental/hazard_axis_selection_run.py and
-#  hazard_axis_selection_figures.py; wrapper workflow/supplemental/hazard_axis_selection.sh)
+#  hazard_axis_selection_figures.py; wrapper workflow/supplemental/design_diagnostics/hazard_axis_selection.sh)
 #
 # Chooses the hazard-filling selection axes among the admissible subsets of the
 # continuous candidate hazard metrics by how uniformly the lhs_nn selection
@@ -2367,7 +2367,7 @@ ENSOBJDYN_CACHE_DIR: Path = ENSOBJDYN_OUTPUT_ROOT / "cache"
 # (docs/notes/methods/campaign_design.md §5, forcing_parameterization.md;
 #  SI Texts S6 and S8.5; drivers scripts/supplemental/dry_envelope_run.py,
 #  dry_envelope_figures.py, etest_realization_precision.py; launcher
-#  workflow/supplemental/dry_envelope.sh)
+#  workflow/supplemental/design_diagnostics/dry_envelope.sh)
 #
 # Dry envelope: paired 10-yr windows at fixed annual-volume multipliers that
 # span the E_test lower bound at the current and candidate widening margins,
@@ -2472,7 +2472,7 @@ ETR_FALSE_HARM_Z: float = RTOL_FALSE_HARM_Z
 #: Cost basis (SU). Measured: 1.33 SU per (policy, chunk) unit on the chunked
 #: path, one chunk = 500 realizations x 50 yr (campaign_design.md §5); the
 #: full-model presim pass over the generated design, ~70 SU
-#: (workflow/supplemental/prep_etest_chunks.sh); the current-policy baseline,
+#: (workflow/supplemental/staging/etest_prep_chunks.sh); the current-policy baseline,
 #: 33 SU per design on 500 SOWs x 25. Bounded by allocation, unmeasured: the
 #: sub-window hazard image shards (50 x 0.5 h x 4 cpus = 100 core-h). Estimate,
 #: unmeasured: E_test generation, scaled from the P=1e6 pool's ~600 core-h per

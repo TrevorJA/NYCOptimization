@@ -8,14 +8,14 @@ Zero simulation. Code: `scripts/supplemental/robustness_threshold_anchor.py`
 `scripts/supplemental/criteria_reanchoring.py` (the per-axis re-anchoring
 audit on the production cube), configuration `RTD_*` in
 `supplemental_config.py`, wrapper
-`workflow/supplemental/robustness_threshold_diagnostics.sh`, tests
+`workflow/supplemental/results_diagnostics/robustness_threshold_diagnostics.sh`, tests
 `tests/test_robustness_threshold_diagnostics.py`. Outputs under
 `outputs/supplemental/robustness_threshold_diagnostics/{cache,tables,figures}/`.
 
 ## 0. Question and substrate
 
 For the current FFMP policy re-evaluated on $E_{\text{test}}$ (500 LHS SOWs × 25
-realizations × 50 yr; step 09 with `NYCOPT_CHUNK_POLICIES=baseline`,
+realizations × 50 yr; step 10 with `NYCOPT_CHUNK_POLICIES=baseline`,
 `RTD_REEVAL_BASELINE_DIR`), per
 objective: is a criterion defensible, so that a degenerate fraction is a
 motivation result, or misplaced for $E_{\text{test}}$ conditions, so that it
@@ -75,7 +75,7 @@ figures script requires the cube's SOW means to equal the shipped
   stringency increasing rightward on every panel, Wilson band and degenerate
   zones (`RTD_DEGENERACY_LIMIT`) shaded, candidate placements marked by class
   (Hadjimichael et al. 2020). The stringency coordinate follows
-  `compare_designs.default_stringency`, so this and the step-10 sweep speak
+  `compare_designs.default_stringency`, so this and the step-12 sweep speak
   the same coordinate.
 - **θ-attribution** (`S_rtd_theta_spearman`, `S_rtd_factor_maps`;
   `rtd_theta_spearman.csv`, `rtd_critical_m.csv`). Spearman correlations of the

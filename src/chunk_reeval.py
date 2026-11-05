@@ -14,7 +14,7 @@ from in-memory reduced metrics; simulation timeseries are never persisted.
 - Incremental mode writes each unit atomically to
   ``partial/units/chunk{j:03d}/sol{sid:05d}.parquet`` (``.failed`` sidecar on
   error) and resumes on resubmission; one-shot mode writes one partial per rank.
-- Merge (rank 0, or ``workflow/09b_merge_test_chunks.sh`` ->
+- Merge (rank 0, or ``workflow/11_merge_test_chunks.sh`` ->
   :func:`merge_test_chunks`) reassembles per-solution ``(n_sow, M)`` matrices
   and reuses :func:`src.reeval_core.persist_reeval_raw` then
   :func:`src.robustness.run`.
@@ -324,8 +324,8 @@ def _persist_and_score(
 
     persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions, seed)
 
-    # Pass the status-quo re-eval matrix if a baseline-policy run (step 09 with
-    # NYCOPT_CHUNK_POLICIES=baseline, or step 05 --reeval) staged one under this
+    # Pass the status-quo re-eval matrix if a baseline-policy run (step 10 with
+    # NYCOPT_CHUNK_POLICIES=baseline, or step 06 --reeval) staged one under this
     # same reeval tag. Without it the incumbent-relative regret family warns and
     # is silently dropped.
     from config import REEVALUATION_SETTINGS
@@ -582,7 +582,7 @@ def simulate_test_chunks(
         return None
     if CHUNK_MERGE == "off":
         print("[chunk-reeval] merge deferred (NYCOPT_CHUNK_MERGE=off); run "
-              "workflow/09b_merge_test_chunks.sh when all units are complete.",
+              "workflow/11_merge_test_chunks.sh when all units are complete.",
               flush=True)
         return None
     if not await_all_done(partial_dir, size, deadline_s=float(CHUNK_DONE_DEADLINE_S)):

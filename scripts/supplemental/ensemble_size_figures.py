@@ -20,7 +20,7 @@ Every figure follows ``src/plotting/style.py``, is PNG only, and carries the
 epsilon line (where an epsilon applies) and the campaign point
 (``ESD_N_CAMPAIGN``, N = 300).
 Settings in ``supplemental_config.py`` (``ESD_*``); no CLI value flags.
-Wrapper: ``workflow/supplemental/ensemble_size_analysis.sh``.
+Wrapper: ``workflow/supplemental/design_diagnostics/ensemble_size_analysis.sh``.
 """
 
 from __future__ import annotations

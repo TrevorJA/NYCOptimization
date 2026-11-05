@@ -21,7 +21,7 @@ that fails that check is refused rather than reused.
 Chunks are processed independently and cached as shard files, so an interrupted run
 resumes where it stopped (delete the shards to force recomputation).
 
-Run after E_test is staged (workflow step 12 / ``generate_test_ensemble.py``)::
+Run after E_test is staged (workflow step 05 / ``generate_test_ensemble.py``)::
 
     python scripts/main/compute_etest_hazard_image.py
 
@@ -30,12 +30,12 @@ Configuration is via environment variables (no CLI value flags):
     NYCOPT_ETEST_VARIANT             E_test variant whose staged slug is scored (default "kn")
     NYCOPT_ETEST_HAZARD_SHARD_INDEX  When set: score ONLY this chunk index, write its
                                      shard file, and exit (one SLURM array task per
-                                     chunk; workflow/supplemental/etest_hazard_image_shards.sh).
+                                     chunk; workflow/supplemental/staging/etest_hazard_image_shards.sh).
                                      Unset: the original serial loop over all chunks
                                      (the reference path).
     NYCOPT_ETEST_HAZARD_MERGE        "1": verify every shard file exists, then merge and
                                      write the final artifact without recomputing anything
-                                     (workflow/supplemental/etest_hazard_image_merge.sh).
+                                     (workflow/supplemental/staging/etest_hazard_image_merge.sh).
 
 The merge is a pure function of the shard contents: rows are lexsorted by
 (realization_id, window_index) and every key is unique, so shard-then-merge is

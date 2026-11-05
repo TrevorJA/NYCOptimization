@@ -11,7 +11,7 @@ reliability >= 0.5 -- see :mod:`src.pareto_filter`):
   1d. Bound-normalized decision-variable ranges of criterion-satisfying subsets
      (baseline dominance, NYC-storage floors) against the full front.
   2. Coordinator-archive hypervolume vs total NFE, one line per seed (from
-     the step-07 per-seed .metrics).
+     the step-09 per-seed .metrics).
   3. DU performance distributions: each objective's DU-expected value across the
      acceptable policies vs the baseline and its satisficing threshold (the raw
      magnitudes co-reported alongside robustness, per Huang et al. 2025).
@@ -25,7 +25,7 @@ reliability >= 0.5 -- see :mod:`src.pareto_filter`):
 
 All figures land under ``figures/{scenario}/{slug}/``. Every panel is wrapped so
 one failure never blocks the others. Figures 1 (a-d) and 2 also work after step
-07 alone; 3-6 need step 08 (the re-eval + robustness outputs).
+07 alone; 3-6 need step 10 (the re-eval + robustness outputs).
 
 Usage (from repo root, venv active):
   python3 -m scripts.main.plot_run_results \
@@ -69,7 +69,7 @@ def _load_baseline_vec(formulation, obj_names, scenario):
 
     Resolved through ``config.baseline_objectives_csv`` — a baseline vector is
     only comparable to a front evaluated on the SAME substrate, so ensemble
-    scenarios must get the search-ensemble-scored vector (step 05
+    scenarios must get the search-ensemble-scored vector (step 06
     ``--search-ensemble``), never the flat historic record. An unscored
     scenario yields None and the panels omit the overlay.
     """
@@ -149,7 +149,7 @@ def fig_hypervolume(run_dir, slug, out_dir):
     from src.plotting.search_diagnostics import reporting_total_nfe
     metrics_dir = run_dir / "metrics"
     if not metrics_dir.exists() or not seed_metrics_files(metrics_dir, slug):
-        print("[fig2] no per-seed metrics files (step 07)"); return
+        print("[fig2] no per-seed metrics files (step 09)"); return
     plot_hypervolume_convergence(metrics_dir, slug,
                                  out_dir / "run02_hypervolume_convergence.png",
                                  figsize=(8, 5),

@@ -21,8 +21,8 @@
 # (SLURM_SUBMIT_DIR is taken as the root when present).
 #
 # Run identity is env-file driven: there is NO default env file. Steps whose
-# meaning depends on a chosen experiment (06/08/09/09b/11) pass "required" and
-# abort with a listing of workflow/envs/*.env when NYCOPT_ENV_FILE is unset.
+# meaning depends on a chosen experiment (07/10/11 and the supplemental re-evaluation and
+# scenario-discovery wrappers) pass "required" and abort with a listing of workflow/envs/*.env when NYCOPT_ENV_FILE is unset.
 
 # Repo root: SLURM_SUBMIT_DIR when submitted from the root; otherwise derived
 # from this file's location (workflow/_common.sh -> parent dir).

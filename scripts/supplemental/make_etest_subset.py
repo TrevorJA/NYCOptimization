@@ -25,7 +25,8 @@ Usage (login node is fine; pure metadata I/O). The defaults are the registry's c
 and slug; ``--n-chunks`` / ``--out-slug`` exist for fixtures and checks only:
     python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000
 
-Then every re-eval step (05, 08, 09, 09b, 10, 11) takes:
+Then every re-evaluation step (10, 11, 12 and the supplemental re-evaluation and
+scenario-discovery wrappers) takes:
     NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500
 """
 
@@ -256,7 +257,7 @@ def main() -> None:
 
     # --- Per-realization sidecars sliced to the prefix: forcing_profiles.npz
     # (SOW grouping, theta joins, the utilization column), hazard_image.npz
-    # (step-11 scenario discovery loads the realization-level image from the
+    # (scenario discovery (supplemental) loads the realization-level image from the
     # re-eval spec's staged dir) and the per-SOW nominal utilization table. ---
     npz_notes = _subset_npz(pool_dir / "forcing_profiles.npz",
                             out_dir / "forcing_profiles.npz",

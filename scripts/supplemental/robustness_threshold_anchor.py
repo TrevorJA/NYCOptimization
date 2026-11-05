@@ -25,7 +25,7 @@ Usage (never on a login node):
     srun --partition=shared --account=ees260021 --ntasks=1 --time=00:15:00 \\
         python3 scripts/supplemental/robustness_threshold_anchor.py
 or via the wrapper:
-    sbatch workflow/supplemental/robustness_threshold_diagnostics.sh
+    sbatch workflow/supplemental/results_diagnostics/robustness_threshold_diagnostics.sh
 """
 
 from __future__ import annotations
@@ -48,13 +48,13 @@ def load_meta() -> dict:
     """Parse the baseline cube's reeval_raw_meta.json (no cube load)."""
     meta_path = scfg.RTD_REEVAL_BASELINE_DIR / "reeval_raw_meta.json"
     if not meta_path.exists():
-        sys.exit(f"[rtd-anchor] missing {meta_path} — run step 05 --reeval first.")
+        sys.exit(f"[rtd-anchor] missing {meta_path} — run step 10 with NYCOPT_CHUNK_POLICIES=baseline first.")
     with open(meta_path) as f:
         meta = json.load(f)
     if "obj_names" not in meta:
         sys.exit(
             f"[rtd-anchor] {meta_path} predates the per-SOW annual-unit "
-            "substrate (no 'obj_names'); re-run step 05 --reeval to regenerate "
+            "substrate (no 'obj_names'); re-run step 10 (NYCOPT_CHUNK_POLICIES=baseline) to regenerate "
             "the baseline cube."
         )
     return meta

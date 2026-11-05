@@ -594,7 +594,7 @@ def _baseline_natural(target_design: str, names: list) -> np.ndarray:
     if not Path(path).exists():
         raise FileNotFoundError(
             f"[tev] no scenario-matched baseline for '{target_design}': {path}\n"
-            f"[tev] Produce it with workflow/05_run_baseline.sh --search-ensemble "
+            f"[tev] Produce it with workflow/06_run_baseline.sh --search-ensemble "
             f"under that design's env file.")
     frame = pd.read_csv(path)
     missing = [n for n in names if n not in frame.columns]

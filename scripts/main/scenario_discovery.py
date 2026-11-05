@@ -1,4 +1,4 @@
-"""scenario_discovery.py - Scenario discovery on E_test failures in hazard space (step 11).
+"""scenario_discovery.py - Scenario discovery on E_test failures in hazard space (scenario discovery (supplemental)).
 
 Per scenario design:
 
@@ -23,7 +23,7 @@ primary scenario-discovery view; this script is the hazard-space companion.
 Inputs (all pre-existing):
   * ``outputs/{design}/{moea_slug}/reeval/{reeval_tag}[/seed_NN]/reeval_raw.parquet``
   * ``{STAGED_ENSEMBLE_DIR}/{etest_slug}/hazard_image.npz`` (E_test hazard image,
-    written by workflow step 12)
+    written by workflow step 05)
   * each design's search-ensemble hazard image (loaded, or computed and cached
     from the staged daily inflows with the generation-time code path).
 
@@ -163,8 +163,8 @@ def _label_matrix(raw: rob.RawCube, baseline: rob.RawCube | None,
     if baseline is None:
         sys.exit(
             "[scenario_discovery] NYCOPT_SD_LABEL=regret needs the status-quo "
-            "re-eval cube beside the run (workflow step 05 with the SAME "
-            "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 08). Refusing to fall back to "
+            "re-eval cube beside the run (workflow step 06 with the SAME "
+            "NYCOPT_REEVAL_ENSEMBLE_PRESET as step 10). Refusing to fall back to "
             "a satisficing label -- that answers a different question."
         )
     return fm.regret_matrix(raw, baseline)

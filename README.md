@@ -21,7 +21,7 @@ here so you know what to expect):
   script's header (`#SBATCH --account=ees260021`) — no per-shell export
   needed. Override for a different allocation with `sbatch -A <alloc> ...`.
 - **Partitions**: small serial steps use `shared` (per-core billing, max 1
-  node); multi-node MPI jobs (`06`, `08`, `09`, supplemental sweeps) use
+  node); multi-node MPI jobs (`07`, `10`, supplemental sweeps) use
   `wholenode` (node-exclusive billing); the smoke test uses `debug` (2 nodes,
   2 h max). These are set in each script's `#SBATCH --partition` line.
 - **96-hour wall-time cap.** Anvil's `wholenode` maximum is 96 h per job.
@@ -30,12 +30,11 @@ here so you know what to expect):
   checkpoint is disabled, so every search is sized to finish inside one job
   (`docs/notes/methods/campaign_design.md`).
 
-Everything submittable lives in `workflow/` (numbered steps `00`–`14`, plus
-`09b`). A run's identity — scenario design, MOEA config, objectives, physics
+Everything submittable lives in `workflow/` (numbered steps `00`–`14`). A run's identity — scenario design, MOEA config, objectives, physics
 toggles — comes from a single env file under `workflow/envs/`; the scripts take
 no value-carrying CLI flags (see [workflow/envs/README.md](workflow/envs/README.md)).
-The campaign identities are the three `workflow/envs/ffmp_obj8_*_production.env`
-files (`historic`, `mc`, `hazfill_stat`).
+The campaign identities are the three `workflow/envs/ffmp_obj8_{design}_production.env`
+files (`historic`, `monte_carlo`, `hazard_filling_stationary`).
 
 ### 1.0 Setup
 
@@ -142,65 +141,63 @@ the SI draw-sensitivity re-evaluation); sizing and seeds come from the design
 registry, never from the command line.
 
 ```bash
-# monte_carlo: one N x L ensemble per draw
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-1 workflow/02_generate_ensemble.sh
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-1 workflow/04_prep_pywrdrb_inputs.sh
+# monte_carlo: one N x L ensemble per draw (step 02, then 04, chained; --dry-run prints the lines)
+bash workflow/submit_search_staging.sh monte_carlo
 
 # hazard_filling_stationary: the P = 1e6 pool is built sharded (50 array tasks), merged, and verified
 sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50 \
-       --array=0-49 workflow/supplemental/gen_pool_shards.sh
+       --array=0-49 workflow/supplemental/staging/pool_shards.sh
 sbatch --dependency=afterok:<shards_jobid> \
        --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_POOL_SLUG=statpool_10yr_n1000000_d0 \
-       workflow/supplemental/gen_pool_merge.sh
+       workflow/supplemental/staging/pool_merge.sh
 sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_ENSEMBLE_DRAW=0,NYCOPT_POOL_SLUG=statpool_10yr_n1000000_d0,NYCOPT_NESTEDP_SMOKE_SLUG=statpool_10yr_n2000_d0 \
-       workflow/supplemental/pool_verify.sh
-# then select all K draws from the pool in one job, and prep each draw
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=1000000 \
-       workflow/03_subsample_ensemble.sh
-sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary --array=0-1 workflow/04_prep_pywrdrb_inputs.sh
+       workflow/supplemental/staging/pool_verify.sh
+# then select all K draws from the pool in one job (step 03), and prep each draw (04)
+bash workflow/submit_search_staging.sh hazard_filling_stationary
 ```
 
 Step `02` alone builds the small (P = 2,000) pool the step-03 registry default
-points at; `NYCOPT_CANDIDATE_POOL_N=1000000` must be exported to step `03` for
-the campaign pool. Run `scripts/supplemental/validate_staged_seasonality.py`
+points at; the helper exports `NYCOPT_CANDIDATE_POOL_N=1000000` to step `03` for
+the campaign pool. Run `workflow/supplemental/checks/validate_staged_seasonality.sh`
 on each staged ensemble as build QC.
 
-#### 2.2 Test-ensemble staging (step 12 + supplemental)
+#### 2.2 Test-ensemble staging (step 05 + supplemental)
 
 The held-out re-evaluation ensemble E_test (`etest_kn_50yr_n12500`: 500 LHS
 SOWs over the three climate amplitudes and the NYC entitlement utilization `u`,
-× 25 realizations × 50 yr, 25 staged chunks) is independent of steps
-02–07 and never enters search. Build it sharded, merge, calibrate the demand
+× 25 realizations × 50 yr, 25 staged chunks) is independent of the
+search-ensemble staging and never enters search. Build it sharded, merge, calibrate the demand
 scale and append the per-SOW utilization column (metadata only;
 `docs/notes/methods/forcing_parameterization.md`), stage the pywrdrb inputs per
 chunk (the one-time presim pass over E_test, including each SOW's scaled NYC
 demand series), then merge the realized utilization. The campaign E_test is cut
 from the larger design generated 2026-08-19 (`etest_kn_50yr_n25000`, 50 chunks)
-by `etest_subset_stage.sh` (metadata only; nothing reads the parent afterwards):
+by `staging/etest_cut.sh` (metadata only; nothing reads the parent afterwards).
+`workflow/submit_etest_staging.sh` chains the completion steps after the merge:
 
 ```bash
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/gen_etest_shards.sh                       # or serial: workflow/12_generate_test_ensemble.sh
+       workflow/supplemental/staging/etest_shards.sh                       # or serial: workflow/05_generate_test_ensemble.sh
 sbatch --dependency=afterok:<shards_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/gen_etest_merge.sh
+       workflow/supplemental/staging/etest_merge.sh
 sbatch --dependency=afterok:<merge_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/etest_demand_utilization.sh                 # k(u) table + per-SOW utilization u, metadata only
+       workflow/supplemental/staging/etest_demand_utilization.sh                 # k(u) table + per-SOW utilization u, metadata only
 sbatch --dependency=afterok:<demand_u_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-       workflow/supplemental/prep_etest_chunks.sh                        # step-04 inputs + scaled NYC demand per chunk
+       workflow/supplemental/staging/etest_prep_chunks.sh                        # step-04 inputs + scaled NYC demand per chunk
 sbatch --dependency=afterok:<prep_jobid> \
        --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/etest_subset_stage.sh                       # cut etest_kn_50yr_n12500 from the parent + realized u per SOW
+       workflow/supplemental/staging/etest_cut.sh                       # cut etest_kn_50yr_n12500 from the parent + realized u per SOW
 ```
 
-Every re-evaluation step (`05`, `08`, `09`, `09b`, `10`, `11`) takes
+Every re-evaluation step (`10`, `11`, `12`, and the supplemental re-evaluation and scenario-discovery wrappers) takes
 `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500` explicitly. It
 is deliberately never defaulted and never set in an env file, so cross-design
 comparability is a recorded choice.
 
-#### 2.3 Baseline (step 05)
+#### 2.3 Baseline (step 06)
 
 Evaluate the default (unoptimized) 2017 FFMP policy on the same objective set,
 the comparison anchor for every optimized Pareto set. Run it once per campaign
@@ -208,24 +205,24 @@ env file, scenario-matched (`--search-ensemble`) for the two ensemble designs:
 
 ```bash
 sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-       workflow/05_run_baseline.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env \
-       workflow/05_run_baseline.sh --search-ensemble
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env \
-       workflow/05_run_baseline.sh --search-ensemble
+       workflow/06_run_baseline.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env \
+       workflow/06_run_baseline.sh --search-ensemble
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazard_filling_stationary_production.env \
+       workflow/06_run_baseline.sh --search-ensemble
 ```
 
 The incumbent's per-SOW E_test cube, which the incumbent-relative regret family
-scores against, is simulated per design by step `09` with
+scores against, is simulated per design by step `10` with
 `NYCOPT_CHUNK_POLICIES=baseline` (section 2.5).
 
-#### 2.4 MM-Borg optimization (step 06)
+#### 2.4 MM-Borg optimization (step 07)
 
 Each optimization is **one independent sbatch job** per (env file × seed). The
 campaign runs S = 2 seeds per design on draw 0 under the `production` MOEA
 config (4 islands × 382 workers = 1,533 ranks on 12 nodes); seed 1 runs 750k
 NFE and seed 2 500k, and both are reported at 500k
-(`docs/notes/methods/campaign_design.md`). The step-06 header is sized for the
+(`docs/notes/methods/campaign_design.md`). The step-07 header is sized for the
 smaller `mm_moderate` config, so the production geometry (12 × 128) and the
 per-seed `--time` are held by `workflow/submit_production_search.sh`, the one
 submission path for every campaign search (its header documents the sbatch
@@ -260,47 +257,46 @@ After both seeds of a design finish, build the equal-NFE reference set, run the
 runtime diagnostics, re-evaluate on E_test (chunked, metrics-only), merge, then
 compare designs and render figures. Convergence diagnostics are read from the
 MM Borg coordinator archive, one trace per seed on total NFE: the controller
-writes no runtime file, so step 07 reconstructs its archive at every snapshot
+writes no runtime file, so step 09 reconstructs its archive at every snapshot
 as the epsilon-box merge of the island runtime files (the project's one
 epsilon-archive implementation, `src/sensitivity_common.py`; MOEAFramework's
 v5.0 mergers do not honour the epsilon vector) and scores that series with
-MOEAFramework's `MetricsEvaluator`. Step 07 writes its own
+MOEAFramework's `MetricsEvaluator`. Step 09 writes its own
 reference set (`{slug}_diagnostics_reference.set`) and never the campaign
 `{slug}_merged.set`, so the two commands below can run in either order:
 
 ```bash
-# Equal-NFE cross-seed reference set (installs {slug}_merged.set, the step-08/09 reference)
-set -a; source workflow/envs/ffmp_obj8_mc_production.env; set +a
-python3 scripts/main/extract_runtime_archive.py --seed 1
-python3 scripts/main/extract_runtime_archive.py --merge --install
+# Equal-NFE cross-seed reference set (installs {slug}_merged.set, the step-10 reference)
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env workflow/08_extract_reference_set.sh --seed 1
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env workflow/08_extract_reference_set.sh --merge --install
 
 # MOEAFramework runtime diagnostics on the per-seed coordinator archive (six indicators vs total NFE)
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env workflow/07_run_diagnostics.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env workflow/09_run_diagnostics.sh
 
 # Chunked E_test re-evaluation of the reference set (shared partition, 16 ranks x 8 cpus, batch 50), then merge
 sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=24:00:00 \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
-       workflow/09_simulate_test_chunks.sh          # resumable: resubmit the same line until every unit is written
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set \
-       workflow/09b_merge_test_chunks.sh
+       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set,NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=50 \
+       workflow/10_simulate_test_chunks.sh          # resumable: resubmit the same line until every unit is written
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_monte_carlo_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=outputs/monte_carlo/ffmp_obj8/sets/ffmp_obj8_merged.set \
+       workflow/11_merge_test_chunks.sh
 ```
 
-Repeat for each campaign env file with the **same** preset. Step `08`
-(`08_reevaluate.sh`, `wholenode`) is the unchunked alternative that also
-persists simulation timeseries; the campaign path is `09` + `09b`. Then:
+Repeat for each campaign env file with the **same** preset
+(`supplemental/results_diagnostics/reevaluate_unchunked.sh` is the unchunked
+alternative that also persists simulation timeseries). Then:
 
 ```bash
-sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 workflow/10_compare_designs.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
-       workflow/11_scenario_discovery.sh
+sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 workflow/12_compare_designs.sh
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazard_filling_stationary_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
+       workflow/supplemental/results_diagnostics/scenario_discovery.sh
 sbatch workflow/13_main_figures.sh
 sbatch workflow/14_results_figures.sh
 ```
 
-Step order: `01` before `05`/`06`; `02`→`04` (with `03` for hazard filling)
-before `06`; `12`→`etest_demand_utilization`→`prep_etest_chunks`→`etest_subset_stage` before `05`/`08`/`09`/`11`;
-`06`→`extract_runtime_archive`→`07`→`09`→`09b`→`10`/`11`/`13`/`14`. Chain on a
-cluster with `sbatch --dependency=afterok:<jobid>`. Outputs land under
+Step order: `01` before `06`/`07`; `02`→`04` (with `03` for hazard filling)
+before `07`; `05`→`staging/etest_demand_utilization`→`staging/etest_prep_chunks`→`staging/etest_cut`
+before `10`; `07`→`08`→`09`→`10`→`11`→`12`/`13`/`14`. Chain on a cluster with
+`sbatch --dependency=afterok:<jobid>`. Outputs land under
 `outputs/{scenario}/{moea_slug}/`.
 
 ## Run axes
@@ -316,7 +312,7 @@ on one source of truth).
 Not part of replication. `bash workflow/submit_smoke.sh [--dry-run]` submits a
 tiny-NFE end-to-end pipeline check per formulation (Anvil `debug` queue,
 2 nodes × 40 tasks, ≤2 h, `smoke` MOEA config, short 2018–2022 window), then
-`bash workflow/07_run_diagnostics.sh smoke_ffmp ...` for its diagnostics.
+`bash workflow/09_run_diagnostics.sh smoke_ffmp ...` for its diagnostics.
 `bash workflow/submit_search_memory_smoke.sh` is the one-node memory/timing
 smoke of the batched N = 300 search path. Off-pipeline staging, calibration,
 sizing, and diagnostic drivers live in `workflow/supplemental/`.
@@ -341,6 +337,6 @@ Anvil project space and are symlinked into `outputs/synthetic_ensembles/`.
 The `historic` scenario design runs end-to-end with no staged data. Every
 other design resolves once its ensemble is staged: `monte_carlo` via
 steps `02`+`04`, and `hazard_filling_stationary` via its P = 10⁶ pool
-(`gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh`), then step `03`
+(`staging/pool_shards.sh` → `staging/pool_merge.sh` → `pool_verify.sh`), then step `03`
 with `NYCOPT_CANDIDATE_POOL_N=1000000`, then step `04`. Until staged, the
 MM-Borg pre-flight fails fast with a staging message.

@@ -148,7 +148,7 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         notes="Moderate run: 50k NFE, 511 ranks (2x254+3) on 4 Anvil nodes.",
     ),
     # Anvil scaling supplement (Stage B strong scaling;
-    # workflow/supplemental/anvil_scaling_borg.sh, supplemental_config.py).
+    # workflow/supplemental/benchmarks/anvil_scaling_borg.sh, supplemental_config.py).
     # Fixed total NFE = 1280 across all scale_* geometries (max_evaluations is
     # per island); runtime_frequency scales so every geometry logs ~8
     # snapshots per island. Run only with the historic design + DEBUG_SIM=true;

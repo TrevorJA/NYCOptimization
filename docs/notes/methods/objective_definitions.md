@@ -543,7 +543,7 @@ instability of factor-importance rankings (Quinn et al. 2020) does not arise
 by construction.
 
 No scenario discovery is performed in hazard space, and the coverage-deficit
-test of workflow step 11 (`scripts/main/scenario_discovery.py`, the distance in
+test of the supplemental scenario-discovery step (`scripts/main/scenario_discovery.py`, the distance in
 E_test's hazard-image rank space to the nearest search-ensemble member against
 failure) is outside the experiment plan; the code is retained as an
 exploratory analysis. Discovery in the forcing space is reported as support

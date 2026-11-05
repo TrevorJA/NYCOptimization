@@ -180,7 +180,7 @@ preserved; the 800 MGD monthly-mean cap is enforced after scaling (Pywr-DRB
 `ExtrapolatedDiversionPreprocessor.demand_scale`, per realization through the ensemble class's
 `demand_scales`; the applied scale is stored as `demand_scale` beside `aggregate` in
 `diversion_nyc_extrapolated_mgd.hdf5`). The cap is never applied first. When step 04 (or
-`workflow/supplemental/stage_nyc_demand_etest_chunks.sh`) stages a chunk, it reads the parent's
+`workflow/supplemental/staging/etest_stage_nyc_demand.sh`) stages a chunk, it reads the parent's
 `demand_utilization_nominal.csv`, maps each local realization to its global id and SOW
 (`global_id // realizations_per_profile`), and passes that SOW's `k`; every other ensemble is staged
 at `k = 1`.
@@ -229,7 +229,7 @@ ceiling of E_test, where demand uncertainty is carried, as in the deep-uncertain
 Herman et al. (2014), Trindade et al. (2017) and Gold et al. (2022, 2023).
 
 **Analysis plumbing.** `src/factor_mapping.py::theta_features` returns `(em, r1, r2, u)` for an
-appended E_test; `reeval_raw_meta.json` records `sow_demand_utilization`; step 10 writes
+appended E_test; `reeval_raw_meta.json` records `sow_demand_utilization`; step 12 writes
 `design_rescoring_by_utilization_band.csv` (bands `u < 0.6`, `0.6 ≤ u < 0.8`, `u ≥ 0.8`) and
 `design_regret_by_utilization.csv` (ten equal-width bins; per-objective regret and gain against the
 current FFMP policy, the analysis that shows how much of any re-optimization gain is contingent on

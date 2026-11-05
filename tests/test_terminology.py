@@ -41,7 +41,7 @@ RETIRED_TERMS: dict[str, str] = {
     "resampled_probabilistic": "monte_carlo_resampled",
     "probabilistic sampling": "Monte Carlo sampling (the Monte Carlo Sampling "
                               "design, MC)",
-    "fixedprob": "mc (workflow/envs/ffmp_obj8_mc_*.env)",
+    "fixedprob": "monte_carlo (workflow/envs/ffmp_obj8_monte_carlo_*.env)",
     "regret_from_best": "deleted -- set-relative and design-coupled",
     # The name stays retired although incumbent-relative regret is computed:
     # Herman et al. (2015)'s R1 is regret from a baseline STATE OF THE WORLD,

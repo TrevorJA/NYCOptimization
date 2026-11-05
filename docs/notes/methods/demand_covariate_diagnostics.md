@@ -3,7 +3,7 @@
 *Measured impact of the NYC demand regressions' flow covariate on the historic
 record. Evidence: one local pass of `scripts/supplemental/demand_covariate/run.py`
 (2026-11-04): the two demand series over the HIST window 1945-12-01 to 2023-11-30,
-two full-model single-trace simulations of the current FFMP policy in the step-05
+two full-model single-trace simulations of the current FFMP policy in the step-06
 baseline configuration (one cached model dict, deep-copied and patched twice with
 only the `demand_nyc` source swapped), the eight active annual-unit objectives, and
 the `kn_50yr_n5` fixture at k = 1 before and after; a third run with NYC demand held

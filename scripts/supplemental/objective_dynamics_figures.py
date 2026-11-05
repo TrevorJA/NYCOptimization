@@ -127,7 +127,7 @@ def _load_baseline_data(baseline_dv: np.ndarray) -> dict:
     if official.exists():
         print(f"[baseline] artifact-of-record is stale "
               f"(objective columns != ACTIVE_OBJECTIVES); simulating fresh. "
-              f"Run workflow/05_run_baseline.sh to refresh it.")
+              f"Run workflow/06_run_baseline.sh to refresh it.")
     return _get_or_simulate(baseline_dv, CACHE_DIR / f"baseline_{FORMULATION}.hdf5",
                             "baseline")
 

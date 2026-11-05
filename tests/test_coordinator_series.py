@@ -275,7 +275,7 @@ def test_step07_reference_set_is_never_the_campaign_reference_set():
 
 
 # ---------------------------------------------------------------------------
-# The step-07 driver end to end (MOEAFramework scoring stubbed)
+# The step-09 driver end to end (MOEAFramework scoring stubbed)
 # ---------------------------------------------------------------------------
 
 def test_run_full_diagnostics_drives_series_reference_and_metrics(tmp_path, monkeypatch):

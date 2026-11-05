@@ -43,7 +43,7 @@ SCENARIO_YEARS: int = int(os.environ.get("NYCOPT_SCENARIO_YEARS", "10"))
 # Ensemble size N common to every matched design (campaign_design.md;
 # ensemble_size_diagnostics.md). A common (N, L) keeps per-evaluation cost
 # identical across designs. Changing N invalidates every staged search
-# ensemble and the step-05 baselines.
+# ensemble and the step-06 baselines.
 SEARCH_ENSEMBLE_N: int = int(os.environ.get("NYCOPT_SEARCH_N", "300"))
 
 # Candidate-pool cardinality P for the hazard-filling designs and the

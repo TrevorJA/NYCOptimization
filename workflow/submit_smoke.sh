@@ -6,7 +6,7 @@
 # objectives) end-to-end for every formulation before committing to a
 # multi-day production run.
 #
-# Each target submits the unified launcher (workflow/06_run_mmborg.sh) with
+# Each target submits the unified launcher (workflow/07_run_mmborg.sh) with
 # smoke-sized sbatch overrides: Anvil `debug` queue (2 nodes x 40 tasks, 2 h —
 # the debug queue's exact limits), the `smoke` MOEA config (via
 # workflow/envs/smoke.env), the short 2018-2022 debug window, and 79 MPI ranks
@@ -22,7 +22,7 @@
 #   bash workflow/submit_smoke.sh --dry-run          # print sbatch cmds only
 #
 # After jobs finish, generate diagnostics:
-#   bash workflow/07_run_diagnostics.sh smoke_ffmp smoke_ffmp_8 smoke_ffmp_10 smoke_ffmp_12
+#   bash workflow/09_run_diagnostics.sh smoke_ffmp smoke_ffmp_8 smoke_ffmp_10 smoke_ffmp_12
 
 set -euo pipefail
 
@@ -57,7 +57,7 @@ for t in "${TARGETS[@]}"; do
         --partition=debug --nodes=2 --ntasks-per-node=40 --time=02:00:00 \
         --job-name="smoke_${t}" \
         --export=ALL,NYCOPT_ENV_FILE=workflow/envs/smoke.env,FORMULATION="${t}",RUN_SLUG="smoke_${t}",NTASKS_MPI=79,DEBUG_SIM=true \
-        workflow/06_run_mmborg.sh
+        workflow/07_run_mmborg.sh
 done
 
 echo "=== Smoke test submission complete ==="

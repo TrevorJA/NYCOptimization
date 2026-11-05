@@ -1,6 +1,6 @@
 #!/bin/bash
 # submit_production_search.sh — the ONE submission path for a campaign search
-# (workflow step 06 under the `production` MOEA config). Login-node helper, not
+# (workflow step 07 under the `production` MOEA config). Login-node helper, not
 # an sbatch script: it issues the per-(design, seed) sbatch line that the env
 # file headers, workflow/README.md and campaign_design.md §2 document, so the
 # geometry and wall request are recorded here rather than retyped at the prompt.
@@ -25,7 +25,7 @@
 # Geometry: `production` = 1 controller + 4 islands x (382 workers + 1 master)
 # = 1,533 ranks, which needs --nodes=12 --ntasks-per-node=128 on `wholenode`
 # (1,536 cores, 3 idle). The rank count itself comes from the MOEA config
-# inside the job (06_run_mmborg.sh -> mpirun -np); nycopt_check_allocation
+# inside the job (07_run_mmborg.sh -> mpirun -np); nycopt_check_allocation
 # aborts the job if this container no longer fits it, so the numbers below
 # are a documented request, not a second source of truth.
 #
@@ -73,23 +73,13 @@ case "${SEED}" in
     *) echo "ERROR: seed must be 1 or 2 (got '${SEED}')" >&2; usage 2 ;;
 esac
 
-# Per-design env file, job-name tag and per-seed wall request.
+# Per-design job-name tag and per-seed wall request; the env file is named
+# after the design.
+ENV_FILE="workflow/envs/ffmp_obj8_${DESIGN}_production.env"
 case "${DESIGN}" in
-    historic)
-        ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env
-        TAG=hist
-        TIME=([1]=12:00:00 [2]=08:00:00)
-        ;;
-    monte_carlo)
-        ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env
-        TAG=mc
-        TIME=([1]=96:00:00 [2]=72:00:00)
-        ;;
-    hazard_filling_stationary)
-        ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env
-        TAG=hf
-        TIME=([1]=96:00:00 [2]=72:00:00)
-        ;;
+    historic)                  TAG=hist; TIME=([1]=12:00:00 [2]=08:00:00) ;;
+    monte_carlo)               TAG=mc;   TIME=([1]=96:00:00 [2]=72:00:00) ;;
+    hazard_filling_stationary) TAG=hf;   TIME=([1]=96:00:00 [2]=72:00:00) ;;
 esac
 
 NODES=12
@@ -106,7 +96,7 @@ CMD=(sbatch
     --array="${SEED}"
     --export=ALL,NYCOPT_ENV_FILE="${ENV_FILE}",DRAW=0
     ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
-    workflow/06_run_mmborg.sh)
+    workflow/07_run_mmborg.sh)
 
 echo "=== ${DESIGN} seed ${SEED}: ${NODES} x ${NTASKS_PER_NODE}, ${TIME[${SEED}]}, ${ENV_FILE} ==="
 echo "+ ${CMD[*]}"

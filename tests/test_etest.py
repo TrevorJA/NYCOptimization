@@ -232,7 +232,7 @@ def test_etest_config_is_lhs_replicated_chunked_and_hazard_imaged():
     assert cfg.theta_sampler == "lhs"          # never subsampled -> LHS is correct
     assert cfg.population == "du_forced"
     assert cfg.realizations_per_profile > 1    # the SOW replication
-    assert cfg.compute_hazard_image is True    # step 11 hard-fails without it
+    assert cfg.compute_hazard_image is True    # scenario discovery (supplemental) hard-fails without it
     assert cfg.chunk_size > 0                  # E_test is the biggest ensemble in the study
     assert cfg.store_daily is True
     assert cfg.seed_domain == v.seed_domain

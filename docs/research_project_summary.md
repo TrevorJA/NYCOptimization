@@ -103,11 +103,11 @@ probability-preserving flow stratification).
    hazard-space design must *select from* a candidate ensemble, whereas an i.i.d. design *generates*
    directly.
 4. **Search** — MM Borg over FFMP decision variables; objectives evaluated on the
-   design's ensemble (workflow steps 00–06).
+   design's ensemble (workflow steps 00–04, 06, 07).
 5. **Re-evaluation** — every final Pareto set re-simulated on the common re-evaluation
    ensemble, which is never the source of any search ensemble. The (solution × SOW ×
    objective) matrix is persisted in natural units, and robustness metrics are scored
-   offline from it (steps 08–11), so a new metric never requires re-simulating.
+   offline from it (steps 10–12), so a new metric never requires re-simulating.
 
 Operational how-to: `workflow/README.md` and the step scripts `workflow/00–14_*.sh`.
 
@@ -239,7 +239,7 @@ never as a comparison result.
 basis (173.8 s per N = 100 evaluation trimmed, full model 1.16×, and 21,850 SU per
 N = 100 / 500k-NFE production search on 8 × 128, from which every campaign number
 scales), the P = 10⁶ candidate ensembles for draws 0–1, and E_test with its presim pass.
-The current FFMP policy's E_test matrix and every step-05 baseline predate the
+The current FFMP policy's E_test matrix and every step-06 baseline predate the
 time-dynamic NYC demand series and are re-simulated under it before the campaign
 (`TODO.md` §0). The hazard-filling selection has no tail-share
 threshold; the minimum per-axis share above the pool P90 is reported as a property of
@@ -247,7 +247,7 @@ the selector on the pool's joint geometry (`notes/methods/hazard_selector_diagno
 
 **Not yet staged:** the per-SOW scaled NYC demand series of E_test (`TODO.md` §0), and
 the N = 300 search ensembles (draws 0–1 of both matched designs, each with its
-per-realization NYC demand series from step 04) and their step-05 baselines
+per-realization NYC demand series from step 04) and their step-06 baselines
 (`TODO.md` §2).
 
 **Decided:** the three designs above; a single stationary search population with deep
@@ -288,7 +288,7 @@ campaign. Table: `notes/methods/campaign_design.md` §6.
 **Remaining before campaign launch:** append the utilization column to E_test
 (`append_demand_utilization.py`), stage its scaled NYC demand series per chunk, and
 re-simulate the current-FFMP E_test cube; stage the search ensembles at N = 300 (steps
-02–04 for draws 0–1 of both matched designs, step 05 baselines) with
+02–04 for draws 0–1 of both matched designs, step 06 baselines) with
 `validate_staged_seasonality` build QC (the search ε vector is fixed as adopted);
 run the one-node batched-search memory smoke; then seed 1 of every design, which prices
 the campaign. Re-run the satisficing-threshold diagnostic and the criteria re-anchoring

@@ -25,7 +25,7 @@ Usage (local smoke, historic design, serial):
     NYCOPT_SF_SMOKE=1 python scripts/supplemental/satisfaction_factor_run.py
 Usage (SLURM, one job per design):
     sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_monte_carlo.env \\
-        workflow/supplemental/satisfaction_factor.sh
+        workflow/supplemental/results_diagnostics/satisfaction_factor.sh
 """
 
 from __future__ import annotations

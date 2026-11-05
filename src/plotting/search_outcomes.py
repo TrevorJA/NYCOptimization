@@ -16,7 +16,7 @@ regret, factor maps).
 
 Data contract (per design, under ``outputs/{design}/{slug}/``): per-seed
 coordinator-series metrics ``metrics/seed_XX_{slug}.metrics`` (MOEAFramework
-MetricsEvaluator, step 07; total NFE via the sibling
+MetricsEvaluator, step 09; total NFE via the sibling
 ``runtime_coordinator/`` series).
 """
 

@@ -342,7 +342,7 @@ def fig_regret_vs_utilization(ctx, out_stub: Path, table_dir: Path) -> dict:
     path = ctx.comparison_dir() / "design_regret_by_utilization.csv"
     if not path.is_file():
         raise FileNotFoundError(
-            f"{path} missing: run scripts/main/compare_designs.py (workflow step 10) "
+            f"{path} missing: run scripts/main/compare_designs.py (workflow step 12) "
             f"on a re-evaluation whose E_test carries the utilization factor."
         )
     df = pd.read_csv(path)

@@ -12,7 +12,7 @@ holding the island's epsilon archive at every ``runtime_frequency`` NFE::
     #
 
 The controller (coordinator) node writes nothing: its global epsilon archive
-is only returned at shutdown as the seed's ``.set`` file. Step 07 therefore
+is only returned at shutdown as the seed's ``.set`` file. Step 09 therefore
 reconstructs the coordinator archive at every snapshot as the epsilon-box
 merge of the island archives recorded at that per-island NFE
 (``coordinator_series``). Every merge in the project (this series, the

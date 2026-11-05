@@ -15,8 +15,8 @@ keeps several collections side by side. Load the results later with
 ``src.policy_simulation.load_policy_runs(run_dir)``.
 
 Usage (from repo root, via sbatch; never on a login node):
-    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \
-        workflow/supplemental/sim_selected_policies.sh [options]
+    sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
+        workflow/supplemental/figures/sim_selected_policies.sh [options]
 """
 from __future__ import annotations
 

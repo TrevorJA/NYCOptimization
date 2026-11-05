@@ -1,4 +1,4 @@
-"""generate_test_ensemble.py - Workflow step 12: build the held-out test ensemble E_test.
+"""generate_test_ensemble.py - Workflow step 05: build the held-out test ensemble E_test.
 
 E_test is the measuring stick: every design's Pareto policies are re-simulated on it, and the
 cross-design comparison happens there and nowhere else. It is NOT a scenario design — it never
@@ -20,7 +20,7 @@ Reuses the one generation path (``src.ensemble_generation.generate_forcing_ensem
     compute_hazard_image=True  REQUIRED: scripts/main/scenario_discovery.py hard-fails without
                                E_test's hazard image.
     chunk_size > 0             E_test is the largest ensemble in the study; the chunked re-eval path
-                               (src/chunk_reeval.py, workflow step 09) exists for exactly this.
+                               (src/chunk_reeval.py, workflow step 10) exists for exactly this.
 
 Sizing lives in ``src/etest.py`` (env-overridable). No CLI value flags: ``--variant`` is an identifier.
 
@@ -40,8 +40,8 @@ Sharded generation (the serial build parallelized across a Slurm array): the sam
 contract as the candidate-pool path (``scripts/main/generate_stochastic_ensemble.py``). Each shard
 owns a chunk-aligned slice of the LHS profiles, writes its daily chunk dirs plus a hazard-image
 shard npz (the completion marker); the merge run rebuilds the global artifacts through the same
-finalizer the serial path uses. Submit via ``workflow/supplemental/gen_etest_shards.sh`` +
-``gen_etest_merge.sh``.
+finalizer the serial path uses. Submit via ``workflow/supplemental/staging/etest_shards.sh`` +
+``staging/etest_merge.sh``.
 """
 
 from __future__ import annotations
@@ -174,7 +174,7 @@ def main() -> None:
         assert_staged_etest_contract(variant.slug, require_demand=False)
     print(f"[etest] Done. Next: python scripts/supplemental/append_demand_utilization.py "
           f"--variant {variant.name}, then stage the chunks; set "
-          f"NYCOPT_REEVAL_ENSEMBLE_PRESET={variant.slug} for steps 05/08/09/11.")
+          f"NYCOPT_REEVAL_ENSEMBLE_PRESET={variant.slug} for steps 10 to 12.")
 
 
 if __name__ == "__main__":

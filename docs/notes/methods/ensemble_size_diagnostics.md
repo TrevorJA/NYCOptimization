@@ -320,10 +320,10 @@ search, so the campaign runs on 12 nodes (`campaign_design.md` §3, §6).
 
 ```
 # 0. smoke (shared; minutes)                       NYCOPT_ESD_SMOKE=1 on every wrapper
-# 1. Layer A + library plan (shared, 1 task)        workflow/supplemental/ensemble_size_hazard.sh
-# 2. regenerate + prep chunks (shared array)        workflow/supplemental/ensemble_size_library_stage.sh
-# 3. library evaluation (wholenode, 1 node)         workflow/supplemental/ensemble_size_library_eval.sh
-# 4. statistics, decision table, figures (shared)   workflow/supplemental/ensemble_size_analysis.sh
+# 1. Layer A + library plan (shared, 1 task)        workflow/supplemental/design_diagnostics/ensemble_size_hazard.sh
+# 2. regenerate + prep chunks (shared array)        workflow/supplemental/design_diagnostics/ensemble_size_library_stage.sh
+# 3. library evaluation (wholenode, 1 node)         workflow/supplemental/design_diagnostics/ensemble_size_library_eval.sh
+# 4. statistics, decision table, figures (shared)   workflow/supplemental/design_diagnostics/ensemble_size_analysis.sh
 ```
 
 Every wrapper sources `workflow/envs/ensemble_size_diagnostics.env`, all

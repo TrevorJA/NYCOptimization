@@ -39,7 +39,7 @@ axes), and the campaign-N (``ESD_N_CAMPAIGN``) / anchor-draw-0 selection is
 asserted equal to the staged production draw-0 member list.
 
 Settings in ``supplemental_config.py`` (``ESD_*``); no CLI value flags.
-Wrapper: ``workflow/supplemental/ensemble_size_hazard.sh``.
+Wrapper: ``workflow/supplemental/design_diagnostics/ensemble_size_hazard.sh``.
 """
 
 from __future__ import annotations

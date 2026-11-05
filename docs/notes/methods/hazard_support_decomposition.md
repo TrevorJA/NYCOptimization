@@ -7,7 +7,7 @@ Zero simulation, every deliverable reduces persisted artifacts. Code:
 `scripts/supplemental/hazard_support_run.py` (stage A support membership, stage
 B design contrast) and `scripts/supplemental/hazard_support_figures.py`,
 configuration in `supplemental_config.py` (`HSD_*`), wrapper
-`workflow/supplemental/hazard_support_decomposition.sh`, tests
+`workflow/supplemental/design_diagnostics/hazard_support_decomposition.sh`, tests
 `tests/test_hazard_support_decomposition.py`. Outputs under
 `outputs/supplemental/hazard_support_decomposition/{tables,figures}/`.*
 
@@ -34,7 +34,7 @@ instead answered from the persisted re-evaluation output.
 
 Scope guards. The decomposition is supplemental and never a new primary
 endpoint, hazard-space coverage remains method verification, no hazard-space
-scenario discovery enters the experiment plan (the step-11 code is
+scenario discovery enters the experiment plan (the scenario-discovery code is
 exploratory), and no policy-architecture comparison is introduced.
 
 Claim scoping. The six selection axes (`config.HAZARD_SELECTION_AXES`) encode
@@ -187,7 +187,7 @@ partitions of the same cubes are read together.
 | `F4_reach_by_tercile` | Per selection axis, where E_test's sub-window quantiles sit against the pool's p1/p99 band, by forcing tercile. |
 | `F5_contrast_by_stratum` (stage B) | The headline, HF − MC satisficing and low-regret differences vs support stratum, seed-level points with SOW-bootstrap CIs. |
 | `F6_partition_agreement` (stage B) | Whether the hazard-support and forcing-tercile partitions tell the same story about where the difference lives. |
-| `F7_pool_vs_design_deficit` (stage B) | Failure rate vs pool-deficit decile (`HSD_DEFICIT_BINS` = 10); the search-ensemble deficit panel is drawn only when the exploratory step-11 output exists. |
+| `F7_pool_vs_design_deficit` (stage B) | Failure rate vs pool-deficit decile (`HSD_DEFICIT_BINS` = 10); the search-ensemble deficit panel is drawn only when the exploratory scenario-discovery output exists. |
 
 Tables mirror every figure (`hsd_*.csv`) and figures follow
 `src/plotting/style.py`. Stage A runs once after the pools are staged (smoke

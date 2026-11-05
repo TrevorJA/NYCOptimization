@@ -23,7 +23,7 @@ still 8; `00_setup_borg_jars.sh` header); Pywr-DRB `nyc_opt` at `9619a90` and sc
 `main` at `c61fef8`, clean and in sync, both editable in `venv`; `squeue` empty; balance
 591,765 SU. Every step below is an sbatch wrapper under `workflow/`; nothing runs on
 the login node and no bare `srun` one-liners (the metadata-only E_test steps got
-wrappers on 2026-11-04: `etest_demand_utilization.sh`, `etest_subset_stage.sh`).
+wrappers on 2026-11-04: `staging/etest_demand_utilization.sh`, `staging/etest_cut.sh`).
 E_test is 500 SOWs only (decision 2026-11-04): `etest_kn_50yr_n12500`, cut as the
 leading 25 chunks of the staged 1,000-SOW design (`etest_kn_50yr_n25000`, kept on disk
 as that parent only); every re-evaluation, diagnostic and figure reads the E_test slug,
@@ -36,7 +36,7 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
   Trevor asks); confirm the new demand-source, utilization, etest and compare_designs
   tests are green there before item 1.
 - [ ] **[HPC] 1. HIST production, seed 1** (single trace, needs only the regenerated
-  historic CSV; ~6.3k SU at 8.35 SU per 1,000 NFE; the step-06 duplicate guard is clear
+  historic CSV; ~6.3k SU at 8.35 SU per 1,000 NFE; the step-07 duplicate guard is clear
   because `outputs/historic/` is archived):
   `bash workflow/submit_production_search.sh historic 1`
   (the helper holds the 12 x 128 geometry and the 12 h wall; `--dry-run` prints the line).
@@ -47,38 +47,38 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
 - [ ] **[HPC] 2. E_test completion** (no regeneration; the staged flows and presim are reused).
   The staging contract lists the demand series as a required chunk file, so the chunk
   staging precedes the subset build (the reverse order was refused on 2026-11-04):
-  1. [x] `stage_nyc_demand_etest_chunks.sh`, array 21950437: 50 of 50 tasks COMPLETED
+  1. [x] `staging/etest_stage_nyc_demand.sh`, array 21950437: 50 of 50 tasks COMPLETED
      2026-11-05 00:14 UTC (each chunk carries its k(u)-scaled
      `diversion_nyc_extrapolated_mgd.hdf5` and `demand_utilization_realized.csv`)
-  2. [x] `etest_subset_stage.sh`, job 21951643, COMPLETED 2026-11-05 00:25 UTC (job
+  2. [x] `staging/etest_cut.sh`, job 21951643, COMPLETED 2026-11-05 00:25 UTC (job
      21950524 ran the pre-merge wrapper and failed on step order): `etest_kn_50yr_n12500`
      cut from the parent (25 of 50 chunks, 500 SOWs x R = 25, `subset_of` recorded),
      `assert_staged_etest_contract` passed with the utilization keys on the reused
      2026-08-19 meta; realized minus nominal u: mean -0.027, range [-0.066, +0.008],
      24 SOWs above nominal.
   3. (folded into 2)
-  4. `J5=$(sbatch --parsable --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_shards.sh)`;
-     `sbatch --dependency=afterok:$J5 --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/etest_hazard_image_merge.sh`
+  4. `J5=$(sbatch --parsable --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/staging/etest_hazard_image_shards.sh)`;
+     `sbatch --dependency=afterok:$J5 --export=ALL,NYCOPT_ETEST_VARIANT=kn workflow/supplemental/staging/etest_hazard_image_merge.sh`
      (after 2.2: 25 tasks over the E_test chunks, ~10 SU, written into the E_test dir;
      the parent's retired-scoring image was moved to the archive)
   5. later: `si_figures_design.sh` (Figure 3, S12 to S16 from the staged
      `forcing_profiles.npz`) and the `dry_envelope.sh` production leg (Section 2).
   The realization-level `hazard_image.npz` E_test inherits from the parent at the cut
-  stays on the retired 8-axis scoring; only the exploratory step 11 reads it (rescore
-  before any step-11 run).
+  stays on the retired 8-axis scoring; only the exploratory scenario discovery reads it (rescore
+  before any scenario-discovery run).
 - [ ] **[HPC] 3. Current-FFMP baseline on E_test** (after 2.2; once per design env,
-  ~33 SU each at the measured unit cost; geometry per the step-09 vet item in Section 2):
-  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=<env>,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/09_simulate_test_chunks.sh`
+  ~33 SU each at the measured unit cost; geometry per the step-10 vet item in Section 2):
+  `sbatch --partition=shared --nodes=1 --ntasks=16 --cpus-per-task=8 --time=12:00:00 --export=ALL,NYCOPT_ENV_FILE=<env>,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=baseline,NYCOPT_SEARCH_REALIZATION_BATCH=50 workflow/10_simulate_test_chunks.sh`
   for `$H` and both matched-design envs (in-job merge; a baseline-policy run lands in
   `outputs/{design}/ffmp_obj8/reeval/etest_kn_50yr_n12500/baseline/`, the leaf the regret
-  family of that design's step-09 policy run reads; no symlinks, no cross-design
+  family of that design's step-10 policy run reads; no symlinks, no cross-design
   staging). `RTD_REEVAL_BASELINE_DIR` already names the historic copy.
-- [ ] **[HPC] 4. Historic step-05 baseline** (objective anchor; the cube above replaces
+- [ ] **[HPC] 4. Historic step-06 baseline** (objective anchor; the cube above replaces
   the former `--reeval` leg, now opt-in via `NYCOPT_BASELINE_REEVAL=1`):
-  `sbatch --export=ALL,NYCOPT_ENV_FILE=$H workflow/05_run_baseline.sh`
+  `sbatch --export=ALL,NYCOPT_ENV_FILE=$H workflow/06_run_baseline.sh`
   -> `outputs/baseline/ffmp_baseline_objectives.csv` (now the Trenton deficit column).
 - [ ] **[HPC] 5. After HIST seed 1 (and seed 2)**: `extract_runtime_archive.py --seed 1`,
-  the ε re-filter, seed 2, `--merge --install`, step 07, steps 09 + 09b on
+  the ε re-filter, seed 2, `--merge --install`, step 09, steps 10 + 11 on
   `etest_kn_50yr_n12500`, then 10/13/14 (Section 2 items).
 
 Day target: item 1 submitted, items 2.1 to 2.4 done or submitted, item 3 chained as 2.1 lands. Matched-design staging at N = 300 (Section 2) is independent and can
@@ -118,14 +118,14 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
   `NYCOPT_FORCE=1` only if `src/demand_utilization.py` constants change).
 - [ ] **[HPC]** E_test demand-utilization axis on a FRESH build (the reused staging is
   handled by the rerun chain, item 2): `append_demand_utilization.py --variant kn` after
-  the merge, then `prep_etest_chunks.sh` stages the k(u)-scaled series itself (no
-  separate `stage_nyc_demand_etest_chunks.sh` pass), then
+  the merge, then `staging/etest_prep_chunks.sh` stages the k(u)-scaled series itself (no
+  separate `staging/etest_stage_nyc_demand.sh` pass), then
   `merge_demand_utilization_realized.py --variant kn`; `make_etest_subset.py` only when
   E_test is cut from a larger generated design. A chunk without the file fails
   `staged_ensemble_missing` and the pywrdrb build.
 - [ ] **[HPC]** Every already-staged ensemble that will be simulated again (none carries
   `diversion_nyc_extrapolated_mgd.hdf5` today):
-  `workflow/supplemental/stage_nyc_demand.sh` (array index = draw, or `--preset SLUG`).
+  `workflow/supplemental/staging/ensemble_stage_nyc_demand.sh` (array index = draw, or `--preset SLUG`).
   Known reusers: the N = 100 d0 ensembles of both matched designs
   (`supplemental_config.TEV_TARGETS`; the ε-calibration cubes), the ensemble-size ladder
   and library slugs (`esd_pool_slug`, `esd_library_slug`, `ESD_N_LADDER` 50 to 500), the
@@ -136,11 +136,11 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
 
 **B. Simulation outputs superseded (regenerate, in this order)**
 
-- [ ] **[HPC]** Step 05 baselines: the `historic` single-trace baseline (the
+- [ ] **[HPC]** Step 06 baselines: the `historic` single-trace baseline (the
   anchor of the satisficing criteria and of the §3 tolerance rules) and each
   matched design's d0 baseline at N = 300 (with the §2 staging). Every pre-2026-11-04
   baseline is in `archive/2026-11-04_pre_demand_update/outputs/baseline/`.
-- [ ] **[HPC]** Current-FFMP E_test baseline cube: step 09 with
+- [ ] **[HPC]** Current-FFMP E_test baseline cube: step 10 with
   `NYCOPT_CHUNK_POLICIES=baseline` on E_test under each design env (~33 SU each;
   rerun chain item 3), after the §A demand staging so the cube carries the
   per-SOW utilization scaling. The old cubes are archived
@@ -151,7 +151,7 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
   rerun must use the regenerated historic CSV). Never evaluate an old set
   against new baselines or cubes; the §3 `.set` caveat applies doubly.
 - [ ] **[HPC]** E_test re-evaluation cubes of those sets
-  (`outputs/*/ffmp_obj8/reeval/etest_*`), the step-10 comparison tables under
+  (`outputs/*/ffmp_obj8/reeval/etest_*`), the step-12 comparison tables under
   `outputs/comparison/`, and every step-13/14 figure: regenerate from the new
   sets; the old ones are in `archive/2026-11-04_pre_demand_update/` (2026-11-04).
 - [ ] **[HPC + local]** Supplemental diagnostics that simulate, each superseded
@@ -163,7 +163,7 @@ by decision (Anvil, 2026-11-03; `epsilon_calibration_experiment.md`).
   - `regret_tolerance_diagnostics.sh` pass A on the new incumbent cube
     (`rtol_noise_floor.csv`), pass B after the re-evaluation (§3).
   - `robustness_threshold_diagnostics.sh`, `robustness_threshold_anchor.py`,
-    `criteria_reanchoring.py` on the new historic step-05 attainment and the new
+    `criteria_reanchoring.py` on the new historic step-06 attainment and the new
     baseline cube (§3); the placements in `robustness_threshold_diagnostics.md`
     §3 and `src/satisficing_criteria.py` are provisional until then.
   - ε-calibration cubes (`epsilon_calibration.sh` with the three
@@ -249,7 +249,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   2026-08-19 is completed in place by the rerun chain at the top (item 2); Figure 3 and
   SI Figures S12 to S16 re-render from it.
 - [ ] **[HPC]** Production leg of the dry-envelope diagnostic on the regenerated images:
-  `sbatch --export=ALL,NYCOPT_DRYENV_PRODUCTION=1 workflow/supplemental/dry_envelope.sh`
+  `sbatch --export=ALL,NYCOPT_DRYENV_PRODUCTION=1 workflow/supplemental/design_diagnostics/dry_envelope.sh`
   (reads `etest_kn_50yr_n12500/hazard_image_subwindows.npz` + `forcing_profiles.npz` and
   `statpool_10yr_n1000000_d0/hazard_image.npz`; writes `dryenv_production_{bins,reference}.csv`
   and figure `F2_dry_envelope_production`, the production confirmation of SI Figure S18 and
@@ -265,7 +265,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   `hazard_examples_figures.py`, `plot_etest_hazard_overlay.py`,
   `src/plotting/{ensemble_composition,hazard_examples}.py`), and verify on the 2,000-row
   prefix that step 03 reproduces the diagnostic's member indices. Then run
-  `workflow/supplemental/hazard_axis_selection.sh` (Anvil confirmation) and the selector
+  `workflow/supplemental/design_diagnostics/hazard_axis_selection.sh` (Anvil confirmation) and the selector
   diagnostic on the adopted axes (`diagnose_hazard_selectors.py`,
   `hazard_selector_diagnostics.md` §5 placeholders), and update
   `scenario_design_methods.md` §3.3 and §6, `terminology.md`, the manuscript and SI.
@@ -279,18 +279,18 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   pool and sits in `archive/2026-10-01_pre_june1_hazard_recompute/`, so step 03 is open for both draws,
   as are MC draw 1 and step 04 for every draw.
 - [ ] **[HPC]** Build QC on each restaged ensemble: `validate_staged_seasonality.py`
-  and the per-axis tail-share record per hazfill draw; then step 05 baselines for
+  and the per-axis tail-share record per hazfill draw; then step 06 baselines for
   both matched designs scenario-matched to d0 (`--search-ensemble`).
 - [ ] **[HPC]** Batched-search memory smoke: `bash workflow/submit_search_memory_smoke.sh`.
   Go if peak node memory ≤ ~217,000 MB and warm per-evaluation time ≤ 540 s + 20 %;
   otherwise batch 100 (memory miss) or re-price `campaign_design.md` §6 (time miss).
 - [x] HIST pre-2026-11-04 outputs archived (`archive/2026-11-04_pre_demand_update/outputs/historic/`,
-  2026-11-04); the step-06 duplicate guard no longer trips for seed 1. Never relaunch a
+  2026-11-04); the step-07 duplicate guard no longer trips for seed 1. Never relaunch a
   completed cell in place with `NYCOPT_OVERWRITE=1`: Borg opens the island runtime files
   with `fopen(..., "w")` and would truncate them.
 - [ ] **[HPC]** Seed 1 per design (750k NFE; submit lines in the `*_production.env`
   headers). After ~12 h read SU/NFE and the seed's coordinator-archive HV at
-  500k total NFE (step 07 on the partial runtime files); hold seed 2 if SU/NFE
+  500k total NFE (step 09 on the partial runtime files); hold seed 2 if SU/NFE
   exceeds the model basis or HV still rises > 5 % per 100k total NFE.
 - [ ] **[HPC]** Per design: `extract_runtime_archive.py --seed 1` (writes
   `seed_01_ffmp_obj8_nfe125000.set`), then the ε cardinality re-filter
@@ -299,9 +299,9 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   if the merged union exceeds ~2,000.
 - [ ] **[HPC]** Seed 2 per design (500k NFE; `submit_production_search.sh <design> 2`), then
   `extract_runtime_archive.py --merge --install` (installs `ffmp_obj8_merged.set`,
-  the step-08/09 reference) and step 07 (coordinator-archive diagnostics; writes
+  the step-10 reference) and step 09 (coordinator-archive diagnostics; writes
   only `ffmp_obj8_diagnostics_reference.set`, either order).
-- [ ] **[HPC]** Vet the step-09 re-evaluation geometry before any 09 submission
+- [ ] **[HPC]** Vet the step-10 re-evaluation geometry before any step-10 submission
   (desk assessment 2026-11-04, not yet verified on the cluster; implement or reject).
   The documented layout (`shared`, 16 ranks × 8 cpus, batch 50: 09 header comment,
   `workflow/envs/README.md` campaign line, `campaign_design.md` §5, the `ANVIL_NOTES.md`
@@ -337,18 +337,18 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   sizes from the search spec anyway. Whichever geometry is adopted: re-derive the
   SU-per-policy line from the smoke, fix the four records above, and re-check the
   ~66 SU current-policy cube lines (§0 B, §2) that carry the same per-unit basis.
-- [ ] **[HPC]** E_test re-evaluation: steps 09 + 09b at the geometry settled by the
+- [ ] **[HPC]** E_test re-evaluation: steps 10 + 11 at the geometry settled by the
   item above (documented: `shared`, 16 ranks × 8 cpus, batch 50),
   `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500` on every
-  05/08/09/09b/10 line (deliberately not in the env files). ~66k SU at the
+  10/11/12 line (deliberately not in the env files). ~66k SU at the
   2,000-policy cap on the 33 SU-per-policy basis.
-- [ ] **[HPC]** Post-processing on the 500-SOW cube: steps 10, 13 and 14, the criteria
+- [ ] **[HPC]** Post-processing on the 500-SOW cube: steps 12, 13 and 14, the criteria
   re-anchoring audit (`criteria_reanchoring.py`), and the θ-subsample stability
   check (250 vs 500 SOWs).
 - [ ] **[HPC]** Re-render the ensemble-size figures with the campaign marker
-  (`workflow/supplemental/ensemble_size_analysis.sh`, `ESD_N_CAMPAIGN = 300`).
+  (`workflow/supplemental/design_diagnostics/ensemble_size_analysis.sh`, `ESD_N_CAMPAIGN = 300`).
 
-## 3. Diagnostics on the step-08/09 cube
+## 3. Diagnostics on the step-10 cube
 
 - [ ] **[HPC + local]** The search-time `.set` data stays untouched (the HIST copy was
   moved, not deleted, to `archive/2026-11-04_pre_demand_update/outputs/historic/ffmp_obj8/` on 2026-11-04) and
@@ -385,7 +385,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   evaluate a `.set` on any staged search-ensemble slug via `evaluate_annual_units`
   and persist per-realization units. The d1 cells are declared in
   `supplemental_config.TEV_DRAW_TARGETS`; run with `NYCOPT_TEV_INCLUDE_DRAWS=1` on
-  `workflow/supplemental/transfer_evaluation_eval_array.sh`. Report paired per-policy
+  `workflow/supplemental/results_diagnostics/transfer_evaluation_eval_array.sh`. Report paired per-policy
   shifts against ε with no variance estimate.
 - [ ] **[HPC]** Optional: nested-P saturation record (`nestedp_ladder.sh`) under the
   renamed hazard axes; hazard-support no-harm arm re-read with
@@ -466,7 +466,7 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
 
 - [ ] **[HPC]** After the June 1 recompute (Section 2 item; the pre-fix images lack
   the current provenance legs and every reader refuses them), run
-  `workflow/supplemental/hf_design_metrics.sh` on the June 1 window images
+  `workflow/supplemental/design_diagnostics/hf_design_metrics.sh` on the June 1 window images
   (`statpool`/`hazfill_stat_abs` d0–d1 at P = 10⁶, N = 300; `fixprob` d0–d1; the historic
   windows cache), or copy `hazfill_stat_abs_10yr_n300_d{k}/{hazard_image.npz,_meta.json}`,
   `fixprob_10yr_n300_d{k}/hazard_image.npz`, and the historic windows cache here (about
@@ -508,7 +508,7 @@ Dispositions of every comment are in `docs/experimental_proposal/reviewer_feedba
     realizations). No script writes these shares. Compute them from staged flows with
     `scengen.hazard_metrics.drought_events` if they are reported.
 - [ ] **[local]** Regenerate the proposal's Figure 3 under the current scoring
-  (`workflow/supplemental/hazard_examples.sh`). The embedded image carries the retired
+  (`workflow/supplemental/design_diagnostics/hazard_examples.sh`). The embedded image carries the retired
   rate labels, and in two of its four examples the shaded event was not the largest
   because a larger drought open at the window end had been dropped. State in the
   caption that an arrowhead marks an event cut by the window edge.

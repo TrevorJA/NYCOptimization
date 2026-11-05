@@ -39,7 +39,7 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
     """Draw the two-panel DU robustness summary and return headline numbers.
 
     Args:
-        reeval_dir: Step-08 re-eval dir (holds ``reeval_raw*`` and ``baseline/``).
+        reeval_dir: Step-10 re-eval dir (holds ``reeval_raw*`` and ``baseline/``).
         accepted_ids: Re-eval ``solution_id``\\ s surviving the stakeholder screen
             (from :mod:`src.pareto_filter`). Only these are shown.
         out_file: PNG path.

@@ -32,7 +32,7 @@ Usage (interactive, single rank — local smoke with EPS_SMOKE=True):
     python scripts/supplemental/epsilon_calibration_run.py
 Usage (SLURM, one job per design):
     sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/eps_calib_historic.env \\
-        workflow/supplemental/epsilon_calibration.sh
+        workflow/supplemental/results_diagnostics/epsilon_calibration.sh
 """
 
 from __future__ import annotations

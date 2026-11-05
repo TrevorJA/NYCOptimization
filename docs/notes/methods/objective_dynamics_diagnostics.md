@@ -34,7 +34,7 @@ Outputs, including the cached simulations, go to
 (`outputs/supplemental/objective_dynamics/` and
 `outputs/supplemental/ensemble_objective_dynamics/`). Re-runs reuse the caches
 and only re-plot. The historic suite reuses the artifact-of-record baseline HDF5
-from step 05 when its objective columns match the active set. Env toggles:
+from step 06 when its objective columns match the active set. Env toggles:
 `NYCOPT_OBJDYN_NOSTRICT=1` and `NYCOPT_ENSOBJDYN_NOSTRICT=1` disable the
 figure-vs-score assertions, and `NYCOPT_ENSOBJDYN_REFRESH=1` ignores the
 ensemble simulation cache.

@@ -20,8 +20,8 @@ Stages, selected by ``NYCOPT_ESD_STAGE`` (set by the wrappers):
     with the regenerated library rows at LP-jitter tolerance).
 
 Settings in ``supplemental_config.py`` (``ESD_*``); no CLI value flags.
-Wrappers: ``workflow/supplemental/ensemble_size_library_stage.sh`` and
-``workflow/supplemental/ensemble_size_library_eval.sh``.
+Wrappers: ``workflow/supplemental/design_diagnostics/ensemble_size_library_stage.sh`` and
+``workflow/supplemental/design_diagnostics/ensemble_size_library_eval.sh``.
 """
 
 from __future__ import annotations

@@ -69,7 +69,7 @@ def merge_realized(slug: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     if missing:
         raise FileNotFoundError(
             f"{len(missing)} chunk(s) carry no {REALIZED_CSV} (e.g. {missing[:5]}); stage "
-            f"their demand first (workflow/supplemental/stage_nyc_demand_etest_chunks.sh).")
+            f"their demand first (workflow/supplemental/staging/etest_stage_nyc_demand.sh).")
     per_real = (pd.concat(frames, ignore_index=True)[list(REALIZED_COLUMNS)]
                 .sort_values("global_id").reset_index(drop=True))
     if per_real["global_id"].duplicated().any():

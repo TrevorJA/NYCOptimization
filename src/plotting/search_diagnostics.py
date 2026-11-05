@@ -1,11 +1,11 @@
 """
 search_diagnostics.py - Standard post-search MOEA diagnostics figures.
 
-Rendered automatically at the end of step 07 (``run_full_diagnostics``) for
+Rendered automatically at the end of step 09 (``run_full_diagnostics``) for
 every completed MM-Borg run; needs only the search outputs (``sets/``,
-``runtime_coordinator/``, ``metrics/``) plus the step-05 baseline CSV and the
+``runtime_coordinator/``, ``metrics/``) plus the step-06 baseline CSV and the
 seed-1 equal-NFE extraction (``extract_runtime_archive.py --seed 1``), nothing
-from the step 08/09 re-evaluation (that suite lives in
+from the step 10 re-evaluation (that suite lives in
 ``scripts/main/plot_run_results.py``).
 
 Every convergence line is a seed's coordinator archive (the epsilon-box merge
@@ -127,7 +127,7 @@ def plot_seed_parallel_axes(
     # A baseline vector is only overlaid when it shares the front's evaluation
     # substrate: config.baseline_objectives_csv points at the historic-record
     # vector for historic fronts and at the scenario's search-ensemble-scored
-    # vector (step 05 --search-ensemble) otherwise. A scenario not yet scored
+    # vector (step 06 --search-ensemble) otherwise. A scenario not yet scored
     # simply has no file and gets no line — never the historic values.
     baseline_raw = None
     if baseline_csv is None:
@@ -215,7 +215,7 @@ def plot_runtime_indicators(
 def render_search_diagnostics(slug: str, scenario: str = None) -> Path:
     """Render the standard post-search figure suite for one run.
 
-    Called at the end of ``run_full_diagnostics`` (step 07); each figure is
+    Called at the end of ``run_full_diagnostics`` (step 09); each figure is
     wrapped so one failure never blocks the others. Returns the figure dir.
     """
     from src.diagnostics import discover_seeds, formulation_for

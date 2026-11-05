@@ -9,7 +9,7 @@ deeply-uncertain state. Code: `scripts/supplemental/regret_tolerance_diagnostics
 (pass A and pass B), `regret_tolerance_passb_candidates.py` and
 `regret_tolerance_passb_rank.py` (paired floors and round candidate vectors,
 measurement only), settings `RTOL_*` in `supplemental_config.py`, launcher
-`workflow/supplemental/regret_tolerance_diagnostics.sh`, outputs
+`workflow/supplemental/results_diagnostics/regret_tolerance_diagnostics.sh`, outputs
 `outputs/supplemental/regret_tolerance_diagnostics/tables/`. Manuscript
 statement in Section 3.4.3.
 
@@ -149,7 +149,7 @@ SI panels: (A) $\tau^{\text{floor}}$ against $\epsilon_i$ and the rungs per
 objective, (B) $\Pi_\tau(k)$ per design and seed with the starved, informative
 and saturated bands shaded, (C) the seed-level null and the paired-bootstrap CI
 at $k_{\text{headline}}$ with $\delta$ marked, plus the two rules quoted
-verbatim from `supplemental_config`. Order: pass A on the step-05 current FFMP policy
+verbatim from `supplemental_config`. Order: pass A on the step-06 current FFMP policy
 cube before any re-evaluated policy set is inspected, then the campaign and
-step 08, then pass B, which computes $\delta$ only when `RTOL_ADOPTED_K` is
+step 10, then pass B, which computes $\delta$ only when `RTOL_ADOPTED_K` is
 already set.

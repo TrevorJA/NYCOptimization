@@ -7,7 +7,7 @@ reports all seeds at 125,000. The reporting NFE is the config's default
 ``max_evaluations``; it is read from config, never passed as a flag.
 
 Two modes, run from the repo root with the run's env file sourced (the same
-identity contract as workflow step 06; ``DRAW`` / ``NYCOPT_ENSEMBLE_DRAW``
+identity contract as workflow step 07; ``DRAW`` / ``NYCOPT_ENSEMBLE_DRAW``
 selects the draw):
 
     # seed 1's archive at the reporting NFE, from its island runtime files
@@ -21,16 +21,16 @@ selects the draw):
 ``--merge`` takes, for every seed 1..n_seeds, the snapshot file above when the
 seed's budget exceeds the reporting NFE and the final ``seed_SS_{slug}.set``
 when it equals it (``src.runtime_archive.equal_nfe_seed_set``, the same
-resolver the step-07 figures use), unions them, and epsilon-box filters the
+resolver the step-09 figures use), unions them, and epsilon-box filters the
 union under the campaign vector. ``--install`` additionally copies the result
 to ``{slug}_merged.set`` (backing up an existing one as
-``{slug}_merged_pre_install.set``) so the step-08/09 re-evaluation, which
+``{slug}_merged_pre_install.set``) so the step-10 re-evaluation, which
 resolves ``{slug}_merged.set`` first, consumes the equal-NFE front without
 any change to the pipeline. ``{slug}_merged.set`` is written by this script
-only. Step 07's diagnostics reference set is the separate
+only. Step 09's diagnostics reference set is the separate
 ``{slug}_diagnostics_reference.set``, built from EVERY coordinator snapshot,
 including seed 1's tail beyond the reporting NFE, so the two never collide
-and the step order between this script and step 07 does not matter. Step 07
+and the step order between this script and step 09 does not matter. Step 09
 builds its per-seed coordinator series with the same epsilon merge used here,
 so the snapshot extracted for seed 1 is entry ``nfe / runtime_frequency`` of
 that series (``src.diagnostics``).

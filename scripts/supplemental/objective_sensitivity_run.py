@@ -24,7 +24,7 @@ Usage (interactive, single rank — local smoke):
     python scripts/supplemental/objective_sensitivity_run.py
 
 Usage (SLURM, recommended):
-    sbatch workflow/supplemental/objective_sensitivity.sh
+    sbatch workflow/supplemental/results_diagnostics/objective_sensitivity.sh
 """
 
 from __future__ import annotations

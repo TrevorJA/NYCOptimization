@@ -36,7 +36,7 @@ mode (``NYCOPT_HFM_SMOKE=1``) uses the locally staged P = 300 / N = 40 images
 and prefixes every artifact with ``smoke_``. Missing inputs are skipped with a
 notice; an identity or provenance failure is an error.
 
-Run (wrapper: ``workflow/supplemental/hf_design_metrics.sh``)::
+Run (wrapper: ``workflow/supplemental/design_diagnostics/hf_design_metrics.sh``)::
 
     python scripts/supplemental/hf_design_metrics_run.py
 """
