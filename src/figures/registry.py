@@ -36,7 +36,28 @@ TIERS = ("manuscript", "si", "exploratory")
 #: Data needs produced by the re-evaluation on one E_test tag; a figure
 #: without any of them is design support (``FigureContext.tables``).
 TAG_BOUND_NEEDS = frozenset({"cube", "scorecard", "criteria_scorecard",
-                             "factor_mapping", "regret_by_utilization"})
+                             "factor_mapping", "regret_by_utilization",
+                             "profile_cube"})
+
+
+def default_reeval_tag() -> str:
+    """The E_test re-eval tag figures render for when none is passed.
+
+    ``NYCOPT_REEVAL_TAG`` wins; otherwise an explicitly set
+    ``NYCOPT_REEVAL_ENSEMBLE_PRESET`` (an env file) gives the configured
+    tag; otherwise the campaign E_test (``src.etest.campaign_reeval_preset``),
+    never config's single-trace fallback preset, which no results figure
+    can render from.
+    """
+    from src.etest import campaign_reeval_preset
+    from src.reeval_core import reeval_tag as tag_of
+
+    explicit = os.environ.get("NYCOPT_REEVAL_TAG", "").strip()
+    if explicit:
+        return explicit
+    if os.environ.get("NYCOPT_REEVAL_ENSEMBLE_PRESET", "").strip():
+        return tag_of(config.REEVAL_ENSEMBLE_SPEC)
+    return campaign_reeval_preset()
 
 
 class FigureContext:
@@ -50,10 +71,7 @@ class FigureContext:
 
     def __init__(self, reeval_tag: Optional[str] = None,
                  slug: Optional[str] = None):
-        from src.reeval_core import reeval_tag as tag_of
-
-        self.tag = reeval_tag or os.environ.get(
-            "NYCOPT_REEVAL_TAG", tag_of(config.REEVAL_ENSEMBLE_SPEC))
+        self.tag = reeval_tag or default_reeval_tag()
         self.slug = slug or self._resolve_slug()
         self._results = None
 
@@ -123,13 +141,18 @@ class FigureSpec:
         needs: Data requirements, subset of
             {"cube", "scorecard", "figure_tables", "ensemble", "refset",
             "fdc_cache", "factor_mapping", "demand_calibration",
-            "demand_utilization", "demand_realized", "regret_by_utilization"}
+            "demand_utilization", "demand_realized", "regret_by_utilization",
+            "profile_cube"}
             -- drives skip-with-message (``scripts/main/figures.py``).
         caption: One-line description for ``--list``.
         per_focal: The figure is parameterized by the FOCAL criterion, so its
             stem carries the criterion key and renders under different
             ``NYCOPT_FOCAL_CRITERION`` values coexist rather than overwrite
             (the guarantee stated in ``src.satisficing_criteria``).
+        per_policy: The figure profiles ONE policy selected by
+            ``NYCOPT_PROFILE_POLICY`` (``src.plotting.policy_profile``), so
+            its stem carries the policy key and profiles of different
+            policies coexist.
     """
 
     name: str
@@ -141,6 +164,7 @@ class FigureSpec:
     needs: frozenset = field(default_factory=frozenset)
     caption: str = ""
     per_focal: bool = False
+    per_policy: bool = False
 
     @property
     def stem(self) -> str:
@@ -159,6 +183,9 @@ class FigureSpec:
         if self.per_focal:
             from src.satisficing_criteria import focal_criterion
             stem = f"{stem}_{focal_criterion().key}"
+        if self.per_policy:
+            from src.plotting.policy_profile import profile_target
+            stem = f"{stem}_{profile_target()['key']}"
         return stem
 
     def out_dir(self) -> Path:
@@ -426,6 +453,60 @@ FIGURES: tuple[FigureSpec, ...] = (
                 "across NYC entitlement-utilization bins (how much of any "
                 "re-optimization gain is contingent on demand).",
     ),
+    # Single-policy profile (src.plotting.policy_profile): the policy named
+    # by NYCOPT_PROFILE_POLICY (default: the FFMP incumbent cube) on E_test.
+    # Unnumbered SI figures until adopted; stems carry the policy key.
+    FigureSpec(
+        name="policy_profile_distributions",
+        builder=_lazy("src.plotting.policy_profile",
+                      "fig_policy_profile_distributions"),
+        tier="si", number=None, section="4.3", kind="policy_profile",
+        needs=frozenset({"profile_cube", "ensemble"}),
+        caption="One policy: per-objective CDFs of the per-SOW values with "
+                "the adopted threshold.",
+        per_policy=True,
+    ),
+    FigureSpec(
+        name="policy_profile_satisficing",
+        builder=_lazy("src.plotting.policy_profile",
+                      "fig_policy_profile_satisficing"),
+        tier="si", number=None, section="4.3", kind="policy_profile",
+        needs=frozenset({"profile_cube", "ensemble"}),
+        caption="One policy: SOW satisficing fraction per adopted axis and "
+                "per criterion set.",
+        per_policy=True,
+    ),
+    FigureSpec(
+        name="policy_profile_failure_map_volume_utilization",
+        builder=_lazy("src.plotting.policy_profile",
+                      "fig_policy_profile_failure_map_volume_utilization"),
+        tier="si", number=None, section="4.3", kind="policy_profile",
+        needs=frozenset({"profile_cube", "ensemble"}),
+        caption="One policy: per-objective pass/fail of every SOW on the "
+                "(volume multiplier, utilization) plane; focal joint "
+                "criterion last.",
+        per_policy=True,
+    ),
+    FigureSpec(
+        name="policy_profile_failure_map_volume_seasonality",
+        builder=_lazy("src.plotting.policy_profile",
+                      "fig_policy_profile_failure_map_volume_seasonality"),
+        tier="si", number=None, section="4.3", kind="policy_profile",
+        needs=frozenset({"profile_cube", "ensemble"}),
+        caption="One policy: per-objective pass/fail of every SOW on the "
+                "(volume multiplier, seasonal amplitude) plane.",
+        per_policy=True,
+    ),
+    FigureSpec(
+        name="policy_profile_value_map_volume_utilization",
+        builder=_lazy("src.plotting.policy_profile",
+                      "fig_policy_profile_value_map_volume_utilization"),
+        tier="si", number=None, section="4.3", kind="policy_profile",
+        needs=frozenset({"profile_cube", "ensemble"}),
+        caption="One policy: per-SOW objective values on the (volume "
+                "multiplier, utilization) plane; failed-axis count last.",
+        per_policy=True,
+    ),
 )
 
 
@@ -442,3 +523,8 @@ def by_name(name: str) -> FigureSpec:
         if name in (s.name, s.stem):
             return s
     raise KeyError(f"unknown figure '{name}'; see --list")
+
+
+def by_kind(kind: str) -> tuple[FigureSpec, ...]:
+    """Every spec of one companion-table kind, in render order."""
+    return tuple(s for s in FIGURES if s.kind == kind)

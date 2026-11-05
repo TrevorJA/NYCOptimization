@@ -18,10 +18,16 @@
 #                        non-campaign re-eval.
 #   NYCOPT_RESULTS_SLUG  moea slug shared by the campaign runs (ffmp_obj8)
 #   NYCOPT_FOCAL_CRITERION  focal criterion set (default: compromise)
-#   FIGURES              optional comma-separated subset (names or stems)
+#   NYCOPT_PROFILE_POLICY   policy profiled by the policy_profile figures:
+#                        baseline (default, the incumbent cube) or
+#                        <design>:<solution_id> (src.plotting.policy_profile)
+#   FIGURES              optional comma-separated subset (names, stems, or a
+#                        companion-table kind such as policy_profile)
 #
 # Submit (from repo root):
 #   sbatch workflow/14_results_figures.sh
+#   sbatch --export=ALL,FIGURES=policy_profile workflow/14_results_figures.sh
+#       (the single-policy profile; needs only the profiled cube + E_test)
 #
 # Sizing: loads three <10 MB parquet cubes and renders matplotlib figures;
 # minutes on a single shared core.

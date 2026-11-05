@@ -52,8 +52,8 @@ from matplotlib.lines import Line2D
 import config
 from src import results_data as rd
 from src import robustness as rob
-from src.reeval_core import find_incumbent_cube, incumbent_cube_dir
-from src.satisficing_criteria import ALL_SETS, criterion_by_key, focal_criterion
+from src.reeval_core import _CUBE_FILES, find_incumbent_cube, incumbent_cube_dir
+from src.satisficing_criteria import ALL_SETS, focal_criterion
 from src.plotting.factor_maps import FAIL_COLOR, PASS_COLOR
 from src.plotting.forcing_space import load_etest_sample
 from src.plotting.layout import INCUMBENT_LABEL, add_colorbar
@@ -137,10 +137,9 @@ def profile_target(tag: Optional[str] = None,
         ``{"key", "design", "solution_id", "path"}``; the path is the re-eval
         leaf directory (it need not exist yet -- callers probe it).
     """
-    from src.reeval_core import reeval_tag as tag_of
+    from src.figures.registry import default_reeval_tag
 
-    tag = tag or os.environ.get("NYCOPT_REEVAL_TAG",
-                                tag_of(config.REEVAL_ENSEMBLE_SPEC))
+    tag = tag or default_reeval_tag()
     slug = slug or config.CAMPAIGN_RESULTS_SLUG
     spec = os.environ.get(PROFILE_POLICY_ENV, "baseline").strip()
     if spec in ("", "baseline"):
@@ -165,7 +164,7 @@ def target_available(tag: Optional[str] = None,
         leaf = profile_target(tag, slug)["path"]
     except ValueError:
         return False
-    return any((leaf / f).exists() for f in rob._CUBE_FILES_PUBLIC)
+    return any((leaf / f).exists() for f in _CUBE_FILES)
 
 
 def load_profile(ctx) -> PolicyProfile:

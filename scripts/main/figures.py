@@ -36,7 +36,7 @@ if str(PROJECT_DIR) not in sys.path:
 
 import config  # noqa: E402
 from src.figures.registry import (FIGURES, TIERS, FigureContext, FigureSpec,  # noqa: E402
-                                  by_name, by_tier)
+                                  by_kind, by_name, by_tier)
 from src.plotting import style  # noqa: E402
 
 
@@ -85,6 +85,9 @@ def _need_available(need: str, ctx: FigureContext) -> bool:
                 / "demand_utilization_realized_by_sow.csv").is_file()
     if need == "regret_by_utilization":
         return (ctx.comparison_dir() / "design_regret_by_utilization.csv").is_file()
+    if need == "profile_cube":
+        from src.plotting.policy_profile import target_available
+        return target_available(ctx.tag, ctx.slug)
     return True
 
 
@@ -134,7 +137,8 @@ def _render(spec: FigureSpec, ctx: FigureContext) -> bool:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--figure", action="append",
-                   help="render one figure by name or stem (repeatable)")
+                   help="render one figure by name or stem, or every figure "
+                        "of a companion-table kind (repeatable)")
     p.add_argument("--tier", choices=TIERS,
                    help="render every figure of one tier")
     p.add_argument("--list", action="store_true",
@@ -156,7 +160,9 @@ def main(argv=None) -> int:
         return 0
 
     if args.figure:
-        specs = [by_name(n) for n in args.figure]
+        specs = []
+        for n in args.figure:
+            specs += list(by_kind(n)) or [by_name(n)]
     elif args.tier:
         specs = list(by_tier(args.tier))
     else:
