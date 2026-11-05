@@ -324,9 +324,10 @@ def _persist_and_score(
 
     persist_reeval_raw(reeval_dir, raw_results, formulation, n_solutions, seed)
 
-    # Pass the status-quo re-eval matrix if step 05 staged one under this same
-    # reeval tag. Without it the incumbent-relative regret family warns and is
-    # silently dropped.
+    # Pass the status-quo re-eval matrix if a baseline-policy run (step 09 with
+    # NYCOPT_CHUNK_POLICIES=baseline, or step 05 --reeval) staged one under this
+    # same reeval tag. Without it the incumbent-relative regret family warns and
+    # is silently dropped.
     from config import REEVALUATION_SETTINGS
 
     baseline_dir = reeval_dir / "baseline"
@@ -467,11 +468,15 @@ def merge_units(
 # Entry points
 ###############################################################################
 
-def _resolve_campaign(formulation: str, seed, reeval_dir: Path | None):
+def _resolve_campaign(formulation: str, seed, reeval_dir: Path | None,
+                      *, baseline_policy: bool = False):
     """Shared campaign resolution for the simulate and merge entry points.
 
     Both must reconstruct identical (obj_set, chunks, reeval_dir) from the same
     env so a standalone merge scores exactly the campaign the simulate jobs ran.
+    A baseline-policy run (``NYCOPT_CHUNK_POLICIES=baseline``) lands in
+    ``reeval/{tag}/baseline/``, the incumbent cube the regret family of every
+    later policy-set run under the same tag reads (:func:`_persist_and_score`).
     """
     from config import (REEVAL_ENSEMBLE_SPEC, active_scenario_name, derive_slug)
     from src.ensembles import pool_chunk_specs
@@ -496,12 +501,16 @@ def _resolve_campaign(formulation: str, seed, reeval_dir: Path | None):
     if reeval_dir is None:
         reeval_dir = reeval_output_dir(active_scenario_name(), derive_slug(formulation),
                                        test_spec, seed)
+        if baseline_policy:
+            reeval_dir = reeval_dir / "baseline"
+            reeval_dir.mkdir(exist_ok=True)
     return obj_set, test_spec, chunks, n_sow, r_per_sow, Path(reeval_dir)
 
 
 def simulate_test_chunks(
     formulation: str, dvs: np.ndarray, solution_ids: list[int] | None = None,
     *, seed=None, realization_batch: int | None = None, reeval_dir: Path | None = None,
+    baseline_policy: bool = False,
 ) -> Path | None:
     """Re-evaluate ``dvs`` against every chunk of the test ensemble and write robustness artifacts.
 
@@ -513,6 +522,8 @@ def simulate_test_chunks(
         realization_batch: Realizations per within-chunk simulation batch (default
             ``config.SEARCH_REALIZATION_BATCH``).
         reeval_dir: Output dir (default ``reeval_output_dir`` under the test ensemble's re-eval tag).
+        baseline_policy: ``dvs`` is the current FFMP policy alone; the default output
+            dir gains a ``baseline/`` leaf (the incumbent cube of the regret family).
 
     Returns:
         The re-eval output directory on rank 0 (``None`` when the merge is
@@ -522,7 +533,7 @@ def simulate_test_chunks(
                         SEARCH_REALIZATION_BATCH)
 
     obj_set, test_spec, chunks, n_sow, r_per_sow, reeval_dir = _resolve_campaign(
-        formulation, seed, reeval_dir)
+        formulation, seed, reeval_dir, baseline_policy=baseline_policy)
     n_realizations = test_spec.n_realizations
 
     dvs = np.atleast_2d(np.asarray(dvs, dtype=float))
@@ -588,18 +599,19 @@ def simulate_test_chunks(
 
 def merge_test_chunks(
     formulation: str, solution_ids: list[int],
-    *, seed=None, reeval_dir: Path | None = None,
+    *, seed=None, reeval_dir: Path | None = None, baseline_policy: bool = False,
 ) -> Path:
     """Standalone merge of a completed (or partial) incremental simulate run.
 
-    Resolves the campaign from the same env the simulate jobs used, so the ids
-    and objective set match exactly. Stateless over the unit files: safe to
-    re-run, overwrites its own outputs.
+    Resolves the campaign from the same env the simulate jobs used, so the ids,
+    objective set and output leaf (``baseline/`` for a baseline-policy run)
+    match exactly. Stateless over the unit files: safe to re-run, overwrites
+    its own outputs.
     """
     from config import CHUNK_MERGE_ALLOW_PARTIAL
 
     obj_set, test_spec, chunks, n_sow, _r_per_sow, reeval_dir = _resolve_campaign(
-        formulation, seed, reeval_dir)
+        formulation, seed, reeval_dir, baseline_policy=baseline_policy)
     return merge_units(reeval_dir, list(solution_ids), n_sow,
                        formulation, obj_set, chunks, seed,
                        allow_partial=bool(CHUNK_MERGE_ALLOW_PARTIAL))

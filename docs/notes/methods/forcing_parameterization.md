@@ -157,12 +157,12 @@ is admissible: demand growth above the Decree allocation is excluded by law, and
 uncertain is how much of the entitlement NYC uses. The River Master record brackets realized
 utilization at 0.47 to 0.83 of the entitlement (378 to 667 MGD) over 2000 to 2026.
 
-**Sampling.** One Latin hypercube column appended to the 1,000-point climate design: one value per SOW
-in SOW order `p = 0..999`, drawn with `scipy.stats.qmc.LatinHypercube(d=1, scramble=True)` and scaled
+**Sampling.** One Latin hypercube column appended to the climate design: one value per SOW
+in SOW order `p = 0..N_θ − 1`, drawn with `scipy.stats.qmc.LatinHypercube(d=1, scramble=True)` and scaled
 to the range, seeded by `design_seed(SEED_ROOT, "etest:kn:demand", 0)` (the reserved domain
 `etest:kn:demand` of `scengen.seeds.SEED_DOMAINS`). An independent stratified column keeps the joint
-four-factor design `(m, r₁, r₂, u)` a Latin hypercube, so no streamflow is regenerated; the 500-SOW
-prefix subset inherits the first 500 values. The column lives beside `theta_params` in
+four-factor design `(m, r₁, r₂, u)` a Latin hypercube, so no streamflow is regenerated (an E_test cut
+from a larger generated design inherits its SOWs' values). The column lives beside `theta_params` in
 `forcing_profiles.npz` (per-realization keys `demand_utilization`, `demand_scale_k`,
 `demand_scale_clipped`, each value repeated `realizations_per_profile` times like `theta_params`,
 plus the provenance scalars `demand_utilization_bounds`, `demand_utilization_seed`,

@@ -7,7 +7,7 @@
 # Env inputs (no positional args):
 #   NYCOPT_ENV_FILE                  required
 #   NYCOPT_REEVAL_ENSEMBLE_PRESET    required — the chunked E_test slug
-#                                    (campaign: etest_kn_50yr_n25000_first25ch)
+#                                    (campaign: etest_kn_50yr_n12500)
 #   NYCOPT_CHUNK_POLICIES            'baseline' (default) or a .ref reference set
 #   NYCOPT_SEARCH_REALIZATION_BATCH  realizations per within-chunk sim batch
 #                                    (bounds RAM; required above 64 ranks/node)
@@ -29,7 +29,7 @@
 # Campaign submission (chain identical resubmissions, each resumes, then 09b):
 #   sbatch --nodes=8 --ntasks-per-node=128 --time=24:00:00 \
 #          --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,\
-# NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_CHUNK_POLICIES=<merged.ref>,\
+# NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_CHUNK_POLICIES=<merged.ref>,\
 # NYCOPT_CHUNK_MERGE=off,NYCOPT_SEARCH_REALIZATION_BATCH=150 \
 #          workflow/09_simulate_test_chunks.sh
 #
@@ -54,7 +54,7 @@ nycopt_source_env_file required
 export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 
-: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the chunked E_test slug explicitly, e.g. etest_kn_50yr_n25000_first25ch}"
+: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the chunked E_test slug explicitly, e.g. etest_kn_50yr_n12500}"
 FORMULATION="${FORMULATION:-ffmp}"
 SEED="${SEED:-}"
 MODE="${NYCOPT_CHUNK_SIM_MODE:-mpi}"

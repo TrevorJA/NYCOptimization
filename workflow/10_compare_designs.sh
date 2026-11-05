@@ -9,13 +9,13 @@
 # Env inputs (no positional args, no value flags):
 #   NYCOPT_REEVAL_ENSEMBLE_PRESET  required — the SAME E_test preset steps 08/09
 #                                  re-evaluated on (campaign:
-#                                  etest_kn_50yr_n25000_first25ch)
+#                                  etest_kn_50yr_n12500)
 #   NYCOPT_ENV_FILE                optional — objectives / MOEA config for the slug
 #   FORMULATION                    identifier, default ffmp
 #   SEED                           optional — restrict to one MOEA seed
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch \
+#   sbatch --export=ALL,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
 #          workflow/10_compare_designs.sh
 #
 # Outputs: outputs/comparison/{slug}/{preset}/ tables + figures.

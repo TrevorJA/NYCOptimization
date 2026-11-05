@@ -306,7 +306,7 @@ persisted matrix.
 **The fraction of E_test states of the world in which the policy's per-SOW
 objective vector J_i(x, θ) meets all criteria of a criterion set jointly.**
 This is Starr's (1962) domain criterion across the N_θ = 500 re-evaluated
-states (the leading half of the 1,000 generated, `campaign_design.md` §5), the
+states (`campaign_design.md` §5), the
 standard measure of the Herman (2014/2015), Trindade (2017, 2019), and Gold
 (2023) lineage and Herman et al. (2015)'s own recommendation. Criterion sets
 are explicit subsets of one to three thresholded objectives with every other

@@ -8,7 +8,7 @@
 # Everything comes from env vars / the env file — no positional args:
 #   NYCOPT_ENV_FILE                required — the design being re-evaluated
 #   NYCOPT_REEVAL_ENSEMBLE_PRESET  required — the common held-out ensemble
-#                                  (campaign: etest_kn_50yr_n25000_first25ch);
+#                                  (campaign: etest_kn_50yr_n12500);
 #                                  explicit so cross-design comparability is a
 #                                  recorded choice, never a silent default
 #   NYCOPT_REEVAL_MODE             single | mpi (from env file; default single)
@@ -24,12 +24,12 @@
 #                                  (auto-detected under reeval/{tag}/baseline)
 #
 # Submit (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch,NYCOPT_REEVAL_SCORE=1 \
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500,NYCOPT_REEVAL_SCORE=1 \
 #          workflow/08_reevaluate.sh
 #
 # Local / single-node (no SLURM allocation needed):
 #   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env \
-#   NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n25000_first25ch NYCOPT_REEVAL_MODE=single \
+#   NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 NYCOPT_REEVAL_MODE=single \
 #   bash workflow/08_reevaluate.sh
 #
 # The SBATCH geometry below is sized for the MPI path (4 nodes x 16 ranks = 64,
@@ -57,7 +57,7 @@ nycopt_source_env_file required
 export NYCOPT_ENSEMBLE_DRAW="${DRAW:-${NYCOPT_ENSEMBLE_DRAW:-0}}"
 nycopt_pin_threads
 
-: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the common held-out re-eval ensemble explicitly, e.g. etest_kn_50yr_n25000_first25ch}"
+: "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?set the common held-out re-eval ensemble explicitly, e.g. etest_kn_50yr_n12500}"
 FORMULATION="${FORMULATION:-ffmp}"
 MAX_SOLUTIONS="${MAX_SOLUTIONS:-0}"
 SEED="${SEED:-}"

@@ -28,9 +28,9 @@ def main() -> None:
     from scripts.main.simulate_test_chunks import _load_policies
     from src.chunk_reeval import merge_test_chunks
 
-    dvs = _load_policies(args.formulation)
+    dvs, baseline_policy = _load_policies(args.formulation)
     out = merge_test_chunks(args.formulation, list(range(dvs.shape[0])),
-                            seed=args.seed)
+                            seed=args.seed, baseline_policy=baseline_policy)
     print(f"[chunk-reeval] merged -> {out}")
 
 

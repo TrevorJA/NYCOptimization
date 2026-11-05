@@ -158,17 +158,16 @@ See `notes/methods/experimental_design.md`.
 ## The re-evaluation ensemble (E_test)
 
 E_test is the **only carrier of deep uncertainty** in the study and the **largest
-ensemble by a wide margin**: generated as N_θ = 1,000 LHS points over the full range of
+ensemble by a wide margin**: N_θ = 500 LHS points over the full range of
 the deeply-uncertain factors, the three climate-forcing amplitudes (the CMIP6 harmonic
 hypercube widened by 25 % on every axis, annual-volume multiplier 0.866 to 1.32) and the NYC entitlement utilization u ∈ [0.45, 1.0] (an independent Latin
 hypercube column, applied as a scale on each realization's demand series with the
 800 MGD cap enforced after scaling; `notes/methods/forcing_parameterization.md`,
 "Demand-utilization axis") × R = 25
-realizations × L_test = 50 yr (25,000 realizations, `etest_kn_50yr_n25000`), of which
-the campaign re-evaluates the leading 500 SOWs (12,500 realizations, 625k
-simulated years, `etest_kn_50yr_n25000_first25ch`; a chunk-prefix subset of the randomly
-ordered design, sized from the literature for a four-factor space:
-`notes/methods/campaign_design.md` §5). Each LHS point is a state of the world, and its
+realizations × L_test = 50 yr (12,500 realizations, 625k simulated years,
+`etest_kn_50yr_n12500`; sized from the literature for a four-factor space and staged
+as the leading half of a larger generated design: `notes/methods/campaign_design.md`
+§5). Each LHS point is a state of the world, and its
 realizations sample natural variability within it; the 50-yr records (vs L = 10 in
 search) test sustained operation — storage carryover across consecutive droughts and
 matured entitlement banking. Re-evaluation runs the **trimmed model**, like search: the
@@ -259,8 +258,8 @@ reported from its runtime archive at 500k (the comparison is recomputable at ear
 budgets); the production MM Borg geometry (12 Anvil nodes, 4 islands × 382 workers,
 1,533 ranks, 128 per node with a 150-realization batch); one searched draw × S = 2 seeds;
 absolute range-scaled hazard-space selection on the campaign selection axes from a
-P = 10⁶ candidate ensemble; E_test generated at N_θ = 1,000 LHS SOWs × R = 25 × L_test = 50 yr
-and re-evaluated on its leading 500 SOWs (trimmed-model re-evaluation); the calibrated
+P = 10⁶ candidate ensemble; E_test at N_θ = 500 LHS SOWs × R = 25 × L_test = 50 yr
+(trimmed-model re-evaluation); the calibrated
 annual-unit epsilon vector; comparison metrics = multivariate Starr satisficing
 (primary) with Laplace and maximin as secondary measures, and regret against the current FFMP policy
 (per-objective regret and gain magnitudes, regret frequencies, and the low-regret frequency)

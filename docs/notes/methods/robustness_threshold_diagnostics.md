@@ -14,8 +14,9 @@ audit on the production cube), configuration `RTD_*` in
 
 ## 0. Question and substrate
 
-For the current FFMP policy re-evaluated on $E_{\text{test}}$ (1,000 LHS SOWs × 25
-realizations × 50 yr, step-05 `--reeval`, `RTD_REEVAL_BASELINE_DIR`), per
+For the current FFMP policy re-evaluated on $E_{\text{test}}$ (500 LHS SOWs × 25
+realizations × 50 yr; step 09 with `NYCOPT_CHUNK_POLICIES=baseline`,
+`RTD_REEVAL_BASELINE_DIR`), per
 objective: is a criterion defensible, so that a degenerate fraction is a
 motivation result, or misplaced for $E_{\text{test}}$ conditions, so that it
 voids the satisficing metric? Zeff et al. (2014) elicited the Research-Triangle
@@ -23,9 +24,9 @@ thresholds once and later values drifted by convention (Trindade et al. 2017;
 Gold et al. 2023), so the rule here anchors on an external goalpost wherever
 one exists and treats everything else as a swept, reported choice, because
 robustness rankings degrade in agreement as criteria tighten (Quinn et al.
-2020; Hadjimichael et al. 2020). The campaign re-evaluates the leading 500 SOWs
-(`etest_kn_50yr_n25000_first25ch`), a prefix of this cube, so the
-anchors transfer without recomputation.
+2020; Hadjimichael et al. 2020). The campaign re-evaluates every policy on the
+same 500 SOWs (`etest_kn_50yr_n12500`), so the anchors transfer without
+recomputation.
 
 The substrate is each SOW's realizations' unit-years pooled through the
 objective's own unit operator (`src/reeval_core.py::sow_objective_matrix`).

@@ -79,7 +79,8 @@ def staged():
         stage_nyc_demand(get_ensemble_spec(other), force=True)
     realized = pd.read_csv(staged_ensemble_dir(CHUNK) / "demand_utilization_realized.csv")
     argv = sys.argv
-    sys.argv = ["make_etest_subset", "--pool", POOL, "--n-chunks", "2", "--force"]
+    sys.argv = ["make_etest_subset", "--pool", POOL, "--n-chunks", "2",
+                "--out-slug", SUBSET, "--force"]
     try:
         make_etest_subset.main()
     finally:

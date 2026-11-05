@@ -14,7 +14,7 @@
 #
 # Everything comes from the environment — no positional args, no value flags:
 #   NYCOPT_REEVAL_TAG    E_test re-eval tag; defaults to the campaign tag
-#                        (etest_kn_50yr_n25000_first25ch). Set it only for a
+#                        (etest_kn_50yr_n12500). Set it only for a
 #                        non-campaign re-eval.
 #   NYCOPT_RESULTS_SLUG  moea slug shared by the campaign runs (ffmp_obj8)
 #   NYCOPT_FOCAL_CRITERION  focal criterion set (default: compromise)
