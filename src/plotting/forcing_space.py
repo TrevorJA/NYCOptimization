@@ -32,7 +32,9 @@ Provenance rule
 Panels (b) and (c) read the **as-built** sample from the staged ensemble's
 ``forcing_profiles.npz`` rather than re-running the sampler. Re-sampling would
 draw a *different* Latin hypercube and quietly describe an ensemble that was
-never simulated.
+never simulated. Panel (d) picks its rows out of the FDC cache by global
+realization id, so a cache built on the 1,000-SOW parent of the campaign cut
+still describes the cut (:func:`etest_cache_rows`).
 """
 
 from __future__ import annotations
@@ -247,7 +249,9 @@ def load_etest_sample(ensemble_dir) -> dict:
     Returns:
         Dict with ``theta`` ``(n_sow, 3)``, ``theta_names``, ``a`` ``(n_sow, 12)``
         water-year change factors (``None`` for a metadata-only staging that
-        carries no ``mean_factor_a``), and ``n_sow``. When the staged E_test
+        carries no ``mean_factor_a``), ``n_sow``, and ``realization_ids``
+        ``(n_sow * R,)``, the global id of every staged realization (unstrided;
+        :func:`panel_flow_duration` selects its FDC-cache rows by these). When the staged E_test
         carries the NYC entitlement-utilization factor (the ``demand_utilization``
         key written by ``scripts/supplemental/append_demand_utilization.py``,
         ``src.demand_utilization``), the dict also holds ``u`` ``(n_sow,)``, the
@@ -264,7 +268,8 @@ def load_etest_sample(ensemble_dir) -> dict:
         a = (np.asarray(z["mean_factor_a"], dtype=float)[::rpp]
              if "mean_factor_a" in z.files else None)
         names = [str(x) for x in z["theta_param_names"]]
-        out = {"theta": theta, "theta_names": names, "a": a, "n_sow": theta.shape[0]}
+        out = {"theta": theta, "theta_names": names, "a": a, "n_sow": theta.shape[0],
+               "realization_ids": np.asarray(z["realization_ids"], dtype=np.int64)}
         if "demand_utilization" in z.files:
             out["u"] = np.asarray(z["demand_utilization"], dtype=float)[::rpp]
             out["k"] = np.asarray(z["demand_scale_k"], dtype=float)[::rpp]
@@ -436,13 +441,54 @@ def _pct_change(future: np.ndarray, baseline: np.ndarray) -> np.ndarray:
     return np.where(baseline > 0, out, np.nan)
 
 
-def panel_flow_duration(ax, cache, pctl: tuple[float, float]) -> None:
+def etest_cache_rows(cached_ids: np.ndarray, realization_ids: np.ndarray) -> np.ndarray:
+    """Row indices of the staged E_test's realizations in the FDC cache.
+
+    The cache stores one row per realization of the ensemble it was built on,
+    keyed by global realization id. The campaign E_test is a chunk prefix of a
+    larger generated parent, so a cache built on the parent is a superset of
+    the cut's rows; selecting by id keeps panel (d) on the same ensemble as
+    panels (b) and (c).
+
+    Args:
+        cached_ids: The cache's ``etest_realization_ids`` column.
+        realization_ids: Global ids of every staged realization
+            (``load_etest_sample(...)["realization_ids"]``).
+
+    Returns:
+        Integer row indices into the cache's ``etest_fdc``.
+
+    Raises:
+        KeyError: If any staged realization has no cached row.
+    """
+    cached_ids = np.asarray(cached_ids, dtype=np.int64)
+    wanted = np.unique(np.asarray(realization_ids, dtype=np.int64))
+    missing = np.setdiff1d(wanted, cached_ids)
+    if missing.size:
+        raise KeyError(
+            f"FDC cache has no row for {missing.size} of the staged E_test's "
+            f"{wanted.size} realizations (first missing id {missing[0]}). Rebuild it: "
+            "`sbatch --export=ALL,NYCOPT_FIG_REFRESH=1 workflow/13_main_figures.sh`."
+        )
+    return np.flatnonzero(np.isin(cached_ids, wanted))
+
+
+def panel_flow_duration(ax, cache, pctl: tuple[float, float], *,
+                        realization_ids: np.ndarray | None = None) -> None:
     """(d) Change in the flow duration curve of aggregate NYC reservoir inflow.
 
     Plotted as the percent change in flow at each exceedance probability rather
     than the absolute curves: on a log flow axis the three sources overlie each
     other almost exactly, and it is the *shift* that the forcing space is
     supposed to span.
+
+    Args:
+        ax: Target axes.
+        cache: The FDC cache written by ``scripts/main/forcing_fdc_cache.py``.
+        pctl: Envelope percentiles (:func:`envelope_pctl`).
+        realization_ids: Global ids of the staged E_test's realizations. When
+            given, only their cache rows are drawn (:func:`etest_cache_rows`);
+            ``None`` draws every cached row.
 
     Each source is differenced against its OWN baseline, which is what makes the
     two comparable:
@@ -472,7 +518,10 @@ def panel_flow_duration(ax, cache, pctl: tuple[float, float]) -> None:
         )
 
     historic = np.asarray(cache["historic_fdc"], dtype=float)[keep]
-    etest_pct = _pct_change(np.asarray(cache["etest_fdc"])[:, keep], historic)
+    etest = np.asarray(cache["etest_fdc"])
+    if realization_ids is not None:
+        etest = etest[etest_cache_rows(cache["etest_realization_ids"], realization_ids)]
+    etest_pct = _pct_change(etest[:, keep], historic)
     cmip6_pct = _pct_change(np.asarray(cache["cmip6_fdc"])[:, keep],
                             np.asarray(cache["cmip6_baseline_fdc"])[:, keep])
 

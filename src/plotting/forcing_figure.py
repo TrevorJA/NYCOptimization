@@ -32,8 +32,12 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
 
     Panels (a)-(c) come from the CMIP6 change-factor table and the as-built
     ``forcing_profiles.npz``; panel (d) reads the FDC cache produced by
-    ``scripts/main/forcing_fdc_cache.py``.
+    ``scripts/main/forcing_fdc_cache.py``, keeping only the rows of the staged
+    E_test's own realizations. The cache must have been built on that E_test
+    or on the generated parent it was cut from, under the same forcing hash.
     """
+    import json
+
     from src import etest as etest_mod
     from scripts.main.forcing_fdc_cache import DEFAULT_CACHE
 
@@ -47,6 +51,7 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
             "Build it first: sbatch workflow/13_main_figures.sh (or "
             "python3 -m scripts.main.forcing_fdc_cache)"
         )
+    meta = json.loads((ensemble_dir / "_meta.json").read_text())
 
     fits = fspace.load_cmip6_fits()
     sample = fspace.load_etest_sample(ensemble_dir)
@@ -58,7 +63,19 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
     fspace.panel_parameter_space(axes[0, 1], fits, sample)
     fspace.panel_monthly_change(axes[1, 0], fits, sample, pctl)
     with np.load(DEFAULT_CACHE, allow_pickle=False) as cache:
-        fspace.panel_flow_duration(axes[1, 1], cache, pctl)
+        built_on = str(cache["ensemble_slug"])
+        if built_on not in {slug, meta.get("subset_of")}:
+            raise ValueError(
+                f"FDC cache was built on {built_on!r}, which is neither E_test "
+                f"{slug!r} nor its parent {meta.get('subset_of')!r}."
+            )
+        if str(cache["forcing_hash"]) != meta.get("forcing_hash"):
+            raise ValueError(
+                f"FDC cache forcing_hash {str(cache['forcing_hash'])!r} does not "
+                f"match the staged E_test's {meta.get('forcing_hash')!r}."
+            )
+        fspace.panel_flow_duration(axes[1, 1], cache, pctl,
+                                   realization_ids=sample["realization_ids"])
 
     for ax in axes.flat:
         ax.set_box_aspect(1)
@@ -70,8 +87,10 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
                ncol=fspace.LEGEND_NCOL, frameon=False, handlelength=1.8,
                columnspacing=1.8)
 
-    print(f"[fig03] {len(fits['df'])} CMIP6 runs, {sample['n_sow']} SOWs, "
-          f"envelope={pctl}, median shape R2={fits['df'].shape_R2.median():.2f}")
+    print(f"[fig03] {len(fits['df'])} CMIP6 runs, {sample['n_sow']} SOWs "
+          f"({sample['realization_ids'].size} realizations in panel d; cache built "
+          f"on {built_on}), envelope={pctl}, "
+          f"median shape R2={fits['df'].shape_R2.median():.2f}")
     written = style.save_manuscript_figure(fig, out_stub)
     plt.close(fig)
     return written

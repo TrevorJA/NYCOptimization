@@ -4,18 +4,22 @@ Panel (d) compares three sources of daily aggregate NYC reservoir inflow on one
 flow duration curve (FDC) axis:
 
     E_test    the re-evaluation ensemble's realizations (Kirsch-Nowak generator
-              driven by the sampled harmonic forcing) - 25,000 x 50 years
+              driven by the sampled harmonic forcing) - 12,500 x 50 years for
+              the campaign cut; a cache built on its 1,000-SOW generated parent
+              holds 25,000 rows, of which the figure keeps the cut's by global
+              realization id (``src.plotting.forcing_space.etest_cache_rows``)
     CMIP6     the raw DBCCA-downscaled, PRMS/VIC5-simulated daily flows of the
               54 CMIP6 future runs - 40 years each, each paired with its OWN
               1980-2019 historical sibling run so the figure can show a
               model-specific change rather than a change plus model bias
     historic  the reconstructed historical record
 
-Reading the E_test daily flows costs ~11 GB of HDF5 I/O across 50 chunk
-directories, so this is a separate compute step in the repo's usual
-compute-then-plot split. It stores ONE FDC ROW PER REALIZATION rather than a
-pre-reduced band, so the envelope definition (min-max, 5th-95th, ...) stays a
-plot-time choice and re-rendering never re-reads the ensemble.
+Reading the E_test daily flows costs ~5.5 GB of HDF5 I/O across the cut's 25
+chunk directories (11 GB over 50 for the parent), so this is a separate compute
+step in the repo's usual compute-then-plot split. It stores ONE FDC ROW PER
+REALIZATION rather than a pre-reduced band, so the envelope definition (min-max,
+5th-95th, ...) and the realization subset stay plot-time choices and
+re-rendering never re-reads the ensemble.
 
 Written to ``outputs/reference/forcing_parameterization/fdc_cache.npz``.
 

@@ -2,8 +2,9 @@
 # Step 13: Render the main-manuscript figure tier from the unified registry
 # (src/figures/registry.py) through scripts/main/figures.py; figures whose data
 # needs are absent are skipped with a message. Builds the flow-duration-curve
-# cache behind Figure 3 (d) first when it is missing (~11 GB of E_test daily
-# flows across 50 staged chunks; NYCOPT_FIG_REFRESH=1 forces a rebuild). The
+# cache behind Figure 3 (d) first when it is missing (~5.5 GB of E_test daily
+# flows across the cut's 25 staged chunks; NYCOPT_FIG_REFRESH=1 forces a
+# rebuild; a cache built on the 25,000-realization parent is reused as is). The
 # SI tier renders in step 14; off-pipeline diagnostic figures keep their own
 # drivers under workflow/supplemental/figures/si_figures_*.sh.
 #
@@ -22,7 +23,7 @@
 #   sbatch workflow/13_main_figures.sh
 #   sbatch --export=ALL,NYCOPT_FIG_REFRESH=1 workflow/13_main_figures.sh
 #
-# Sizing: the cache build is single-core HDF5 I/O over ~11 GB (tens of minutes
+# Sizing: the cache build is single-core HDF5 I/O over ~5.5 GB (tens of minutes
 # on Lustre); rendering is seconds.
 #
 #SBATCH --job-name=main_figures
