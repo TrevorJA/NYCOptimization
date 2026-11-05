@@ -150,9 +150,9 @@ sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=monte_carlo --array=0-1 workflow/04_p
 sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50 \
        --array=0-49 workflow/supplemental/gen_pool_shards.sh
 sbatch --dependency=afterok:<shards_jobid> \
-       --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_NESTEDP_POOL_SLUG=statpool_10yr_n1000000_d0 \
+       --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_POOL_SLUG=statpool_10yr_n1000000_d0 \
        workflow/supplemental/gen_pool_merge.sh
-sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_ENSEMBLE_DRAW=0,NYCOPT_NESTEDP_POOL_SLUG=statpool_10yr_n1000000_d0,NYCOPT_NESTEDP_SMOKE_SLUG=statpool_10yr_n2000_d0 \
+sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,NYCOPT_ENSEMBLE_DRAW=0,NYCOPT_POOL_SLUG=statpool_10yr_n1000000_d0,NYCOPT_NESTEDP_SMOKE_SLUG=statpool_10yr_n2000_d0 \
        workflow/supplemental/pool_verify.sh
 # then select all K draws from the pool in one job, and prep each draw
 sbatch --export=ALL,NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary,NYCOPT_CANDIDATE_POOL_N=1000000 \
@@ -202,23 +202,22 @@ comparability is a recorded choice.
 
 #### 2.3 Baseline (step 05)
 
-Evaluate the default (unoptimized) 2017 FFMP policy on the same objective set.
-This is the comparison anchor for every optimized Pareto set, and the job also
-persists the incumbent's per-SOW matrix on E_test so the incumbent-relative
-regret family can be scored. Run it once per campaign env file, scenario-matched
-(`--search-ensemble`) for the two ensemble designs:
+Evaluate the default (unoptimized) 2017 FFMP policy on the same objective set,
+the comparison anchor for every optimized Pareto set. Run it once per campaign
+env file, scenario-matched (`--search-ensemble`) for the two ensemble designs:
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
        workflow/05_run_baseline.sh
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env \
        workflow/05_run_baseline.sh --search-ensemble
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
+sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_hazfill_stat_production.env \
        workflow/05_run_baseline.sh --search-ensemble
 ```
 
-To run the baseline before E_test is staged, add `NYCOPT_BASELINE_SKIP_REEVAL=1`
-to the `--export` list and rerun step `05` later.
+The incumbent's per-SOW E_test cube, which the incumbent-relative regret family
+scores against, is simulated per design by step `09` with
+`NYCOPT_CHUNK_POLICIES=baseline` (section 2.5).
 
 #### 2.4 MM-Borg optimization (step 06)
 

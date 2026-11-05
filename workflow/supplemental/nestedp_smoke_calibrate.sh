@@ -1,9 +1,9 @@
 #!/bin/bash
-# Nested-P saturation diagnostic, stage 1: test suites + P=2,000 smoke pool.
+# Nested-P saturation diagnostic, stage 1: P=2,000 smoke pool.
 #
-# Runs the scengen test suite (must be green — aborts otherwise), records the
-# NYCOptimization suite result, then generates the P=2,000 stationary
-# stream-only candidate pool via the step-02 code path with wall-clock timing.
+# Generates the P=2,000 stationary stream-only candidate pool via the step-02
+# code path with wall-clock timing (the test suites run on the local machine
+# before submission, never inside a job).
 # The smoke pool is the time-calibration point for projecting the P=10^6
 # generation cost against the documented ~3,000 SU bound
 # (docs/notes/methods/scenario_design_methods.md §6); its first rows are also
@@ -28,15 +28,6 @@ nycopt_setup_env
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
 export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
-
-echo "[nestedp_smoke] scengen pytest  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-if ! (cd ../NYCOptimization_scenario_generation && python3 -m pytest -q); then
-    echo "[nestedp_smoke] FATAL: scengen test suite not green — aborting." >&2
-    exit 1
-fi
-
-echo "[nestedp_smoke] NYCOptimization pytest (-m 'not slow')  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-python3 -m pytest -q -m "not slow" || echo "[nestedp_smoke] NYCOptimization pytest rc=$? (recorded; Pywr-DRB import failures are a known branch issue)"
 
 echo "[nestedp_smoke] generating P=2000 stationary stream-only pool  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 export NYCOPT_SCENARIO_DESIGN=hazard_filling_stationary

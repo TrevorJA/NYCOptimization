@@ -106,7 +106,8 @@ def main() -> None:
     if not staged_out.exists():
         raise FileNotFoundError(f"No staged predicted inflows to compare against: {staged_out}")
 
-    scratch_dir = Path(config.OUTPUTS_DIR) / "tmp_bitcheck" / slug
+    scratch_dir = (Path(config.OUTPUTS_DIR) / "supplemental"
+                   / "predicted_inflow_bitcheck" / "scratch" / slug)
     scratch_out = scratch_dir / "predicted_inflows_mgd.hdf5"
     if rank == 0:
         scratch_dir.mkdir(parents=True, exist_ok=True)

@@ -52,7 +52,7 @@ def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
     Args:
         formulation: Problem formulation name.
         use_trimmed: If True, use trimmed model (requires presim data from
-            00_generate_presim.sh). Default False for accurate baseline.
+            01_generate_presim.sh). Default False for accurate baseline.
 
     Returns:
         Tuple of (data dict, objectives list).

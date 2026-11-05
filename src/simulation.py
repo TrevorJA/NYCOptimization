@@ -893,7 +893,7 @@ def _build_model_builder(nyc_config, use_trimmed: bool = None,
         nyc_config: NYCOperationsConfig instance.
         use_trimmed: Whether to use the trimmed model. If None, falls back to
             USE_TRIMMED_MODEL from config. Trimmed mode requires that
-            00_generate_presim.sh has been run first.
+            01_generate_presim.sh has been run first.
         ensemble_spec: Optional EnsembleSpec. When ``is_ensemble=True``, the
             ModelBuilder is configured with the ensemble's ``inflow_type``
             (which routes pywrdrb's path navigator to the staged HDF5 dir)

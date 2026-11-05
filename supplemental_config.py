@@ -1974,8 +1974,7 @@ TEV_SETS_DIR: Path = TEV_OUTPUT_ROOT / "sets"
 
 _TEV_UNITS_ENV = os.environ.get("NYCOPT_TEV_UNITS_ROOT", "").strip()
 TEV_UNITS_ROOT: Path = (
-    Path(_TEV_UNITS_ENV) if _TEV_UNITS_ENV
-    else Path("/anvil/projects/x-ees260021/NYCOptimization/supplemental/transfer_evaluation")
+    Path(_TEV_UNITS_ENV) if _TEV_UNITS_ENV else TEV_OUTPUT_ROOT / "units_store"
 )
 
 

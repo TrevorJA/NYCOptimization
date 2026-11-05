@@ -18,7 +18,7 @@
 #SBATCH --error=logs/eps_refilter_%j.err
 set -euo pipefail
 
-source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
 
 python3 scripts/supplemental/epsilon_refilter_sweep.py "$@"

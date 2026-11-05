@@ -1,13 +1,21 @@
 #!/bin/bash
 # Step 5: Evaluate the default FFMP policy (no optimization) and save
 # baseline objective values — the comparison anchor for optimized Pareto sets.
-# Runs once per design on its searched draw (d0); d1 is staged only for the
-# SI draw-sensitivity re-evaluation (docs/notes/methods/campaign_design.md).
+# Runs once per design on its searched draw (d0): the historic design on its
+# single trace, an ensemble design scenario-matched on its own search ensemble
+# (`--search-ensemble`); d1 is staged only for the SI draw-sensitivity
+# re-evaluation (docs/notes/methods/campaign_design.md).
 #
-# Usage (from repo root):
-#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env,NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500 \
+# The incumbent's per-SOW E_test cube is NOT written here: step 09 with
+# NYCOPT_CHUNK_POLICIES=baseline simulates it per design on the chunked E_test.
+# NYCOPT_BASELINE_REEVAL=1 opts in to the legacy unchunked `--reeval` leg,
+# which needs NYCOPT_REEVAL_ENSEMBLE_PRESET set to an unchunked preset.
+#
+# Submit (from repo root):
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
 #          workflow/05_run_baseline.sh
-#   NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic.env bash workflow/05_run_baseline.sh
+#   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_mc_production.env \
+#          workflow/05_run_baseline.sh --search-ensemble
 #
 #SBATCH --job-name=baseline
 #SBATCH --account=ees260021
@@ -15,8 +23,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=00:30:00
-#SBATCH --output=logs/baseline.out
-#SBATCH --error=logs/baseline.err
+#SBATCH --output=logs/baseline_%j.out
+#SBATCH --error=logs/baseline_%j.err
 set -euo pipefail
 
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
@@ -26,11 +34,10 @@ nycopt_pin_threads
 
 python3 scripts/main/run_baseline.py "$@"
 
-# Also persist the baseline policy's re-eval matrix on the common re-eval
-# ensemble (per-SOW annual-unit objective values), so step 08's robustness
-# scoring can compute the incumbent-relative regret family (auto-detected at
-# <reeval_dir>/baseline). Opt out with NYCOPT_BASELINE_SKIP_REEVAL=1.
-if [[ "${NYCOPT_BASELINE_SKIP_REEVAL:-0}" != "1" ]]; then
-    echo "[05_run_baseline] persisting baseline re-eval matrix (incumbent cube for the regret family)"
+# Opt-in legacy leg: the incumbent's re-eval matrix on an UNCHUNKED preset
+# (the campaign cube on the chunked E_test comes from step 09 instead).
+if [[ "${NYCOPT_BASELINE_REEVAL:-0}" == "1" ]]; then
+    : "${NYCOPT_REEVAL_ENSEMBLE_PRESET:?NYCOPT_BASELINE_REEVAL=1 needs an unchunked NYCOPT_REEVAL_ENSEMBLE_PRESET}"
+    echo "[05_run_baseline] persisting the baseline re-eval matrix on ${NYCOPT_REEVAL_ENSEMBLE_PRESET}"
     python3 scripts/main/run_baseline.py "$@" --reeval
 fi

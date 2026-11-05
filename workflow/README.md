@@ -25,7 +25,7 @@ to `config.py` defaults.
 
 Outputs land under `outputs/{scenario}/{moea_slug}/{artifact}/`; every MM-Borg
 job writes a reproducibility manifest (config + env snapshots, git state) to
-`outputs/run_manifests/`.
+`outputs/run_manifests/{scenario}/{moea_slug}/seed{N}_{jobid}/`.
 
 ## Pipeline steps
 
@@ -36,7 +36,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 02 | `02_generate_ensemble.sh` | `shared`, 8 cpu, 4 h, `--array=0-(K-1)` | optional | Generate the active design's own realizations (or its small pool); array index = ensemble draw (two draws staged, `--array=0-1`: d0 is searched, d1 serves the SI draw-sensitivity re-evaluation). The P = 10⁶ campaign pool is built by `supplemental/gen_pool_shards.sh` → `gen_pool_merge.sh` → `pool_verify.sh` instead |
 | 03 | `03_subsample_ensemble.sh` | `shared`, 8 cpu, 1 h | optional (or `NYCOPT_SCENARIO_DESIGN` via `--export`) + `NYCOPT_CANDIDATE_POOL_N=1000000` | Hazard-filling designs only: select N members from the design's own candidate pool, all K draws in one job; other designs generate directly in 02 and skip it |
 | 04 | `04_prep_pywrdrb_inputs.sh` | `shared`, 1×33, 1 h, `--array=0-(K-1)` | optional | Format each draw's search ensemble into pywrdrb HDF5 inputs, including the per-realization NYC demand series (MPI across realizations); `--preset NAME` stages an arbitrary ensemble |
-| 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Evaluate the default (unoptimized) FFMP policy + persist its per-SOW E_test matrix for the incumbent-relative regret family; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble |
+| 05 | `05_run_baseline.sh` | `shared`, 1×1, 30 min | optional | Evaluate the default (unoptimized) FFMP policy, the objective anchor; `--search-ensemble` scores it scenario-matched on an ensemble design's own search ensemble. The incumbent's per-SOW E_test cube comes from step 09 with `NYCOPT_CHUNK_POLICIES=baseline` |
 | 06 | `06_run_mmborg.sh` | `wholenode`; header 4×128 (`mm_moderate`); production passes `--nodes=12 --ntasks-per-node=128` (1,533 ranks) and a per-seed `--time` | **required** | MM-Borg MOEA search — ONE launcher for all formulations and scenario designs; `--array` = seed, `DRAW=k` = ensemble draw (default 0; the campaign searches d0 only); config-derived pre-flight refuses already-completed (design, draw, seed) cells |
 | 07 | `07_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics on the per-seed coordinator archive (island runtime files merged snapshot by snapshot with the project's epsilon archive; six MOEAFramework indicators vs total NFE; diagnostics reference set `{slug}_diagnostics_reference.set`, never the campaign `{slug}_merged.set`); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
 | 08 | `08_reevaluate.sh` | `wholenode`, 4×16, 8 h | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Unchunked re-evaluation of Pareto policies on the common held-out ensemble with the trimmed model; opt-in robustness scoring (`NYCOPT_REEVAL_SCORE=1`) |

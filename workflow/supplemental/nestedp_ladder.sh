@@ -12,7 +12,7 @@
 # standalone P=2,000 smoke pool generated from the same seed domain.
 #
 # Submit with the pool slug + rungs (spaces in the rung list -> quote it):
-#   sbatch --export=ALL,NYCOPT_NESTEDP_POOL_SLUG=statpool_10yr_n1000000_d0,\
+#   sbatch --export=ALL,NYCOPT_POOL_SLUG=statpool_10yr_n1000000_d0,\
 # NYCOPT_NESTEDP_RUNGS="2000 5000 20000 100000 300000 1000000",\
 # NYCOPT_NESTEDP_GEN_SU=<su> workflow/supplemental/nestedp_ladder.sh
 #
@@ -35,7 +35,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
 export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
 
-: "${NYCOPT_NESTEDP_POOL_SLUG:?set NYCOPT_NESTEDP_POOL_SLUG via --export}"
+export NYCOPT_POOL_SLUG="${NYCOPT_POOL_SLUG:-statpool_10yr_n1000000_d0}"   # the production pool
 : "${NYCOPT_NESTEDP_RUNGS:?set NYCOPT_NESTEDP_RUNGS via --export}"
 #: Rungs at or below this size run the full battery (laptop-continuity check).
 NYCOPT_NESTEDP_FULL_MAX="${NYCOPT_NESTEDP_FULL_MAX:-5000}"
@@ -51,7 +51,7 @@ if [[ -z "${NYCOPT_NESTEDP_GEN_SU:-}" && -n "${NYCOPT_NESTEDP_GEN_JOBIDS:-}" ]];
     fi
 fi
 
-echo "[nestedp_ladder] pool=${NYCOPT_NESTEDP_POOL_SLUG} rungs='${NYCOPT_NESTEDP_RUNGS}'  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "[nestedp_ladder] pool=${NYCOPT_POOL_SLUG} rungs='${NYCOPT_NESTEDP_RUNGS}'  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 echo "[nestedp_ladder] verifying prefix identity vs the P=2000 smoke pool"
 python3 -u scripts/supplemental/verify_prefix_identity.py
@@ -59,11 +59,11 @@ python3 -u scripts/supplemental/verify_prefix_identity.py
 for P in ${NYCOPT_NESTEDP_RUNGS}; do
     echo "[nestedp_ladder] rung P'=${P}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     if (( P <= NYCOPT_NESTEDP_FULL_MAX )); then
-        NYCOPT_SELDIAG_POOL_SLUG="${NYCOPT_NESTEDP_POOL_SLUG}" \
+        NYCOPT_SELDIAG_POOL_SLUG="${NYCOPT_POOL_SLUG}" \
         NYCOPT_SELDIAG_PREFIX_P="${P}" \
         python3 -u scripts/supplemental/diagnose_hazard_selectors.py
     else
-        NYCOPT_SELDIAG_POOL_SLUG="${NYCOPT_NESTEDP_POOL_SLUG}" \
+        NYCOPT_SELDIAG_POOL_SLUG="${NYCOPT_POOL_SLUG}" \
         NYCOPT_SELDIAG_PREFIX_P="${P}" \
         NYCOPT_SELDIAG_SATURATION=1 \
         python3 -u scripts/supplemental/diagnose_hazard_selectors.py

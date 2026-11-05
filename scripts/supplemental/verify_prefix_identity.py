@@ -11,7 +11,7 @@ persisted image).
 
 All configuration is via environment variables (no CLI value flags):
 
-    NYCOPT_NESTEDP_POOL_SLUG   the large pool's staged slug (required)
+    NYCOPT_POOL_SLUG   the large pool's staged slug (default: the production pool)
     NYCOPT_NESTEDP_SMOKE_SLUG  the standalone smoke pool's slug
                                (default statpool_10yr_n2000_d0)
 
@@ -32,7 +32,7 @@ import numpy as np  # noqa: E402
 import config  # noqa: E402
 from scengen.diagnostics import load_hazard_image  # noqa: E402
 
-POOL_SLUG = os.environ["NYCOPT_NESTEDP_POOL_SLUG"]
+POOL_SLUG = os.environ.get("NYCOPT_POOL_SLUG", "statpool_10yr_n1000000_d0")
 SMOKE_SLUG = os.environ.get("NYCOPT_NESTEDP_SMOKE_SLUG", "statpool_10yr_n2000_d0")
 
 

@@ -10,7 +10,7 @@ path the generator used, and asserting exact row equality with the staged image.
 
 All configuration is via environment variables (no CLI value flags):
 
-    NYCOPT_NESTEDP_POOL_SLUG      the merged pool's staged slug (required)
+    NYCOPT_POOL_SLUG      the merged pool's staged slug (default: the production pool)
     NYCOPT_ENSEMBLE_SHARD_COUNT   shard count used at generation (default 50)
 
 Rows (candidate axes and supplement) are compared with a per-column tolerance
@@ -52,7 +52,7 @@ from src.ensemble_generation import (  # noqa: E402
 )
 from src.load.historical_flows import load_historical_flows  # noqa: E402
 
-POOL_SLUG = os.environ["NYCOPT_NESTEDP_POOL_SLUG"]
+POOL_SLUG = os.environ.get("NYCOPT_POOL_SLUG", "statpool_10yr_n1000000_d0")
 SHARD_COUNT = int(os.environ.get("NYCOPT_ENSEMBLE_SHARD_COUNT", "50"))
 
 

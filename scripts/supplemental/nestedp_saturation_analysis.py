@@ -23,7 +23,7 @@ Fits (both vs log P):
 
 All configuration is via environment variables (no CLI value flags):
 
-    NYCOPT_NESTEDP_POOL_SLUG  staged pool slug the prefixes were cut from (required)
+    NYCOPT_POOL_SLUG  staged pool slug the prefixes were cut from (default: the production pool)
     NYCOPT_NESTEDP_RUNGS      space-separated prefix sizes (required)
     NYCOPT_NESTEDP_GEN_SU     SU spent on pool generation, written verbatim (optional)
 
@@ -52,7 +52,7 @@ from scipy.optimize import curve_fit  # noqa: E402
 import config  # noqa: E402
 from src.plotting.style import apply_style, save_figure  # noqa: E402
 
-POOL_SLUG = os.environ["NYCOPT_NESTEDP_POOL_SLUG"]
+POOL_SLUG = os.environ.get("NYCOPT_POOL_SLUG", "statpool_10yr_n1000000_d0")
 RUNGS = [int(p) for p in os.environ["NYCOPT_NESTEDP_RUNGS"].split()]
 GEN_SU = os.environ.get("NYCOPT_NESTEDP_GEN_SU", "(not recorded)")
 

@@ -7,7 +7,7 @@
 #
 # Submit after the shard array (chain with --dependency=afterok:<array_jobid>):
 #   sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,\
-# NYCOPT_NESTEDP_POOL_SLUG=statpool_10yr_n1000000_d0 workflow/supplemental/gen_pool_merge.sh
+# NYCOPT_POOL_SLUG=statpool_10yr_n1000000_d0 workflow/supplemental/gen_pool_merge.sh
 #
 #SBATCH --job-name=gen_pool_merge
 #SBATCH --account=ees260021
@@ -33,9 +33,9 @@ export NYCOPT_CANDIDATE_POOL_N="${NYCOPT_CANDIDATE_POOL_N:-1000000}"
 export NYCOPT_ENSEMBLE_MASTER_STREAM_ONLY=1
 export NYCOPT_ENSEMBLE_SHARD_COUNT="${NYCOPT_ENSEMBLE_SHARD_COUNT:-50}"
 export NYCOPT_ENSEMBLE_DRAW="${NYCOPT_ENSEMBLE_DRAW:-0}"
-: "${NYCOPT_NESTEDP_POOL_SLUG:?set NYCOPT_NESTEDP_POOL_SLUG via --export}"
+export NYCOPT_POOL_SLUG="${NYCOPT_POOL_SLUG:-statpool_10yr_n1000000_d0}"   # the production pool
 
-echo "[gen_pool_merge] merging shards for ${NYCOPT_NESTEDP_POOL_SLUG}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "[gen_pool_merge] merging shards for ${NYCOPT_POOL_SLUG}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 NYCOPT_ENSEMBLE_MERGE_SHARDS=1 \
 python3 -u scripts/main/generate_stochastic_ensemble.py --draw "${NYCOPT_ENSEMBLE_DRAW}"
 

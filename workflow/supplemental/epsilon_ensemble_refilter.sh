@@ -19,7 +19,7 @@
 #SBATCH --error=logs/eps_ens_refilter_%j.err
 set -euo pipefail
 
-source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/workflow/_common.sh"
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/workflow/_common.sh"
 nycopt_setup_env
 
 PYTHONUNBUFFERED=1 python3 scripts/supplemental/epsilon_ensemble_refilter.py "$@"

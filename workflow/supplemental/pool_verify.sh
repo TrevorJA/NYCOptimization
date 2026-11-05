@@ -16,7 +16,7 @@
 #
 # Submit (per draw):
 #   sbatch --export=ALL,NYCOPT_CANDIDATE_POOL_N=1000000,NYCOPT_ENSEMBLE_SHARD_COUNT=50,\
-# NYCOPT_ENSEMBLE_DRAW=0,NYCOPT_NESTEDP_POOL_SLUG=statpool_10yr_n1000000_d0,\
+# NYCOPT_ENSEMBLE_DRAW=0,NYCOPT_POOL_SLUG=statpool_10yr_n1000000_d0,\
 # NYCOPT_NESTEDP_SMOKE_SLUG=statpool_10yr_n2000_d0 workflow/supplemental/pool_verify.sh
 #
 #SBATCH --job-name=pool_verify
@@ -41,9 +41,9 @@ export OPENBLAS_NUM_THREADS="${OMP_NUM_THREADS}"
 
 export NYCOPT_SCENARIO_DESIGN="${NYCOPT_SCENARIO_DESIGN:-hazard_filling_stationary}"
 export NYCOPT_ENSEMBLE_MASTER_STREAM_ONLY=1
-: "${NYCOPT_NESTEDP_POOL_SLUG:?set NYCOPT_NESTEDP_POOL_SLUG via --export}"
+export NYCOPT_POOL_SLUG="${NYCOPT_POOL_SLUG:-statpool_10yr_n1000000_d0}"   # the production pool
 
-echo "[pool_verify] ${NYCOPT_NESTEDP_POOL_SLUG} (smoke=${NYCOPT_NESTEDP_SMOKE_SLUG:-<default d0>})  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "[pool_verify] ${NYCOPT_POOL_SLUG} (smoke=${NYCOPT_NESTEDP_SMOKE_SLUG:-<default d0>})  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "[pool_verify] shard boundaries (third-partition regeneration)"
 python3 -u scripts/supplemental/verify_shard_boundaries.py
 echo "[pool_verify] smoke-pool prefix identity"

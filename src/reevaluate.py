@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
-    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR, REEVAL_ENSEMBLE_SPEC,
+    OUTPUTS_DIR, REEVAL_ENSEMBLE_SPEC,
     derive_slug, get_n_vars,
     active_scenario_name, run_output_dir,
 )
@@ -69,17 +69,14 @@ def reevaluate(formulation: str,
     """
     scenario = active_scenario_name()
     slug = derive_slug(formulation)
-    # Reference set: prefer the merged Pareto set written by diagnostics, then
-    # the Borg per-seed solution set written directly by the optimizer, then a
-    # curated reference_sets/ entry and the formulation-keyed fallback path, so
-    # re-evals work whether or not step 07 diagnostics has merged a reference set.
+    # Reference set: prefer the installed equal-NFE merged set, then the Borg
+    # per-seed solution set written directly by the optimizer, so re-evals work
+    # whether or not extract_runtime_archive.py --merge --install has run.
     sets_dir = run_output_dir(scenario, slug, "sets")
     set_seed = seed if seed is not None else 1
     candidate_refs = [
         sets_dir / f"{slug}_merged.set",
         sets_dir / f"seed_{set_seed:02d}_{slug}.set",
-        OUTPUT_REFERENCE_SETS_DIR / f"{slug}.ref",
-        OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref",
     ]
     ref_file = next((p for p in candidate_refs if p.exists()), candidate_refs[0])
 

@@ -13,14 +13,16 @@
 #   nycopt_check_memory                   MM-Borg only; node RSS vs safety line
 #   nycopt_write_manifest                 MM-Borg only
 #   nycopt_preflight_mmborg               MM-Borg only
+#   nycopt_run_figure_studies             SI figure drivers
+#   nycopt_login_python                   login-node submit helpers only
 #
 # Sourced after SBATCH directives. Does NOT call `set -e` itself; each caller
 # controls its own error handling. Jobs must be submitted from the repo root
 # (SLURM_SUBMIT_DIR is taken as the root when present).
 #
 # Run identity is env-file driven: there is NO default env file. Steps whose
-# meaning depends on a chosen experiment (06/08/09) pass "required" and abort
-# with a listing of workflow/envs/*.env when NYCOPT_ENV_FILE is unset.
+# meaning depends on a chosen experiment (06/08/09/09b/11) pass "required" and
+# abort with a listing of workflow/envs/*.env when NYCOPT_ENV_FILE is unset.
 
 # Repo root: SLURM_SUBMIT_DIR when submitted from the root; otherwise derived
 # from this file's location (workflow/_common.sh -> parent dir).
@@ -48,11 +50,21 @@ NYCOPT_MPI_MCA_FLAGS="${NYCOPT_MPI_MCA_FLAGS:-}"
 # source of the --nodes/--ntasks-per-node geometry nycopt_check_allocation
 # suggests. Override via env on other machines.
 NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-128}"
+# Allocation account for the one-task allocations nycopt_login_python opens.
+NYCOPT_SLURM_ACCOUNT="${NYCOPT_SLURM_ACCOUNT:-ees260021}"
 
 _nycopt_set_mpi_flags() {
     if [[ -z "${NYCOPT_MPI_MCA_FLAGS}" && "${NYCOPT_CLUSTER:-hopper}" == "hopper" ]]; then
         NYCOPT_MPI_MCA_FLAGS="--mca pml ob1 --mca btl self,vader,tcp"
     fi
+}
+
+# Run a short project-Python command from a login-node submit helper inside
+# a one-task `shared` allocation, so no project code executes on the login
+# node. Arguments are passed to python3 unchanged; stdout is the result.
+nycopt_login_python() {
+    srun --account="${NYCOPT_SLURM_ACCOUNT}" --partition=shared --nodes=1 \
+         --ntasks=1 --time=00:10:00 --quiet python3 "$@"
 }
 
 # cd to repo root, load the Python module, activate ./venv, set PYTHONPATH.
@@ -290,11 +302,12 @@ print(f'{gb:.0f} {line:.0f} {n} {years} {batch}')
 }
 
 # Write a full reproducibility manifest (run identity, allocation, git state,
-# config + env-file snapshots) to outputs/run_manifests/.
+# config + env-file snapshots) to
+# outputs/run_manifests/{scenario}/{slug}/seed{N}_{jobid}/.
 # Requires: nycopt_read_run_identity ran first; FORMULATION, SEED set.
 nycopt_write_manifest() {
     local run_tag="${RUN_SLUG}_seed${SEED}_${SLURM_JOB_ID:-local}"
-    local run_log_dir="outputs/run_manifests/${run_tag}"
+    local run_log_dir="outputs/run_manifests/${SCENARIO}/${RUN_SLUG}/seed${SEED}_${SLURM_JOB_ID:-local}"
     mkdir -p "${run_log_dir}"
 
     {

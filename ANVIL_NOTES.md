@@ -24,6 +24,13 @@ node-scaling factor, 605k model basis, against ~600k remaining.
 - Small 2-3 core jobs backfill within minutes even with ~20k jobs pending in
   `shared`; multi-node `wholenode` jobs can wait hours.
 
+## Log hygiene
+
+Every wrapper logs to `logs/{script_stem}_%j.out` (`_%A_%a` for arrays; the
+MM-Borg launcher adds the job name). At each archive event, tar the logs older
+than that event into `archive/<date>_<reason>/logs/` so `logs/` holds only the
+current campaign.
+
 ## Measured costs (sacct, July–Sept 2026)
 
 | Job family | Per unit | Runtime | Notes |
@@ -67,8 +74,9 @@ node-scaling factor, 605k model basis, against ~600k remaining.
 - 2026-10-16: full-model historic HDF5 runs of the HIST `ffmp_obj8` representatives
   (`sim_selected_policies.sh`, shared, 1 task, 2 cpus). Job 21392961 (all 13 table
   rows + incumbent) cancelled after 2 min: home quota at 95% and ~140 MB per run;
-  `outputs/historic/ffmp_obj8/timeseries/selected_policies/` is now a symlink into
-  `/anvil/projects/x-ees260021/NYCOptimization/historic/...`. Resubmitted as job 21393031
+  `outputs/historic/ffmp_obj8/timeseries/selected_policies/` was made a symlink into
+  projects space (moved to `archive/2026-11-04_pre_demand_update/` as a real directory
+  on 2026-11-04). Resubmitted as job 21393031
   with the three highlighted policies (rows 1393, 1682, 115) + incumbent. Measured:
   one full-model historic run to HDF5 = 40 s. Balance before 591,766.
 - 2026-10-16: job 21393031 completed in 2 min 51 s (4 runs, ~40 s each, 2 cores;

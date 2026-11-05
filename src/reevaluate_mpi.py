@@ -31,7 +31,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
-    OUTPUTS_DIR, OUTPUT_REFERENCE_SETS_DIR, REEVAL_ENSEMBLE_SPEC,
+    OUTPUTS_DIR, REEVAL_ENSEMBLE_SPEC,
     derive_slug, get_n_vars,
     active_scenario_name, run_output_dir,
 )
@@ -81,8 +81,6 @@ def _resolve_ref_file(slug: str, formulation: str, scenario: str,
     candidates = [
         sets_dir / f"{slug}_merged.set",
         sets_dir / f"seed_{seed:02d}_{slug}.set",
-        OUTPUT_REFERENCE_SETS_DIR / f"{slug}.ref",
-        OUTPUTS_DIR / "reference_sets" / f"{formulation}.ref",
     ]
     return next((p for p in candidates if p.exists()), candidates[0])
 

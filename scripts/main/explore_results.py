@@ -108,8 +108,7 @@ def _load_baseline(formulation: str, scenario: str,
         raise FileNotFoundError(
             f"baseline objectives not found: {path}\n"
             f"Score the baseline on this scenario's search ensemble first:\n"
-            f"  sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env>,"
-            f"NYCOPT_BASELINE_SKIP_REEVAL=1 \\\n"
+            f"  sbatch --export=ALL,NYCOPT_ENV_FILE=<scenario env> \\\n"
             f"      workflow/05_run_baseline.sh --search-ensemble\n"
             f"(or pass --no-baseline to skip the comparison)")
     df = pd.read_csv(path)

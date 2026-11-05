@@ -6,7 +6,7 @@
 # stages flows only (no selection happens, so step 02 skips the SSI/POT pass),
 # yet the realized-composition diagnostics — manuscript figure 4
 # (src/plotting/ensemble_composition.py) above all — need its coordinates on the
-# same 8-axis convention as the candidate pool. The hazard-filling designs get
+# same hazard-metric convention as the candidate pool. The hazard-filling designs get
 # their image from step 03 and do not need this script.
 #
 # Refuses to recompute over an existing hazard_image.npz (the scorer returns

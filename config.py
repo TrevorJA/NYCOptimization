@@ -143,12 +143,12 @@ SALINITY_LSTM_MODEL = _parse_path_env(
 # and {artifact} is the output type (sets, runtime, metrics, reeval,
 # diagnostics, ...). Cross-design comparison reads across {scenario} dirs.
 #
-# A few non-run outputs keep a flat top-level home (manifests, presim).
+# A few non-run outputs keep a flat top-level home (manifests, presim,
+# baselines). Per-run diagnostics use run_output_dir(scenario, slug,
+# "diagnostics"); off-pipeline experiments live under outputs/supplemental/
+# (supplemental_config.py).
 
-OUTPUT_REFERENCE_SETS_DIR = OUTPUTS_DIR / "reference_sets"
 OUTPUT_BASELINE_DIR = OUTPUTS_DIR / "baseline"
-# Ad-hoc diagnostics not tied to a single run (benchmarks, samplers). Per-run
-# diagnostics use run_output_dir(scenario, slug, "diagnostics") instead.
 
 FIG_EXPLORATORY_DIR = FIGURES_DIR / "_exploratory"
 
@@ -956,7 +956,7 @@ def derive_slug(formulation: str, *, custom_tag: str | None = None) -> str:
 
     Returns:
         The moea slug, used as the inner partition under
-        outputs/{scenario}/ and figures/{scenario}/.
+        outputs/{scenario}/ and outputs/figures/{scenario}/.
     """
     explicit = os.environ.get("RUN_SLUG", "").strip()
     if explicit:

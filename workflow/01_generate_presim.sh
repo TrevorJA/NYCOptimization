@@ -12,8 +12,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=00:30:00
-#SBATCH --output=logs/presim.out
-#SBATCH --error=logs/presim.err
+#SBATCH --output=logs/presim_%j.out
+#SBATCH --error=logs/presim_%j.err
 
 set -euo pipefail
 

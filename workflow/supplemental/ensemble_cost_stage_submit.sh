@@ -22,14 +22,15 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+source workflow/_common.sh   # nycopt_login_python: project Python runs in a one-task allocation
 
 ENV_FILE="workflow/envs/ensemble_cost.env"
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
-# Cells to stage, each tagged with what is missing. One python call: importing
-# config per cell would dominate the runtime of this script.
-CELLS_RAW="$(python3 -c "
+# Cells to stage, each tagged with what is missing. One python call (in a
+# one-task allocation): importing config per cell would dominate the runtime.
+CELLS_RAW="$(nycopt_login_python -c "
 import supplemental_config as scfg
 scfg.configure_ensemble_cost_env()
 from src.ensembles import staged_ensemble_missing

@@ -18,6 +18,7 @@
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+source workflow/_common.sh   # nycopt_login_python: project Python runs in a one-task allocation
 
 ENV_FILE="workflow/envs/anvil_scaling_borg.env"
 ONLY="${NYCOPT_BORG_SUBMIT_ONLY:-}"
@@ -25,7 +26,7 @@ ONLY="${NYCOPT_BORG_SUBMIT_ONLY:-}"
 # GEOMETRY RANKS TIME SEEDS per line, from the single source of truth.
 # Captured first so a failing python3 aborts (process substitution into
 # mapfile would silently yield an empty array and submit nothing).
-GEOMS_RAW="$(python3 -c "
+GEOMS_RAW="$(nycopt_login_python -c "
 import supplemental_config as scfg
 for name, (ranks, time) in scfg.BORG_SCALE_GEOMETRIES.items():
     seeds = 1 if name == 'scale_smoke' else scfg.BORG_SCALE_SEEDS
@@ -39,7 +40,7 @@ for GEOM in "${GEOMS[@]}"; do
     if [[ -n "${ONLY}" && "${CFG}" != "${ONLY}" ]]; then
         continue
     fi
-    WANT_RANKS="${RANKS}" NYCOPT_MOEA_CONFIG="${CFG}" python3 -c "
+    WANT_RANKS="${RANKS}" NYCOPT_MOEA_CONFIG="${CFG}" nycopt_login_python -c "
 import os
 import config
 cfg = config.ACTIVE_MOEA_CONFIG

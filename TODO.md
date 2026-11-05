@@ -73,9 +73,9 @@ Submit from the repo root in this order (`H=workflow/envs/ffmp_obj8_historic_pro
   `outputs/{design}/ffmp_obj8/reeval/etest_kn_50yr_n12500/baseline/`, the leaf the regret
   family of that design's step-09 policy run reads; no symlinks, no cross-design
   staging). `RTD_REEVAL_BASELINE_DIR` already names the historic copy.
-- [ ] **[HPC] 4. Historic step-05 baseline** (objective anchor; `--reeval` cannot run on a
-  chunked preset, so skip it here, the cube above replaces it):
-  `sbatch --export=ALL,NYCOPT_ENV_FILE=$H,NYCOPT_BASELINE_SKIP_REEVAL=1 workflow/05_run_baseline.sh`
+- [ ] **[HPC] 4. Historic step-05 baseline** (objective anchor; the cube above replaces
+  the former `--reeval` leg, now opt-in via `NYCOPT_BASELINE_REEVAL=1`):
+  `sbatch --export=ALL,NYCOPT_ENV_FILE=$H workflow/05_run_baseline.sh`
   -> `outputs/baseline/ffmp_baseline_objectives.csv` (now the Trenton deficit column).
 - [ ] **[HPC] 5. After HIST seed 1 (and seed 2)**: `extract_runtime_archive.py --seed 1`,
   the ε re-filter, seed 2, `--merge --install`, step 07, steps 09 + 09b on
@@ -385,7 +385,7 @@ will be regenerated from the renamed inputs; nothing is left to rewrite in place
   evaluate a `.set` on any staged search-ensemble slug via `evaluate_annual_units`
   and persist per-realization units. The d1 cells are declared in
   `supplemental_config.TEV_DRAW_TARGETS`; run with `NYCOPT_TEV_INCLUDE_DRAWS=1` on
-  `workflow/supplemental/transfer_evaluation_eval.sh`. Report paired per-policy
+  `workflow/supplemental/transfer_evaluation_eval_array.sh`. Report paired per-policy
   shifts against ε with no variance estimate.
 - [ ] **[HPC]** Optional: nested-P saturation record (`nestedp_ladder.sh`) under the
   renamed hazard axes; hazard-support no-harm arm re-read with

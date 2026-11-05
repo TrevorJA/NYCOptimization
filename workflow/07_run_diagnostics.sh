@@ -16,9 +16,9 @@
 # search_01 figure needs the seed-1 extraction (--seed 1) to exist.
 #
 # Env inputs: NYCOPT_ENV_FILE (optional; picks design + MOEA config) and DRAW=k
-# (default 0), as in step 06. With no positional args the targets are the
-# active config's derived slug plus the variable-resolution sweep slugs;
-# positional args are literal moea slugs. Targets run in parallel unless
+# (default 0), as in step 06. With no positional args the target is the
+# active config's derived slug; positional args are literal moea slugs (for
+# example the variable-resolution sweep). Targets run in parallel unless
 # --serial is passed.
 #
 # Submit (from repo root):
@@ -56,16 +56,14 @@ for a in "$@"; do
 done
 
 if [[ ${#ARGS[@]} -eq 0 ]]; then
-    # Default: the active config's derived slug for base FFMP + each
-    # variable-resolution sweep formulation (draw-aware via the env above).
+    # Default: the active config's derived slug (draw-aware via the env above).
     mapfile -t TARGETS < <(python3 -c "
 import contextlib, io, sys
 _buf = io.StringIO()
 with contextlib.redirect_stdout(_buf):
-    from config import FFMP_VR_N_SWEEP, derive_slug
+    from config import derive_slug
 sys.stderr.write(_buf.getvalue())
-for f in ['ffmp'] + [f'ffmp_{n}' for n in FFMP_VR_N_SWEEP]:
-    print(derive_slug(f))
+print(derive_slug('ffmp'))
 ")
 else
     TARGETS=("${ARGS[@]}")

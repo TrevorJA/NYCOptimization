@@ -42,8 +42,8 @@
 #SBATCH --ntasks-per-node=128
 #SBATCH --exclusive
 #SBATCH --time=96:00:00
-#SBATCH --output=logs/mmborg_%x_seed%a_%A.out
-#SBATCH --error=logs/mmborg_%x_seed%a_%A.err
+#SBATCH --output=logs/mmborg_%x_%A_%a.out
+#SBATCH --error=logs/mmborg_%x_%A_%a.err
 #SBATCH --array=1
 
 set -euo pipefail
