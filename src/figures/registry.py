@@ -142,8 +142,9 @@ class FigureSpec:
             {"cube", "scorecard", "figure_tables", "ensemble", "refset",
             "fdc_cache", "factor_mapping", "demand_calibration",
             "demand_utilization", "demand_realized", "regret_by_utilization",
-            "profile_cube"}
+            "profile_cube", "rasterizer"}
             -- drives skip-with-message (``scripts/main/figures.py``).
+            ``rasterizer`` is a headless Chromium for SVG-native figures.
         caption: One-line description for ``--list``.
         per_focal: The figure is parameterized by the FOCAL criterion, so its
             stem carries the criterion key and renders under different
@@ -231,6 +232,16 @@ def _lazy(module: str, attr: str, adapt: bool = False) -> Callable:
 #: forcing space).
 FIGURES: tuple[FigureSpec, ...] = (
     # ------------------------------------------------------------- manuscript
+    FigureSpec(
+        name="network_schematic",
+        builder=_lazy("src.plotting.network_schematic",
+                      "build_network_schematic"),
+        tier="manuscript", number=1, section="2",
+        kind="network_schematic", needs=frozenset({"rasterizer"}),
+        caption="Schematic of the Pywr-DRB components the re-optimization "
+                "acts on: NYC reservoirs, diversions, flow-target and "
+                "flood gauges (SVG + PNG).",
+    ),
     FigureSpec(
         name="forcing_space",
         builder=_lazy("src.plotting.forcing_figure", "build_forcing_space"),

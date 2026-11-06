@@ -88,6 +88,9 @@ def _need_available(need: str, ctx: FigureContext) -> bool:
     if need == "profile_cube":
         from src.plotting.policy_profile import target_available
         return target_available(ctx.tag, ctx.slug)
+    if need == "rasterizer":
+        from src.plotting.network_schematic import find_chromium
+        return find_chromium() is not None
     return True
 
 

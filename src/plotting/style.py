@@ -286,10 +286,6 @@ SCATTER_PAIRS: list[tuple[int, int]] = [
 FIGSIZE_SINGLE = (7, 5)
 FIGSIZE_WIDE   = (13, 5)
 
-#: Main-manuscript 2x2 panel grid. Square-ish so each panel can be forced square
-#: via ``ax.set_box_aspect(1)`` without the layout squeezing the tick labels.
-FIGSIZE_MANUSCRIPT_2X2 = (11.0, 11.0)
-
 # ---------------------------------------------------------------------------
 # Shared rcParams
 # ---------------------------------------------------------------------------
@@ -322,6 +318,33 @@ def apply_style() -> None:
 MANUSCRIPT_MIN_FONTSIZE: int = 12
 
 
+def manuscript_font_rc(min_fontsize: int = MANUSCRIPT_MIN_FONTSIZE) -> dict:
+    """Type-size rcParams of the manuscript style with ``min_fontsize`` as the floor.
+
+    :func:`apply_manuscript_style` applies these at the default floor. A figure
+    that needs larger type than the rest of the set wraps its plotting (through
+    the save) in ``plt.rc_context(manuscript_font_rc(14))``: the floor is raised
+    in one place, never by hand-editing individual ``fontsize`` arguments.
+
+    Args:
+        min_fontsize: Smallest rendered type size in the figure (points).
+
+    Returns:
+        rcParams mapping for every text class matplotlib sizes.
+    """
+    fs = min_fontsize
+    return {
+        "font.size":             fs,
+        "axes.titlesize":        fs + 1,
+        "axes.labelsize":        fs,
+        "xtick.labelsize":       fs,
+        "ytick.labelsize":       fs,
+        "legend.fontsize":       fs,
+        "legend.title_fontsize": fs,
+        "figure.titlesize":      fs + 2,
+    }
+
+
 def apply_manuscript_style() -> None:
     """Apply the main-manuscript figure style (>= 12 pt, no bold weights).
 
@@ -329,20 +352,12 @@ def apply_manuscript_style() -> None:
     on at its smaller 10 pt sizing. Call once at the top of a main-figure
     script, before any plotting call.
     """
-    fs = MANUSCRIPT_MIN_FONTSIZE
     plt.rcParams.update({
+        **manuscript_font_rc(),
         "font.family":        "sans-serif",
-        "font.size":          fs,
         "font.weight":        "normal",
-        "axes.titlesize":     fs + 1,
         "axes.titleweight":   "normal",
-        "axes.labelsize":     fs,
         "axes.labelweight":   "normal",
-        "xtick.labelsize":    fs,
-        "ytick.labelsize":    fs,
-        "legend.fontsize":    fs,
-        "legend.title_fontsize": fs,
-        "figure.titlesize":   fs + 2,
         "figure.titleweight": "normal",
         "figure.dpi":         150,
         "savefig.dpi":        400,

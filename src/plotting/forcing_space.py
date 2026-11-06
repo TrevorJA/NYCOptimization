@@ -46,7 +46,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch, Rectangle
 
 # ---------------------------------------------------------------------------
 # Shared visual vocabulary (identical across every panel)
@@ -332,6 +332,36 @@ def _water_year_axis(ax):
     ax.set_xlabel("Month of water year")
 
 
+#: Every panel carries its own legend, drawn alike.
+LEGEND_KW: dict = {"frameon": False, "handlelength": 1.8, "borderpad": 0.2,
+                   "labelspacing": 0.35}
+
+
+def _headroom(ax, factor: float) -> None:
+    """Extend the y range upward so an in-axes legend clears the data."""
+    y0, y1 = ax.get_ylim()
+    ax.set_ylim(y0, y0 + (y1 - y0) * factor)
+
+
+def _marker_handle(marker: str, color: str, *, ms: float, label: str,
+                   alpha: float = 1.0, edge: str = "white") -> Line2D:
+    """Legend proxy for a scatter series, at a legible size."""
+    return Line2D([0], [0], ls="none", marker=marker, ms=ms, markerfacecolor=color,
+                  markeredgecolor=edge, markeredgewidth=0.5, alpha=alpha,
+                  color="none", label=label)
+
+
+def _line_handle(label: str, *, color: str = CMIP6_COLOR, lw: float = 1.2,
+                 alpha: float = 0.75) -> Line2D:
+    """Legend proxy for a bundle of thin per-run lines."""
+    return Line2D([0], [0], lw=lw, color=color, alpha=alpha, label=label)
+
+
+def _envelope_handle(label: str) -> Patch:
+    """Legend proxy for the shaded E_test envelope."""
+    return Patch(facecolor=ETEST_COLOR, edgecolor=ETEST_COLOR, alpha=0.55, label=label)
+
+
 # ---------------------------------------------------------------------------
 # Panels
 # ---------------------------------------------------------------------------
@@ -373,13 +403,10 @@ def panel_harmonic_decomposition(ax, fits: dict) -> dict:
     ax.set_ylabel("Change factor, $a_j$")
     # The illustrated run is named in the title rather than the legend: it is
     # provenance for the panel, not a fifth series to distinguish.
-    ax.set_title(f"(a) Harmonic decomposition of the change factor\n{run_label}",
-                 loc="left")
+    ax.set_title(f"(a) Harmonic decomposition of $a_j$\n{run_label}", loc="left")
     # Headroom so the legend clears the winter peak without shrinking the data.
-    y0, y1 = ax.get_ylim()
-    ax.set_ylim(y0, y0 + (y1 - y0) * 1.42)
-    ax.legend(loc="upper left", frameon=False, handlelength=1.8,
-              borderpad=0.2, labelspacing=0.35)
+    _headroom(ax, 1.52)
+    ax.legend(loc="upper left", **LEGEND_KW)
     return {"index": k, "label": run_label}
 
 
@@ -413,6 +440,19 @@ def panel_parameter_space(ax, fits: dict, sample: dict) -> None:
     ax.set_ylabel("Seasonal amplitude, $r_1$")
     ax.set_title("(b) Sampled forcing space", loc="left")
 
+    # The E_test blues, then the CMIP6 vermillions; one column, since two do
+    # not fit the square panel at the figure's type size.
+    handles = [
+        _marker_handle("o", ETEST_COLOR, ms=7, alpha=0.55, edge="none",
+                       label="E$_{test}$ Latin hypercube draws"),
+        Line2D([0], [0], ls="--", lw=1.6, color=ETEST_COLOR,
+               label="E$_{test}$ sampling box"),
+        *[_marker_handle(marker, CMIP6_COLOR, ms=8, label=PERIOD_LABELS[period])
+          for period, marker in PERIOD_MARKERS.items()],
+    ]
+    _headroom(ax, 1.55)
+    ax.legend(handles=handles, loc="upper left", **LEGEND_KW)
+
 
 def panel_monthly_change(ax, fits: dict, sample: dict,
                          pctl: tuple[float, float]) -> None:
@@ -425,6 +465,11 @@ def panel_monthly_change(ax, fits: dict, sample: dict,
     _water_year_axis(ax)
     ax.set_ylabel("Change factor, $a_j$")
     ax.set_title("(c) Monthly streamflow change", loc="left")
+
+    handles = [_envelope_handle(envelope_label(pctl)),
+               _line_handle("CMIP6 harmonic fits")]
+    _headroom(ax, 1.22)
+    ax.legend(handles=handles, loc="upper right", **LEGEND_KW)
 
 
 def cmip6_shifted_historic_fdcs(fits: dict, exceedance: np.ndarray,
@@ -543,61 +588,9 @@ def panel_flow_duration(ax, cache, cmip6_fdc: np.ndarray, pctl: tuple[float, flo
     ax.set_ylabel("Aggregate NYC reservoir inflow (MGD)")
     ax.set_title("(d) Flow duration curves", loc="left")
 
+    # Two-line label: on one line it would run under the envelope's dry tail.
+    handles = [_envelope_handle(envelope_label(pctl)),
+               _line_handle("Historical record ×\nCMIP6 change factors"),
+               Line2D([0], [0], lw=2.0, color=HISTORIC_COLOR, label="Historical record")]
+    ax.legend(handles=handles, loc="lower left", **LEGEND_KW)
 
-# ---------------------------------------------------------------------------
-# Shared legend
-# ---------------------------------------------------------------------------
-
-#: Column count of the shared figure legend: one column per information
-#: SOURCE, matching the colour vocabulary (E_test blue, CMIP6 vermillion,
-#: observed black).
-LEGEND_NCOL: int = 3
-
-
-def _legend_spacer() -> Line2D:
-    """Invisible, unlabelled entry used to pad a short legend column."""
-    return Line2D([], [], ls="none", marker="none", color="none", label=" ")
-
-
-def shared_legend_handles(pctl: tuple[float, float]) -> list:
-    """Handles for the figure-level legend covering panels (b)-(d).
-
-    Panel (a) carries its own legend because the decomposition stages appear
-    nowhere else; everything shared by the other three panels is named once here.
-
-    Ordered for a COLUMN-MAJOR ``ncol=LEGEND_NCOL`` legend so each column is one
-    colour, i.e. one source of information: the E_test blues, then the CMIP6
-    vermillions, then the observed record. Matplotlib fills columns top-to-bottom
-    and balances the row count itself, so the short black column is padded with
-    invisible spacers to hold the grouping.
-    """
-    etest = [
-        Line2D([0], [0], ls="none", marker="s", ms=10, markerfacecolor=ETEST_COLOR,
-               markeredgecolor="none", alpha=0.55, label=envelope_label(pctl)),
-        Line2D([0], [0], ls="none", marker="o", ms=7, markerfacecolor=ETEST_COLOR,
-               markeredgecolor="none", alpha=0.55,
-               label="E$_{test}$ Latin hypercube draws"),
-        Line2D([0], [0], ls="--", lw=1.6, color=ETEST_COLOR,
-               label="E$_{test}$ sampling box"),
-    ]
-    cmip6 = [
-        Line2D([0], [0], ls="none", marker=PERIOD_MARKERS[p], ms=8,
-               markerfacecolor=CMIP6_COLOR, markeredgecolor="white",
-               markeredgewidth=0.5, color="none", label=PERIOD_LABELS[p])
-        for p in ("2020_2059", "2060_2099")
-    ]
-    # The vermillion LINES of panels (c) and (d): one per CMIP6 run, its fitted
-    # change factor in (c) and the record scaled by its raw change factors in (d).
-    cmip6.append(
-        Line2D([0], [0], lw=1.2, color=CMIP6_COLOR, alpha=0.75,
-               label="Historical record × CMIP6 change factors")
-    )
-    historic = [
-        Line2D([0], [0], lw=2.0, color=HISTORIC_COLOR, label="Historical record")
-    ]
-
-    rows = max(len(etest), len(cmip6), len(historic))
-    columns = [etest, cmip6, historic]
-    return [h
-            for col in columns
-            for h in col + [_legend_spacer()] * (rows - len(col))]
