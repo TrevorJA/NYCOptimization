@@ -467,30 +467,30 @@ def _resolve_failure_k() -> dict[str, int]:
 # Per-annual-objective satisficing levels applied by the robustness layer to
 # the PER-SOW annual-unit objective values. Labels use the
 # `<annual name>__sat<thr>` form (threshold labels, not objective names).
-# Placement rules and evidence: docs/notes/methods/robustness_threshold_diagnostics.md.
-# Override via NYCOPT_SAT_THRESHOLDS; persisted reeval_raw_meta.json files
-# keep their snapshotted thresholds.
+# The eight active-objective levels were adopted on 2026-11-06 by direct
+# specification; they supersede the rule-based placements (historic-anchor
+# and external-goalpost rules) recorded in
+# docs/notes/methods/robustness_threshold_diagnostics.md. Override via
+# NYCOPT_SAT_THRESHOLDS; persisted reeval_raw_meta.json files keep their
+# snapshotted thresholds (scripts/supplemental/rescore_thresholds.py
+# re-snapshots an existing cube onto these values).
 
 _DEFAULT_THRESHOLDS: dict[str, float] = {
-    # Rule 1 anchors (stricter side of the annual-unit historic values).
-    "nyc_delivery_reliability_annual__sat65":     0.65,
-    "nyc_delivery_deficit_p99_pct__sat48":        48.0,
-    "montague_flow_reliability_annual__sat79":    0.79,
-    "montague_flow_deficit_p99_pct__sat27":       27.0,
-    "nj_delivery_reliability_annual__sat74":      0.74,
-    # Rule 2 external goalpost: the FFMP drought-stage Trenton target
-    # (2,700 cfs, 10% below the 3,000 cfs target), applied to the per-SOW P99.
+    "nyc_delivery_reliability_annual__sat80":     0.80,
+    "nyc_delivery_deficit_p99_pct__sat50":        50.0,
+    "montague_flow_reliability_annual__sat80":    0.80,
+    "montague_flow_deficit_p99_pct__sat25":       25.0,
     "trenton_flow_deficit_p99_pct__sat10":        10.0,
-    # DIAGNOSTIC counterpart (inactive objective; rule 1 anchor).
+    # Mean annual minor-flood exceedance (ft-days/yr), the same quantity as
+    # the §2 flood objective.
+    "downstream_flood_exceedance_annual__sat2":   2.0,
+    # Per-SOW P01 of annual minimum combined NYC storage (% of capacity).
+    "nyc_storage_min_p01_pct__sat20":             20.0,
+    "nj_delivery_reliability_annual__sat80":      0.80,
+    # DIAGNOSTIC counterparts of inactive objectives (not re-specified on
+    # 2026-11-06; they enter no criterion set).
     "trenton_flow_reliability_annual__sat87":     0.87,
-    # Rule 2 external goalpost: observed WY2001-2023 mean annual exceedance
-    # (ft-days/yr), the same quantity as the §2 flood objective.
-    "downstream_flood_exceedance_annual__sat1p17": 1.17,
-    # DIAGNOSTIC counterpart in days/yr (inactive objective).
     "downstream_flood_days_annual__sat1":         1.0,
-    # Rule 2 external goalpost: 26% = FFMP L5 drought-emergency boundary,
-    # applied to the per-SOW P01 of annual minimum storage.
-    "nyc_storage_min_p01_pct__sat26":             26.0,
 }
 
 
@@ -515,25 +515,25 @@ def _resolve_thresholds() -> dict[str, float]:
 # flood-days diagnostic carries no satisficing role.
 _SAT_LABELS: dict[str, str] = {
     "nyc_delivery_reliability_annual":
-        "nyc_delivery_reliability_annual__sat65",
+        "nyc_delivery_reliability_annual__sat80",
     "nyc_delivery_deficit_p99_pct":
-        "nyc_delivery_deficit_p99_pct__sat48",
+        "nyc_delivery_deficit_p99_pct__sat50",
     "montague_flow_reliability_annual":
-        "montague_flow_reliability_annual__sat79",
+        "montague_flow_reliability_annual__sat80",
     "montague_flow_deficit_p99_pct":
-        "montague_flow_deficit_p99_pct__sat27",
+        "montague_flow_deficit_p99_pct__sat25",
     "trenton_flow_reliability_annual":
         "trenton_flow_reliability_annual__sat87",
     "trenton_flow_deficit_p99_pct":
         "trenton_flow_deficit_p99_pct__sat10",
     "nj_delivery_reliability_annual":
-        "nj_delivery_reliability_annual__sat74",
+        "nj_delivery_reliability_annual__sat80",
     "downstream_flood_exceedance_annual":
-        "downstream_flood_exceedance_annual__sat1p17",
+        "downstream_flood_exceedance_annual__sat2",
     "downstream_flood_days_annual":
         "downstream_flood_days_annual__sat1",
     "nyc_storage_min_p01_pct":
-        "nyc_storage_min_p01_pct__sat26",
+        "nyc_storage_min_p01_pct__sat20",
 }
 
 
@@ -546,37 +546,37 @@ _SAT_LABELS: dict[str, str] = {
 # per-objective k) or a stage-(ii) operator instance whose `worst_value` is
 # the metric's orientation-aware non-finite sentinel.
 # Epsilons are the campaign vector in native metric units, one shared value
-# per objective family (reliability 0.05, deficit-P99 10, flood 0.3,
+# per objective family (reliability 0.025, deficit-P99 5, flood 0.3,
 # storage 5); derivation in docs/notes/methods/epsilon_calibration_experiment.md.
 
 _ANNUAL_REGISTRY_SPEC: list[tuple] = [
     ("nyc_delivery_reliability_annual",
-     "nyc_delivery_reliability_weekly", "maximize", 0.05,
+     "nyc_delivery_reliability_weekly", "maximize", 0.025,
      _nyc_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NYC diversion "
      "< 99% of the running-average entitlement"),
     ("nyc_delivery_deficit_p99_pct",
-     "nyc_delivery_deficit_cvar90_pct", "minimize", 10.0,
+     "nyc_delivery_deficit_cvar90_pct", "minimize", 5.0,
      _nyc_delivery_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly NYC "
      "diversion deficit, % of Decree cap [0-100]"),
     ("montague_flow_reliability_annual",
-     "montague_flow_reliability_weekly", "maximize", 0.05,
+     "montague_flow_reliability_weekly", "maximize", 0.025,
      _montague_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of weekly-mean Montague "
      "flow < 1131.05 MGD Decree target"),
     ("montague_flow_deficit_p99_pct",
-     "montague_flow_deficit_cvar90_pct", "minimize", 10.0,
+     "montague_flow_deficit_cvar90_pct", "minimize", 5.0,
      _montague_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Montague "
      "flow deficit, % of Decree target [0-100]"),
     ("trenton_flow_deficit_p99_pct",
-     "trenton_flow_deficit_cvar90_pct", "minimize", 10.0,
+     "trenton_flow_deficit_cvar90_pct", "minimize", 5.0,
      _trenton_deficit_cvar90_annual, PooledPercentileOp(99.0, worst_value=100.0),
      "P99 across pooled unit-years of within-year CVaR90 weekly Trenton "
      "flow deficit, % of the 1938.95 MGD target [0-100]"),
     ("trenton_flow_reliability_annual",
-     "trenton_flow_reliability_weekly", "maximize", 0.05,
+     "trenton_flow_reliability_weekly", "maximize", 0.025,
      _trenton_failure_weeks_annual, "frequency",
      "DIAGNOSTIC (inactive): frac of pooled unit-years with < k weeks of "
      "weekly-mean Trenton flow < 1938.95 MGD target"),
@@ -606,7 +606,7 @@ _ANNUAL_REGISTRY_SPEC: list[tuple] = [
      "P01 across pooled unit-years of the annual minimum daily aggregate "
      "NYC storage, % of capacity [0-100]"),
     ("nj_delivery_reliability_annual",
-     "nj_delivery_reliability_weekly", "maximize", 0.05,
+     "nj_delivery_reliability_weekly", "maximize", 0.025,
      _nj_delivery_failure_weeks_annual, "frequency",
      "Frac of pooled unit-years with < k weeks of NJ diversion "
      "< 99% of the running-average entitlement"),

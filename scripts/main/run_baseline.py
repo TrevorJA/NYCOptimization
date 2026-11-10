@@ -84,8 +84,14 @@ def run_baseline(formulation: str = "ffmp", use_trimmed: bool = False):
     for name, val in zip(obj_names, obj_values):
         print(f"  {name} = {val:.6f}")
 
+    # The single-trace vector is the historic design's scenario-matched
+    # baseline, so it lives at the scenario-partitioned locator every consumer
+    # reads (config.baseline_objectives_csv), not flat beside the HDF5.
+    from config import baseline_objectives_csv
+
     obj_df = pd.DataFrame([obj_values], columns=obj_names)
-    obj_csv = baseline_dir / f"{formulation}_baseline_objectives.csv"
+    obj_csv = baseline_objectives_csv(formulation, "historic")
+    obj_csv.parent.mkdir(parents=True, exist_ok=True)
     obj_df.to_csv(obj_csv, index=False)
     print(f"\n  Objectives saved: {obj_csv}")
 

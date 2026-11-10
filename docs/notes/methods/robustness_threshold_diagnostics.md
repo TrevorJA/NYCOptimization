@@ -46,6 +46,8 @@ figures script requires the cube's SOW means to equal the shipped
 
 ## 1. Placement rules (declared before the numbers)
 
+> Superseded 2026-11-06: the adopted thresholds are now a direct specification (Section 3). The rules below record how the earlier placements were set and are no longer applied.
+
 1. A criterion current operations themselves fail on the observed record is
    not an acceptable-performance line. It classifies the observed system as
    never acceptable and, if it also lies outside the $E_{\text{test}}$ support,
@@ -105,40 +107,30 @@ figures script requires the cube's SOW means to equal the shipped
 
 ## 3. Adopted criteria
 
-**Search-time snapshot** (`src/objectives_ensemble.py::_DEFAULT_THRESHOLDS`,
-overridable by `NYCOPT_SAT_THRESHOLDS`, snapshotted into each run's
-`reeval_raw_meta.json`; basis in `supplemental_config.RTD_RECOMMENDED_THRESHOLDS`
-and `RTD_RECOMMENDATION_BASIS`). Rule-1 placements on the stricter side of the
-historic annual-unit anchors: NYC reliability 0.65, NYC deficit P99 48,
-Montague reliability 0.79, Montague deficit P99 27, NJ reliability 0.74.
-Rule-2 goalposts: Trenton deficit P99 10 % (the FFMP drought-stage Trenton
-target, 2,700 cfs), flood exceedance 1.17 ft·d/yr, and storage P01 26 % (the FFMP L5 drought-emergency boundary, kept as a stringent
-aspirational criterion because the maintain-status-quo re-anchor would be a
-vacuous 0 % line).
+**Adopted 2026-11-06 by direct specification.** The threshold vector below replaces the rule-based placements of Section 1, which are no longer used to set any threshold. The diagnostics of Section 2 still report the historic-trace anchors and the candidate quantiles as reference columns, so each adopted value can be read against the incumbent's per-SOW distribution and the observed record.
 
-**Analysis criterion sets** (`src/satisficing_criteria.py`, variant selected
-by `NYCOPT_CRITERIA_VARIANT`, focal set by `NYCOPT_FOCAL_CRITERION`, default
-`compromise`). Following Quinn et al. (2017), each named set thresholds one to
-three objectives and leaves the others unconstrained, and robustness is
-reported under every set with a cross-set ranking-agreement check. The
-all-axes conjunction is retained only as `reference_all8`; it saturates at
-zero because the Montague reliability anchor lies outside the current FFMP policy's
-$E_{\text{test}}$ support, a motivation finding never used for selection.
-Placements apply the rules per member axis from the audit table
-`outputs/comparison/{slug}/{tag}/criteria_reanchoring.csv` (current FFMP policy per-SOW
-quantiles, pass fraction at the adopted threshold, pooled stringency, and the
-stricter-side round of the current FFMP policy median at ε granularity):
-
-| set | criteria |
+| objective | criterion |
 |---|---|
-| `nyc_supply` | NYC reliability ≥ 0.65 (historic anchor); storage P01 ≥ 13.0 % (rule 1, current FFMP policy median year) |
-| `downstream_flows` | Montague reliability ≥ 0.50 (rule 1, current FFMP policy median year); Trenton deficit P99 ≤ 10 % (rule 2, FFMP drought-stage target) |
-| `flood` | flood exceedance ≤ 1.17 ft·d/yr (rule 2) |
-| `compromise` | NYC reliability ≥ 0.65, Trenton deficit P99 ≤ 10 %, flood ≤ 1.17 (one axis per Decree party) |
+| NYC diversion reliability (annual) | ≥ 0.80 |
+| NYC diversion deficit, P99 of annual CVaR90 | ≤ 50 % |
+| Montague flow reliability (annual) | ≥ 0.80 |
+| Montague flow deficit, P99 of annual CVaR90 | ≤ 25 % |
+| Trenton flow deficit, P99 of annual CVaR90 | ≤ 10 % |
+| Minor-flood exceedance (annual mean) | ≤ 2.0 ft·d/yr |
+| NYC storage, P01 of annual minimum | ≥ 20 % |
+| NJ diversion reliability (annual) | ≥ 0.80 |
 
-Saturated non-discriminators (NYC deficit P99, Montague deficit P99, NJ
-reliability) are excluded from every named set and stay visible in the
-univariate decomposition.
+The vector is the registry default (`src/objectives_ensemble.py::_DEFAULT_THRESHOLDS`, overridable by `NYCOPT_SAT_THRESHOLDS`) and is snapshotted into each re-eval cube's `reeval_raw_meta.json` when step 10 writes it. A cube written under an earlier vector is moved onto the current one by `workflow/supplemental/results_diagnostics/rescore_thresholds.sh`, which rewrites the snapshot, keeps the replaced vector in the meta's `threshold_history`, and rescores without simulation. `supplemental_config.RTD_RECOMMENDED_THRESHOLDS` carries the same vector.
+
+**Analysis criterion sets** (`src/satisficing_criteria.py`, variant selected by `NYCOPT_CRITERIA_VARIANT`, focal set by `NYCOPT_FOCAL_CRITERION`, default `compromise`). Following Quinn et al. (2017), each named set thresholds a subset of the objectives and leaves the others unconstrained, and robustness is reported under every set with a cross-set ranking-agreement check. The default variant `v3_20261106` keeps the axis membership of `v2_20260821` and sets every member axis to its value in the adopted vector, so the sets differ only in which axes they constrain. The all-axes conjunction is retained as `reference_all8`. The earlier variants `adopted` and `v2_20260821` remain saved with their rule-based placements for comparison.
+
+| set | member axes (values as in the table above) |
+|---|---|
+| `nyc_supply` | NYC reliability, NYC deficit P99, storage P01 |
+| `downstream_flows` | Montague reliability, Montague deficit P99, Trenton deficit P99 |
+| `flood` | flood exceedance |
+| `compromise` | NYC reliability, Montague reliability, flood exceedance, storage P01 |
+| `reference_all8` | all eight axes |
 
 ## Citations
 

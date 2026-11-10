@@ -8,12 +8,12 @@ non-binding, so one robustness metric (the Starr domain criterion,
 stakeholder framings. ``reference_all8`` is the all-axes reference only
 (reported, never used for selection).
 
-Threshold placements follow the rules of
+Variants ``adopted`` and ``v2_20260821`` placed thresholds by the rules of
 ``docs/notes/methods/robustness_threshold_diagnostics.md`` (external goalposts
-where one exists, otherwise the stricter side of the incumbent's attainment,
-with any criterion the status quo itself fails re-anchored at
-maintain-status-quo performance) and the ``criteria_reanchoring.csv`` audit
-(``scripts/supplemental/criteria_reanchoring.py``).
+where one exists, otherwise the stricter side of the incumbent's attainment).
+Variant ``v3_20261106`` (the default) sets every member axis to the value of
+the adopted all-axes snapshot specified on 2026-11-06, so each named set is a
+subset of one threshold vector and no axis carries a set-specific placement.
 
 Variants are selected by ``NYCOPT_CRITERIA_VARIANT``; scoring and every
 criteria figure read the same selection, so rescore each design after
@@ -207,11 +207,73 @@ _V2_20260821_SETS: tuple[CriterionSet, ...] = (
     _REFERENCE_SET,
 )
 
+#: The all-axes threshold vector adopted on 2026-11-06 by direct
+#: specification (the registry defaults in ``src.objectives_ensemble``).
+#: Variant ``v3_20261106`` takes every member-axis value from it.
+_THRESHOLDS_20261106: dict[str, float] = {
+    "nyc_delivery_reliability_annual": 0.80,
+    "nyc_delivery_deficit_p99_pct": 50.0,
+    "montague_flow_reliability_annual": 0.80,
+    "montague_flow_deficit_p99_pct": 25.0,
+    "trenton_flow_deficit_p99_pct": 10.0,
+    "downstream_flood_exceedance_annual": 2.0,
+    "nyc_storage_min_p01_pct": 20.0,
+    "nj_delivery_reliability_annual": 0.80,
+}
+
+
+def _subset_20261106(*axes: str) -> dict:
+    """Member axes at their 2026-11-06 snapshot values."""
+    return {a: _THRESHOLDS_20261106[a] for a in axes}
+
+
+#: VARIANT ``v3_20261106``: the v2 axis membership of each stakeholder
+#: framing, with every member axis at the 2026-11-06 snapshot value.
+_V3_20261106_SETS: tuple[CriterionSet, ...] = (
+    CriterionSet(
+        key="nyc_supply",
+        label="NYC supply security",
+        rationale="NYC diversion reliability, P99 deficit and storage floor "
+                  "at the 2026-11-06 snapshot values.",
+        criteria=_subset_20261106("nyc_delivery_reliability_annual",
+                                  "nyc_delivery_deficit_p99_pct",
+                                  "nyc_storage_min_p01_pct"),
+    ),
+    CriterionSet(
+        key="downstream_flows",
+        label="Downstream flow targets",
+        rationale="Montague reliability and P99 deficit and Trenton P99 "
+                  "deficit at the 2026-11-06 snapshot values.",
+        criteria=_subset_20261106("montague_flow_reliability_annual",
+                                  "montague_flow_deficit_p99_pct",
+                                  "trenton_flow_deficit_p99_pct"),
+    ),
+    CriterionSet(
+        key="flood",
+        label="Flood exposure",
+        rationale="Minor-flood exceedance at the 2026-11-06 snapshot value.",
+        criteria=_subset_20261106("downstream_flood_exceedance_annual"),
+    ),
+    CriterionSet(
+        key="compromise",
+        label="All-parties compromise",
+        rationale="One reliability axis each for NYC and Montague, flood "
+                  "exceedance and the storage floor, at the 2026-11-06 "
+                  "snapshot values.",
+        criteria=_subset_20261106("nyc_delivery_reliability_annual",
+                                  "montague_flow_reliability_annual",
+                                  "downstream_flood_exceedance_annual",
+                                  "nyc_storage_min_p01_pct"),
+    ),
+    _REFERENCE_SET,
+)
+
 #: Every saved criteria variant, keyed by name. Never edit a saved variant in
 #: place once figures have been rendered from it.
 CRITERION_VARIANTS: dict[str, tuple[CriterionSet, ...]] = {
     "adopted": _ADOPTED_SETS,
     "v2_20260821": _V2_20260821_SETS,
+    "v3_20261106": _V3_20261106_SETS,
 }
 
 #: Env var selecting the active criteria variant (a key of
@@ -219,7 +281,7 @@ CRITERION_VARIANTS: dict[str, tuple[CriterionSet, ...]] = {
 CRITERIA_VARIANT_ENV = "NYCOPT_CRITERIA_VARIANT"
 
 #: The default variant when the env var is unset.
-DEFAULT_CRITERIA_VARIANT = "v2_20260821"
+DEFAULT_CRITERIA_VARIANT = "v3_20261106"
 
 
 def active_variant() -> str:

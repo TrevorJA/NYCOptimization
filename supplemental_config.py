@@ -1237,43 +1237,21 @@ RTD_NEAR_HISTORIC_K: int = 25
 #: robustness_threshold_diagnostics.md. Empty dicts leave the recommendation
 #: columns NaN.
 RTD_RECOMMENDED_THRESHOLDS: dict = {
-    "nyc_delivery_reliability_annual":     0.65,
-    "nyc_delivery_deficit_p99_pct":        48.0,
-    "montague_flow_reliability_annual":    0.79,
-    "montague_flow_deficit_p99_pct":       27.0,
+    "nyc_delivery_reliability_annual":     0.80,
+    "nyc_delivery_deficit_p99_pct":        50.0,
+    "montague_flow_reliability_annual":    0.80,
+    "montague_flow_deficit_p99_pct":       25.0,
     "trenton_flow_deficit_p99_pct":        10.0,
-    "downstream_flood_exceedance_annual":  1.17,
-    "nyc_storage_min_p01_pct":             26.0,
-    "nj_delivery_reliability_annual":      0.74,
+    "downstream_flood_exceedance_annual":  2.0,
+    "nyc_storage_min_p01_pct":             20.0,
+    "nj_delivery_reliability_annual":      0.80,
 }
+#: The 2026-11-06 vector is a direct specification; it supersedes the
+#: rule-based placements (historic anchor, external goalpost), which the
+#: diagnostics still report as reference columns.
 RTD_RECOMMENDATION_BASIS: dict = {
-    "nyc_delivery_reliability_annual":
-        "rule 1: historic-trace anchor 0.6447, stricter side (in support, "
-        "q0.992 of per-SOW values)",
-    "nyc_delivery_deficit_p99_pct":
-        "rule 1: anchor 48.83, stricter side; near-all-pass guardrail kept "
-        "per rule 3",
-    "montague_flow_reliability_annual":
-        "rule 1: anchor 0.7895, stricter side; outside incumbent E_test "
-        "support (max 0.746) — all-fail is the Starr-binding motivation "
-        "finding; OAT sweep tests ranking-criticality",
-    "montague_flow_deficit_p99_pct":
-        "rule 1: anchor 27.68, stricter side; near-all-pass guardrail kept "
-        "per rule 3",
-    "trenton_flow_deficit_p99_pct":
-        "rule 2: FFMP drought-stage Trenton target, 2,700 cfs = 10% below the "
-        "3,000 cfs target; not yet placed against the incumbent E_test cube",
-    "downstream_flood_exceedance_annual":
-        "rule 2: observed WY2001-2023 basin experience 1.17 ft-days/yr; "
-        "discriminating (0.443 pass, critical m* = +0.035)",
-    "nyc_storage_min_p01_pct":
-        "rule 2 kept over rule 1's vacuous re-anchor: FFMP L5 drought-"
-        "emergency floor 26%; the incumbent's historic P01 is 0% (1960s "
-        "drought), so maintain-status-quo would be an all-pass 0% line; 26% "
-        "is inside E_test support (incumbent max 28.8%, 0.014 pass) and is "
-        "adopted as a stringent aspirational criterion",
-    "nj_delivery_reliability_annual":
-        "rule 1: anchor 0.7368, stricter side (in support, q0.980)",
+    name: "adopted 2026-11-06 by direct specification"
+    for name in RTD_RECOMMENDED_THRESHOLDS
 }
 
 # ---------------------------------------------------------------------------

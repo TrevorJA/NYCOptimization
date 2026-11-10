@@ -408,17 +408,17 @@ def test_env_threshold_override(monkeypatch):
     """The re-eval satisficing layer keeps its NYCOPT_SAT_THRESHOLDS override."""
     monkeypatch.setenv(
         "NYCOPT_SAT_THRESHOLDS",
-        json.dumps({"nyc_delivery_reliability_annual__sat65": 0.80}),
+        json.dumps({"nyc_delivery_reliability_annual__sat80": 0.70}),
     )
     importlib.reload(obj_ens)
     try:
         obj = obj_ens.ENSEMBLE_OBJECTIVES["nyc_delivery_reliability_annual"]
-        assert obj.sat_threshold == pytest.approx(0.80)
+        assert obj.sat_threshold == pytest.approx(0.70)
         assert obj.sat_kind == "ge"      # follows the direction, not the override
         # Other objectives keep their registry defaults.
         other = obj_ens.ENSEMBLE_OBJECTIVES["nyc_storage_min_p01_pct"]
         assert other.sat_threshold == pytest.approx(
-            obj_ens._DEFAULT_THRESHOLDS["nyc_storage_min_p01_pct__sat26"])
+            obj_ens._DEFAULT_THRESHOLDS["nyc_storage_min_p01_pct__sat20"])
     finally:
         monkeypatch.delenv("NYCOPT_SAT_THRESHOLDS", raising=False)
         importlib.reload(obj_ens)

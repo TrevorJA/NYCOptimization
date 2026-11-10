@@ -61,6 +61,7 @@ from src.plotting.style import (
     ETEST,
     INCUMBENT_COLOR,
     THRESHOLD_COLOR,
+    criterion_condition,
     design_color,
     design_label,
     label_for,
@@ -428,10 +429,28 @@ def _plane(prof: PolicyProfile, xname: str, yname: str):
     return prof.coords[xname], prof.coords[yname]
 
 
+def _pack_lines(items: list, width: int = 40, sep: str = ", ") -> str:
+    """Join short items into lines of at most ``width`` characters, never
+    breaking inside an item (keeps each criterion condition on one line)."""
+    lines, cur = [], ""
+    for it in items:
+        cand = it if not cur else f"{cur}{sep}{it}"
+        if cur and len(cand) > width:
+            lines.append(cur + sep.rstrip())
+            cur = it
+        else:
+            cur = cand
+    if cur:
+        lines.append(cur)
+    return "\n".join(lines)
+
+
 def _failure_map(ctx, out_stub: Path, table_dir: Path,
                  xname: str, yname: str) -> dict:
     """3 x 3 grid: pass/fail per objective at the SOW coordinates, plus the
-    focal joint criterion as the last panel."""
+    focal joint criterion as the last panel. Each panel title states its
+    satisficing condition (the joint panel lists its member conditions) and
+    the passing SOW fraction."""
     prof = load_profile(ctx)
     x, y = _plane(prof, xname, yname)
     names = prof.obj_names
@@ -440,8 +459,21 @@ def _failure_map(ctx, out_stub: Path, table_dir: Path,
     joint_ok = _pass_matrix(prof, prof.values,
                             _criterion_vector(prof, focal)).all(axis=1)
 
-    panels = [(short_label_for(n), ok[:, k]) for k, n in enumerate(names)]
-    panels.append((f"{focal.label}, jointly", joint_ok))
+    thr, kinds = prof.raw.thresholds, prof.raw.kinds
+    panels = [(criterion_condition(n, thr[n], kinds[n]), ok[:, k])
+              for k, n in enumerate(names)]
+    focal_thr = _criterion_vector(prof, focal)
+    members = [names.index(n) for n in names if np.isfinite(focal_thr[n])]
+    if all(focal_thr[names[k]] == thr[names[k]] for k in members):
+        # Member conditions are exactly the panels above: cite them by letter.
+        refs = [f"({_LETTERS[k]})" for k in members]
+        cited = ", ".join(refs[:-1]) + f" and {refs[-1]}" if len(refs) > 1 else refs[0]
+        joint_title = f"{focal.label}:\n{cited} jointly"
+    else:
+        conds = [criterion_condition(names[k], focal_thr[names[k]], kinds[names[k]])
+                 for k in members]
+        joint_title = f"{focal.label}, all of:\n" + _pack_lines(conds)
+    panels.append((joint_title, joint_ok))
     ncol = 3
     nrow = int(np.ceil(len(panels) / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(4.2 * ncol, 3.9 * nrow),
