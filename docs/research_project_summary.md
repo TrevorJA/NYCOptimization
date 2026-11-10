@@ -113,21 +113,7 @@ Operational how-to: `workflow/README.md` and the step scripts `workflow/00–14_
 
 ## Objectives
 
-Eight active objectives (NYC delivery reliability + P99 deficit tail, Montague
-reliability + P99 deficit tail, Trenton P99 deficit tail, expected annual downstream flood
-exceedance (ft·days above NWS minor flood stage), NYC storage annual-minimum P01, NJ
-delivery reliability), computed by the two-layer annual-unit scheme (annual metric per
-realization × FFMP-year unit (Jun 1 – May 31, the FFMP operating year); a
-per-objective unit operator over the pooled unit-years) and documented in
-`notes/methods/objective_definitions.md`. **These annual-unit statistics are the study's
-single metric currency**: search pools all realizations' unit-years; robustness and
-regret recompute the same statistics per E_test state of the world. The annual-unit
-epsilons [0.05, 10, 0.05, 10, 0.05, 0.3, 5.0, 0.05] are calibrated per
-`notes/methods/epsilon_calibration_experiment.md` (max over the two ensemble designs,
-the historic design excluded and disclosed). The satisficing thresholds and the named
-criterion-set placements are provisional until the threshold diagnostic and the
-re-anchoring audit run on the 500-SOW production cube
-(`notes/methods/robustness_threshold_diagnostics.md`; `TODO.md`).
+Eight active objectives (NYC delivery reliability + P99 deficit tail, Montague reliability + P99 deficit tail, Trenton P99 deficit tail, expected annual downstream flood exceedance (ft·days above NWS minor flood stage), NYC storage annual-minimum P01, NJ delivery reliability), computed by the two-layer annual-unit scheme (annual metric per realization × FFMP-year unit (Jun 1 – May 31, the FFMP operating year); a per-objective unit operator over the pooled unit-years) and documented in `notes/methods/objective_definitions.md`. **These annual-unit statistics are the study's single metric currency**: search pools all realizations' unit-years; robustness and regret recompute the same statistics per E_test state of the world. The annual-unit epsilons [0.025, 5.0, 0.025, 5.0, 5.0, 0.3, 5.0, 0.025] are the smallest practically significant differences per objective family, each at or above its calibration floor, with the reported cardinality set by the post-search re-filter (`notes/methods/epsilon_calibration_experiment.md`). The satisficing thresholds and the named criterion-set placements are provisional until the threshold diagnostic and the re-anchoring audit run on the 500-SOW production cube (`notes/methods/robustness_threshold_diagnostics.md`; `TODO.md`).
 
 ## Comparison controls
 
