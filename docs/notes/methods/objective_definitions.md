@@ -172,22 +172,16 @@ each objective's **annual metric** on every (realization × year) unit. Stage
 
 | # | Objective (registry) | Annual metric (per unit-year) | Unit operator (across pooled unit-years) | Dir | ε | Anchor |
 |---|---|---|---|---|---|---|
-| 1 | `nyc_delivery_reliability_annual` | failure-year indicator, ≥ 3 failing weeks (`Σ_w delivery < 0.99·Σ_w E`, entitlement `E_t = min(demand,A_t)`) | **frequency of non-failure years** | MAX | 0.05 | Zeff et al. 2014 Eq. 2; Trindade et al. 2017 Eq. 16; Gold et al. 2023 |
-| 2 | `nyc_delivery_deficit_p99_pct` | CVaR₉₀ of weekly deficit % within the year | **worst-1st-percentile unit-year** (P99) | MIN | 10.0 | Quinn et al. 2017 (WP1), 2018; Trindade/Gold worst-1 % cost |
-| 3 | `montague_flow_reliability_annual` | failure-year indicator, ≥ 3 failing weeks (`mean_w(flow) < 1131.05`) | frequency of non-failure years | MAX | 0.05 | as #1 |
-| 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | 10.0 | as #2 |
-| 5 | `trenton_flow_deficit_p99_pct` | CVaR₉₀ of weekly Trenton deficit % (vs 1938.95 MGD) within the year | worst-1st-percentile unit-year | MIN | 10.0 | as #2 |
+| 1 | `nyc_delivery_reliability_annual` | failure-year indicator, ≥ 3 failing weeks (`Σ_w delivery < 0.99·Σ_w E`, entitlement `E_t = min(demand,A_t)`) | **frequency of non-failure years** | MAX | 0.025 | Zeff et al. 2014 Eq. 2; Trindade et al. 2017 Eq. 16; Gold et al. 2023 |
+| 2 | `nyc_delivery_deficit_p99_pct` | CVaR₉₀ of weekly deficit % within the year | **worst-1st-percentile unit-year** (P99) | MIN | 5.0 | Quinn et al. 2017 (WP1), 2018; Trindade/Gold worst-1 % cost |
+| 3 | `montague_flow_reliability_annual` | failure-year indicator, ≥ 3 failing weeks (`mean_w(flow) < 1131.05`) | frequency of non-failure years | MAX | 0.025 | as #1 |
+| 4 | `montague_flow_deficit_p99_pct` | CVaR₉₀ of weekly Montague deficit % within the year | worst-1st-percentile unit-year | MIN | 5.0 | as #2 |
+| 5 | `trenton_flow_deficit_p99_pct` | CVaR₉₀ of weekly Trenton deficit % (vs 1938.95 MGD) within the year | worst-1st-percentile unit-year | MIN | 5.0 | as #2 |
 | 6 | `downstream_flood_exceedance_annual` | `Σ_days max_gauges (stage − minor)⁺` in the year (ft·days; `flood_objective_diagnostics.md`) | **mean across unit-years** (expected annual flood exceedance) | MIN | 0.3 | Trindade expected-cost form; Quinn 2017 caution |
 | 7 | `nyc_storage_min_p01_pct` | annual minimum of daily aggregate NYC storage % | **1st-percentile unit-year** | MAX | 5.0 | WP1 pattern (Quinn 2017/2018); Hamilton 2022 Q-of-max |
-| 8 | `nj_delivery_reliability_annual` | failure-year indicator, ≥ 1 failing week vs the NJ delivery criterion | frequency of non-failure years | MAX | 0.05 | as #1 |
+| 8 | `nj_delivery_reliability_annual` | failure-year indicator, ≥ 1 failing week vs the NJ delivery criterion | frequency of non-failure years | MAX | 0.025 | as #1 |
 
-The ε column is the campaign vector [0.05, 10.0, 0.05, 10.0, 10.0, 0.3, 5.0,
-0.05] in native metric units (`src/objectives_ensemble.py::_ANNUAL_REGISTRY_SPEC`,
-`config.get_epsilons()`), one shared precision per objective family, derived in
-`epsilon_calibration_experiment.md` (SI Text S5). ε enters Borg at runtime, so
-a change needs no JAR rebuild. The P99 unit operator for the flood objective is
-tie-degenerate at the pooled unit count and 12–30× noisier under bootstrap, so
-it stays registered as an inactive diagnostic (`downstream_flood_days_annual_p99`).
+The ε column is the campaign vector [0.025, 5.0, 0.025, 5.0, 5.0, 0.3, 5.0, 0.025] in native metric units (`src/objectives_ensemble.py::_ANNUAL_REGISTRY_SPEC`, `config.get_epsilons()`), one shared precision per objective family, set in `epsilon_calibration_experiment.md` (SI Text S5). ε enters Borg at runtime, so a change needs no JAR rebuild. The P99 unit operator for the flood objective is tie-degenerate at the pooled unit count and 12–30× noisier under bootstrap, so it stays registered as an inactive diagnostic (`downstream_flood_days_annual_p99`).
 
 **Why this scheme.**
 - *Reliability objectives keep the threshold form where the literature keeps

@@ -151,15 +151,7 @@ number of objectives beaten. The arithmetic is
 `src.solution_selection.dominance_mask` / `n_objectives_beaten`, already verified against brute
 force in `tests/test_solution_selection.py`.
 
-**Readout 2 — merged reference set per ensemble, and contribution.** For each target ensemble,
-all 2,110 solutions from all three optimizations, as evaluated on that ensemble, are pooled and
-merged into one epsilon-nondominated reference set at the adopted vector
-`[0.05, 10.0, 0.05, 10.0, 0.05, 0.3, 5.0, 0.05]`. Two attribution numbers are reported, because
-the sets differ in size by a factor of three and the two questions have different answers:
-*composition share* (contributed / merged-set size) says what the reference set is made of, and
-*contribution rate* (contributed / source-set size) says how likely one solution from that
-search is to survive the merge. Reporting only the first would let the largest archive look best
-by construction.
+**Readout 2 — merged reference set per ensemble, and contribution.** For each target ensemble, all 2,110 solutions from all three optimizations, as evaluated on that ensemble, are pooled and merged into one epsilon-nondominated reference set at the campaign vector (`config.get_epsilons()`). Two attribution numbers are reported, because the sets differ in size by a factor of three and the two questions have different answers: *composition share* (contributed / merged-set size) says what the reference set is made of, and *contribution rate* (contributed / source-set size) says how likely one solution from that search is to survive the merge. Reporting only the first would let the largest archive look best by construction.
 
 **Readout 3 — hypervolume.** `CalculateIndicator -i Hypervolume`, every call against one shared
 reference set formed from the pooled union of all nine cells. MOEAFramework normalizes indicators

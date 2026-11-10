@@ -41,13 +41,7 @@ Representativeness is a different property for the two designs.
   above the 0.10 i.i.d. share) and the reproducibility of the induced objective
   vectors across independent constructions (fresh target set on the same pool,
   fresh pool and target set across production draws).
-- The noise in paired
-  dominance decisions between policies must sit below the ε-dominance
-  precisions the archive resolves at (reliabilities 0.05, deficit severities
-  10.0, flood 0.3, storage 5.0, `config.get_epsilons()`). An ε-archive cannot
-  use precision the sample does not deliver (Kasprzyk et al. 2013), and paired
-  differences on common samples are far more precise than levels (Linderoth et
-  al. 2006).
+- The noise in paired dominance decisions between policies must sit below the ε-dominance precisions the archive resolves at (`config.get_epsilons()`). An ε-archive cannot use precision the sample does not deliver (Kasprzyk et al. 2013), and paired differences on common samples are far more precise than levels (Linderoth et al. 2006).
 
 The unit of independence is the realization, never the annual unit. Annual
 units within a realization are serially dependent (`objective_definitions.md`
