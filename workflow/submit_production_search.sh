@@ -32,7 +32,7 @@
 # Wall requests (campaign_design.md §2 / §6; ANVIL_NOTES.md measured costs):
 #   matched designs (N = 100 ensembles): 96 h seed 1, 72 h seed 2
 #     (21.3 h measured per 500k NFE on 8 nodes; the 96 h Anvil cap bounds seed 1)
-#   historic (single trace, NFE-bounded): 12 h seed 1, 8 h seed 2
+#   historic (single trace, NFE-bounded): 8 h each seed
 #     (4.07 h measured per 500k NFE; ~8.35 SU per 1,000 NFE)
 # Override with a trailing --time=... (the last --time sbatch sees wins).
 #
@@ -77,7 +77,7 @@ esac
 # after the design.
 ENV_FILE="workflow/envs/ffmp_obj8_${DESIGN}_production.env"
 case "${DESIGN}" in
-    historic)                  TAG=hist; TIME=([1]=12:00:00 [2]=08:00:00) ;;
+    historic)                  TAG=hist; TIME=([1]=08:00:00 [2]=08:00:00) ;;
     monte_carlo)               TAG=mc;   TIME=([1]=96:00:00 [2]=72:00:00) ;;
     hazard_filling_stationary) TAG=hf;   TIME=([1]=96:00:00 [2]=72:00:00) ;;
 esac
