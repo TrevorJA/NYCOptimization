@@ -337,6 +337,7 @@ nycopt_write_manifest() {
         echo "Ensemble draw:   ${ENSEMBLE_DRAW:-0}"
         echo "N islands:       ${N_ISLANDS}"
         echo "NFE/island:      ${NFE} (seed ${SEED})"
+        echo "NFE by seed:     ${NYCOPT_MAX_EVALUATIONS_BY_SEED:-<config default>}"
         echo "Realiz. batch:   ${NYCOPT_SEARCH_REALIZATION_BATCH:-0}"
         echo "Runtime freq:    ${RUNTIME_FREQ}"
         echo "Debug sim:       ${DEBUG_SIM:-false}"

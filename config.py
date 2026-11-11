@@ -12,6 +12,7 @@ files under workflow/envs/ to set them. Run-identity knobs:
     NYCOPT_SCENARIO_DESIGN        -> ACTIVE_SCENARIO_DESIGN -> SEARCH_ENSEMBLE_SPEC
     NYCOPT_ENSEMBLE_DRAW          -> SCENARIO_ENSEMBLE_DRAW
     NYCOPT_MOEA_CONFIG            -> ACTIVE_MOEA_CONFIG -> BORG/MMBORG settings
+    NYCOPT_MAX_EVALUATIONS_BY_SEED -> per-seed NFE override of ACTIVE_MOEA_CONFIG
     NYCOPT_REEVAL_ENSEMBLE_PRESET -> REEVAL_ENSEMBLE_SPEC (the test ensemble)
     NYCOPT_OBJECTIVES             -> ACTIVE_OBJECTIVES (comma-separated names)
     NYCOPT_FORMULATIONS           -> PRODUCTION_FORMULATIONS (comma-separated)
@@ -631,6 +632,29 @@ from src.moea_config import get_moea_config   # noqa: E402
 
 NYCOPT_MOEA_CONFIG = _parse_str_env("NYCOPT_MOEA_CONFIG", "smoke")
 ACTIVE_MOEA_CONFIG = get_moea_config(NYCOPT_MOEA_CONFIG)
+
+# Design-scoped per-seed NFE (NYCOPT_MAX_EVALUATIONS_BY_SEED, comma-separated
+# per-island NFE for seeds 1, 2, ...): replaces the config's
+# max_evaluations_by_seed for the env file that sets it, so one design can run
+# a seed to a longer budget without changing the shared registry entry. The
+# reporting NFE (max_evaluations) is unchanged, so every budget must reach it
+# and land on a runtime snapshot for the equal-NFE extraction.
+_SEED_NFE_OVERRIDE = _parse_int_list_env("NYCOPT_MAX_EVALUATIONS_BY_SEED", [])
+if _SEED_NFE_OVERRIDE:
+    import dataclasses as _dataclasses
+    _freq = ACTIVE_MOEA_CONFIG.runtime_frequency
+    _floor = ACTIVE_MOEA_CONFIG.max_evaluations
+    for _nfe in _SEED_NFE_OVERRIDE:
+        if _freq and _nfe % _freq:
+            raise ValueError(
+                f"NYCOPT_MAX_EVALUATIONS_BY_SEED entry {_nfe} is not a multiple "
+                f"of runtime_frequency {_freq}")
+        if _floor and _nfe < _floor:
+            raise ValueError(
+                f"NYCOPT_MAX_EVALUATIONS_BY_SEED entry {_nfe} is below the "
+                f"reporting NFE {_floor} per island")
+    ACTIVE_MOEA_CONFIG = _dataclasses.replace(
+        ACTIVE_MOEA_CONFIG, max_evaluations_by_seed=tuple(_SEED_NFE_OVERRIDE))
 
 # Slug grammar: the MOEA-config name is appended to the moea slug for every
 # config except the production default, keeping production output paths clean
