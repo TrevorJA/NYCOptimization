@@ -27,6 +27,8 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# shellcheck disable=SC1091
+source workflow/cluster.sh
 
 DRY_RUN=false
 ARGS=()
@@ -54,7 +56,7 @@ run() {
 
 for t in "${TARGETS[@]}"; do
     run sbatch \
-        --partition=debug --nodes=2 --ntasks-per-node=40 --time=02:00:00 \
+        --partition="${NYCOPT_PARTITION_DEBUG}" --nodes=2 --ntasks-per-node=40 --time=02:00:00 \
         --job-name="smoke_${t}" \
         --export=ALL,NYCOPT_ENV_FILE=workflow/envs/smoke.env,FORMULATION="${t}",RUN_SLUG="smoke_${t}",NTASKS_MPI=79,DEBUG_SIM=true \
         workflow/07_run_mmborg.sh

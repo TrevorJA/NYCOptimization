@@ -11,7 +11,7 @@ N = 100 diagnostics ensembles).
 
 The target is the active scenario design's search ensemble
 (``config.SEARCH_ENSEMBLE_SPEC``) or, with ``--preset``, any staged ensemble
-slug (e.g. an E_test chunk ``etest_kn_50yr_n25000__chunk007``). MPI is used
+slug (e.g. an E_test chunk ``etest_kn_50yr_n12500__chunk007``). MPI is used
 automatically when launched under more than one rank. Existing output is
 rebuilt so the staged series always reflects the current pywrdrb code.
 

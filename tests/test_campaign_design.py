@@ -68,7 +68,9 @@ def test_memory_envelope_reproduces_the_measured_production_run():
 
 def test_campaign_n_requires_the_batch_at_full_packing():
     import config
-    line = config.NODE_MEMORY_GB * config.NODE_MEMORY_SAFETY_FRACTION
+    # The campaign geometry is Anvil's (128 ranks on a 256 GB node), whatever
+    # node memory the cluster profile of the machine running the tests exports.
+    line = 256.0 * config.NODE_MEMORY_SAFETY_FRACTION
     assert config.search_node_rss_gb(128, 300, 10, 0) > line
     assert config.search_node_rss_gb(128, 300, 10, 150) < line
     # A batch larger than N is the unbatched case.

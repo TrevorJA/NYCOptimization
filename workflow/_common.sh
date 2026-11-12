@@ -4,6 +4,7 @@
 # Defines functions only (no top-level side effects); each caller composes
 # exactly what it needs, in this order:
 #
+#   (sourcing this file)                  loads the cluster profile (workflow/cluster.sh)
 #   nycopt_setup_env                      every script
 #   nycopt_source_env_file required|optional
 #   nycopt_pin_threads                    MPI / simulation steps
@@ -20,6 +21,13 @@
 # controls its own error handling. Jobs must be submitted from the repo root
 # (SLURM_SUBMIT_DIR is taken as the root when present).
 #
+# Machine-specific settings come from the cluster profile, never from an env
+# file: workflow/cluster.sh detects the cluster (anvil | hopper) and exports
+# NYCOPT_CLUSTER plus the profile variables used below (NYCOPT_PARTITION_*,
+# NYCOPT_SLURM_ACCOUNT, NYCOPT_RANKS_PER_NODE, NYCOPT_NODE_MEMORY_GB,
+# NYCOPT_PYTHON_MODULE, NYCOPT_CONDA_MODULE / NYCOPT_CONDA_ENV,
+# NYCOPT_MPI_MCA_FLAGS). A value set in the environment at submission wins.
+#
 # Run identity is env-file driven: there is NO default env file. Steps whose
 # meaning depends on a chosen experiment (07/08/10/11 and the supplemental re-evaluation and
 # scenario-discovery wrappers) pass "required" and abort with a listing of workflow/envs/*.env when NYCOPT_ENV_FILE is unset.
@@ -28,61 +36,42 @@
 # from this file's location (workflow/_common.sh -> parent dir).
 NYCOPT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-# Cluster constants. Hopper-only settings (the python module, the TCP MPI
-# transport) are keyed on NYCOPT_CLUSTER=hopper; Anvil takes the conda env's
-# python3 (propagated by sbatch --export=ALL, or activated below) and its
-# default fabric.
-NYCOPT_PYTHON_MODULE="${NYCOPT_PYTHON_MODULE:-python/3.11.5}"
-# Anvil fallback when the submitting shell did not have the env active: the
-# project env is the conda env named "venv" under the anaconda module.
-# Override via NYCOPT_CONDA_MODULE / NYCOPT_CONDA_ENV.
-NYCOPT_CONDA_MODULE="${NYCOPT_CONDA_MODULE:-anaconda/2024.02-py311}"
-NYCOPT_CONDA_ENV="${NYCOPT_CONDA_ENV:-venv}"
-# OpenMPI transport flags for the re-evaluation / chunked-simulation steps
-# (NOT the MM-Borg launcher). Cluster-dependent: Hopper's default fabric
-# providers hang on the preprocessors' MPI gathers, so TCP is forced there;
-# Anvil should use its default (InfiniBand/UCX) transport — forcing TCP would
-# route MPI over IPoIB. Resolved in _nycopt_set_mpi_flags() once
-# NYCOPT_CLUSTER is known (i.e. after the env file is sourced).
-NYCOPT_MPI_MCA_FLAGS="${NYCOPT_MPI_MCA_FLAGS:-}"
-# MPI ranks packed per node for MM-Borg jobs: 128/node on Anvil wholenode
-# (measured packing; memory-bound at large N, see nycopt_check_memory). Single
-# source of the --nodes/--ntasks-per-node geometry nycopt_check_allocation
-# suggests. Override via env on other machines.
-NYCOPT_RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE:-128}"
-# Allocation account for the one-task allocations nycopt_login_python opens.
-NYCOPT_SLURM_ACCOUNT="${NYCOPT_SLURM_ACCOUNT:-ees260021}"
-
-_nycopt_set_mpi_flags() {
-    if [[ -z "${NYCOPT_MPI_MCA_FLAGS}" && "${NYCOPT_CLUSTER:-anvil}" == "hopper" ]]; then
-        NYCOPT_MPI_MCA_FLAGS="--mca pml ob1 --mca btl self,vader,tcp"
-    fi
-}
+# Cluster profile: sets NYCOPT_CLUSTER and the machine-specific variables.
+#   NYCOPT_RANKS_PER_NODE  MPI ranks packed per node for MM-Borg jobs; the
+#                          single source of the --nodes/--ntasks-per-node
+#                          geometry nycopt_check_allocation suggests.
+#   NYCOPT_MPI_MCA_FLAGS   OpenMPI transport flags for the re-evaluation /
+#                          chunked-simulation steps (NOT the MM-Borg launcher).
+# shellcheck disable=SC1091
+source "${NYCOPT_ROOT}/workflow/cluster.sh"
 
 # Run a short project-Python command from a login-node submit helper inside
-# a one-task `shared` allocation, so no project code executes on the login
-# node. Arguments are passed to python3 unchanged; stdout is the result.
+# a one-task allocation on the cluster's serial partition, so no project code
+# executes on the login node. Arguments are passed to python3 unchanged;
+# stdout is the result.
 nycopt_login_python() {
-    srun --account="${NYCOPT_SLURM_ACCOUNT}" --partition=shared --nodes=1 \
+    srun ${NYCOPT_SLURM_ACCOUNT:+--account="${NYCOPT_SLURM_ACCOUNT}"} \
+         --partition="${NYCOPT_PARTITION_SERIAL}" --nodes=1 \
          --ntasks=1 --time=00:10:00 --quiet python3 "$@"
 }
 
-# cd to repo root, load the Python module, activate ./venv, set PYTHONPATH.
+# cd to repo root, load the cluster's Python module (if its profile names
+# one), activate ./venv or the profile's conda env, set PYTHONPATH.
 nycopt_setup_env() {
     cd "${NYCOPT_ROOT}"
     mkdir -p logs
     # shellcheck disable=SC1091
     source /etc/profile.d/lmod.sh 2>/dev/null || true
-    if [[ "${NYCOPT_CLUSTER:-anvil}" == "hopper" ]]; then   # env files set it; anvil otherwise
+    if [[ -n "${NYCOPT_PYTHON_MODULE}" ]]; then
         module load "${NYCOPT_PYTHON_MODULE}" 2>/dev/null || true
     fi
     if [[ -f venv/bin/activate ]]; then
         # shellcheck disable=SC1091
         source venv/bin/activate
-    elif ! python3 -c 'import numpy' >/dev/null 2>&1; then
+    elif ! python3 -c 'import numpy' >/dev/null 2>&1 && [[ -n "${NYCOPT_CONDA_ENV}" ]]; then
         # No ./venv and the PATH python3 can't run the project (e.g. the job
         # was submitted from a shell without the conda env active): activate
-        # the Anvil conda env directly instead of relying on --export=ALL.
+        # the profile's conda env directly instead of relying on --export=ALL.
         module load "${NYCOPT_CONDA_MODULE}" 2>/dev/null || true
         if command -v conda >/dev/null 2>&1; then
             eval "$(conda shell.bash hook 2>/dev/null)" || true
@@ -102,8 +91,8 @@ nycopt_setup_env() {
     export PYTHONPATH="${PWD}:${PWD}/lib/borg:${PYTHONPATH:-}"
 }
 
-# Source the per-experiment env file (KEY=VALUE only; sets NYCOPT_* knobs that
-# config.py reads at import). $1 = required | optional.
+# Source the per-experiment env file (KEY=VALUE only; sets the run-identity
+# NYCOPT_* knobs that config.py reads at import). $1 = required | optional.
 nycopt_source_env_file() {
     local mode="${1:-optional}"
     if [[ -z "${NYCOPT_ENV_FILE:-}" ]]; then
@@ -119,7 +108,6 @@ nycopt_source_env_file() {
             exit 2
         fi
         echo "[_common] no env file set (config.py defaults apply)"
-        _nycopt_set_mpi_flags
         return 0
     fi
     if [[ ! -f "${NYCOPT_ENV_FILE}" ]]; then
@@ -130,13 +118,20 @@ nycopt_source_env_file() {
         } >&2
         exit 2
     fi
+    local _cluster="${NYCOPT_CLUSTER}"
     set -a
     # shellcheck disable=SC1090
     source "${NYCOPT_ENV_FILE}"
     set +a
     export NYCOPT_ENV_FILE
-    _nycopt_set_mpi_flags
-    echo "[_common] sourced env file: ${NYCOPT_ENV_FILE}"
+    # The cluster is a property of the machine, not of the run: an env file
+    # written before cluster profiles existed may still carry NYCOPT_CLUSTER.
+    if [[ "${NYCOPT_CLUSTER}" != "${_cluster}" ]]; then
+        echo "[_common] NOTE: ${NYCOPT_ENV_FILE} sets NYCOPT_CLUSTER=${NYCOPT_CLUSTER};" \
+             "ignored, this machine is '${_cluster}' (workflow/cluster.sh)"
+        export NYCOPT_CLUSTER="${_cluster}"
+    fi
+    echo "[_common] sourced env file: ${NYCOPT_ENV_FILE} (cluster: ${NYCOPT_CLUSTER})"
 }
 
 # Pin BLAS/OpenMP to one thread per rank (prevents contention across MPI
@@ -346,7 +341,7 @@ nycopt_write_manifest() {
         echo "SCENARIO_DESIGN: ${NYCOPT_SCENARIO_DESIGN:-<config default>}"
         echo "MOEA_CONFIG:     ${NYCOPT_MOEA_CONFIG:-<config default>}"
         echo "TS_ON:           ${NYCOPT_TS_ON:-<config default>}"
-        echo "CLUSTER:         ${NYCOPT_CLUSTER:-<config default>}"
+        echo "CLUSTER:         ${NYCOPT_CLUSTER} (${NYCOPT_RANKS_PER_NODE} ranks/node, ${NYCOPT_NODE_MEMORY_GB} GB/node)"
         echo "Python:          $(which python3)"
         echo "Python version:  $(python3 --version 2>&1)"
         echo "---- git ----"

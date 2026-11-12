@@ -8,9 +8,10 @@ cheap and computed at plot time
 
     E_test    the re-evaluation ensemble's realizations (Kirsch-Nowak generator
               driven by the sampled harmonic forcing) - 12,500 x 50 years for
-              the campaign cut; a cache built on its 1,000-SOW generated parent
-              holds 25,000 rows, of which the figure keeps the cut's by global
-              realization id (``src.plotting.forcing_space.etest_cache_rows``)
+              the campaign E_test; a cache built on a larger design that a
+              prefix subset points at holds more rows, of which the figure
+              keeps the subset's by global realization id
+              (``src.plotting.forcing_space.etest_cache_rows``)
     CMIP6     the raw DBCCA-downscaled, PRMS/VIC5-simulated daily flows of the
               54 CMIP6 future runs - 40 years each, each paired with its OWN
               1980-2019 historical sibling run. The raw-flow reference, kept

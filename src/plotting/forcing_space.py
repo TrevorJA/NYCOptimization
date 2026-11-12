@@ -33,8 +33,8 @@ Panels (b) and (c) read the **as-built** sample from the staged ensemble's
 ``forcing_profiles.npz`` rather than re-running the sampler. Re-sampling would
 draw a *different* Latin hypercube and quietly describe an ensemble that was
 never simulated. Panel (d) picks its rows out of the FDC cache by global
-realization id, so a cache built on the 1,000-SOW parent of the campaign cut
-still describes the cut (:func:`etest_cache_rows`).
+realization id, so a cache built on the parent of a prefix-subset staging
+still describes the subset (:func:`etest_cache_rows`).
 """
 
 from __future__ import annotations

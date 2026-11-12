@@ -38,12 +38,21 @@
 # at 96 h. A pass the cap truncates is finished by resubmitting with
 # --no-merge (step 10 resumes per unit; NYCOPT_CHUNK_UNIT_SECONDS lets a rank
 # stop cleanly before the wall), then --merge-only.
+#
+# The numbers above are Anvil's. Partition names, ranks per node, the per-unit
+# minutes and the wall cap come from the cluster profile (workflow/clusters/),
+# so the same command runs on Hopper at that cluster's geometry (one rank per
+# physical core, no wall cap; pass --nodes for the node count to use there).
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# Cluster profile: partitions and geometry (on Hopper it also exports
+# SBATCH_PARTITION and wraps sbatch, redirecting the Anvil #SBATCH headers).
+# shellcheck disable=SC1091
+source workflow/cluster.sh
 
 usage() {
-    sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit "${1:-2}"
 }
 
@@ -86,13 +95,14 @@ else
 fi
 [[ "${N_CHUNKS:-}" =~ ^[0-9]+$ && "${N_CHUNKS}" -ge 1 ]] || { echo "ERROR: cannot read n_chunks from ${PRESET_DIR}/chunk_index.json" >&2; exit 2; }
 
-# Measured per-unit basis (see header); edit here if a re-measurement moves it.
-UNIT_MINUTES=80
-UNIT_SU=1.3
-UNIT_SECONDS=4900          # NYCOPT_CHUNK_UNIT_SECONDS: 80 min + margin for the wall guard
+# Per-unit basis and geometry from the cluster profile (Anvil: measured, see
+# header); edit the profile if a re-measurement moves them.
+UNIT_MINUTES="${NYCOPT_REEVAL_UNIT_MINUTES}"
+UNIT_SU=1.3                                # Anvil billing; printed there only
+UNIT_SECONDS=$(( UNIT_MINUTES * 60 + 100 ))  # NYCOPT_CHUNK_UNIT_SECONDS: unit wall + margin for the wall guard
 BATCH=25                   # NYCOPT_SEARCH_REALIZATION_BATCH
-RANKS_PER_NODE=128
-WALL_CAP_H=96
+RANKS_PER_NODE="${NYCOPT_RANKS_PER_NODE}"
+WALL_CAP_H="${NYCOPT_WALL_CAP_HOURS}"      # 0 = no cap
 
 [[ -d logs ]] || mkdir -p logs   # the #SBATCH --output paths require it
 
@@ -124,7 +134,9 @@ run() {   # print the line; submit unless dry-run; echo the job id on success
 
 SU_PER_UNIT="${UNIT_SU}"
 [[ "${TARGET}" == "baseline" ]] && SU_PER_UNIT="$(awk -v s="${UNIT_SU}" 'BEGIN{print s*2}')"   # 2 cpus billed per rank on `shared`
-echo "=== ${TARGET}: preset ${PRESET} (${N_CHUNKS} chunks), policies ${POLICIES}, ${N_UNITS} units, ~$(awk -v u="${N_UNITS}" -v s="${SU_PER_UNIT}" 'BEGIN{printf "%.0f", u*s}') SU ==="
+COST=""
+[[ "${NYCOPT_CLUSTER}" == "anvil" ]] && COST=", ~$(awk -v u="${N_UNITS}" -v s="${SU_PER_UNIT}" 'BEGIN{printf "%.0f", u*s}') SU"
+echo "=== ${TARGET} on ${NYCOPT_CLUSTER}: preset ${PRESET} (${N_CHUNKS} chunks), policies ${POLICIES}, ${N_UNITS} units${COST} ==="
 
 JOB_ID=""
 if [[ "${TARGET}" == "baseline" ]]; then
@@ -132,7 +144,7 @@ if [[ "${TARGET}" == "baseline" ]]; then
     # --ntasks-per-node=16, which --ntasks does not override, so 25 tasks on one
     # node are otherwise rejected ("Requested node configuration is not available").
     run sbatch --job-name=reeval_baseline \
-        --partition=shared --nodes=1 --ntasks-per-node="${N_CHUNKS}" --cpus-per-task=2 --time=03:00:00 \
+        --partition="${NYCOPT_PARTITION_SERIAL}" --nodes=1 --ntasks-per-node="${N_CHUNKS}" --cpus-per-task=2 --time=03:00:00 \
         --export="${COMMON_EXPORT},NYCOPT_SEARCH_REALIZATION_BATCH=${BATCH},NYCOPT_CHUNK_MERGE=job,NYCOPT_CHUNK_UNIT_SECONDS=${UNIT_SECONDS}" \
         ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
         workflow/10_simulate_test_chunks.sh
@@ -149,7 +161,7 @@ if [[ "${MODE}" != "merge" ]]; then
     RANKS=$(( NODES * RANKS_PER_NODE ))
     WAVES=$(( (N_UNITS + RANKS - 1) / RANKS ))
     WALL_MIN=$(( WAVES * UNIT_MINUTES * 11 / 10 + 15 ))
-    if (( WALL_MIN > WALL_CAP_H * 60 )); then
+    if (( WALL_CAP_H > 0 && WALL_MIN > WALL_CAP_H * 60 )); then
         echo "NOTE: ${WAVES} waves of ${RANKS} ranks need ~${WALL_MIN} min; capping at ${WALL_CAP_H} h." \
              "Resubmit with --no-merge until every unit is written, then --merge-only (or raise --nodes)."
         WALL_MIN=$(( WALL_CAP_H * 60 ))
@@ -157,7 +169,7 @@ if [[ "${MODE}" != "merge" ]]; then
     WALL="$(printf '%02d:%02d:00' $(( WALL_MIN / 60 )) $(( WALL_MIN % 60 )))"
     echo "--- step 10: ${NODES} x ${RANKS_PER_NODE} ranks, ${WAVES} wave(s) of ~${UNIT_MINUTES} min, wall ${WALL}"
     run sbatch --job-name="reeval_${TAG}" \
-        --partition=wholenode --nodes="${NODES}" --ntasks-per-node="${RANKS_PER_NODE}" --time="${WALL}" \
+        --partition="${NYCOPT_PARTITION_MPI}" --nodes="${NODES}" --ntasks-per-node="${RANKS_PER_NODE}" --time="${WALL}" \
         --export="${COMMON_EXPORT},NYCOPT_SEARCH_REALIZATION_BATCH=${BATCH},NYCOPT_CHUNK_MERGE=off,NYCOPT_CHUNK_UNIT_SECONDS=${UNIT_SECONDS}" \
         ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
         workflow/10_simulate_test_chunks.sh

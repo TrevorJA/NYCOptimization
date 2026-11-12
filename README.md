@@ -4,7 +4,7 @@ Multi-objective optimization of NYC reservoir operations (Pywr-DRB + MM-Borg), f
 
 ## Experimental Replication
 
-> **Note:** This experiment was run on the [Anvil HPC at Purdue](https://docs.rcac.purdue.edu/userguides/anvil/) (128-core nodes; production search jobs use 12 nodes × 128 tasks on the `wholenode` partition). The instructions below correspond to this HPC, but may be adapted for other computing infrastructure. Submit all jobs **from the repo root** — the scripts resolve paths from the submission directory.
+> **Note:** This experiment was run on the [Anvil HPC at Purdue](https://docs.rcac.purdue.edu/userguides/anvil/) (128-core nodes; production search jobs use 12 nodes × 128 tasks on the `wholenode` partition). The instructions below correspond to this HPC. Machine-specific settings are isolated in cluster profiles (`workflow/clusters/`; `workflow/README.md`, "Cluster profiles"), which also cover Cornell's Hopper cluster: there, run `source workflow/cluster.sh` once per login shell and the same `sbatch` lines apply. Submit all jobs **from the repo root** — the scripts resolve paths from the submission directory.
 
 **Anvil specifics** (already encoded in the scripts' `#SBATCH` headers, listed here so you know what to expect):
 
@@ -108,24 +108,17 @@ Step `02` alone builds the small (P = 2,000) pool the step-03 registry default p
 
 #### 2.2 Test-ensemble staging (step 05 + supplemental)
 
-The held-out re-evaluation ensemble E_test (`etest_kn_50yr_n12500`: 500 LHS SOWs over the three climate amplitudes and the NYC entitlement utilization `u`, × 25 realizations × 50 yr, 25 staged chunks) is independent of the search-ensemble staging and never enters search. Build it sharded, merge, calibrate the demand scale and append the per-SOW utilization column (metadata only; `docs/notes/methods/forcing_parameterization.md`), stage the pywrdrb inputs per chunk (the one-time presim pass over E_test, including each SOW's scaled NYC demand series), then merge the realized utilization. The campaign E_test is cut from the larger design generated 2026-08-19 (`etest_kn_50yr_n25000`, 50 chunks) by `staging/etest_cut.sh` (metadata only; nothing reads the parent afterwards). `workflow/submit_etest_staging.sh` chains the completion steps after the merge:
+The held-out re-evaluation ensemble E_test (`etest_kn_50yr_n12500`: 500 LHS SOWs over the three climate amplitudes and the NYC entitlement utilization `u`, × 25 realizations × 50 yr, 25 staged chunks) is independent of the search-ensemble staging and never enters search. It is generated directly at that size, sharded one chunk per array task, then merged, given the per-SOW utilization column (metadata only; `docs/notes/methods/forcing_parameterization.md`), staged per chunk with the pywrdrb inputs (the one-time presim pass over E_test, including each SOW's scaled NYC demand series), and closed by the realized-utilization merge and the sub-window hazard image. `workflow/submit_etest_staging.sh` issues the whole chain (`--dry-run` prints the sbatch lines; `--from STEP` resumes after a failed step):
 
 ```bash
-sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/staging/etest_shards.sh                       # or serial: workflow/05_generate_test_ensemble.sh
-sbatch --dependency=afterok:<shards_jobid> \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/staging/etest_merge.sh
-sbatch --dependency=afterok:<merge_jobid> \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/staging/etest_demand_utilization.sh                 # k(u) table + per-SOW utilization u, metadata only
-sbatch --dependency=afterok:<demand_u_jobid> \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \
-       workflow/supplemental/staging/etest_prep_chunks.sh                        # step-04 inputs + scaled NYC demand per chunk
-sbatch --dependency=afterok:<prep_jobid> \
-       --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env,NYCOPT_ETEST_VARIANT=kn \
-       workflow/supplemental/staging/etest_cut.sh                       # cut etest_kn_50yr_n12500 from the parent + realized u per SOW
-bash workflow/submit_etest_staging.sh hazard --dependency=afterok:<cut_jobid>  # sub-window hazard image (shards, then merge)
+bash workflow/submit_etest_staging.sh all
+# Chains, each afterok the previous, under the historic production env and NYCOPT_ETEST_VARIANT=kn:
+#   staging/etest_shards.sh                25 array tasks: the streamflow generation (serial alternative: workflow/05_generate_test_ensemble.sh)
+#   staging/etest_merge.sh                 canonical metadata + staged-contract check
+#   staging/etest_demand_utilization.sh    k(u) table + per-SOW utilization u, metadata only
+#   staging/etest_prep_chunks.sh           25 array tasks: step-04 inputs + scaled NYC demand per chunk
+#   staging/etest_realized_utilization.sh  realized u per SOW + the full staged-contract check
+#   staging/etest_hazard_image_shards.sh   25 array tasks, then staging/etest_hazard_image_merge.sh (sub-window hazard image)
 ```
 
 Every re-evaluation step (`10`, `11`, `12`, and the supplemental re-evaluation and scenario-discovery wrappers) takes `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500` explicitly. It is deliberately never defaulted and never set in an env file, so cross-design comparability is a recorded choice.
@@ -193,7 +186,7 @@ sbatch workflow/13_main_figures.sh
 sbatch workflow/14_results_figures.sh
 ```
 
-Step order: `01` before `06`/`07`; `02`→`04` (with `03` for hazard filling) before `07`; `05`→`staging/etest_demand_utilization`→`staging/etest_prep_chunks`→`staging/etest_cut` before `10`; `07`→`08`→`09`→`10`→`11`→`12`/`13`/`14`. Chain on a cluster with `sbatch --dependency=afterok:<jobid>`. Outputs land under `outputs/{scenario}/{moea_slug}/`.
+Step order: `01` before `06`/`07`; `02`→`04` (with `03` for hazard filling) before `07`; the E_test chain (`submit_etest_staging.sh all`) before `10`; `07`→`08`→`09`→`10`→`11`→`12`/`13`/`14`. Chain on a cluster with `sbatch --dependency=afterok:<jobid>`. Outputs land under `outputs/{scenario}/{moea_slug}/`.
 
 ## Run axes
 

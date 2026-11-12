@@ -8,7 +8,8 @@ other run axis. Formulation, objectives, physics toggles and epsilons live on
 the problem-definition axis (the moea slug), not here.
 
 ``smoke`` is dev-only; ``production`` is the campaign config
-(``docs/notes/methods/campaign_design.md``). There is no resume: the Borg
+(``docs/notes/methods/campaign_design.md``), sized for Anvil; ``hopper_2x96``
+is its Hopper-sized counterpart for the historic search. There is no resume: the Borg
 checkpoint is disabled, so every search must finish inside one SLURM job.
 """
 
@@ -227,6 +228,24 @@ MOEA_CONFIGS: dict[str, MOEAConfig] = {
         notes="Anvil scaling supplement: 69 ranks; 64-slot four-island "
               "geometry (320 NFE/island is a short Borg trajectory; overhead "
               "measurement only).",
+    ),
+    # Hopper counterpart of `production` for the historic single-trace search
+    # (HOPPER_NOTES.md): the same 4 islands, NFE budgets and snapshot interval
+    # on two 96-core EPYC nodes, 4 x 46 workers + 4 island masters + 1
+    # controller = 189 ranks (`--nodes=2 --ntasks-per-node=96`). The worker
+    # count per island differs from `production` (382), so its sets land under
+    # their own slug (`..._hopper_2x96`) and are a separate configuration.
+    "hopper_2x96": MOEAConfig(
+        name="hopper_2x96",
+        n_islands=4,
+        n_workers_per_island=46,
+        max_evaluations=125_000,              # per island -> 500,000 total NFE
+        max_evaluations_by_seed=(187_500,),   # seed 1 -> 750,000 total NFE
+        runtime_frequency=2_500,
+        n_seeds=2,
+        max_time_hours=None,              # NFE-bounded; Hopper has no wall cap
+        notes="Hopper historic search: 189 ranks (4x46+5) on 2 x 96-core EPYC "
+              "nodes; budgets and snapshots as `production`.",
     ),
     # Campaign production config (campaign_design.md is the specification and
     # budget). 4 islands x 382 workers + 4 island masters + 1 controller =

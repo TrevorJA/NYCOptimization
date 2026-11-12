@@ -1,7 +1,7 @@
 # workflow/envs/ — Per-experiment environment files
 
 Each `*.env` file pins a run's identity (scenario design, MOEA config, active
-objectives, LSTM coupling, formulation set, cluster, re-eval sizing, regret
+objectives, LSTM coupling, formulation set, re-eval sizing, regret
 tolerance) so that re-running an experiment is a single `sbatch` invocation
 with no remembered CLI flags. These files are the **artifact of record** for
 "how was this experiment configured" and are tracked in git; the submitted env
@@ -13,6 +13,12 @@ those belong in the scripts that source these files. Every key is a `NYCOPT_*`
 knob read by `config.py`, `src/scenario_designs.py`, or `src/robustness.py`
 (grep `os.environ` for the full set; the table at the top of `config.py` lists
 the main ones).
+
+**No machine settings:** the cluster (Anvil, Hopper) is not part of a run's
+identity. Partitions, ranks per node, node memory, the Python environment and
+MPI flags come from the cluster profile (`workflow/cluster.sh`,
+`workflow/clusters/`), never from an env file; a leftover `NYCOPT_CLUSTER`
+line is ignored with a note.
 
 **No defaults:** steps whose meaning depends on a chosen experiment (`07`,
 `08`, `10`, `11` and the supplemental re-evaluation and scenario-discovery
@@ -50,6 +56,10 @@ supplemental re-evaluation and scenario-discovery wrappers), by family:
   except for `NYCOPT_SCENARIO_DESIGN` and header comments
   (`docs/notes/methods/campaign_design.md`). The historic file is also the
   identity the non-MOEA steps (E_test staging, baselines, checks) take.
+- **Hopper historic search** — `ffmp_obj8_historic_hopper_2x96.env`: the
+  historic production identity under the Hopper-sized `hopper_2x96` MOEA config
+  (189 ranks on two 96-core nodes; outputs under
+  `outputs/historic/ffmp_obj8_hopper_2x96/`). Its header gives the sbatch line.
 - **Variable resolution** — `ffmp_vr_obj8.env` (N ∈ {8, 10, 12}); submit once
   per `FORMULATION=ffmp_N`. A conditional SI extension on leftover allocation,
   not part of the manuscript campaign.

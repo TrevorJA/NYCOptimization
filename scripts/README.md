@@ -10,8 +10,7 @@ Three buckets, by purpose:
   manuscript-relevant pipeline.
 
 - **`supplemental/`** — Manuscript-relevant but not part of the linear
-  pipeline: E_test staging from a larger generated design
-  (`make_etest_subset.py`), the E_test demand-utilization axis
+  pipeline: the E_test demand-utilization axis
   (`demand_utilization_calibration.py`, `append_demand_utilization.py`,
   `merge_demand_utilization_realized.py`), the NYC demand-covariate
   diagnostics (`demand_covariate/run.py`, `demand_covariate/figures.py`), build QC (`validate_staged_seasonality.py`,

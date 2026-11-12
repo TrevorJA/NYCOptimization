@@ -710,11 +710,13 @@ REEVALUATION_SETTINGS = {
 ###############################################################################
 # Cluster Target
 ###############################################################################
-# Selects the SLURM template family (Anvil for production, Hopper for smoke
-# tests). workflow/_common.sh and workflow/supplemental/results_diagnostics/reevaluate_unchunked.sh consult this value when
-# they need cluster-specific defaults (MCA flags, node sizing).
+# The machine the code runs on (anvil | hopper), detected and exported by
+# workflow/cluster.sh together with its profile (workflow/clusters/*.sh:
+# partitions, ranks per node, NYCOPT_NODE_MEMORY_GB, MPI flags). It is not part
+# of a run's identity and no env file sets it; recorded here for manifests. The
+# default matches cluster.sh's fallback when no cluster is detected.
 
-CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "hopper")
+CLUSTER = _parse_str_env("NYCOPT_CLUSTER", "anvil")
 
 
 ###############################################################################
@@ -805,7 +807,8 @@ SEARCH_REALIZATION_BATCH = _parse_int_env("NYCOPT_SEARCH_REALIZATION_BATCH", 0)
 # nycopt_check_memory). Per-rank RSS = 600 MB + 0.49 MB per scenario-year held
 # in one Pywr model (min(N, batch) x L), fitted to the measured N=100
 # production steady state and conservative above N=200; the safety line is
-# 85 % of the 256 GB node.
+# 85 % of the node (NYCOPT_NODE_MEMORY_GB, exported by the cluster profile;
+# the default is Anvil's 256 GB).
 RANK_RSS_INTERCEPT_MB = 600.0
 RANK_RSS_MB_PER_SCENARIO_YEAR = 0.49
 NODE_MEMORY_GB = _parse_float_env("NYCOPT_NODE_MEMORY_GB", 256.0)

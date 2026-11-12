@@ -1,33 +1,30 @@
 """
-make_etest_subset.py - Stage E_test as the chunk PREFIX of a larger generated design (metadata only).
+make_etest_subset.py - Stage the chunk PREFIX of a generated E_test design (metadata only).
 
-E_test is the registry object of ``src.etest``: N_theta = 500 LHS SOWs x R = 25 x 50 yr in 25
-chunks of 500 realizations (``etest_kn_50yr_n12500``). When the design generated on disk is
-larger (the campaign E_test is the leading 25 chunks of the 1,000-SOW design generated
-2026-08-19, ``etest_kn_50yr_n25000``), this tool cuts E_test from it without regenerating,
-copying or re-prepping anything. The E_test directory holds metadata only (``_meta.json``,
+NOT part of the campaign path: the campaign E_test (``etest_kn_50yr_n12500``, N_theta = 500 LHS
+SOWs x R = 25 x 50 yr in 25 chunks of 500 realizations) is generated directly at the registry
+size of ``src.etest`` and needs no cut. This tool serves fixtures and checks
+(``workflow/supplemental/checks/etest_subset_reeval_check.sh``, the staging tests): it stages a
+smaller test ensemble as the leading chunks of a larger generated design without regenerating,
+copying or re-prepping anything. The subset directory holds metadata only (``_meta.json``,
 ``chunk_index.json``, the sliced ``forcing_profiles.npz`` / ``hazard_image.npz`` and
 ``demand_utilization_nominal.csv``) whose chunk entries point at the parent's already-staged
 chunk directories (step-04 presim and the scaled NYC demand series included). Every
 downstream reader (the chunked re-eval, the hazard-image pass, the diagnostics and the
-figures) resolves the E_test slug alone; the parent is never read again. A design generated
-at the registry size needs no cut.
+figures) resolves the subset slug alone. The E_test of 2026-08 to 2026-11 was staged this way
+(the leading 25 chunks of a 1,000-SOW design); that staging is superseded by the direct build.
 
 PREFIX-ONLY, by construction: unit rows are keyed by GLOBAL SOW id (``global_realization_id //
 R``) while the reduced spec's index space is ``range(K * chunk_size)``, so the selected chunks
 must be the leading chunks. The LHS theta rows are randomly ordered (scipy ``LatinHypercube``
 permutes strata independently per axis), so a prefix is an unbiased, well-spread subsample. R
 is untouched, so every per-SOW objective value is computed in the final metric currency. The
-staged E_test passes ``assert_staged_etest_contract`` and records ``subset_of`` in its
+staged subset passes ``assert_staged_etest_contract`` and records ``subset_of`` in its
 ``_meta.json``.
 
-Usage (login node is fine; pure metadata I/O). The defaults are the registry's chunk count
-and slug; ``--n-chunks`` / ``--out-slug`` exist for fixtures and checks only:
-    python3 -m scripts.supplemental.make_etest_subset --pool etest_kn_50yr_n25000
-
-Then every re-evaluation step (10, 11, 12 and the supplemental re-evaluation and
-scenario-discovery wrappers) takes:
-    NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500
+Usage (login node is fine; pure metadata I/O):
+    python3 -m scripts.supplemental.make_etest_subset --pool <parent slug> \
+        --n-chunks K --out-slug <subset slug>
 """
 
 from __future__ import annotations
@@ -160,7 +157,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Stage E_test as a metadata-only chunk prefix of a larger generated design.")
     parser.add_argument("--pool", required=True,
-                        help="Staged chunked parent slug, e.g. etest_kn_50yr_n25000.")
+                        help="Staged chunked parent slug (a generated E_test design).")
     parser.add_argument("--variant", default=None,
                         help="E_test variant whose registry size and slug are the defaults "
                              "(default: src.etest.E_TEST_VARIANT).")

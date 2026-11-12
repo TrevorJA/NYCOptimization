@@ -29,6 +29,6 @@ nycopt_source_env_file optional
 nycopt_pin_threads
 
 NTASKS="${SLURM_NTASKS:-1}"
-echo "[pf_bitcheck] preset=${NYCOPT_BITCHECK_PRESET:-etest_kn_50yr_n25000__chunk000} ranks=${NTASKS} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "[pf_bitcheck] preset=${NYCOPT_BITCHECK_PRESET:-etest_kn_50yr_n12500__chunk000} ranks=${NTASKS} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 mpirun -np "${NTASKS}" python3 -u scripts/supplemental/predicted_inflow_bitcheck.py
 echo "[pf_bitcheck] done: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -44,6 +44,8 @@
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# shellcheck disable=SC1091
+source workflow/cluster.sh
 
 usage() {
     sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -86,6 +88,14 @@ esac
 
 NODES=12
 NTASKS_PER_NODE=128
+if [[ "${NYCOPT_CLUSTER}" != "anvil" ]]; then
+    {
+        echo "ERROR: the \`production\` MOEA config (1,533 ranks on ${NODES} x ${NTASKS_PER_NODE}) is sized for Anvil;"
+        echo "  this machine is '${NYCOPT_CLUSTER}'. Submit a search here with an env file whose MOEA config"
+        echo "  fits it (Hopper: workflow/envs/ffmp_obj8_historic_hopper_2x96.env; its header gives the sbatch line)."
+    } >&2
+    exit 2
+fi
 
 [[ -f "${ENV_FILE}" ]] || { echo "ERROR: env file not found: ${ENV_FILE}" >&2; exit 2; }
 [[ -d logs ]] || mkdir -p logs   # the #SBATCH --output path in 07 requires it

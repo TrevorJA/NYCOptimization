@@ -24,6 +24,8 @@
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# shellcheck disable=SC1091
+source workflow/cluster.sh
 
 usage() {
     sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'

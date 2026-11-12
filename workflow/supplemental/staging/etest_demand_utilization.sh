@@ -10,8 +10,8 @@
 #      writes it into the staged E_test's forcing_profiles.npz, every chunk's
 #      _meta.json and demand_utilization_nominal.csv. Idempotent: a slug that
 #      already carries the keys is refused unless NYCOPT_FORCE=1. The slug is
-#      the registry's E_test, or NYCOPT_ETEST_SLUG=<parent> when the column is
-#      appended to the larger design E_test is cut from.
+#      the registry's E_test, or NYCOPT_ETEST_SLUG=<slug> for another generated
+#      design.
 #
 # Runs after staging/etest_merge.sh (or on an E_test staged before the axis existed)
 # and before staging/etest_prep_chunks.sh / staging/etest_stage_nyc_demand.sh, which read

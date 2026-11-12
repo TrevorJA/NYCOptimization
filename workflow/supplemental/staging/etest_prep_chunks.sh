@@ -13,10 +13,9 @@
 # chunk's realizations). This is the one-time full-model presim pass over
 # E_test (~70 SU total across the array; methods §5.4).
 #
-# Chunk dirs are named after the GENERATED design ({slug}__chunkJJJ). The default
-# slug is the registry's E_test; when E_test is cut from a larger parent (the
-# campaign: etest_kn_50yr_n25000, whose chunks 0-24 are E_test) pass
-# NYCOPT_ETEST_SLUG=<parent>. One array task per E_test chunk (25).
+# Chunk dirs are named after the generated design ({slug}__chunkJJJ); the slug
+# is the registry's E_test (etest_kn_50yr_n12500), or NYCOPT_ETEST_SLUG=<slug>
+# for another generated design. One array task per E_test chunk (25).
 #
 # Submit (after the E_test merge):
 #   sbatch --export=ALL,NYCOPT_ENV_FILE=workflow/envs/ffmp_obj8_historic_production.env \

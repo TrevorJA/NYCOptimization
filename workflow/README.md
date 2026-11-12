@@ -19,7 +19,8 @@ A run's identity — **scenario design** (`NYCOPT_SCENARIO_DESIGN`,
 `sbatch --export=ALL,NYCOPT_ENV_FILE=...`. Scripts pass only identifiers
 (`FORMULATION`, `SEED`, `DRAW`); every value comes from the env file + config
 registries, and `_common.sh` reads the resolved identity back from `config.py`
-so shell and Python agree on a single source of truth. Steps
+so shell and Python agree on a single source of truth. Machine-specific
+settings are not identity and come from the cluster profile (below). Steps
 `07`/`08`/`10`/`11` (and the supplemental re-evaluation and scenario-discovery
 wrappers) require the env file explicitly; the others fall back to `config.py`
 defaults.
@@ -62,9 +63,11 @@ order after the seed-1 extraction)→`10`→`11`→`12`/`13`/`14`. Chain with
 `sbatch --dependency=afterok:<jobid>`; the submit helpers below do so for the
 staging chains, and the root README walks the sequence with the submit lines.
 
-E_test (`05`, or sharded `staging/etest_shards.sh` → `staging/etest_merge.sh`)
-is completed by the `staging/etest_*` chain (`submit_etest_staging.sh`; the
-root README lists the steps). Every re-evaluation step then takes
+E_test is generated directly at the registry size (500 SOWs, 25 chunks) and
+staged by one chain, `submit_etest_staging.sh all` (sharded generation, merge,
+utilization column, per-chunk inputs, realized utilization, hazard image; the
+root README lists the steps; `05` is the serial generation alternative). Every
+re-evaluation step then takes
 `NYCOPT_REEVAL_ENSEMBLE_PRESET=etest_kn_50yr_n12500`, and the incumbent cube
 must exist for the same tag as the policy-set runs: step `10` with
 `NYCOPT_CHUNK_POLICIES=baseline` writes it once, for every design, to
@@ -145,6 +148,42 @@ and every job records its full identity (including the draw) in
 `NYCOPT_OVERWRITE=1` to deliberately redo one. A crashed run leaves no `.set`
 file and may simply be resubmitted.
 
+## Cluster profiles (Anvil, Hopper)
+
+Everything machine-specific lives in one profile per cluster,
+`clusters/anvil.sh` and `clusters/hopper.sh`: partition names, allocation
+account, MPI ranks per node, node memory, wall cap, the Python environment and
+the OpenMPI transport flags. `cluster.sh` detects the cluster from Slurm's
+cluster name and exports `NYCOPT_CLUSTER` plus the profile; `_common.sh`
+sources it in every job and the submit helpers source it on the login node.
+The cluster is not part of a run's identity, so no env file names it and the
+same env file runs on either machine.
+
+- **Anvil**: nothing to do. The `#SBATCH` headers are written for it.
+- **Hopper**: run `source workflow/cluster.sh` once in the login shell, so the
+  documented `sbatch` lines work unchanged. It exports `SBATCH_PARTITION=normal`
+  (an sbatch input variable, which overrides the headers) and wraps `sbatch`
+  in a shell function that prepends `NYCOPT_SBATCH_ARGS`, announcing it on
+  stderr. Hopper has two node classes with different core counts and a job
+  targets one: `epyc` (96 cores, the default) or `xeon` (40 cores), chosen
+  with `NYCOPT_NODE_CLASS=xeon source workflow/cluster.sh`; the prepended
+  argument is the `--exclude` of the other class. MPI steps whose header
+  geometry exceeds the node (`--ntasks-per-node=128`) need
+  `--nodes/--ntasks-per-node` on the sbatch line or go through a submit
+  helper, which takes them from the profile. Both last for the shell session
+  and apply to every sbatch typed in it (`command sbatch` bypasses the wrapper).
+- **Searches** are sized by the MOEA config, so each cluster has its own:
+  `production` (1,533 ranks) is Anvil's and `submit_production_search.sh`
+  refuses to run elsewhere; `hopper_2x96` (189 ranks, env file
+  `envs/ffmp_obj8_historic_hopper_2x96.env`) is the Hopper-sized historic
+  search and writes under its own slug.
+- **A new cluster** is a new `clusters/<slurm cluster name>.sh` defining the
+  same variables.
+
+A profile value already set in the environment wins (for example
+`NYCOPT_RANKS_PER_NODE=33`). Measured timings and node caveats:
+`ANVIL_NOTES.md`, `HOPPER_NOTES.md`.
+
 ## Geometry contract and scaling on Anvil
 
 The MPI rank count has a single source per step; the `#SBATCH` lines are only
@@ -173,8 +212,7 @@ islands/workers) in `src/moea_config.py`, point the env file's
 `--nodes=ceil(total_ntasks_mpi / 128) --ntasks-per-node=128` (128/node is the
 measured Anvil `wholenode` packing — the node-packing sweep bounds the
 eval-time penalty at ~17–21% and it is priced into the cost surface;
-centralized as `NYCOPT_RANKS_PER_NODE` in `_common.sh`, override for other
-machines — 33/node was the Hopper-safe packing). Anvil ceilings: `wholenode`
+`NYCOPT_RANKS_PER_NODE` in the cluster profile). Anvil ceilings: `wholenode`
 allows up to 16 nodes (2,048 cores) and 96 h. The `wide` queue reaches 56
 nodes but only 12 h. Seeds (`--array`) and experiments (env files) scale
 horizontally as fully independent jobs with no cross-job coordination. Shorter
@@ -190,8 +228,10 @@ pilots can pass `sbatch --time=...`.
 - `submit_search_staging.sh <design> [--dry-run] [sbatch args]` — steps 02→04
   (`monte_carlo`) or 03→04 from the built pool (`hazard_filling_stationary`),
   arrays over the K = 2 staged draws, chained with `--dependency`.
-- `submit_etest_staging.sh <demand|hazard|all> [--dry-run] [sbatch args]` — the
-  E_test completion chain under `supplemental/staging/` from the staged parent.
+- `submit_etest_staging.sh <build|hazard|all> [--from STEP] [--after JOBID]
+  [--dry-run] [sbatch args]` — the E_test build chain under
+  `supplemental/staging/`: sharded generation through the realized-utilization
+  merge (`build`), the sub-window hazard image (`hazard`), or both (`all`).
 - A helper for steps 10 + 11 follows once the re-evaluation geometry is settled
 - `submit_reeval_chunks.sh <baseline|design> [--nodes N] [--no-merge | --merge-only]
   [--dry-run] [sbatch args]` — steps 10 + 11 at the measured geometry
@@ -218,11 +258,12 @@ or archived), **optional** (never run), **superseded**.
 
 - **`staging/`** — replication path. `pool_shards.sh` → `pool_merge.sh` →
   `pool_verify.sh` (the P = 10⁶ candidate pool, sharded; done);
-  `etest_shards.sh` → `etest_merge.sh` (E_test, sharded; done);
-  `etest_demand_utilization.sh` → `etest_stage_nyc_demand.sh` → `etest_cut.sh` →
+  `etest_shards.sh` → `etest_merge.sh` → `etest_demand_utilization.sh` →
+  `etest_prep_chunks.sh` → `etest_realized_utilization.sh` →
   `etest_hazard_image_shards.sh` → `etest_hazard_image_merge.sh` (the E_test
-  completion chain, `submit_etest_staging.sh`; live); `etest_prep_chunks.sh`
-  (per-chunk step-04 staging of a freshly built E_test; done);
+  build chain, `submit_etest_staging.sh`; live); `etest_stage_nyc_demand.sh`
+  (adds the scaled NYC demand series to chunks staged before it was part of
+  the contract; not needed by a fresh build);
   `ensemble_stage_nyc_demand.sh` (adds the NYC demand series to a search
   ensemble staged before it was part of the contract; live);
   `ensemble_hazard_image.sh` (post-hoc hazard image of a staged MC ensemble; live).

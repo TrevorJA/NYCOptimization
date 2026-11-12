@@ -14,11 +14,11 @@ rationale is in ``docs/notes/methods/campaign_design.md``.
 
 The constants live here only, env-overridable. E_test needs no
 ``src.ensembles.PRESETS`` entry: ``_spec_from_staged_dir`` resolves any staged
-slug carrying a ``_meta.json``. A staged E_test may be cut as the chunk prefix
-of a larger generated design (``scripts/supplemental/make_etest_subset.py``,
-metadata only, no data copied; its ``_meta.json`` records ``subset_of``). The
-campaign E_test is the leading 25 chunks of the 1,000-SOW design generated
-2026-08-19 (``etest_kn_50yr_n25000``), which stays on disk only as that parent.
+slug carrying a ``_meta.json``. The campaign E_test is generated directly at
+this size, one shard per chunk (``workflow/submit_etest_staging.sh``).
+``scripts/supplemental/make_etest_subset.py`` can stage the chunk prefix of a
+generated design as metadata only (its ``_meta.json`` records ``subset_of``);
+it serves fixtures and checks and is not part of the campaign path.
 
 E_test carries a fourth deeply uncertain factor beside the three climate
 amplitudes: the NYC entitlement utilization ``u`` (``src.demand_utilization``),
@@ -137,7 +137,7 @@ class ETestVariant:
 
     @property
     def slug(self) -> str:
-        """Staged-ensemble slug, e.g. ``etest_kn_50yr_n25000``."""
+        """Staged-ensemble slug, e.g. ``etest_kn_50yr_n12500``."""
         return f"etest_{self.generator}_{self.realization_years}yr_n{self.n_realizations}"
 
     @property

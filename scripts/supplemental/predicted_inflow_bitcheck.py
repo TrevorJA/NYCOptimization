@@ -19,7 +19,7 @@ workflow/supplemental/checks/predicted_inflow_bitcheck.sh.
 Configuration via env (no CLI value flags):
 
     NYCOPT_BITCHECK_PRESET   staged chunk slug to check
-                             (default etest_kn_50yr_n25000__chunk000)
+                             (default etest_kn_50yr_n12500__chunk000)
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ from src.ensembles import (  # noqa: E402
     staged_ensemble_dir,
 )
 
-_DEFAULT_PRESET = "etest_kn_50yr_n25000__chunk000"
+_DEFAULT_PRESET = "etest_kn_50yr_n12500__chunk000"
 
 
 def _get_mpi_context():
