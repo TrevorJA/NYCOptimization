@@ -11,7 +11,7 @@ Hopper has no allocation or billing, so this file tracks wall time only.
 | Scheduler | Slurm 20.11, cluster name `hopper`, one partition `normal`, no wall-time limit |
 | Accounts | not enforced: an Anvil `--account=ees260021` header is accepted and ignored |
 | Partitions | `shared`, `wholenode` and `debug` do not exist; every Anvil header needs `--partition=normal` |
-| Core accounting | `CR_CORE`: one task occupies one physical core (2 hardware threads), so `--cpus-per-task=8` takes 4 cores |
+| Core accounting | `CR_CORE` with 2 hardware threads per core, and Slurm cpus are threads: `--cpus-per-task=8` takes 4 cores, and MPI ranks at 1 cpu each are packed two per core unless the job is `--exclusive`. Give each rank 2 cpus (`NYCOPT_CPUS_PER_RANK`) |
 | Memory | not a consumable resource; `--mem` is accepted and not enforced |
 | Xeon nodes | c0001–c0022: 2 × Xeon Gold 5218R, 40 cores, 191 GB |
 | EPYC nodes | c0023–c0026: 2 × EPYC 9454, 96 cores, 571 GB |
@@ -74,6 +74,15 @@ chunks; `submit_etest_staging.sh all` on the EPYC nodes, 2026-11-12, jobs
 
 Staged size 117 GB under `outputs/synthetic_ensembles/`. Anvil's generation
 shards took 92 min each for the same 500 realizations.
+
+Baseline re-evaluation on that E_test (one policy, 500 (policy, chunk, block)
+units of 25 realizations x 50 yr; `submit_reeval_chunks.sh baseline --nodes 3`,
+job 1484562, 2026-11-12): 14 min 48 s wall including the in-job merge, no
+failed unit, peak RSS 0.89 GB per rank. The job asked for 1 cpu per rank, so
+its 288 ranks shared 144 physical cores, two per core: unit wall median 489 s
+(min 162 s, max 539 s). At one rank per core (`NYCOPT_CPUS_PER_RANK=2`, now in
+the profile) a unit should take about 160 to 180 s; that is not yet measured
+at full packing.
 
 ## Sizing rules
 
@@ -155,3 +164,8 @@ Sibling repos must match Anvil: Pywr-DRB on `nyc_opt` (`9619a90`), scengen
 - 2026-11-12: E_test chain completed at 16:14 EST, every job COMPLETED (timings
   above). `etest_kn_50yr_n12500` passes the staged contract (LHS, R = 25,
   `forcing_period` 2020_2059, utilization column; 500 of 500 SOWs realized).
+- 2026-11-12: re-evaluation work unit changed to (policy, chunk, block)
+  (`src/chunk_reeval.py`); baseline cube built by job 1484562 on c0023 to c0025
+  (timings above) at `outputs/baseline/reeval/etest_kn_50yr_n12500/` (500 SOWs,
+  8 objectives, no NaN, 25 survivors per SOW). The venv has no `pyarrow`, so
+  unit files and the cube are `csv.gz`.

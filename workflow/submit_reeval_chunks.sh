@@ -195,7 +195,8 @@ if [[ "${TARGET}" == "baseline" ]]; then
         (( RANKS > N_UNITS )) && echo "NOTE: ${RANKS} ranks for ${N_UNITS} units; $(( RANKS - N_UNITS )) rank(s) will have no work."
         echo "--- step 10: ${NODES} x ${RANKS_PER_NODE} ranks, ${WAVES} wave(s) of ~${BLOCK_SECONDS} s, wall ${WALL}"
         run sbatch --job-name=reeval_baseline \
-            --partition="${NYCOPT_PARTITION_MPI}" --nodes="${NODES}" --ntasks-per-node="${RANKS_PER_NODE}" --time="${WALL}" \
+            --partition="${NYCOPT_PARTITION_MPI}" --nodes="${NODES}" --ntasks-per-node="${RANKS_PER_NODE}" \
+            --cpus-per-task="${NYCOPT_CPUS_PER_RANK}" --time="${WALL}" \
             --export="${SIM_EXPORT},NYCOPT_CHUNK_MERGE=job" \
             ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
             workflow/10_simulate_test_chunks.sh
@@ -214,7 +215,8 @@ if [[ "${MODE}" != "merge" ]]; then
     mpi_wall "${RANKS}"
     echo "--- step 10: ${NODES} x ${RANKS_PER_NODE} ranks, ${WAVES} wave(s) of ~${BLOCK_SECONDS} s, wall ${WALL}"
     run sbatch --job-name="reeval_${TAG}" \
-        --partition="${NYCOPT_PARTITION_MPI}" --nodes="${NODES}" --ntasks-per-node="${RANKS_PER_NODE}" --time="${WALL}" \
+        --partition="${NYCOPT_PARTITION_MPI}" --nodes="${NODES}" --ntasks-per-node="${RANKS_PER_NODE}" \
+        --cpus-per-task="${NYCOPT_CPUS_PER_RANK}" --time="${WALL}" \
         --export="${SIM_EXPORT},NYCOPT_CHUNK_MERGE=off" \
         ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
         workflow/10_simulate_test_chunks.sh
