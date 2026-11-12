@@ -145,8 +145,8 @@ See `notes/methods/experimental_design.md`.
 
 E_test is the **only carrier of deep uncertainty** in the study and the **largest
 ensemble by a wide margin**: N_θ = 500 LHS points over the full range of
-the deeply-uncertain factors, the three climate-forcing amplitudes (the CMIP6 harmonic
-hypercube widened by 25 % on every axis, annual-volume multiplier 0.866 to 1.32) and the NYC entitlement utilization u ∈ [0.45, 1.0] (an independent Latin
+the deeply-uncertain factors, the three climate-forcing amplitudes (the harmonic hypercube of the mid-century, 2020 to 2059, CMIP6 projections
+widened by 25 % on every axis, annual-volume multiplier 0.899 to 1.28) and the NYC entitlement utilization u ∈ [0.45, 1.0] (an independent Latin
 hypercube column, applied as a scale on each realization's demand series with the
 800 MGD cap enforced after scaling; `notes/methods/forcing_parameterization.md`,
 "Demand-utilization axis") × R = 25

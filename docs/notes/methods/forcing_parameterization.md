@@ -2,7 +2,7 @@
 
 The climate forcing space is parameterized by an **interpretable low-order harmonic model** of
 the monthly change factor, sampled as a **deeply-uncertain (DMDU) hypercube** whose bounds are
-taken from the CMIP6 ensemble. It enters the study only through the held-out re-evaluation
+taken from the mid-century (2020 to 2059) projections of the CMIP6 ensemble. It enters the study only through the held-out re-evaluation
 ensemble E_test (every campaign search design is stationary; manuscript SI Text S6); E_test also
 carries one non-climate factor, the NYC entitlement utilization `u` ("Demand-utilization axis"
 below). **Evidence /
@@ -27,6 +27,14 @@ arg     = (c/a)²·(e^{σ²} − 1) + 1
 The generator is fit once; per forcing profile the adjusted `(Ȳ_new, σ_new)` are set and a realization
 is generated (`generate_input_spanning_master`).
 
+**CMIP6 anchors.** The forcing space is anchored to one projection period,
+`config.ENSEMBLE_FORCING_PERIOD = "2020_2059"`: the 27 mid-century runs of the CMIP6 multimodel
+streamflow ensemble (2 hydrologic models × 7 GCMs × 2 SSPs, less the missing PRMS / BCC-CSM2-MR
+SSP3-7.0 run), each a monthly change factor against the same run's own 1980 to 2019 baseline. The
+harmonic fits, the sampling box, the canonical phases and every figure that draws the CMIP6 runs
+read this one set (`scengen.forcing_space.load_cmip6_envelope(csv, period=...)`), and a staged
+forced ensemble records the period as `forcing_period` in its `_meta.json`.
+
 ## Harmonic parameterization
 
 Each monthly change factor is the exponential of a low-order harmonic (Fourier) series in the
@@ -42,47 +50,53 @@ ln v(t) = m_v +  r_v1·cos(ω(t − τ₁ᵥ*))   +  r_v2·cos(2ω(t − τ₂�
                                                                       #  to the CV envelope)
 ```
 
-Sampled (magnitude) parameters — CMIP6-fitted ranges, [p5, p50, p95] across the 54 future runs:
+Sampled (magnitude) parameters — CMIP6-fitted ranges, [p5, p50, p95] across the 27 mid-century runs:
 
 | param | meaning | range | role |
 |---|---|---|---|
-| `m` | log annual-mean change; `eᵐ` = volume multiplier | `eᵐ` [0.96, 1.08, 1.19] | total water-year volume |
-| `r₁` | annual-harmonic amplitude (log) | [0.11, 0.20, 0.30] | **seasonal amplitude = winter-wettening / summer-drying** |
-| `r₂` | semiannual-harmonic amplitude (log) | [0.04, 0.14, 0.26] | **snowmelt-shoulder / bimodal shape** |
+| `m` | log annual-mean change; `eᵐ` = volume multiplier | `eᵐ` [0.96, 1.07, 1.17] | total water-year volume |
+| `r₁` | annual-harmonic amplitude (log) | [0.09, 0.16, 0.26] | **seasonal amplitude = winter-wettening / summer-drying** |
+| `r₂` | semiannual-harmonic amplitude (log) | [0.04, 0.10, 0.21] | **snowmelt-shoulder / bimodal shape** |
 | `m_v, r_v` | CV mean / seasonal amplitude | from std envelope | drought/flood-tail variability |
 
-Phases are **not** sampled: `τ₁` is nearly constant across CMIP6 (≈ January, 0.58-month std) and `τ₂`
-is ill-determined (4.8-month std — its phase is meaningless when its amplitude is small), so sampling
-the phases independently *scrambles* the seasonal shape (only ~39% of independently-sampled profiles
-peak in winter, vs ~96% of CMIP6). Fixing them at the canonical shape makes **every** profile peak in
-the correct month with the correct rise/shoulder asymmetry, scaled (100% peak in winter; ~½ the
-median-profile shape error — see "Improving shape fidelity" below). Net: **3 magnitude axes** (`m, r₁,
+Phases are **not** sampled: `τ₁` is nearly constant across CMIP6 (≈ January, 0.67-month std) and `τ₂`
+is ill-determined (4.5-month std — its phase is meaningless when its amplitude is small), so sampling
+the phases independently *scrambles* the seasonal shape (only 62% of independently-sampled profiles
+peak in winter, vs 93% of the CMIP6 runs). Fixing them at the canonical shape makes **every** profile
+peak in the correct month with the correct rise/shoulder asymmetry, scaled (100% peak in winter; under
+60% of the median-profile shape error — see "Why phases are fixed" below). Net: **3 magnitude axes** (`m, r₁,
 r₂`) + 3 optional CV axes (`m_v, r_{v,1}, r_{v,2}`, the same order-2 machinery on the CV envelope;
 off for the campaign — see "Variance axis" below) — *fewer* parameters than the all-free form, with
 strictly better shape fidelity.
 
 **Why this parameterization.** It is interpretable (every axis is a named hydrologic quantity),
 low-dimensional, and a faithful description of the CMIP6 change: a 2-harmonic fit explains a **median
-per-profile shape-R² of 0.85** (p5–p95 = 0.63–0.96; `SI_harmonic_fit.png`,
-`SI_harmonic_best_worst_fits.png`), and the change is ~90% seasonal *shape* / ~10% annual-mean level —
-so a shape-capturing parameterization is essential. The forward map is closed-form (parameters → `a(t)`
+per-profile shape-R² of 0.81** (p5–p95 = 0.41–0.94; `SI_harmonic_fit.png`,
+`SI_harmonic_best_worst_fits.png`), and 77% of the summed squared log change across the runs is
+seasonal *shape* against 23% annual-mean level — so a shape-capturing parameterization is essential. The forward map is closed-form (parameters → `a(t)`
 → the climate transform above), trivial to communicate, and easy to reason about for extrapolation.
 
-The fitted CMIP6 parameters reveal a legible climate gradient (`SI_harmonic_param_space.png`):
-warming (end-century, higher SSP) raises the seasonal amplitude `r₁` markedly (median 0.15 → 0.27) with
-only modest volume change — i.e. *warming amplifies seasonality more than it shifts total volume* — and
-the canonical seasonal-change phase peaks in **January**.
+The fitted CMIP6 parameters (`SI_harmonic_param_space.png`) describe a change of seasonality more
+than of total volume: the median run raises annual volume by 7% (`eᵐ` = 1.07) while its annual
+harmonic lifts the winter peak 17% above the annual-mean level (`r₁` = 0.16), and the canonical
+seasonal-change phase peaks in **January**. The two SSPs are not separated at mid-century (median
+`r₁` 0.17 under SSP2-4.5 and 0.15 under SSP3-7.0).
 
 ### Why phases are fixed
 
 The amplitudes `{m, r₁, r₂}` are sampled over the CMIP6 box with phases fixed at the canonical shape
-(default `fix_phase=True`); the measured comparison against the all-free 5-parameter form
-(`SI_harmonic_monthly_flow_comparison.png`):
+(default `fix_phase=True`); the measured comparison against the all-free 5-parameter form, on 1,000
+Latin hypercube draws per sampler over the full-range box (`bound_pct = (0, 100)`, `margin = 0`):
 
-| sampler | params | over-extension | 5–95 band match | median shape RMSE | % peaking in winter |
-|---|---|---|---|---|---|
-| independent phases (5-param) | 5 | 0.28 | 0.295 | 0.194 | 0.39 |
-| **fixed-phase amplitudes (3-param)** | **3** | **0.13** | **0.170** | **0.079** | **1.00** |
+| sampler | params | over-extension | median shape RMSE | share peaking in winter |
+|---|---|---|---|---|
+| independent phases (5-param) | 5 | 0.37 | 0.137 | 0.62 |
+| **fixed-phase amplitudes (3-param)** | **3** | **0.11** | **0.078** | **1.00** |
+
+Over-extension is the excess of the sampled monthly min–max range beyond the CMIP6 min–max, averaged
+over months (change-factor units; the statistic `figures_forcing_parameterization.py` prints for the
+as-built sample). Shape RMSE is the root-mean-square difference between a draw's mean-removed log
+change and the CMIP6-mean mean-removed log change. Winter is a December to February peak month.
 
 Fixing the phases improves every metric *and* uses fewer parameters. It also curbs the over-dispersion
 that independent phase sampling causes, so the box needs no inward trim (`margin = 0` = the CMIP6
@@ -104,26 +118,26 @@ plausible range. This matches the exploratory intent (and the sampling design of
 so a single outlier GCM run does not drive the box; with the phases fixed the reconstructed monthly
 envelope does not over-disperse, so this already keeps the LHS monthly envelope tightly bounded to the
 CMIP6 monthly range (`SI_harmonic_monthly_flow_comparison.png`). An optional `margin` widens (`>0`,
-extrapolation) or tightens (`<0`) the box. **E_test samples the FULL empirical range `(0, 100)`
-widened by `margin = +0.25`** (`src/etest.py::E_TEST_BOUND_PCT` / `E_TEST_MARGIN`) **on every
-axis, with no per-axis override**: the annual-volume axis spans e^m = 0.866 (−13.5 %, the widened
-CMIP6 minimum) to 1.32, and the driest CMIP6 run is 0.929. The staged contract
-(`assert_staged_etest_contract`) refuses a staging generated with an `axis_bounds` override.
+extrapolation) or tightens (`<0`) the box. **E_test samples the FULL empirical range `(0, 100)` of
+the mid-century runs widened by `margin = +0.25`** (`src/etest.py::E_TEST_BOUND_PCT` /
+`E_TEST_MARGIN`) **on every axis, with no per-axis override**: the annual-volume axis spans e^m = 0.899 (−10.1 %, the widened
+CMIP6 minimum) to 1.28, the seasonal amplitude `r₁` 0 to 0.33 and the semiannual amplitude `r₂` 0 to
+0.28; the driest mid-century run is 0.953 and the wettest 1.21. The staged contract
+(`assert_staged_etest_contract`) refuses a staging generated with an `axis_bounds` override or whose
+metadata does not record the box's `forcing_period`.
 Measured on paired 10-yr windows at fixed volume levels (`scripts/supplemental/dry_envelope_run.py`,
-`dryenv_levels.csv`; SI Figure S18): at the driest CMIP6 run 1.7 % of windows exceed the stationary
-generator's 99th-percentile controlling-event drought magnitude (1 % by construction), and at the
-0.866 bound 10 % do (22 % on the magnitude summed over all events in the window), so the dry edge of
-the box reaches beyond the stationary drought envelope. Deeper levels are reported by the same
-diagnostic as a sensitivity of the envelope: at 0.807, 17 % of windows exceed that percentile (48 %
-summed) with the median decade at the stationary 90th percentile. An extension of the lower bound to
-0.80 (the dry limit of the inflow multiplier of Herman et al. 2014 and Trindade et al. 2017) was
-adopted on 2026-09-30 and reverted on 2026-11-04: the campaign reuses the E_test staged on 2026-08-19
-over the 0.866 box, and a drier envelope stays available as a documented sensitivity rather than a
-regeneration. The non-campaign DU search designs (`campaign=False` in `src/scenario_designs.py`)
+`dryenv_levels.csv`; SI Figure S18): at the driest CMIP6 run [DRYENV_CMIP6_MIN_Q99] % of windows
+exceed the stationary generator's 99th-percentile controlling-event drought magnitude (1 % by
+construction), and at the 0.899 bound [DRYENV_BOUND_Q99] % do ([DRYENV_BOUND_Q99_SUMMED] % on the
+magnitude summed over all events in the window). Deeper levels are reported by the same diagnostic as
+a sensitivity of the envelope (wider margins on the dry side: e^m = 0.848, 0.799 and 0.754; 0.80 is
+the dry limit of the inflow multiplier of Herman et al. 2014 and Trindade et al. 2017): at 0.799,
+[DRYENV_080_Q99] % of windows exceed that percentile ([DRYENV_080_Q99_SUMMED] % summed). The
+non-campaign DU search designs (`campaign=False` in `src/scenario_designs.py`)
 sample the default `(5, 95)` box with `margin = 0`, so the test envelope strictly contains that box.
 
 **Phase / spring-runoff timing.** Phases are fixed at the canonical CMIP6 shape (above). `τ₁` varies
-only ~0.6 month across CMIP6, and the DRB (~39–42°N) lies south of the ~44°N snowmelt-timing band
+only ~0.7 month across CMIP6, and the DRB (~39–42°N) lies south of the ~44°N snowmelt-timing band
 (Hodgkins & Dudley 2006), so timing is held at the canonical value rather than treated as a
 load-bearing free axis. A deliberate earlier-melt ±1-month perturbation (Stewart et al. 2005; Gnann et
 al. 2020; 1 month = 30°) — a *single shared* phase-shift on both harmonics — belongs in a separately
@@ -241,7 +255,7 @@ the box) and `figS15_regret_vs_utilization` (`src/figures/registry.py`).
 - **Hazard-coverage check.** Because the six selection axes are nonlinear tail functionals, the
   seasonal-mean harmonic slightly smooths the late-summer high-flow tail; coverage of the flood and
   drought corners is checked in **hazard space** (hull volume, tail percentiles) rather than on
-  forcing-space fit alone. A 3rd harmonic (shape-R² 0.93) or a bounded per-month residual is the
+  forcing-space fit alone. A 3rd harmonic (shape-R² 0.89) or a bounded per-month residual is the
   available extension if a corner were under-covered.
 - **Scope.** The forcing perturbs only the monthly mean/CV of the Kirsch marginals; it does not perturb
   interannual **persistence** (which dominates multi-year drought; no persistence DU axis —

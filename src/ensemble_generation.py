@@ -420,7 +420,7 @@ def _sample_forcing(
     if config.population == "stationary":
         return None, None, None, []
 
-    mean_env = fs.load_cmip6_envelope(config.mean_frac_csv)
+    mean_env = fs.load_cmip6_envelope(config.mean_frac_csv, period=config.forcing_period)
     a_wy, a_params, a_names = fs.sample_harmonic_forcing(
         config.n_forcing_profiles, mean_env,
         seed=config.root_seed, bound_pct=config.bound_pct, margin=config.margin,
@@ -432,7 +432,8 @@ def _sample_forcing(
     if config.variance_axis:
         if config.mean_abs_csv is None or config.std_csv is None:
             raise ValueError("variance_axis=True requires mean_abs_csv and std_csv on the config")
-        cv_env = fs.derive_variance_envelope(config.mean_abs_csv, config.std_csv)
+        cv_env = fs.derive_variance_envelope(
+            config.mean_abs_csv, config.std_csv, period=config.forcing_period)
         # The CV axis is an independent, namespaced seed stream (scengen.seeds).
         v_wy, v_params, v_names = fs.sample_harmonic_forcing(
             config.n_forcing_profiles, cv_env,
@@ -924,8 +925,11 @@ def _validate_config(config) -> None:
                 f"and n_forcing_profiles=N (got realizations_per_profile="
                 f"{config.realizations_per_profile})."
             )
-    elif config.mean_frac_csv is None:
-        raise ValueError("population='du_forced' requires ForcingEnsembleConfig.mean_frac_csv")
+    elif config.mean_frac_csv is None or not config.forcing_period:
+        raise ValueError(
+            "population='du_forced' requires ForcingEnsembleConfig.mean_frac_csv and "
+            "forcing_period (the CMIP6 projection period the box is read from)"
+        )
     if config.theta_sampler not in ("iid", "lhs"):
         raise ValueError(
             f"unknown theta_sampler {config.theta_sampler!r}; expected 'iid' or 'lhs'"
@@ -1319,6 +1323,7 @@ def _finalize_pool_artifacts(
         ),
         "forcing_param": "harmonic" if forced else None,
         "mean_frac_csv": str(config.mean_frac_csv) if forced else None,
+        "forcing_period": config.forcing_period if forced else None,
         "forcing_hash": forcing_hash,
         "sites": sites,
         "source_kind": f"synhydro_{generator}",

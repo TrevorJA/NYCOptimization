@@ -1,7 +1,7 @@
 """Supporting Information figures for the forcing-space parameterization (Text S6).
 
-Fits the interpretable 2-harmonic model to the 54 CMIP6 monthly change-factor
-profiles and documents the choices the main-manuscript figure only summarises:
+Fits the interpretable 2-harmonic model to the 27 mid-century CMIP6 monthly
+change-factor profiles (``config.ENSEMBLE_FORCING_PERIOD``) and documents the choices the main-manuscript figure only summarises:
 fit quality across the whole ensemble, the best and worst individual fits, the
 full parameter space including the phases that are NOT sampled, and the two
 sampling boxes side by side.
@@ -54,21 +54,17 @@ W = fspace.OMEGA
 #: SSP colouring is kept HERE (and only here): the main figure collapses CMIP6
 #: to one colour, so the scenario breakdown is an SI-only refinement.
 SSP_C = {"245": "#2c7fb8", "370": "#d95f0e"}
-PER_M = fspace.PERIOD_MARKERS
 
 OUT = config.REFERENCE_DIR / "forcing_parameterization"
 
 
-def _cmip_scatter(ax, df, x, y):
-    """Scatter CMIP6 runs coloured by SSP, marker by projection period."""
-    x, y = np.asarray(x), np.asarray(y)
+def _cmip_scatter(ax, df, x, y, *z, size=44, linewidth=0.4, zorder=3):
+    """Scatter CMIP6 runs coloured by SSP (``z`` adds the third axis of a 3-D panel)."""
+    coords = [np.asarray(v) for v in (x, y, *z)]
     for ssp, colour in SSP_C.items():
-        for period, marker in PER_M.items():
-            sel = ((df.ssp == ssp) & (df.period == period)).to_numpy()
-            if not sel.any():
-                continue
-            ax.scatter(x[sel], y[sel], c=colour, marker=marker, s=44,
-                       edgecolor="white", linewidth=0.4, zorder=3)
+        sel = (df.ssp == ssp).to_numpy()
+        ax.scatter(*[c[sel] for c in coords], c=colour, marker="o", s=size,
+                   edgecolor="white", linewidth=linewidth, zorder=zorder)
 
 
 def _box(ax, xlo, xhi, ylo, yhi, *, colour="k", ls="--", label=None):
@@ -81,12 +77,11 @@ def _box(ax, xlo, xhi, ylo, yhi, *, colour="k", ls="--", label=None):
 # ---------------------------------------------------------------------------
 
 def fig_fit(fits):
-    """Decomposition on a representative run, all fits, and the fit-quality histogram."""
+    """Decomposition on the best-fitting run, all fits, and the fit-quality histogram."""
     A, df, recon = fits["A"], fits["df"], fits["recon"]
     fig = plt.figure(figsize=(12, 4.2), constrained_layout=True)
 
-    rep = int(np.argmin(np.abs(df.r1_annual_amp - df.r1_annual_amp.median())
-                        + np.abs(df.m_log - df.m_log.median())))
+    rep = fspace.best_fit_run(df)
     ax = fig.add_subplot(1, 3, 1)
     level = np.exp(np.full(12, df.m_log[rep]))
     plus_annual = np.exp(df.m_log[rep]
@@ -137,11 +132,7 @@ def fig_param_space(fits):
            title="(a) Seasonality vs volume")
 
     ax = fig.add_subplot(2, 2, 2, projection="polar")
-    for ssp, colour in SSP_C.items():
-        for period, marker in PER_M.items():
-            sel = ((df.ssp == ssp) & (df.period == period)).to_numpy()
-            ax.scatter(df.phase1_rad[sel], df.r1_annual_amp[sel], c=colour,
-                       marker=marker, s=44, edgecolor="white", linewidth=0.4)
+    _cmip_scatter(ax, df, df.phase1_rad, df.r1_annual_amp)
     ax.set_theta_zero_location("N"); ax.set_theta_direction(-1)
     ax.set_xticks(np.radians(np.arange(0, 360, 30))); ax.set_xticklabels(WY)
     ax.set_title("(b) Annual harmonic: peak month (angle)\n& amplitude $r_1$ (radius)",
@@ -153,26 +144,19 @@ def fig_param_space(fits):
            title="(c) Second- vs first-harmonic")
 
     ax = fig.add_subplot(2, 2, 4, projection="3d")
-    for ssp, colour in SSP_C.items():
-        for period, marker in PER_M.items():
-            sel = ((df.ssp == ssp) & (df.period == period)).to_numpy()
-            ax.scatter(df.vol_mult_expm[sel], df.r1_annual_amp[sel],
-                       df.r2_semiann_amp[sel], c=colour, marker=marker, s=40,
-                       edgecolor="white", linewidth=0.3)
+    _cmip_scatter(ax, df, df.vol_mult_expm, df.r1_annual_amp, df.r2_semiann_amp,
+                  size=40, linewidth=0.3)
     ax.set_xlabel("$e^{m}$"); ax.set_ylabel("$r_1$"); ax.set_zlabel("$r_2$")
     ax.set_title("(d) Joint parameter cloud"); ax.view_init(elev=22, azim=-60)
 
     leg = [Line2D([0], [0], marker="o", color="w", markerfacecolor=SSP_C["245"],
                   markersize=9, label="SSP2-4.5"),
            Line2D([0], [0], marker="o", color="w", markerfacecolor=SSP_C["370"],
-                  markersize=9, label="SSP3-7.0"),
-           Line2D([0], [0], marker="o", color="w", markerfacecolor="0.4",
-                  markersize=9, label="2020-2059"),
-           Line2D([0], [0], marker="^", color="w", markerfacecolor="0.4",
-                  markersize=9, label="2060-2099")]
-    fig.legend(handles=leg, loc="lower center", ncol=4, fontsize=9,
+                  markersize=9, label="SSP3-7.0")]
+    fig.legend(handles=leg, loc="lower center", ncol=2, fontsize=9,
                bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle("CMIP6 futures in interpretable harmonic-parameter space", fontsize=12)
+    fig.suptitle(f"{fspace.cmip6_period_label(fits['period'])} runs in interpretable "
+                 "harmonic-parameter space", fontsize=12)
     style.save_figure(fig, OUT / "SI_harmonic_param_space"); plt.close(fig)
 
 
@@ -232,8 +216,6 @@ def fig_lhs_sampling(fits, sample):
                   label="CMIP6 SSP2-4.5"),
            Line2D([0], [0], marker="o", color="w", mfc=SSP_C["370"], ms=9,
                   label="CMIP6 SSP3-7.0"),
-           Line2D([0], [0], marker="^", color="w", mfc="0.4", ms=9,
-                  label="end-century"),
            Line2D([0], [0], ls="--", color="k",
                   label="E$_{test}$ box (full CMIP6 range +25%)"),
            Line2D([0], [0], ls=":", color="0.35",
@@ -260,8 +242,7 @@ def fig_best_worst(fits):
             c = cmap(j)
             ax.plot(T, A[k], "o", color=c, ms=5, zorder=3)
             ax.plot(T, recon[k], "-", color=c, lw=1.8,
-                    label=f"{df.gcm[k]} ssp{df.ssp[k]} {df.period[k].split('_')[1]} "
-                          f"($R^2$={df.shape_R2[k]:.2f})")
+                    label=f"{df.gcm[k]} ssp{df.ssp[k]} ($R^2$={df.shape_R2[k]:.2f})")
         ax.axhline(1, color="k", lw=0.6, ls=":")
         ax.set_xticks(range(12)); ax.set_xticklabels(WY)
         ax.set(xlabel="month (water year)", title=title)

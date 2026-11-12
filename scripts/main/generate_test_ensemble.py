@@ -7,7 +7,8 @@ and the campaign E_test is generated at exactly that size.
 
 Construction, per variant in ``src.etest.E_TEST_VARIANTS``:
 
-    LHS over the FULL (widened) range of the harmonic DU factors  ->  N_theta_test SOWs
+    LHS over the FULL (widened) range of the harmonic DU factors, read from the mid-century
+      CMIP6 runs (config.ENSEMBLE_FORCING_PERIOD)                 ->  N_theta_test SOWs
       x R_test realizations per SOW (natural variability WITHIN each state of the world)
       x L_test years                                              ->  N_test realizations, chunked
 
@@ -52,6 +53,7 @@ import os
 from config import (
     ENSEMBLE_FORCING_MEAN_ABS_CSV,
     ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+    ENSEMBLE_FORCING_PERIOD,
     ENSEMBLE_FORCING_STD_CSV,
     ENSEMBLE_FORCING_VARIANCE_AXIS,
     ENSEMBLE_MASTER_HAZARD_BLOCK,
@@ -121,6 +123,7 @@ def etest_config(variant: ETestVariant, *, extra: dict | None = None):
         realization_years=variant.realization_years,
         output_dir=STAGED_ENSEMBLE_DIR / variant.slug,
         mean_frac_csv=ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+        forcing_period=ENSEMBLE_FORCING_PERIOD,
         variance_axis=ENSEMBLE_FORCING_VARIANCE_AXIS,
         mean_abs_csv=ENSEMBLE_FORCING_MEAN_ABS_CSV if ENSEMBLE_FORCING_VARIANCE_AXIS else None,
         std_csv=ENSEMBLE_FORCING_STD_CSV if ENSEMBLE_FORCING_VARIANCE_AXIS else None,

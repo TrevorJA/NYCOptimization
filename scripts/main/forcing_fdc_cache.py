@@ -13,7 +13,8 @@ cheap and computed at plot time
               keeps the subset's by global realization id
               (``src.plotting.forcing_space.etest_cache_rows``)
     CMIP6     the raw DBCCA-downscaled, PRMS/VIC5-simulated daily flows of the
-              54 CMIP6 future runs - 40 years each, each paired with its OWN
+              27 mid-century CMIP6 runs the forcing box is read from
+              (``config.ENSEMBLE_FORCING_PERIOD``) - 40 years each, each paired with its OWN
               1980-2019 historical sibling run. The raw-flow reference, kept
               for diagnostics and not drawn in the main figure, where each
               hydrologic model's bias against the reconstruction would dominate
@@ -63,8 +64,8 @@ DEFAULT_CACHE = (config.REFERENCE_DIR / "forcing_parameterization"
 CMIP6_INPUTS_DIR = (config.PROJECT_DIR.parent / "CMIP6_multimodel_streamflow"
                     / "pywrdrb" / "inputs")
 
-#: Token marking a CMIP6 run's HISTORICAL sibling. Excluded so the cache holds
-#: exactly the 54 future runs that ``load_cmip6_envelope`` fits.
+#: Token marking a CMIP6 run's HISTORICAL sibling, the baseline each run of the
+#: forcing period is paired with.
 CMIP6_BASELINE_TOKEN: str = "1980_2019"
 
 
@@ -115,19 +116,24 @@ def historic_fdc(grid_pct: np.ndarray, nodes: tuple[str, ...]) -> np.ndarray:
 
 
 def cmip6_future_runs() -> list[Path]:
-    """The 54 CMIP6 future-run input directories, excluding historical siblings."""
+    """Input directories of the CMIP6 runs of ``config.ENSEMBLE_FORCING_PERIOD``.
+
+    The same runs ``scengen.forcing_space.load_cmip6_envelope`` fits, so the
+    cached raw-flow reference and the fitted change factors describe one set.
+    """
     if not CMIP6_INPUTS_DIR.is_dir():
         raise FileNotFoundError(
             f"CMIP6 pywrdrb inputs not found at {CMIP6_INPUTS_DIR}. Panel (d) needs the "
             "sibling CMIP6_multimodel_streamflow repo checked out alongside this one."
         )
+    period = config.ENSEMBLE_FORCING_PERIOD
     runs = [d for d in sorted(CMIP6_INPUTS_DIR.iterdir())
             if d.is_dir()
             and "ssp" in d.name
-            and CMIP6_BASELINE_TOKEN not in d.name
+            and d.name.endswith(f"_{period}")
             and (d / "catchment_inflow_mgd.csv").is_file()]
     if not runs:
-        raise FileNotFoundError(f"no CMIP6 future runs under {CMIP6_INPUTS_DIR}")
+        raise FileNotFoundError(f"no CMIP6 runs of period {period} under {CMIP6_INPUTS_DIR}")
     return runs
 
 

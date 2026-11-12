@@ -86,6 +86,7 @@ def _diag_config(*, variance_axis: bool) -> ForcingEnsembleConfig:
         population="du_forced",
         theta_sampler="lhs",
         mean_frac_csv=config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+        forcing_period=config.ENSEMBLE_FORCING_PERIOD,
         variance_axis=variance_axis,
         mean_abs_csv=config.ENSEMBLE_FORCING_MEAN_ABS_CSV,
         std_csv=config.ENSEMBLE_FORCING_STD_CSV,

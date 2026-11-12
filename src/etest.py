@@ -3,9 +3,10 @@ etest.py - The held-out test ensemble E_test: registry, sizing, and staging cont
 
 E_test is an ``EnsembleSpec``, never a ``ScenarioDesign``: it never enters
 search and is never a control, so the search side's i.i.d. requirement does not
-apply. Construction: LHS over the widened DU forcing box (:data:`E_TEST_BOUND_PCT`,
+apply. Construction: LHS over the widened DU forcing box of the mid-century
+CMIP6 runs (``config.ENSEMBLE_FORCING_PERIOD``; :data:`E_TEST_BOUND_PCT`,
 :data:`E_TEST_MARGIN`, strictly containing the search box; its annual-volume axis
-spans e^m = 0.866 to 1.32, with no per-axis override), and ``R > 1`` realizations
+spans e^m = 0.899 to 1.28, with no per-axis override), and ``R > 1`` realizations
 per SOW, which is what makes the SOW-unit robustness metric computable. Sizing:
 ``N_theta = 500`` x ``R = 25`` x ``L = 50`` yr in 25 staged chunks of 500
 realizations (:func:`campaign_reeval_preset` -> ``etest_kn_50yr_n12500``, the
@@ -64,9 +65,9 @@ E_TEST_YEARS: int = int(os.environ.get("NYCOPT_ETEST_YEARS", "50"))
 #: multiple of ``E_TEST_R`` so chunks align to forcing profiles (SOWs are never split).
 E_TEST_CHUNK_SIZE: int = int(os.environ.get("NYCOPT_ETEST_CHUNK_SIZE", "500"))
 
-#: Percentiles bounding each harmonic forcing parameter over the CMIP6 anchors. The search box uses
-#: (5, 95); E_test uses the full empirical range, widened by ``E_TEST_MARGIN``, so it strictly
-#: contains the search box.
+#: Percentiles bounding each harmonic forcing parameter over the CMIP6 anchors (the runs of
+#: ``config.ENSEMBLE_FORCING_PERIOD``). The search box uses (5, 95); E_test uses the full empirical
+#: range, widened by ``E_TEST_MARGIN``, so it strictly contains the search box.
 E_TEST_BOUND_PCT: tuple[float, float] = (
     float(os.environ.get("NYCOPT_ETEST_BOUND_LO", "0.0")),
     float(os.environ.get("NYCOPT_ETEST_BOUND_HI", "100.0")),
@@ -76,11 +77,11 @@ E_TEST_BOUND_PCT: tuple[float, float] = (
 E_TEST_MARGIN: float = float(os.environ.get("NYCOPT_ETEST_MARGIN", "0.25"))
 
 #: The widened box is the whole E_test forcing box: no axis is narrowed or extended on its own.
-#: Its annual-volume axis spans e^m = 0.866 (the widened CMIP6 minimum, 13.5 % below the
-#: historical mean; the driest CMIP6 run is 0.929) to 1.32 (forcing_parameterization.md, "Box
-#: width"; SI Text S6). An extension of the dry bound to 0.80 was adopted 2026-09-30 and
-#: reverted 2026-11-04 so the staged E_test of 2026-08-19 is reused; the dry-envelope diagnostic
-#: (`scripts/supplemental/dry_envelope_run.py`) keeps the measured sensitivity on record.
+#: Its annual-volume axis spans e^m = 0.899 (the widened CMIP6 minimum, 10.1 % below the
+#: historical mean; the driest mid-century run is 0.953) to 1.28 (forcing_parameterization.md,
+#: "Box width"; SI Text S6). The dry-envelope diagnostic
+#: (`scripts/supplemental/dry_envelope_run.py`) measures the drought hazard at that bound and at
+#: drier candidate levels.
 
 #: The default E_test construction. ``"kn"`` is THE test ensemble of the campaign; every other
 #: registered variant is an opt-in sensitivity that nothing builds automatically.
@@ -291,9 +292,10 @@ def assert_staged_etest_contract(slug: str, *, require_demand: bool = True) -> d
     """Verify a STAGED E_test directory records the construction it claims.
 
     The registry can be right and the staged artifact still wrong (a stale directory generated
-    before a sizing change, or one built by the search-side step 02, which samples theta i.i.d. with
-    R = 1). Both failures are silent at re-eval time and would quietly void the SOW-unit metric, so
-    the generator calls this immediately after staging.
+    before a sizing change or over another forcing box, or one built by the search-side step 02,
+    which samples theta i.i.d. with R = 1). These failures are silent at re-eval time and would
+    quietly void the SOW-unit metric or score policies on another forcing space, so the generator
+    calls this immediately after staging.
 
     With ``require_demand`` (the default, what every re-evaluation-side caller
     wants) the staged metadata must also carry the NYC utilization column of
@@ -310,10 +312,12 @@ def assert_staged_etest_contract(slug: str, *, require_demand: bool = True) -> d
 
     Raises:
         FileNotFoundError: If the slug is not staged.
-        AssertionError: If the staged meta is not an LHS x R>1 forcing design, or
-            (with ``require_demand``) lacks the utilization column or records
-            other utilization bounds.
+        AssertionError: If the staged meta is not an LHS x R>1 forcing design over
+            the box of ``config.ENSEMBLE_FORCING_PERIOD``, or (with
+            ``require_demand``) lacks the utilization column or records other
+            utilization bounds.
     """
+    from config import ENSEMBLE_FORCING_PERIOD
     from src.ensembles import staged_ensemble_dir
 
     staged_dir = Path(staged_ensemble_dir(slug))
@@ -337,10 +341,15 @@ def assert_staged_etest_contract(slug: str, *, require_demand: bool = True) -> d
         f"generated from a reserved 'etest:*' seed stream, or the held-out re-evaluation is not "
         f"held out."
     )
+    assert meta.get("forcing_period") == ENSEMBLE_FORCING_PERIOD, (
+        f"Staged E_test '{slug}' records forcing_period={meta.get('forcing_period')!r}, but the "
+        f"forcing box is read from the CMIP6 runs of {ENSEMBLE_FORCING_PERIOD!r}. The staged "
+        f"flows were generated over another forcing box; regenerate rather than reuse them."
+    )
     recorded = meta.get("axis_bounds") or {}
     assert not recorded, (
         f"Staged E_test '{slug}' records axis_bounds={recorded!r}, but E_test samples the whole "
-        f"widened box with no per-axis override (annual-volume axis e^m = 0.866 to 1.32). The "
+        f"widened box with no per-axis override (annual-volume axis e^m = 0.899 to 1.28). The "
         f"staged flows were generated over another forcing box; regenerate rather than reuse them."
     )
     if require_demand:

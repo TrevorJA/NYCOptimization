@@ -2,8 +2,8 @@
 
 The deeply-uncertain forcing space of the re-evaluation ensemble (E_test) is a
 low-order harmonic model of the monthly streamflow change factor, sampled by
-Latin hypercube over a box read from a 54-member CMIP6 multimodel ensemble
-(methods: ``docs/notes/methods/forcing_parameterization.md``; manuscript
+Latin hypercube over a box read from the 27 mid-century (2020-2059) runs of a
+CMIP6 multimodel ensemble (``config.ENSEMBLE_FORCING_PERIOD``; methods: ``docs/notes/methods/forcing_parameterization.md``; manuscript
 Section 3.4.1; Quinn et al. 2018 for the fixed-phase amplitude-sampling design)::
 
     ln a(t) = m + r1*cos(w*(t - tau1*)) + r2*cos(2*w*(t - tau2*)),   w = 2*pi/12
@@ -76,16 +76,6 @@ DECOMP_GREYS: dict[str, str] = {
     "semiannual": "0.10",   # + the semiannual harmonic (the fitted profile)
 }
 
-#: CMIP6 projection period -> marker. Period is the only sub-encoding kept in
-#: the main figure; the SSP breakdown lives in the SI.
-PERIOD_MARKERS: dict[str, str] = {"2020_2059": "o", "2060_2099": "^"}
-
-#: Human-readable period labels for legends.
-PERIOD_LABELS: dict[str, str] = {
-    "2020_2059": "CMIP6 2020–2059",
-    "2060_2099": "CMIP6 2060–2099",
-}
-
 #: Alpha for the shaded sample envelope in panels (c) and (d).
 ENVELOPE_ALPHA: float = 0.30
 
@@ -141,12 +131,18 @@ def _run_metadata(column: str) -> tuple[str, str, str]:
     )
 
 
-def load_cmip6_fits(csv_path=None, *, order: int = 2) -> dict:
-    """Fit the harmonic model to every CMIP6 future run.
+def cmip6_period_label(period: str) -> str:
+    """Legend text for the CMIP6 runs of ``period``, e.g. ``CMIP6 2020–2059``."""
+    return f"CMIP6 {period.replace('_', '–')}"
 
-    ``scengen.forcing_space.load_cmip6_envelope`` drops the ``1980_2019``
-    historical siblings, leaving the 54 future runs (2 hydrologic models x
-    7 GCMs x 2 SSPs x 2 periods, less 2 missing PRMS/BCC-CSM2-MR ssp370 runs).
+
+def load_cmip6_fits(csv_path=None, *, order: int = 2) -> dict:
+    """Fit the harmonic model to every CMIP6 run of the forcing period.
+
+    ``scengen.forcing_space.load_cmip6_envelope`` keeps the runs of
+    ``config.ENSEMBLE_FORCING_PERIOD``: the 27 mid-century runs (2 hydrologic
+    models x 7 GCMs x 2 SSPs, less the missing PRMS/BCC-CSM2-MR ssp370 run),
+    each expressed as a change against its own ``1980_2019`` baseline.
 
     Args:
         csv_path: CMIP6 multiplicative monthly change-factor table. Defaults to
@@ -155,19 +151,20 @@ def load_cmip6_fits(csv_path=None, *, order: int = 2) -> dict:
         order: Number of harmonics (2 = annual + semiannual, the campaign model).
 
     Returns:
-        Dict with ``env`` (the ``(12, K)`` water-year envelope), ``A`` the
-        ``(K, 12)`` raw change factors, ``fit`` (see
-        ``scengen.forcing_space.fit_harmonic_params``), ``recon`` the ``(K, 12)``
-        fitted profiles, and ``df`` a ``K``-row frame of per-run parameters and
-        fit quality.
+        Dict with ``period`` (the projection-period token), ``env`` (the
+        ``(12, K)`` water-year envelope), ``A`` the ``(K, 12)`` raw change
+        factors, ``fit`` (see ``scengen.forcing_space.fit_harmonic_params``),
+        ``recon`` the ``(K, 12)`` fitted profiles, and ``df`` a ``K``-row frame
+        of per-run parameters and fit quality.
     """
     import config
     from scengen import forcing_space as fs
 
     if csv_path is None:
         csv_path = config.ENSEMBLE_FORCING_MEAN_FRAC_CSV
+    forcing_period = config.ENSEMBLE_FORCING_PERIOD
 
-    env = fs.load_cmip6_envelope(csv_path)
+    env = fs.load_cmip6_envelope(csv_path, period=forcing_period)
     A = env.values.T                                   # (K, 12) raw change factors
     fit = fs.fit_harmonic_params(env, order=order)
 
@@ -194,7 +191,8 @@ def load_cmip6_fits(csv_path=None, *, order: int = 2) -> dict:
         "r2_semiann_amp": r2, "phase2_rad": psi2,
         "shape_R2": shape_r2,
     })
-    return {"env": env, "A": A, "fit": fit, "recon": recon, "df": df}
+    return {"period": forcing_period, "env": env, "A": A, "fit": fit, "recon": recon,
+            "df": df}
 
 
 def etest_param_box(fit: dict) -> tuple[np.ndarray, np.ndarray, list[str]]:
@@ -203,7 +201,7 @@ def etest_param_box(fit: dict) -> tuple[np.ndarray, np.ndarray, list[str]]:
     Reads the bounds from :mod:`src.etest` rather than hard-coding them, so the
     drawn box always matches the ensemble contract. E_test uses the FULL
     empirical CMIP6 range widened by ``E_TEST_MARGIN`` on every axis (annual-volume
-    multiplier 0.866 to 1.32, no per-axis override); the SEARCH-side pool uses a trimmed 5th-95th
+    multiplier 0.899 to 1.28, no per-axis override); the SEARCH-side pool uses a trimmed 5th-95th
     percentile box with no widening (:func:`search_param_box`). Confusing the
     two is what made the earlier version of this figure show a box far
     narrower than the ensemble it drew.
@@ -313,15 +311,10 @@ def _draw_envelope(ax, x, Y, pctl, *, color, label=None):
     ax.plot(x, hi, color=color, lw=0.8, zorder=2)
 
 
-def _cmip6_scatter(ax, df, x, y, *, size: float = 42):
-    """Scatter CMIP6 runs, one colour, marker by projection period."""
-    x, y = np.asarray(x), np.asarray(y)
-    for period, marker in PERIOD_MARKERS.items():
-        sel = (df["period"] == period).to_numpy()
-        if not sel.any():
-            continue
-        ax.scatter(x[sel], y[sel], c=CMIP6_COLOR, marker=marker, s=size,
-                   edgecolor="white", linewidth=0.5, zorder=3)
+def _cmip6_scatter(ax, x, y, *, size: float = 42):
+    """Scatter the CMIP6 runs in one colour and marker."""
+    ax.scatter(np.asarray(x), np.asarray(y), c=CMIP6_COLOR, marker="o", s=size,
+               edgecolor="white", linewidth=0.5, zorder=3)
 
 
 def _water_year_axis(ax):
@@ -366,20 +359,28 @@ def _envelope_handle(label: str) -> Patch:
 # Panels
 # ---------------------------------------------------------------------------
 
+def best_fit_run(df: pd.DataFrame) -> int:
+    """Row of the CMIP6 run the two-harmonic model fits best (highest shape R2).
+
+    The decomposition panels illustrate the model on this run, so each term's
+    contribution is read against points the full model reproduces. Fit quality
+    across all runs, the worst fits included, is the subject of the SI figures.
+    """
+    return int(np.argmax(df["shape_R2"].to_numpy()))
+
+
 def panel_harmonic_decomposition(ax, fits: dict) -> dict:
     """(a) The harmonic model built up one term at a time, on one CMIP6 run.
 
-    The illustrative run is chosen deterministically as the run closest to the
-    ensemble median in both sampled shape coordinates, so it is representative
-    rather than cherry-picked. Its identity is carried in the legend.
+    The illustrated run is the best-fitting one (:func:`best_fit_run`); its
+    identity is carried in the title.
 
     Returns:
         Dict describing the chosen run (``index``, ``label``).
     """
     df, A, recon = fits["df"], fits["A"], fits["recon"]
 
-    k = int(np.argmin(np.abs(df.r1_annual_amp - df.r1_annual_amp.median())
-                      + np.abs(df.m_log - df.m_log.median())))
+    k = best_fit_run(df)
     m, r1, psi1 = df.m_log[k], df.r1_annual_amp[k], df.phase1_rad[k]
 
     level = np.exp(np.full(12, m))
@@ -434,23 +435,22 @@ def panel_parameter_space(ax, fits: dict, sample: dict) -> None:
         fill=False, edgecolor=ETEST_COLOR, ls="--", lw=1.6, zorder=4,
     ))
     ax.axvline(1.0, color="0.55", lw=0.8, ls=":", zorder=0)
-    _cmip6_scatter(ax, df, df.vol_mult_expm, df.r1_annual_amp)
+    _cmip6_scatter(ax, df.vol_mult_expm, df.r1_annual_amp)
 
     ax.set_xlabel("Water-year volume multiplier, $e^{m}$")
     ax.set_ylabel("Seasonal amplitude, $r_1$")
     ax.set_title("(b) Sampled forcing space", loc="left")
 
-    # The E_test blues, then the CMIP6 vermillions; one column, since two do
+    # The E_test blues, then the CMIP6 vermillion; one column, since two do
     # not fit the square panel at the figure's type size.
     handles = [
         _marker_handle("o", ETEST_COLOR, ms=7, alpha=0.55, edge="none",
                        label="E$_{test}$ Latin hypercube draws"),
         Line2D([0], [0], ls="--", lw=1.6, color=ETEST_COLOR,
                label="E$_{test}$ sampling box"),
-        *[_marker_handle(marker, CMIP6_COLOR, ms=8, label=PERIOD_LABELS[period])
-          for period, marker in PERIOD_MARKERS.items()],
+        _marker_handle("o", CMIP6_COLOR, ms=8, label=cmip6_period_label(fits["period"])),
     ]
-    _headroom(ax, 1.55)
+    _headroom(ax, 1.40)
     ax.legend(handles=handles, loc="upper left", **LEGEND_KW)
 
 

@@ -34,7 +34,7 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
     Four square panels reading left to right, top to bottom, as the
     parameterization is built and then checked, each carrying its own legend:
 
-        (a) the harmonic model, one term at a time, on a representative CMIP6 run
+        (a) the harmonic model, one term at a time, on the best-fitting CMIP6 run
         (b) the fitted CMIP6 parameters, the E_test draws, and the sampling box
         (c) the monthly change factors the sample implies, against the CMIP6 fits
         (d) the flow duration curves of the E_test realizations, against the

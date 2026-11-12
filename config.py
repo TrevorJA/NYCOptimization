@@ -373,6 +373,11 @@ ENSEMBLE_FORCING_STD_CSV = _parse_path_env(
 # the CV-preserving c = a (the CV axis adds DU dimensions without widening
 # hazard-space tail stress). Opt-in sensitivity via the env var.
 ENSEMBLE_FORCING_VARIANCE_AXIS = _parse_bool_env("NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS", False)
+# CMIP6 projection period the forcing space is anchored to: the harmonic box,
+# the canonical phases and every figure that draws the CMIP6 runs read the runs
+# whose column name closes with this token (mid-century change relative to
+# each run's own 1980-2019 baseline).
+ENSEMBLE_FORCING_PERIOD = "2020_2059"
 ENSEMBLE_FORCING_BOUND_PCT = (
     _parse_float_env("NYCOPT_ENSEMBLE_FORCING_BOUND_LO", 5.0),
     _parse_float_env("NYCOPT_ENSEMBLE_FORCING_BOUND_HI", 95.0),

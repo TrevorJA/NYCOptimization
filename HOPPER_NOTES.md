@@ -124,3 +124,7 @@ Sibling repos must match Anvil: Pywr-DRB on `nyc_opt` (`9619a90`), scengen
   `submit_etest_staging.sh all --from merge --after 1484206`: merge 1484235,
   utilization 1484236, per-chunk inputs 1484237 (25 tasks x 33 ranks), realized
   utilization 1484238, hazard-image shards 1484239 and merge 1484240.
+- 2026-11-12: the forcing box was restricted to the mid-century CMIP6 projections
+  (`config.ENSEMBLE_FORCING_PERIOD`) after that chain was submitted, so its
+  output samples another box and is not the campaign E_test. Not yet cancelled
+  or resubmitted from the updated code (`TODO.md` rerun chain, item 0).

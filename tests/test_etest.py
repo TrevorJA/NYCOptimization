@@ -84,7 +84,8 @@ def _demand_payload(n_theta: int, r: int, seed_domain: str,
 def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10,
                  theta_sampler: str = "lhs", seed_domain: str = "etest:kn",
                  population: str = "du_forced", with_npz: bool = True,
-                 axis_bounds=None, with_demand: bool = True,
+                 axis_bounds=None, forcing_period=config.ENSEMBLE_FORCING_PERIOD,
+                 with_demand: bool = True,
                  demand_bounds=du.DEMAND_UTILIZATION_BOUNDS) -> Path:
     """Stage the two artifacts an E_test directory is resolved and grouped from.
 
@@ -102,6 +103,7 @@ def _stage_etest(root: Path, slug: str, *, n_theta: int, r: int, years: int = 10
         demand_npz, demand_meta = _demand_payload(n_theta, r, seed_domain, demand_bounds)
     (d / "_meta.json").write_text(json.dumps({
         "axis_bounds": axis_bounds,
+        "forcing_period": forcing_period if forced else None,
         "slug": slug,
         "kind": "forcing_pool",
         "population": population,
@@ -186,7 +188,7 @@ def test_etest_box_is_wider_than_the_search_box():
 
 
 def test_etest_samples_the_whole_widened_box_with_no_axis_override():
-    """Every axis keeps the widened CMIP6 range (annual-volume multiplier 0.866 to 1.32)."""
+    """Every axis keeps the widened CMIP6 range (annual-volume multiplier 0.899 to 1.28)."""
     from scripts.main.generate_test_ensemble import etest_config
 
     for name, v in E_TEST_VARIANTS.items():
@@ -239,6 +241,7 @@ def test_etest_config_is_lhs_replicated_chunked_and_hazard_imaged():
     assert cfg.generator == v.generator
     assert cfg.n_realizations == v.n_realizations
     assert dict(cfg.axis_bounds) == {}           # the whole widened box, no per-axis override
+    assert cfg.forcing_period == config.ENSEMBLE_FORCING_PERIOD  # box read from that period's runs
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +261,7 @@ def test_staged_meta_records_lhs_and_replication(tmp_path, monkeypatch):
     {"r": 1},                          # no within-SOW sample -> SOW metric undefined
     {"seed_domain": "fixed"},          # a SEARCH seed stream -> not held out
     {"axis_bounds": {"m": [-0.223, None]}},  # generated with a per-axis override -> regenerate
+    {"forcing_period": None},          # box not read from the campaign CMIP6 period -> regenerate
 ])
 def test_staged_contract_rejects_a_search_side_construction(bad, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "STAGED_ENSEMBLE_DIR", tmp_path)

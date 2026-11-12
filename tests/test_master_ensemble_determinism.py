@@ -49,6 +49,7 @@ def _tiny_config(out_dir: Path) -> ForcingEnsembleConfig:
         realization_years=_L,
         output_dir=out_dir,
         mean_frac_csv=csv,
+        forcing_period=config.ENSEMBLE_FORCING_PERIOD,
         store_daily=True,
         compute_hazard_image=True,
         hazard_block_size=2,  # force multi-block generation so partition-invariance is exercised
@@ -99,6 +100,7 @@ def test_chunked_generation(tmp_path):
         root_seed=_SEED, n_forcing_profiles=8, realizations_per_profile=2,
         realization_years=_L, output_dir=out,
         mean_frac_csv=config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+        forcing_period=config.ENSEMBLE_FORCING_PERIOD,
         store_daily=True, compute_hazard_image=True, hazard_block_size=4, chunk_size=8,
     )
     if not Path(cfg.mean_frac_csv).exists():
@@ -149,6 +151,7 @@ def test_sharded_chunked_generation_matches_serial(tmp_path):
             root_seed=_SEED, n_forcing_profiles=8, realizations_per_profile=2,
             realization_years=_L, output_dir=out,
             mean_frac_csv=config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+        forcing_period=config.ENSEMBLE_FORCING_PERIOD,
             store_daily=True, compute_hazard_image=True, hazard_block_size=4, chunk_size=8,
             extra=extra or {},
         )
@@ -212,6 +215,7 @@ def test_shard_chunk_misalignment_raises(tmp_path):
         root_seed=_SEED, n_forcing_profiles=8, realizations_per_profile=2,
         realization_years=_L, output_dir=tmp_path / "pool",
         mean_frac_csv=config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+        forcing_period=config.ENSEMBLE_FORCING_PERIOD,
         store_daily=True, compute_hazard_image=True, chunk_size=8,
         extra={"profile_shard": (1, 3)},  # 8 profiles / 3 shards -> [3,6) splits chunk 0/1
     )

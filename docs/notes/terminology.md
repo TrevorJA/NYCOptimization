@@ -18,7 +18,7 @@
 
 **State of the world (SOW).** One Latin hypercube point of `E_test` with its realizations: column `sow_id` of `reeval_raw.csv.gz`, labels `sow_labels` in `reeval_raw_meta.json`, substrate `sow_annual_unit`.
 
-**Forcing space.** The CMIP6 harmonic change-factor box of `forcing_parameterization.md` (`src/etest.py` bounds and margin), sampled only by `E_test`; the generator is stationary in every search design. The demand-utilization axis `u` is `E_test`'s fourth factor outside the forcing box (`src/demand_utilization.py`); search runs the unscaled demand series (k = 1).
+**Forcing space.** The harmonic change-factor box of `forcing_parameterization.md`, fitted to the mid-century (2020 to 2059) CMIP6 projections (`config.ENSEMBLE_FORCING_PERIOD`; `src/etest.py` bounds and margin), sampled only by `E_test`; the generator is stationary in every search design. The demand-utilization axis `u` is `E_test`'s fourth factor outside the forcing box (`src/demand_utilization.py`); search runs the unscaled demand series (k = 1).
 
 ## Hazard space
 

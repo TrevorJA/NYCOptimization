@@ -92,7 +92,8 @@ def volume_levels() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
         (NaN for the unchanged volume), ``m`` and ``em = exp(m)``; the CMIP6
         envelope; and the harmonic fit the box is built from.
     """
-    env = fs.load_cmip6_envelope(config.ENSEMBLE_FORCING_MEAN_FRAC_CSV)
+    env = fs.load_cmip6_envelope(config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+                                 period=config.ENSEMBLE_FORCING_PERIOD)
     fit = fs.fit_harmonic_params(env, order=2)
     lo, hi, names = fs.harmonic_param_box(fit, bound_pct=E_TEST_BOUND_PCT, margin=0.0)
     k = names.index("m")
@@ -111,7 +112,7 @@ def volume_levels() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
             f"E_TEST_MARGIN={E_TEST_MARGIN} is not among DRYENV_CANDIDATE_MARGINS="
             f"{scfg.DRYENV_CANDIDATE_MARGINS}; the margin box's own bound must be one level."
         )
-    # The adopted dry bound IS the margin box's own bound (e^m = 0.866): E_test applies no
+    # The adopted dry bound IS the margin box's own bound (e^m = 0.899): E_test applies no
     # per-axis override (src/etest.py). The deeper candidate levels stay as sensitivities.
     levels["adopted_em"] = float(levels.loc[levels["is_margin_bound"], "em"].iloc[0])
     return levels, env, fit
@@ -138,7 +139,7 @@ def etest_share_table(levels: pd.DataFrame) -> pd.DataFrame:
 
     Every widened box keeps the upper bound; the LHS is uniform in ``m``, so the
     share of SOWs below a level is a ratio of ``m`` intervals. The adopted bound,
-    the margin box's own (e^m = 0.866, zero share below it), is the last row.
+    the margin box's own (e^m = 0.899, zero share below it), is the last row.
     """
     m_hi = float(levels["m_hi_full"].iloc[0])
     m_margin = float(levels.loc[levels["is_margin_bound"], "m"].iloc[0])
@@ -210,6 +211,7 @@ def generate_local_windows(levels: pd.DataFrame, env: pd.DataFrame, fit: dict,
         root_seed=scfg.DRYENV_SEED_FORCED, n_forcing_profiles=n, realizations_per_profile=1,
         realization_years=years, population="du_forced", theta_sampler="lhs",
         mean_frac_csv=config.ENSEMBLE_FORCING_MEAN_FRAC_CSV,
+        forcing_period=config.ENSEMBLE_FORCING_PERIOD,
         bound_pct=E_TEST_BOUND_PCT, margin=E_TEST_MARGIN,
     )
     setup = _prepare_generators(cfg)
