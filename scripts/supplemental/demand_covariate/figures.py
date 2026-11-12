@@ -89,7 +89,7 @@ def _draw_zones(ax, curves: pd.DataFrame) -> None:
         ax.plot(curves.index, curves[lvl], color=ZONE_COLOR, lw=0.8, alpha=0.7, zorder=1)
         ax.annotate(ZONE_LABELS[lvl], (curves.index[-1], curves[lvl].iloc[-1]),
                     xytext=(4, 0), textcoords="offset points", va="center",
-                    fontsize=plt.rcParams["font.size"] - 2, color=ZONE_COLOR)
+                    color=ZONE_COLOR)
 
 
 def _draw_storage(ax, daily: pd.DataFrame, zones: pd.DataFrame, start, end,
@@ -224,7 +224,7 @@ def fig_demand_difference() -> Path:
 
 
 def main() -> None:
-    style.apply_manuscript_style()
+    style.apply_style()
     scfg.DCV_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     for fn in (fig_storage_1960s, fig_storage_difference_windows,
                fig_demand_climatology, fig_demand_difference):

@@ -406,7 +406,7 @@ def fig_packing_eval_time(pack: pd.DataFrame) -> None:
                         (r["k"], r["warm_median_s"]),
                         textcoords="offset points",
                         xytext=(0, 8 + 10 * (i % 2)),
-                        ha="center", fontsize=8, color="0.3")
+                        ha="center", color="0.3")
     ax.set_xlabel("Concurrent evaluator ranks per node (K)")
     ax.set_ylabel("Per-evaluation wall time (s)")
     ax.set_title("Ensemble evaluation time vs node packing density")
@@ -439,7 +439,7 @@ def fig_packing_throughput_cost(pack: pd.DataFrame,
             ax.axvline(kstar, color="0.45", ls="--", lw=1)
     if kstar is not None:
         ax1.annotate(f"K* = {kstar}", (kstar, ax1.get_ylim()[1]),
-                     ha="left", va="top", fontsize=9, color="0.3",
+                     ha="left", va="top", color="0.3",
                      textcoords="offset points", xytext=(4, -2))
     save_figure(fig, scfg.SCALING_FIGURES_DIR / "F2_packing_throughput_cost")
     plt.close(fig)
@@ -506,9 +506,9 @@ def fig_batched_eval(bsum: pd.DataFrame) -> None:
         ax.set_xlabel("Realizations per model.run() (B)")
         ax.grid(alpha=0.25)
         ax.axvline(n_real, color=C_IDEAL, ls=":", lw=1)
-        ax.legend(frameon=False, fontsize=8)
+        ax.legend(frameon=False)
         # Mark the production default (all realizations in one run).
-        ax.annotate("all", (n_real, ax.get_ylim()[0]), fontsize=7,
+        ax.annotate("all", (n_real, ax.get_ylim()[0]),
                     color="0.4", ha="center", va="bottom")
     save_figure(fig, scfg.SCALING_FIGURES_DIR / "F6_batched_eval")
     plt.close(fig)
@@ -549,7 +549,7 @@ def fig_borg_strong_scaling(jobs: pd.DataFrame, borg: pd.DataFrame) -> None:
     ax2.set_xlabel("Evaluation slots")
     ax2.set_ylabel("Speedup vs smallest geometry")
     ax2.set_title("Strong-scaling speedup")
-    ax2.legend(frameon=False, fontsize=8)
+    ax2.legend(frameon=False)
 
     ax3.plot(single["total_slots"], single["efficiency"], "o-",
              color=C_PRIMARY, label="1 island")
@@ -562,7 +562,7 @@ def fig_borg_strong_scaling(jobs: pd.DataFrame, borg: pd.DataFrame) -> None:
     ax3.set_xlabel("Evaluation slots")
     ax3.set_ylabel("Parallel efficiency (speedup / ideal)")
     ax3.set_title("Parallel efficiency")
-    ax3.legend(frameon=False, fontsize=8)
+    ax3.legend(frameon=False)
 
     for ax in (ax1, ax2, ax3):
         ax.grid(alpha=0.25)
@@ -597,13 +597,13 @@ def fig_production_projection(proj: pd.DataFrame) -> None:
         i, j = islands.index(r["islands"]), nodes.index(r["nodes"])
         flag = "*" if r["eff_extrapolated"] else ""
         ax.text(j, i, f"{r['walltime_hr']:.1f} h{flag}\n{r['su']:,.0f} SU",
-                ha="center", va="center", fontsize=8,
+                ha="center", va="center",
                 color="white" if r["walltime_hr"] > 0.6 * vmax else "black")
     fig.colorbar(im, ax=ax, label="Walltime (hours)")
     fig.text(0.99, 0.005,
              "* efficiency extrapolated beyond measured slots; efficiency from "
              "short-window single-trace runs (conservative)",
-             ha="right", va="bottom", fontsize=7, color="0.4")
+             ha="right", va="bottom", color="0.4")
     save_figure(fig, scfg.SCALING_FIGURES_DIR / "F5_production_projection")
     plt.close(fig)
 

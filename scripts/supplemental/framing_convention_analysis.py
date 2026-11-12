@@ -215,13 +215,13 @@ def k_sweep_figure(df: pd.DataFrame) -> None:
             ax.set_xticks(list(scfg.FRAMING_K_GRID))
         ax_sat.set_ylim(-0.03, 1.03)
         ax_tau.set_ylim(-0.03, 1.03)
-        ax_sat.set_ylabel(label_for(nm), fontsize=7)
+        ax_sat.set_ylabel(label_for(nm))
         if i == 0:
-            ax_sat.set_title("Saturated policy fraction", fontsize=8)
-            ax_tau.set_title(r"$\tau_b$ of ranking vs shipped $k$", fontsize=8)
+            ax_sat.set_title("Saturated policy fraction")
+            ax_tau.set_title(r"$\tau_b$ of ranking vs shipped $k$")
     axes[-1, 0].set_xlabel("failure-week count k")
     axes[-1, 1].set_xlabel("failure-week count k")
-    axes[0, 0].legend(fontsize=6, frameon=False)
+    axes[0, 0].legend(frameon=False)
     save_figure(fig, scfg.framing_figure_path("k_sweep_saturation_tau"))
     plt.close(fig)
 
@@ -259,12 +259,12 @@ def k_distribution_figure(cubes: dict) -> None:
                        ls=(0, (4, 3)))
             ax.set_ylim(-0.03, 1.03)
             if i == 0:
-                ax.set_title(_DESIGN_STYLE[design]["label"], fontsize=7)
+                ax.set_title(_DESIGN_STYLE[design]["label"])
             if j == 0:
-                ax.set_ylabel(label_for(nm), fontsize=6.5)
+                ax.set_ylabel(label_for(nm))
             if i == n - 1:
-                ax.set_xlabel("failure-week count k", fontsize=7)
-    axes[0, 0].legend(fontsize=6, frameon=False, loc="lower left")
+                ax.set_xlabel("failure-week count k")
+    axes[0, 0].legend(frameon=False, loc="lower left")
     save_figure(fig, scfg.framing_figure_path("k_sweep_distributions"))
     plt.close(fig)
 
@@ -343,12 +343,11 @@ def flood_operator_figure(cubes: dict, df: pd.DataFrame) -> None:
                    label="FFMP baseline")
         tau = df[(df["design"] == design)
                  & (df["operator"] == "mean")]["tau_mean_vs_p99"].iloc[0]
-        ax.set_title(f"{st['label']}\n" + rf"$\tau_b$(mean, P99) = {tau:.2f}",
-                     fontsize=7.5)
-        ax.set_xlabel("pooled mean (days/yr)", fontsize=7)
+        ax.set_title(f"{st['label']}\n" + rf"$\tau_b$(mean, P99) = {tau:.2f}")
+        ax.set_xlabel("pooled mean (days/yr)")
         if ax is axes[0]:
-            ax.set_ylabel("pooled P99 (days/yr)", fontsize=7)
-            ax.legend(fontsize=6, frameon=False)
+            ax.set_ylabel("pooled P99 (days/yr)")
+            ax.legend(frameon=False)
     save_figure(fig, scfg.framing_figure_path("flood_operator_mean_vs_p99"))
     plt.close(fig)
 
@@ -405,11 +404,11 @@ def flood_controllability_figure(cubes: dict, df: pd.DataFrame) -> None:
         ax.set_title(
             f"{st['label']}\nfloor share {row['floor_share_of_baseline']:.2f}"
             f" | controllable ≥ "
-            f"{row['controllable_frac_lower_bound']:.2f}", fontsize=7.5)
-        ax.set_xlabel("mean annual flood days (days/yr)", fontsize=7)
+            f"{row['controllable_frac_lower_bound']:.2f}")
+        ax.set_xlabel("mean annual flood days (days/yr)")
         if ax is axes[0]:
-            ax.set_ylabel("policies", fontsize=7)
-            ax.legend(fontsize=6, frameon=False)
+            ax.set_ylabel("policies")
+            ax.legend(frameon=False)
     save_figure(fig, scfg.framing_figure_path("flood_controllability"))
     plt.close(fig)
 
@@ -460,8 +459,8 @@ def redundancy_figure(cubes: dict) -> None:
             pop_vals, names, scfg.FRAMING_RHO_FLAG_THRESHOLD)
         annotated_corr_heatmap(
             ax, spearman.values, list(spearman.columns),
-            box_threshold=scfg.FRAMING_RHO_FLAG_THRESHOLD, fontsize=5)
-        ax.set_title(_DESIGN_STYLE[design]["label"], fontsize=8)
+            box_threshold=scfg.FRAMING_RHO_FLAG_THRESHOLD)
+        ax.set_title(_DESIGN_STYLE[design]["label"])
     save_figure(fig, scfg.framing_figure_path("redundancy_spearman"))
     plt.close(fig)
 

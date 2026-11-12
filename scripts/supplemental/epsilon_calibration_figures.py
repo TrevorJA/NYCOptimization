@@ -419,7 +419,7 @@ def _fig_eps_ladder(results: list, combined: pd.DataFrame) -> None:
     ax.set_xscale("log")
     ax.set_yticks(n - 1 - np.arange(n))
     ax.set_yticklabels([label_for(nm) + _NON_DEFAULT_NOTE.get(nm, "")
-                        for nm in order], fontsize=8.5)
+                        for nm in order])
     ax.set_ylim(-0.65, n - 0.35)
     ax.set_xlabel("epsilon value")
     ax.set_title("Search-epsilon calibration: per-design floors and the "
@@ -446,7 +446,7 @@ def _fig_eps_ladder(results: list, combined: pd.DataFrame) -> None:
                label="previous provisional epsilon"),
     ]
     ax.legend(handles=design_handles + quantity_handles, loc="upper center",
-              bbox_to_anchor=(0.5, -0.11), ncol=2, fontsize=7.6, frameon=True)
+              bbox_to_anchor=(0.5, -0.11), ncol=2, frameon=True)
     fig.tight_layout(rect=(0, 0.02, 1, 1))
     save_figure(fig, scfg.epsilon_figure_path("eps_calibration_ladder")
                 .with_suffix(""))
@@ -486,10 +486,8 @@ def _fig_scalar_distributions(res: dict, combined: pd.DataFrame) -> None:
             if np.isfinite(value) and value > 0:
                 ax.plot([x0, x0 + value], [y1 * (1 - offset)] * 2,
                         color=color, lw=lw, solid_capstyle="butt", zorder=4)
-        ax.set_title(label_for(name) + _NON_DEFAULT_NOTE.get(name, ""),
-                     fontsize=8)
-        ax.set_xlabel(_unit_phrase(name), fontsize=7)
-        ax.tick_params(labelsize=7)
+        ax.set_title(label_for(name) + _NON_DEFAULT_NOTE.get(name, ""))
+        ax.set_xlabel(_unit_phrase(name))
     for k in range(n, nrows * ncols):
         axes[k // ncols][k % ncols].set_axis_off()
 
@@ -499,11 +497,11 @@ def _fig_scalar_distributions(res: dict, combined: pd.DataFrame) -> None:
         Line2D([], [], color=_PREVIOUS_COLOR, lw=1.8,
                label="previous provisional epsilon width"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncol=2, fontsize=8,
+    fig.legend(handles=handles, loc="lower center", ncol=2,
                frameon=True, bbox_to_anchor=(0.5, 0.0))
     fig.suptitle("Search-scalar spread across "
                  f"{int(res['random_ok'].sum())} constraint-feasible random "
-                 f"policies — {st['label']}", fontsize=10)
+                 f"policies — {st['label']}")
     fig.tight_layout(rect=(0, 0.045, 1, 0.955))
     save_figure(fig, scfg.epsilon_figure_path(
         "scalar_distributions", res["design"]).with_suffix(""))
@@ -586,7 +584,7 @@ def _fig_archive_sweep(results: list, sweeps: dict) -> None:
                    lw=1.1, alpha=0.7, zorder=2)
     ax.axvline(1.0, color=_CAMPAIGN_COLOR, lw=1.2, ls="--", alpha=0.9,
                zorder=1)
-    ax.text(1.0, ax.get_ylim()[1], " adopted vector (x1)", fontsize=8,
+    ax.text(1.0, ax.get_ylim()[1], " adopted vector (x1)",
             color=_CAMPAIGN_COLOR, ha="left", va="top")
 
     ax.set_xscale("log", base=2)
@@ -607,7 +605,7 @@ def _fig_archive_sweep(results: list, sweeps: dict) -> None:
         Line2D([], [], marker="x", ls="", color="0.35", markersize=7,
                label="previous provisional vector (abscissa nominal)"),
     ]
-    ax.legend(handles=(ax.get_legend_handles_labels()[0] + extra), fontsize=8,
+    ax.legend(handles=(ax.get_legend_handles_labels()[0] + extra),
               frameon=True)
     save_figure(fig, scfg.epsilon_figure_path("archive_size_vs_scale")
                 .with_suffix(""))

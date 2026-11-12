@@ -72,7 +72,7 @@ Narrative: the search ensemble is a design choice (1); the system and the experi
 
 <img src="../../figures/manuscript/fig01_network_schematic.png" width="330"> <img src="../../outputs/figures/historic/ffmp_obj8/policy_inspection/rules_baseline.png" width="400">
 
-- **Panels.** Left: network schematic of the NYC reservoirs, diversions, the Montague and Trenton flow-target gauges and the flood-stage gauges. Right: the current FFMP rules in five panels: (a) storage-zone boundaries, (b) minimum daily release, (c) diversion curtailments, (d) flow-target curtailments, (e) spill-mitigation releases. Each right-hand panel is tagged with its decision-variable group and count (Table 3).
+- **Panels.** Left: network schematic of the NYC reservoirs, diversions, the Montague and Trenton flow-target gauges and the flood-stage gauges. Right: the current FFMP rules in five panels: (a) storage-zone boundaries, (b) spill-mitigation releases, (c) diversion curtailments, (d) flow-target curtailments, (e) minimum daily release. Each right-hand panel is tagged with its decision-variable group and count (Table 3).
 - **Data.** Model topology; the default FFMP decision vector rendered as rules.
 - **Purpose.** Orients the reader to where objectives are computed and what the 36 decision variables move. Under Option 2 the right panel moves to the HIST paper and this becomes the schematic alone.
 - **Status.** Rendered, both halves (the rules file is under `outputs/`, local only). Decision-variable tags not yet drawn.
@@ -171,7 +171,7 @@ Working narrative (an assumption to confirm): the FFMP's negotiated constants ca
 
 <img src="../../outputs/figures/historic/ffmp_obj8/policy_inspection/rules_baseline.png" width="420">
 
-- **Panels.** (a) Storage-zone boundaries, (b) minimum daily release, (c) diversion curtailments, (d) flow-target curtailments, (e) spill-mitigation releases, each tagged with its decision-variable group, count and bounds.
+- **Panels.** (a) Storage-zone boundaries, (b) spill-mitigation releases, (c) diversion curtailments, (d) flow-target curtailments, (e) minimum daily release, each tagged with its decision-variable group, count and bounds.
 - **Data.** The default FFMP decision vector and the search bounds.
 - **Purpose.** Explains the incumbent policy and shows that the decision space is a bounded perturbation of negotiated rules. A full figure here; half a figure in Sequence 1. Templates: Kolesar and Serio (2011, Figs. 4 and 5); Quinn et al. (2019, Fig. 2).
 - **Status.** Rendered (local only). Tags and bounds not yet drawn.

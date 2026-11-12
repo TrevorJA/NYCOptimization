@@ -148,8 +148,7 @@ def fig_factor_maps_theta_focal(results: dict, out_stub: Path,
             ax.grid(color="0.93", lw=0.6)
             ax.set_axisbelow(True)
             if ri == 0:
-                ax.set_title(f"{pick['label']}\n({int(ok.sum())}/{len(ok)} pass)",
-                             fontsize=8.5)
+                ax.set_title(f"{pick['label']}\n({int(ok.sum())}/{len(ok)} pass)")
             if ci == 0:
                 ax.set_ylabel(ylab)
             if ri == 1:

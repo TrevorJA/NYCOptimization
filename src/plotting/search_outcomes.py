@@ -112,7 +112,7 @@ def fig_search_outcomes(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
                 "final_nfe": float(x[-1]) if len(x) else np.nan,
                 "final_value": float(y[-1]) if len(y) else np.nan,
             })
-        ax.set_title(design_label(design), fontsize=9)
+        ax.set_title(design_label(design))
         panel_label(ax, chr(ord("a") + i))
         ax.set_xlabel("NFE (total)" if any(n is not None and len(n)
                                            for *_, n in per_design[design])

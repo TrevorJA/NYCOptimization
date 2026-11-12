@@ -43,7 +43,7 @@ def _color_values(natural, obj_names, color_by):
     return natural[:, idx], label_for(obj_names[idx])
 
 
-def _ideal_arrow(ax, dir_x: int, dir_y: int, fontsize: int = 7) -> None:
+def _ideal_arrow(ax, dir_x: int, dir_y: int) -> None:
     """Small grey arrow pointing into the panel's ideal corner (axes fraction)."""
     cx = 0.95 if dir_x == 1 else 0.05
     cy = 0.95 if dir_y == 1 else 0.05
@@ -55,7 +55,7 @@ def _ideal_arrow(ax, dir_x: int, dir_y: int, fontsize: int = 7) -> None:
     ax.annotate("ideal", xy=(sx, sy), xycoords="axes fraction",
                 ha="right" if dir_x == 1 else "left",
                 va="top" if dir_y == 1 else "bottom",
-                fontsize=fontsize, color="0.45", zorder=3)
+                color="0.45", zorder=3)
 
 
 def _baseline_handle():
@@ -119,23 +119,21 @@ def plot_key_tradeoffs(
                        color=BASELINE_COLOR, edgecolor="white", lw=0.7,
                        zorder=10)
         _ideal_arrow(ax, int(directions[ix]), int(directions[iy]))
-        ax.set_xlabel(label_for(obj_names[ix]), fontsize=8)
-        ax.set_ylabel(label_for(obj_names[iy]), fontsize=8)
-        ax.tick_params(labelsize=7)
+        ax.set_xlabel(label_for(obj_names[ix]))
+        ax.set_ylabel(label_for(obj_names[iy]))
         ax.grid(True, alpha=0.3)
     for ax in axes[len(pairs):]:
         ax.set_visible(False)
 
     if baseline is not None:
-        axes[0].legend(handles=[_baseline_handle()], loc="best", fontsize=7)
+        axes[0].legend(handles=[_baseline_handle()], loc="best")
     fig.suptitle(f"Pairwise objective tradeoffs across the front "
-                 f"(n={natural.shape[0]})", fontsize=11)
+                 f"(n={natural.shape[0]})")
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     if cvals is not None:
         cb = fig.colorbar(sc, ax=axes[:len(pairs)].tolist(), shrink=0.7,
                           pad=0.02)
-        cb.set_label(clabel, fontsize=8)
-        cb.ax.tick_params(labelsize=7)
+        cb.set_label(clabel)
     if output_file is not None:
         save_figure(fig, output_file)
     return fig
@@ -201,28 +199,25 @@ def plot_scatter_matrix(
                 ax.scatter(baseline[col], baseline[i], marker="*", s=110,
                            color=BASELINE_COLOR, edgecolor="white", lw=0.5,
                            zorder=10)
-            ax.tick_params(labelsize=6)
             ax.locator_params(nbins=3)
             ax.grid(True, alpha=0.25)
             if row == m - 1:
-                ax.set_xlabel(_edge_label(col), fontsize=7)
+                ax.set_xlabel(_edge_label(col))
                 ax.tick_params(axis="x", rotation=40)
             if col == 0:
-                ax.set_ylabel(_edge_label(i), fontsize=7)
+                ax.set_ylabel(_edge_label(i))
 
-    fig.suptitle(f"Objective-space scatter matrix (n={natural.shape[0]})",
-                 fontsize=11)
+    fig.suptitle(f"Objective-space scatter matrix (n={natural.shape[0]})")
     fig.subplots_adjust(left=0.09, right=0.97, bottom=0.11, top=0.94,
                         wspace=0.10, hspace=0.10)
     # Colorbar + legend live in the empty upper-right triangle.
     if cvals is not None and sc is not None:
         cax = fig.add_axes([0.58, 0.80, 0.30, 0.02])
         cb = fig.colorbar(sc, cax=cax, orientation="horizontal")
-        cb.set_label(clabel, fontsize=8)
-        cb.ax.tick_params(labelsize=7)
+        cb.set_label(clabel)
     if baseline is not None:
         fig.legend(handles=[_baseline_handle()], loc="upper right",
-                   bbox_to_anchor=(0.90, 0.92), fontsize=8, frameon=False)
+                   bbox_to_anchor=(0.90, 0.92), frameon=False)
     if output_file is not None:
         save_figure(fig, output_file)
     return fig

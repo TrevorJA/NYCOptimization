@@ -56,13 +56,11 @@ def _criteria_footer(results: dict, fig, *, y_policies: float,
     first = res0.raw
     add_figure_footer(fig, [_policies_line(results)], y=y_policies)
     n = len(ALL_SETS)
-    fontsize = 6.4 if n <= 4 else 5.9
     for i, cset in enumerate(ALL_SETS):
         thr = rd.criterion_thresholds(res0, cset)
         lines = criteria_lines(thr, first.kinds, obj_order=first.obj_names,
                                header=f"{cset.label}:")
-        add_figure_footer(fig, lines, x=(i + 0.5) / n, y=y_criteria,
-                          fontsize=fontsize)
+        add_figure_footer(fig, lines, x=(i + 0.5) / n, y=y_criteria)
 
 
 def _criterion_grid(n: int, panel_w: float, panel_h: float, ncols: int = 3):
@@ -137,7 +135,7 @@ def fig_criterion_robustness_matrix(results: dict, out_stub: Path,
     ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
     ax.set_xticks(xs)
     ax.set_xticklabels(["\n".join(textwrap.wrap(c.label, 16))
-                        for c in ALL_SETS], fontsize=8.5)
+                        for c in ALL_SETS])
     ax.set_ylabel(f"Fraction of {ETEST} SOWs meeting\n"
                   "all criteria in the set jointly")
     ax.set_ylim(-0.012, max(0.32, 1.08 * max(r["best_policy"] for r in rows)))
@@ -153,7 +151,7 @@ def fig_criterion_robustness_matrix(results: dict, out_stub: Path,
         Line2D([], [], marker="D", ls="none", ms=6, color=INCUMBENT_COLOR,
                label=INCUMBENT_LABEL),
     ]
-    ax.legend(handles=handles, loc="upper right", frameon=False, fontsize=8)
+    ax.legend(handles=handles, loc="upper right", frameon=False)
     fig.tight_layout()
     _criteria_footer(results, fig, y_policies=-0.05, y_criteria=-0.16)
 
@@ -206,7 +204,7 @@ def fig_criterion_collapse(results: dict, out_stub: Path,
                     tables.append(icurve)
                     ax.plot(depths, icurve["best_policy"], "-D", ms=3.5,
                             color=INCUMBENT_COLOR, lw=1.6, zorder=5)
-        ax.set_title(cset.label, fontsize=10,
+        ax.set_title(cset.label,
                      fontstyle="italic" if cset.reference else "normal")
         if cset.reference:
             ax.set_facecolor("0.965")
@@ -215,7 +213,7 @@ def fig_criterion_collapse(results: dict, out_stub: Path,
         ax.set_axisbelow(True)
         ax.set_xticks(depths)
         ax.set_xticklabels([short_label_for(n) for n in order],
-                           rotation=35, ha="right", fontsize=7)
+                           rotation=35, ha="right")
         if panels.index(ax) % 3 == 0:
             ax.set_ylabel("Fraction of SOWs meeting\nall conjoined criteria")
 
@@ -293,14 +291,14 @@ def fig_drought_flood_split(results: dict, out_stub: Path,
                                  "design": "ffmp_incumbent", "solution_id": -1,
                                  "lowflow_joint": ix, "flood_frac": iy,
                                  "flood_axis_in_set": flood_in_set})
-        ax.set_title(cset.label, fontsize=10,
+        ax.set_title(cset.label,
                      fontstyle="italic" if cset.reference else "normal")
         if cset.reference:
             ax.set_facecolor("0.965")
         if not flood_in_set:
             ax.text(0.02, 0.02, "flood axis not in set:\ny at the adopted "
                     "threshold (diagnostic)", transform=ax.transAxes,
-                    fontsize=6.6, color="0.35", va="bottom")
+                    color="0.35", va="bottom")
         ax.set_xlim(-0.03, 1.03)
         ax.set_ylim(-0.03, 1.03)
         ax.grid(color="0.92", lw=0.7)

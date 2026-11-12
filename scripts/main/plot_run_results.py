@@ -46,6 +46,7 @@ import pandas as pd
 from config import FIGURES_DIR, baseline_objectives_csv
 from src.reeval_core import find_incumbent_cube
 from src.pareto_filter import filter_reference_set
+from src.plotting import style
 
 
 def _run_dir(scenario: str, slug: str) -> Path:
@@ -205,19 +206,17 @@ def fig_du_distributions(reeval_dir, filt, out_dir):
         if thresholds.get(name) is not None:
             ax.axhline(thresholds[name], color="darkorange", lw=1.6, ls="--",
                        label="satisficing threshold")
-        ax.legend(fontsize=7, loc="best")
+        ax.legend(loc="best")
         arrow = "↑ better" if dirs[i] == 1 else "↓ better"
-        ax.set_title(f"{name}\n({arrow})", fontsize=8)
+        ax.set_title(f"{name}\n({arrow})")
         ax.set_xticks([])
         ax.grid(True, axis="y", alpha=0.3)
     for j in range(n, len(axes)):
         axes[j].set_visible(False)
     fig.suptitle("DU performance of ACCEPTABLE policies across E_test "
-                 f"(n={filt.n_accepted}; mean over SOWs per policy)",
-                 fontsize=11)
+                 f"(n={filt.n_accepted}; mean over SOWs per policy)")
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    fig.savefig(out_dir / "run03_du_performance_distributions.png", dpi=200,
-                bbox_inches="tight")
+    style.save_figure(fig, out_dir / "run03_du_performance_distributions.png")
     plt.close(fig)
     print("[fig3] -> 03_du_performance_distributions.png")
 
@@ -330,6 +329,7 @@ def _select_examples(filt, scorecard):
 
 
 def main():
+    style.apply_style()
     ap = argparse.ArgumentParser()
     ap.add_argument("--slug", default="ffmp_obj8_mm_moderate")
     ap.add_argument("--scenario", default="historic")

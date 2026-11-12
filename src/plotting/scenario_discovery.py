@@ -24,6 +24,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from src.plotting.style import save_figure
+
 #: Interpretable axis labels for the sampled theta factors. ``m`` is shown as the
 #: volume multiplier e^m (more legible than the log coordinate).
 _THETA_LABEL = {
@@ -98,20 +100,19 @@ def plot_scenario_discovery(reeval_dir, ensemble_dir, solution_id, out_file,
                    zorder=3)
         ax.scatter(disp[~passfail, i], disp[~passfail, j], marker="X", s=55,
                    color="#c94a4a", alpha=0.85, label="fails", zorder=3)
-        ax.set_xlabel(_THETA_LABEL.get(names[i], names[i]), fontsize=9)
-        ax.set_ylabel(_THETA_LABEL.get(names[j], names[j]), fontsize=9)
+        ax.set_xlabel(_THETA_LABEL.get(names[i], names[i]))
+        ax.set_ylabel(_THETA_LABEL.get(names[j], names[j]))
         ax.grid(True, alpha=0.3)
-    axes[0].legend(fontsize=8, loc="best")
+    axes[0].legend(loc="best")
 
     fig.suptitle(
         f"Scenario discovery — {policy_label} (id {int(solution_id)}): "
         f"satisfices all {len(raw.obj_names)} thresholds in {npass}/{n} SOWs "
         f"({100*npass/n:.0f}%)\n"
         f"each point is one deeply-uncertain state of the world in sampled "
-        f"forcing-factor space",
-        fontsize=11)
+        f"forcing-factor space")
     fig.tight_layout(rect=(0, 0, 1, 0.9))
-    fig.savefig(out_file, dpi=200, bbox_inches="tight")
+    save_figure(fig, out_file)
     plt.close(fig)
     return {"solution_id": int(solution_id), "n_pass": npass, "n_sow": n,
             "pass_fraction": npass / n}

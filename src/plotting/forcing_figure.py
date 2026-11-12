@@ -17,8 +17,8 @@ import config
 from src.plotting import forcing_space as fspace
 from src.plotting import style
 
-#: Smallest type size in this figure (points), above the manuscript-wide floor
-#: in :data:`style.MANUSCRIPT_MIN_FONTSIZE`: the four square panels are
+#: Smallest type size in this figure (points), above the project floor
+#: :data:`style.MIN_FONTSIZE`: the four square panels are
 #: reduced further on the page than the single-row figures.
 MIN_FONTSIZE: int = 14
 
@@ -71,7 +71,7 @@ def build_forcing_space(ctx, out_stub: Path, table_dir: Path) -> list[Path]:
     pctl = fspace.envelope_pctl()
 
     # The floor covers the save too: tick labels are sized when they are drawn.
-    with plt.rc_context(style.manuscript_font_rc(MIN_FONTSIZE)):
+    with plt.rc_context(style.font_rc(MIN_FONTSIZE)):
         fig, axes = plt.subplots(2, 2, figsize=FIGSIZE, constrained_layout=True)
         fspace.panel_harmonic_decomposition(axes[0, 0], fits)
         fspace.panel_parameter_space(axes[0, 1], fits, sample)

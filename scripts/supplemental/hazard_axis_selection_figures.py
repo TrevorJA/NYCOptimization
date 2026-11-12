@@ -121,16 +121,16 @@ def fig_decision_landscape(ranking: pd.DataFrame, wrapper: pd.DataFrame, referen
     a.axhspan(null_mean - 2 * null_sd, null_mean + 2 * null_sd, color=NULL_COLOR, zorder=0)
     a.axhline(null_mean, color="0.5", lw=0.8, ls="--", zorder=1)
     a.text(3.55, null_mean, "random 300-subsets\n(mean, ±2 SD)", ha="left", va="bottom",
-           fontsize=7, color="0.35")
+           color="0.35")
     a.set_xticks(sorted(ranking["n"].unique()))
     a.set_xlabel("number of selection axes")
     a.set_ylabel("cluster-averaged KS distance to uniform\n(lower = more uniform coverage)")
-    a.set_title(f"All {len(ranking):,} admissible sets", fontsize=10)
+    a.set_title(f"All {len(ranking):,} admissible sets")
     a.legend(handles=[
         Line2D([], [], marker="o", ls="", color="0.5", ms=4, label="admissible set"),
         Line2D([], [], marker="o", ls="", mfc="none", mec=ADOPTED_COLOR, ms=7, label="equivalence class"),
         Line2D([], [], marker="*", ls="", color=ADOPTED_COLOR, ms=10, label="adopted set"),
-    ], fontsize=7, loc="lower right")
+    ], loc="lower right")
 
     top = ranking.head(scfg.HAXSEL_RANKING_TOP).reset_index(drop=True)
     x = np.arange(len(top))
@@ -150,17 +150,17 @@ def fig_decision_landscape(ranking: pd.DataFrame, wrapper: pd.DataFrame, referen
             b.scatter([i], [row["mean"] - 4 * row["se"] - 0.004], marker="*", s=140, c=ADOPTED_COLOR,
                       zorder=4)
     b.set_xticks(x)
-    b.set_xticklabels([_code(m) for m in top["members"]], rotation=60, ha="right", fontsize=6.5)
+    b.set_xticklabels([_code(m) for m in top["members"]], rotation=60, ha="right")
     b.set_xlim(-0.7, len(top) - 0.3)
     b.set_ylabel("cluster-averaged KS distance to uniform")
     s = summary["settings"]
     b.set_title(f"Leading {len(top)} sets by rank (N={s['HAXSEL_N']}, P={s['HAXSEL_POOL_P']:,}, "
                 f"{len(summary['pools'])} draws × {s['HAXSEL_SEEDS']} seeds; whisker = 2 SE; "
-                f"shaded = equivalence class)", fontsize=9)
+                f"shaded = equivalence class)")
     b.legend(handles=[Line2D([], [], marker="s", ls="", color=c, label=f"{n} axes")
                       for n, c in SIZE_COLOR.items()]
              + [Line2D([], [], marker=m, ls="", color="0.5", label=f"draw {d}") for d, m in DRAW_MARKER.items()],
-             fontsize=7, loc="upper left", ncol=2)
+             loc="upper left", ncol=2)
     fig.tight_layout()
     save_figure(fig, scfg.haxsel_figure_path("F1_decision_landscape"))
     plt.close(fig)
@@ -197,19 +197,19 @@ def fig_coverage_profile(ranking: pd.DataFrame, null: pd.DataFrame, metrics: pd.
             ax.axhline(ref_line, color="0.4", lw=0.8, ls="--", zorder=1)
         _cluster_separators(ax, metrics, order)
         ax.set_xticks(x)
-        ax.set_xticklabels([METRIC_CODE.get(m, m) for m in order], rotation=45, ha="right", fontsize=8)
+        ax.set_xticklabels([METRIC_CODE.get(m, m) for m in order], rotation=45, ha="right")
         ax.set_xlim(-0.6, len(order) - 0.4)
         ax.set_ylabel(ylabel)
     a.set_title(f"Adopted set {_code(adopted['members'])}: coverage of every continuous metric "
                 "(filled = its own axes; gray lines = the other leading sets; "
-                "vertical lines separate metric clusters)", fontsize=9)
-    b.set_title("Tail-share profile on all 21 metrics (dashed = i.i.d. share 0.10)", fontsize=9)
+                "vertical lines separate metric clusters)")
+    b.set_title("Tail-share profile on all 21 metrics (dashed = i.i.d. share 0.10)")
     a.legend(handles=[
         Patch(color=NULL_COLOR, label="random 300-subsets (±2 SD)"),
         Line2D([], [], color="0.6", lw=0.8, label=f"other leading sets (top {scfg.HAXSEL_PROFILE_TOP})"),
         Line2D([], [], marker="o", color=SIZE_COLOR[int(adopted["n"])], mec="black", label="adopted set, own axis"),
         Line2D([], [], marker="o", mfc="white", color=SIZE_COLOR[int(adopted["n"])], label="adopted set, other metric"),
-    ], fontsize=7, loc="upper right", ncol=2)
+    ], loc="upper right", ncol=2)
     fig.tight_layout()
     save_figure(fig, scfg.haxsel_figure_path("F2_coverage_profile"))
     plt.close(fig)
@@ -237,14 +237,13 @@ def fig_joint_check(ranking: pd.DataFrame, reference: pd.DataFrame, checks: pd.D
     ax.axhline(0, color="0.5", lw=0.8, ls="--", zorder=1)
     ax.axvline(0, color="0.5", lw=0.8, ls="--", zorder=1)
     ax.text(0.02, 0.98, "random-subset reference at 0 on both axes", transform=ax.transAxes,
-            ha="left", va="top", fontsize=7.5, color="0.35")
+            ha="left", va="top", color="0.35")
     rho = float(checks.loc[checks["check"] == "spearman_cov_vs_cover_q", "value"].iloc[0])
     ax.set_xlabel("marginal coverage: cluster-averaged KS distance (z-score; lower = better)")
     ax.set_ylabel(f"joint coverage: p{int(scfg.HAXSEL_COVER_Q)} pool-to-nearest-member distance\n"
                   "(z-score; lower = better)")
-    ax.set_title(f"Marginal against joint coverage over all admissible sets (Spearman ρ = {rho:.2f})",
-                 fontsize=9.5)
-    ax.legend(fontsize=7, loc="best")
+    ax.set_title(f"Marginal against joint coverage over all admissible sets (Spearman ρ = {rho:.2f})")
+    ax.legend(loc="best")
     fig.tight_layout()
     save_figure(fig, scfg.haxsel_figure_path("F3_joint_check"))
     plt.close(fig)
@@ -268,7 +267,7 @@ def fig_adopted_marginals(ranking: pd.DataFrame, metrics: pd.DataFrame, members:
         ks = float(np.max(np.maximum(np.arange(1, len(v) + 1) / len(v) - v,
                                      v - np.arange(len(v)) / len(v))))
         ax.set_title(f"{METRIC_CODE.get(m, m)}{'  (axis)' if m in own else ''}   KS {ks:.2f}",
-                     fontsize=9, fontweight="bold" if m in own else "normal")
+                     fontweight="bold" if m in own else "normal")
         if m in own:
             for sp in ax.spines.values():
                 sp.set_visible(True)
@@ -281,16 +280,16 @@ def fig_adopted_marginals(ranking: pd.DataFrame, metrics: pd.DataFrame, members:
     for ax in axes.ravel()[len(order):]:
         ax.set_visible(False)
     for ax in axes[-1, :]:
-        ax.set_xlabel("scaled value (p1–p99 range)", fontsize=8)
+        ax.set_xlabel("scaled value (p1–p99 range)")
     for ax in axes[:, 0]:
-        ax.set_ylabel("cumulative share", fontsize=8)
+        ax.set_ylabel("cumulative share")
     fig.suptitle(f"Adopted set {_code(adopted['members'])}: selected members on every continuous metric "
-                 f"(draw {draw}, seed 0; N = {len(members)})", fontsize=10)
+                 f"(draw {draw}, seed 0; N = {len(members)})")
     fig.legend(handles=[
         Line2D([], [], color=color, lw=1.6, label="selected members"),
         Line2D([], [], color=POOL_COLOR, lw=1.4, label="candidate pool"),
         Line2D([], [], color="0.4", lw=0.8, ls="--", label="uniform on the scaled range"),
-    ], loc="lower center", ncol=3, fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.0))
+    ], loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 0.0))
     fig.tight_layout(rect=(0, 0.04, 1, 0.96))
     save_figure(fig, scfg.haxsel_figure_path("F4_adopted_marginals"))
     plt.close(fig)

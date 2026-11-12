@@ -223,7 +223,7 @@ def _two_panel_figure(natural, mask, names, directions, out_png, label=None):
     """
     label = PREFERRED if label is None else label
     import matplotlib.pyplot as plt
-    from src.plotting.style import apply_style, axis_label_for
+    from src.plotting.style import axis_label_for, save_figure
     from src.plotting.parallel_coordinates import _format_value
 
     n_objs = len(names)
@@ -233,7 +233,6 @@ def _two_panel_figure(natural, mask, names, directions, out_png, label=None):
     flip = directions == -1
     normed[:, flip] = 1.0 - normed[:, flip]
 
-    apply_style()
     fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(13, 9), sharex=True)
     x = np.arange(n_objs)
     panels = [
@@ -244,24 +243,24 @@ def _two_panel_figure(natural, mask, names, directions, out_png, label=None):
     for ax, rows, alpha, label in panels:
         for row in rows:
             ax.plot(x, row, alpha=alpha, color="steelblue", linewidth=0.6)
-        ax.set_title(label, fontsize=10)
+        ax.set_title(label)
         ax.set_ylabel("Preference Direction  (↑ better)")
         ax.set_ylim(-0.14, 1.12)
         ax.grid(True, alpha=0.3, axis="x")
         for i in range(n_objs):
             best, worst = (hi[i], lo[i]) if directions[i] == 1 else (lo[i], hi[i])
             ax.text(i, 1.04, _format_value(best), ha="center", va="bottom",
-                    fontsize=7, color="0.3")
+                    color="0.3")
             ax.text(i, -0.04, _format_value(worst), ha="center", va="top",
-                    fontsize=7, color="0.3")
+                    color="0.3")
     ax_bot.set_xticks(x)
     ax_bot.set_xticklabels([
         axis_label_for(n, "maximize" if d == 1 else "minimize")
         for n, d in zip(names, directions)
-    ], fontsize=8)
+    ])
 
     fig.tight_layout()
-    fig.savefig(out_png, dpi=200, bbox_inches="tight")
+    save_figure(fig, out_png)
     plt.close(fig)
     print(f"[figure] {out_png}")
 
@@ -275,6 +274,9 @@ def _write_csv(path, rows):
 
 
 def main():
+    from src.plotting.style import apply_style
+
+    apply_style()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--slug", default="ffmp_obj8_mm_full")
     ap.add_argument("--scenario", default="historic")

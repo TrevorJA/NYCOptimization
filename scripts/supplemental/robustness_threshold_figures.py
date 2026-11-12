@@ -784,7 +784,7 @@ def fig_sow_cdfs(raw, obj_names, sow_values_by_name, anchor) -> None:
                 _ref_line(ax, val, xlo, xhi, color="0.35", lw=1.2, ls="-.")
 
         frac = float(sweep_fractions(sow_v, [thr], kind)[0])
-        ax.set_title(f"{label_for(name)}\npass {frac:.2f}", fontsize=9)
+        ax.set_title(f"{label_for(name)}\npass {frac:.2f}")
         ax.set_xlim(xlo, xhi)
         ax.set_ylim(-0.02, 1.02)
         if k % 4 == 0:
@@ -802,10 +802,10 @@ def fig_sow_cdfs(raw, obj_names, sow_values_by_name, anchor) -> None:
         Line2D([], [], color="black", marker=">", ls="",
                label="beyond axis (see tables)"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=8,
+    fig.legend(handles=handles, loc="lower center", ncol=4,
                frameon=False, bbox_to_anchor=(0.5, -0.02))
     fig.suptitle("Baseline FFMP on $E_{test}$: per-SOW annual-unit objective "
-                 "distributions vs satisficing thresholds", fontsize=11)
+                 "distributions vs satisficing thresholds")
     fig.tight_layout(rect=(0, 0.05, 1, 0.97))
     save_figure(fig, scfg.rtd_figure_path("S_rtd_baseline_sow_cdfs"))
     plt.close(fig)
@@ -844,7 +844,7 @@ def fig_threshold_sensitivity(raw, obj_names, sow_values_by_name, menus) -> None
             ax.plot(val, frac, ls="", **_candidate_style(lab))
         if kind == "le":
             ax.invert_xaxis()  # stringency increases rightward on every panel
-        ax.set_title(label_for(name), fontsize=9)
+        ax.set_title(label_for(name))
         ax.set_ylim(-0.04, 1.04)
         if k % 4 == 0:
             ax.set_ylabel("satisficing fraction")
@@ -864,11 +864,10 @@ def fig_threshold_sensitivity(raw, obj_names, sow_values_by_name, menus) -> None
                label="SOW quantile (report-only)"),
         Patch(facecolor="0.94", label="degenerate zone"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=8,
+    fig.legend(handles=handles, loc="lower center", ncol=4,
                frameon=False, bbox_to_anchor=(0.5, -0.02))
     fig.suptitle("Satisficing fraction vs threshold placement (stringency "
-                 "increases rightward; values in rtd_candidate_placements.csv)",
-                 fontsize=11)
+                 "increases rightward; values in rtd_candidate_placements.csv)")
     fig.tight_layout(rect=(0, 0.05, 1, 0.97))
     save_figure(fig, scfg.rtd_figure_path("S_rtd_threshold_sensitivity"))
     plt.close(fig)
@@ -881,17 +880,16 @@ def fig_theta_heatmap(corr_df, obj_names, theta_names) -> None:
     im = ax.imshow(block, cmap="RdBu_r", vmin=-1.0, vmax=1.0, aspect="auto")
     ax.set_xticks(range(len(theta_names)))
     ax.set_xticklabels([THETA_LABELS.get(n, n) for n in theta_names],
-                       rotation=20, ha="right", fontsize=8)
+                       rotation=20, ha="right")
     ax.set_yticks(range(len(obj_names)))
-    ax.set_yticklabels([label_for(n) for n in obj_names], fontsize=8)
+    ax.set_yticklabels([label_for(n) for n in obj_names])
     for i in range(block.shape[0]):
         for j in range(block.shape[1]):
             v = block[i, j]
-            ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=7,
+            ax.text(j, i, f"{v:.2f}", ha="center", va="center",
                     color="white" if abs(v) > 0.55 else "black")
     fig.colorbar(im, ax=ax, shrink=0.75, label="Spearman ρ")
-    ax.set_title("Baseline per-SOW objectives vs DU forcing factors",
-                 fontsize=10)
+    ax.set_title("Baseline per-SOW objectives vs DU forcing factors")
     fig.tight_layout()
     save_figure(fig, scfg.rtd_figure_path("S_rtd_theta_spearman"))
     plt.close(fig)
@@ -930,11 +928,11 @@ def fig_factor_maps(raw, obj_names, sow_values_by_name, theta,
             m_star = critical_m(theta[:, i], ok, scfg.RTD_CRITICAL_M_WINDOW)
             if np.isfinite(m_star):
                 ax.axvline(m_star, color="0.3", lw=1.0, ls="--")
-        ax.set_title(f"{label_for(name)}\npass {ok.mean():.2f}", fontsize=8.5)
+        ax.set_title(f"{label_for(name)}\npass {ok.mean():.2f}")
     for ax in axes[-1, :]:
-        ax.set_xlabel(THETA_LABELS[theta_names[i]], fontsize=8)
+        ax.set_xlabel(THETA_LABELS[theta_names[i]])
     for ax in axes[:, 0]:
-        ax.set_ylabel(THETA_LABELS[theta_names[j]], fontsize=8)
+        ax.set_ylabel(THETA_LABELS[theta_names[j]])
     handles = [
         Line2D([], [], color=SOW_COLOR, marker="o", ls="", label="pass"),
         Line2D([], [], color=FAIL_COLOR, marker="o", ls="", label="fail"),
@@ -945,9 +943,8 @@ def fig_factor_maps(raw, obj_names, sow_values_by_name, theta,
         handles.insert(2, Line2D([], [], color=RESCUED_COLOR, marker="o",
                                  ls="", label="pass at recommended only"))
     fig.legend(handles=handles, loc="lower center", ncol=len(handles),
-               fontsize=8, frameon=False, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle("Pass/fail at the current thresholds across the DU box",
-                 fontsize=11)
+               frameon=False, bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle("Pass/fail at the current thresholds across the DU box")
     fig.tight_layout(rect=(0, 0.05, 1, 0.96))
     save_figure(fig, scfg.rtd_figure_path("S_rtd_factor_maps"))
     plt.close(fig)
@@ -975,9 +972,9 @@ def fig_conjunction(obj_names, sat_sow_by_vector) -> None:
         y = np.arange(len(plot))[::-1]
         ax.barh(y, plot["frac"].values, color=FAIL_COLOR, alpha=0.85)
         ax.set_yticks(y)
-        ax.set_yticklabels(labels, fontsize=7.5)
-        ax.set_xlabel("fraction of SOWs", fontsize=8)
-        ax.set_title(f"failing-criteria combinations ({vector})", fontsize=9)
+        ax.set_yticklabels(labels)
+        ax.set_xlabel("fraction of SOWs")
+        ax.set_title(f"failing-criteria combinations ({vector})")
 
         sole, co = sole_cofailure(sat)
         ax = axes[r, 1]
@@ -986,14 +983,13 @@ def fig_conjunction(obj_names, sat_sow_by_vector) -> None:
         ax.barh(y, co, left=sole, color=FAIL_COLOR, alpha=0.4,
                 label="co-failure")
         ax.set_yticks(y)
-        ax.set_yticklabels([SHORT_LABELS.get(n, n) for n in obj_names],
-                           fontsize=7.5)
-        ax.set_xlabel("fraction of SOWs failing", fontsize=8)
-        ax.set_title(f"sole vs co-failure per criterion ({vector})", fontsize=9)
+        ax.set_yticklabels([SHORT_LABELS.get(n, n) for n in obj_names])
+        ax.set_xlabel("fraction of SOWs failing")
+        ax.set_title(f"sole vs co-failure per criterion ({vector})")
         if r == 0:
-            ax.legend(fontsize=7.5, frameon=False, loc="lower right")
+            ax.legend(frameon=False, loc="lower right")
     fig.suptitle("Starr conjunction decomposition (SOW unit; "
-                 "rtd_joint_satisficing.csv)", fontsize=11)
+                 "rtd_joint_satisficing.csv)")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     save_figure(fig, scfg.rtd_figure_path("S_rtd_conjunction"))
     plt.close(fig)

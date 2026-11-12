@@ -181,7 +181,7 @@ def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
     a.set_ylabel("min per-axis tail share (seed mean)")
     a.set_ylim(bottom=0)
     a.set_title("Tail enrichment vs pool size (N = 100)")
-    a.legend(fontsize=6.5)
+    a.legend()
 
     conc = [r["msets"][_MSET]["conc_ratio"] for r in rungs]
     a2.plot(P, conc, "o-", color=_SET_COLOR, label=f"selection set (m={m})")
@@ -196,7 +196,7 @@ def _figure(rungs: list[dict], fits: dict, out_stub: Path) -> None:
     a2.set_xlabel("candidate pool size P")
     a2.set_ylabel("snap / random-pair distance ratio")
     a2.set_title("Snap concentration vs pool size")
-    a2.legend(fontsize=6.5)
+    a2.legend()
 
     fig.suptitle(f"Nested-P saturation diagnostic ({POOL_SLUG}, prefix rungs)")
     fig.tight_layout(rect=(0, 0, 1, 0.93))

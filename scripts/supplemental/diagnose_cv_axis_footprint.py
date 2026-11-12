@@ -5,8 +5,8 @@ independent CMIP6-derived CV axis (``c = a * v``, ``ENSEMBLE_FORCING_VARIANCE_AX
 OFF for the campaign) widens the drought/flood tail stress beyond what the 3-D mean
 box ``[m, r1, r2]`` already spans.
 
-Design: two PAIRED generations over the E_test forcing box (full CMIP6 range widened by
-``E_TEST_MARGIN``), sharing one root seed:
+Design: two PAIRED generations over the E_test forcing box (full range of the mid-century
+CMIP6 runs widened by ``E_TEST_MARGIN``), sharing one root seed:
 
     OFF  variance_axis=False  ->  c = a  (CV-preserving; the v = 1 slice)
     ON   variance_axis=True   ->  c = a * v, v drawn from the CMIP6 CV envelope
@@ -65,6 +65,7 @@ from src.ensemble_generation import (
 )
 from src.etest import E_TEST_BOUND_PCT, E_TEST_MARGIN
 from src.load.historical_flows import load_historical_flows
+from src.plotting import style
 
 N_THETA = int(os.environ.get("NYCOPT_CVDIAG_N_THETA", "48"))
 YEARS = int(os.environ.get("NYCOPT_CVDIAG_YEARS", "10"))
@@ -120,7 +121,8 @@ def _hazard_image(cfg: ForcingEnsembleConfig) -> tuple[np.ndarray, list[str], np
             nowak=setup.nowak, kdes=setup.kdes,
             root_seed=cfg.root_seed, start_date=cfg.start_date,
         )
-        H_block, axes = _hazard_block(
+        # The supplement metrics scored in the same pass are not part of the footprint.
+        H_block, axes, _, _ = _hazard_block(
             inflow, sorted(inflow), DEFAULT_NYC_INFLOW_NODES,
             reference_monthly, reference_daily,
             n_years=cfg.realization_years,
@@ -146,6 +148,7 @@ def _footprint_stats(H: np.ndarray, axes: list[str], label: str) -> pd.DataFrame
 
 
 def main() -> None:
+    style.apply_style()
     TABLES_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -194,7 +197,9 @@ def main() -> None:
     fig, ax = plt.subplots(figsize=(9, 4.5))
     for i, name in enumerate(axes):
         off_col, on_col = H_off[:, i], H_on[:, i]
-        lo, span = np.nanpercentile(off_col, 5), summary.loc[i, "span_off"]
+        # ``summary`` is in pivot (alphabetical) order, not ``axes`` order: look the span up by name.
+        lo = np.nanpercentile(off_col, 5)
+        span = float(summary.loc[summary["axis"] == name, "span_off"].iloc[0])
         for dx, col, color, label in ((-0.16, off_col, "0.45", "off (c=a)"),
                                       (0.16, on_col, "#c1272d", "on (c=a*v)")):
             z = (col - lo) / span
@@ -202,14 +207,14 @@ def main() -> None:
                     label=label if i == 0 else None)
             ax.plot([i + dx] * 2, np.nanpercentile(z, [5, 95]), color=color, lw=4.0)
     ax.set_xticks(range(len(axes)))
-    ax.set_xticklabels([a.replace("_", "\n") for a in axes], fontsize=8)
+    ax.set_xticklabels([a.replace("_", "\n") for a in axes])
     ax.set_ylabel("normalized to OFF p5-p95 span")
     ax.set_title(
         f"CV-axis hazard footprint, paired runs (N={N_THETA}, L={YEARS} yr, E_test box)"
     )
-    ax.legend(frameon=False, fontsize=8)
+    ax.legend(frameon=False)
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "cv_axis_footprint.png", dpi=200)
+    style.save_figure(fig, FIG_DIR / "cv_axis_footprint.png")
 
     findings = {
         "n_theta": N_THETA, "years": YEARS, "seed": SEED,

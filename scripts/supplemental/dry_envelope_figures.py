@@ -110,8 +110,8 @@ def figure_local() -> None:
         Line2D([], [], color="0.6", ls=":", label="driest CMIP6 run"),
         Line2D([], [], color=COLOR_HIST, ls="-", label="adopted lower bound"),
     ]
-    a.legend(handles=handles, fontsize=7.5, frameon=False, loc="upper right")
-    a.set_title("(a) drought magnitude at fixed annual-volume levels", fontsize=10)
+    a.legend(handles=handles, frameon=False, loc="upper right")
+    a.set_title("(a) drought magnitude at fixed annual-volume levels")
 
     for i, axn in enumerate(list(scfg.DRYENV_DROUGHT_AXES) + ["drought_total_deficit"]):
         sub = lvl[lvl["axis"] == axn].merge(levels[["level", "em"]], on="level",
@@ -127,8 +127,8 @@ def figure_local() -> None:
     b.set_xlabel("annual-volume multiplier of the forcing profile")
     b.set_ylabel("share of windows beyond the stationary tail")
     b.set_ylim(-0.02, 1.02)
-    b.legend(fontsize=7, frameon=False, ncol=2, loc="upper right")
-    b.set_title("(b) share of windows beyond the stationary sample's tail", fontsize=10)
+    b.legend(frameon=False, ncol=2, loc="upper right")
+    b.set_title("(b) share of windows beyond the stationary sample's tail")
 
     fig.tight_layout()
     save_figure(fig, FIGURES / "F1_dry_envelope")
@@ -155,10 +155,10 @@ def figure_production() -> None:
                 label="E_test sub-windows q90")
         ax.plot(sub["x"], sub["tail99"], marker="o", ms=4, color=COLOR_LEVEL,
                 label="E_test sub-windows q99")
-        ax.set_title(SHORT[axn], fontsize=10)
+        ax.set_title(SHORT[axn])
         ax.set_xlabel("annual-volume multiplier (bin centre)")
     axs[0].set_ylabel("hazard value")
-    axs[0].legend(fontsize=7, frameon=False)
+    axs[0].legend(frameon=False)
     fig.tight_layout()
     save_figure(fig, FIGURES / "F2_dry_envelope_production")
     plt.close(fig)

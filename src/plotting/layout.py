@@ -46,14 +46,13 @@ def panel_grid(nrows: int, ncols: int, *, width: float = WIDTH_DOUBLE_COL,
 
 
 def panel_label(ax, letter: str, *, x: float = 0.02, y: float = 0.98,
-                fontsize: Optional[float] = None, loc: str = "inside") -> None:
-    """Uniform "(a)"-style panel lettering.
+                loc: str = "inside") -> None:
+    """Uniform "(a)"-style panel lettering, at the rcParams type size.
 
     Args:
         ax: Target axes.
         letter: The letter, without parentheses.
         x, y: Position in axes fraction.
-        fontsize: Override; None keeps the rcParams size.
         loc: ``"inside"`` (default) places it inside the upper-left corner;
             ``"above"`` places it just outside the top-left. Use ``"above"``
             whenever the corner holds data -- a dense scatter or a dark
@@ -61,7 +60,7 @@ def panel_label(ax, letter: str, *, x: float = 0.02, y: float = 0.98,
     """
     va = "bottom" if loc == "above" else "top"
     ax.text(x, y, f"({letter})", transform=ax.transAxes, ha="left", va=va,
-            fontsize=fontsize, fontweight="bold")
+            fontweight="bold")
 
 
 def shared_legend(fig, handles: Sequence, *, ncol: Optional[int] = None,

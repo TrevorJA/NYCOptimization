@@ -15,7 +15,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.plotting.style import label_for
+from src.plotting.style import label_for, save_figure
 
 
 def _sow_satisficing(raw):
@@ -95,7 +95,7 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
     axA.set_ylabel("number of Pareto policies")
     axA.set_title("A. Primary robustness — Starr domain criterion\n"
                   "(Herman 2015; Gold 2023)")
-    axA.legend(fontsize=8, loc="upper right")
+    axA.legend(loc="upper right")
     axA.grid(True, alpha=0.3)
 
     # ----- Panel B: per-objective decomposition + baseline ------------------ #
@@ -118,12 +118,12 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
                 color="firebrick", edgecolor="white", zorder=5,
                 label="FFMP baseline")
     axB.set_yticks(y + 1)
-    axB.set_yticklabels(labels, fontsize=9)
+    axB.set_yticklabels(labels)
     axB.set_xlim(-0.02, 1.02)
     axB.set_xlabel("Single-objective satisficing (SOW unit)\n"
                    "fraction of SOWs meeting this threshold")
     axB.set_title("B. Decomposition — the binding objective (red) caps joint robustness")
-    axB.legend(fontsize=8, loc="lower right")
+    axB.legend(loc="lower right")
     axB.grid(True, axis="x", alpha=0.3)
     # The binding objective is the lowest-median row (bottom of the sorted axis);
     # flag it by reddening its tick label rather than a floating note.
@@ -132,9 +132,9 @@ def plot_du_robustness(reeval_dir, accepted_ids, out_file,
 
     fig.suptitle(f"DU robustness on the held-out test ensemble "
                  f"({raw.n_sow} SOWs x {raw.realizations_per_sow} reps, wide DU box) "
-                 f"— acceptable policies vs status-quo FFMP", fontsize=12)
+                 f"— acceptable policies vs status-quo FFMP")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.savefig(out_file, dpi=200, bbox_inches="tight")
+    save_figure(fig, out_file)
     plt.close(fig)
 
     binding_k = int(order[0])

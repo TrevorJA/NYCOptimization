@@ -109,10 +109,7 @@ def _render(spec: FigureSpec, ctx: FigureContext) -> bool:
 
     # PNG only during iteration rounds on every tier; the vector copies come
     # from style.MANUSCRIPT_FIGURE_FORMATS at the manuscript-final pass.
-    if spec.tier in ("manuscript", "si"):
-        style.apply_manuscript_style()
-    else:
-        style.apply_style()
+    style.apply_style()
     style.FIGURE_FORMATS = ("png",)
 
     out_stub = spec.out_dir() / spec.stem

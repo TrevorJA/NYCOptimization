@@ -96,11 +96,11 @@ POOL_BAND_EDGE = "0.62"
 #: puts the severity-magnitude wall square-on behind the cloud.
 SCATTER_3D_VIEW: tuple[float, float] = (13.0, -55.0)
 
-#: Type floor for this figure, above the 12 pt manuscript minimum
-#: (:data:`style.MANUSCRIPT_MIN_FONTSIZE`): the 3-D panels carry three axes of
+#: Type floor for this figure, above the 12 pt project minimum
+#: (:data:`style.MIN_FONTSIZE`): the 3-D panels carry three axes of
 #: ticks each, so their labels are read at a steeper reduction than a 2-D
-#: panel's. Applied as an rc override around the build, not globally, so the
-#: other manuscript figures keep the shared 12 pt style.
+#: panel's. Applied through :func:`style.font_rc` around the build, not
+#: globally, so the other figures keep the shared 12 pt style.
 COMPOSITION_FONTSIZE: int = 14
 
 #: Gap between an axis and its label, in points (all panels).
@@ -527,16 +527,7 @@ def _marginal_limits(
     return max(0.0, lo - pad), hi + pad
 
 
-@plt.rc_context({
-    "font.size":             COMPOSITION_FONTSIZE,
-    "axes.titlesize":        COMPOSITION_FONTSIZE + 1,
-    "axes.labelsize":        COMPOSITION_FONTSIZE,
-    "xtick.labelsize":       COMPOSITION_FONTSIZE,
-    "ytick.labelsize":       COMPOSITION_FONTSIZE,
-    "legend.fontsize":       COMPOSITION_FONTSIZE,
-    "legend.title_fontsize": COMPOSITION_FONTSIZE,
-    "axes.labelpad":         LABELPAD,
-})
+@plt.rc_context({**style.font_rc(COMPOSITION_FONTSIZE), "axes.labelpad": LABELPAD})
 def build_composition_figure(
     pool_H: np.ndarray, pool_axes: list[str],
     layers: list[CompositionLayer],

@@ -232,8 +232,8 @@ def _seasonal_band(ax, policies, getter, *, ylabel: str, title: str,
         ax.set_ylim(*ylim)
     ax.set_ylabel(ylabel)
     _month_axis(ax)
-    ax.legend(handles=handles, loc="upper right", framealpha=0.9, fontsize=8, ncol=2)
-    ax.set_title(title, fontsize=10)
+    ax.legend(handles=handles, loc="upper right", framealpha=0.9, ncol=2)
+    ax.set_title(title)
 
 
 def _flood_seasonality(ax, policies) -> None:
@@ -267,9 +267,9 @@ def _flood_seasonality(ax, policies) -> None:
     ax.set_xticklabels(_MONTH_LABELS)
     ax.set_xlabel("Month of water year")
     ax.set_ylabel("Mean minor-flood days / year")
-    ax.legend(loc="upper right", framealpha=0.9, fontsize=8)
+    ax.legend(loc="upper right", framealpha=0.9)
     ax.set_title("Seasonal contribution to expected annual flood days "
-                 "(bars sum to the objective)", fontsize=10)
+                 "(bars sum to the objective)")
 
 
 # ---------------------------------------------------------------------------
@@ -347,13 +347,13 @@ def _pooled_reduction_panel(ax, policies, annual_name: str, *, xlabel: str,
             Patch(facecolor="#4f9648", alpha=0.18,
                   label=f"reliable years (< {op.k} failing wk)"),
         ]
-        ax.legend(handles=handles, loc="lower right", framealpha=0.9, fontsize=8)
+        ax.legend(handles=handles, loc="lower right", framealpha=0.9)
     else:
         if isinstance(op, PooledPercentileOp):
             ax.axhline(op.q / 100.0, color=THRESHOLD_COLOR, lw=0.9, linestyle=":")
             ax.text(ax.get_xlim()[0], op.q / 100.0, f" P{op.q:g} (objective) ",
-                    va="bottom", ha="left", fontsize=8, color="0.4")
-        ax.legend(loc="lower right", framealpha=0.9, fontsize=8)
+                    va="bottom", ha="left", color="0.4")
+        ax.legend(loc="lower right", framealpha=0.9)
 
 
 # ---------------------------------------------------------------------------
@@ -381,14 +381,14 @@ def plot_delivery_anatomy(policies, *, output_file=None,
         ax_rel, policies, "nyc_delivery_reliability_annual",
         xlabel="Failing weeks per ensemble water year", score_fmt="rel {:.2f}",
         strict=strict)
-    ax_rel.set_title("Reliability — no-failing-week fraction (● = score)", fontsize=9)
+    ax_rel.set_title("Reliability — no-failing-week fraction (● = score)")
     _pooled_reduction_panel(
         ax_def, policies, "nyc_delivery_deficit_p99_pct",
         xlabel="Within-year CVaR90 diversion deficit (% of Decree)",
         score_fmt="P99 {:.1f}%", strict=strict)
-    ax_def.set_title("Deficit — pooled within-year CVaR90", fontsize=9)
+    ax_def.set_title("Deficit — pooled within-year CVaR90")
     fig.suptitle(f"NYC diversion under the ensemble  ({_units_caption(policies)})",
-                 fontsize=11, y=0.995)
+                 y=0.995)
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -422,14 +422,14 @@ def plot_montague_anatomy(policies, *, output_file=None,
         ax_rel, policies, "montague_flow_reliability_annual",
         xlabel="Failing weeks per ensemble water year", score_fmt="rel {:.2f}",
         strict=strict)
-    ax_rel.set_title("Reliability — no-failing-week fraction (● = score)", fontsize=9)
+    ax_rel.set_title("Reliability — no-failing-week fraction (● = score)")
     _pooled_reduction_panel(
         ax_def, policies, "montague_flow_deficit_p99_pct",
         xlabel="Within-year CVaR90 flow deficit (% of Decree)",
         score_fmt="P99 {:.1f}%", strict=strict)
-    ax_def.set_title("Deficit — pooled within-year CVaR90", fontsize=9)
+    ax_def.set_title("Deficit — pooled within-year CVaR90")
     fig.suptitle(f"Montague flow under the ensemble  ({_units_caption(policies)})",
-                 fontsize=11, y=0.995)
+                 y=0.995)
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -462,7 +462,7 @@ def plot_trenton_anatomy(policies, *, output_file=None,
         xlabel="Within-year CVaR90 flow deficit (% of flow target)",
         score_fmt="P99 {:.1f}%", strict=strict)
     ax_def.set_title(f"Deficit — pooled within-year CVaR90  "
-                     f"({_units_caption(policies)})", fontsize=9)
+                     f"({_units_caption(policies)})")
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -492,7 +492,7 @@ def plot_storage_anatomy(policies, *, output_file=None,
         xlabel="Annual-minimum combined NYC storage (% capacity)",
         score_fmt="P01 {:.1f}%", strict=strict)
     ax_p01.set_title(f"Vulnerability — pooled annual-minimum storage  "
-                     f"({_units_caption(policies)})", fontsize=9)
+                     f"({_units_caption(policies)})")
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -517,7 +517,7 @@ def plot_flood_anatomy(policies, *, output_file=None,
         xlabel="Minor-flood days per ensemble water year",
         score_fmt="mean {:.2f} d/yr", strict=strict)
     ax_flood.set_title(f"Expected annual flood days — pooled ensemble water years  "
-                       f"({_units_caption(policies)})", fontsize=9)
+                       f"({_units_caption(policies)})")
 
     if output_file is not None:
         save_figure(fig, output_file)

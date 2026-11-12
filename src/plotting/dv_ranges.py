@@ -148,7 +148,7 @@ def plot_dv_ranges(
         else:
             ax.text(0.5, 0.5, "0 solutions satisfy this criterion",
                     transform=ax.transAxes, ha="center", va="center",
-                    fontsize=11, color=color,
+                    color=color,
                     bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
                               edgecolor=color, alpha=0.9), zorder=10)
         if base_nd is not None:
@@ -158,10 +158,9 @@ def plot_dv_ranges(
             ax.axvline(b - 0.5, color="0.7", lw=0.8, ls=":", zorder=2)
         # Extra pad on the top panel keeps its title clear of the family labels.
         ax.set_title(f"{label}  —  {int(mask.sum())} of {n_sol} solutions",
-                     fontsize=9, loc="left", pad=24 if k == 0 else 6)
+                     loc="left", pad=24 if k == 0 else 6)
         ax.set_ylim(-0.04, 1.04)
-        ax.set_ylabel("DV value\n(fraction of bounds)", fontsize=8)
-        ax.tick_params(axis="y", labelsize=7)
+        ax.set_ylabel("DV value\n(fraction of bounds)")
         ax.set_xlim(-0.8, n_vars - 0.2)
 
         handles = [
@@ -176,19 +175,19 @@ def plot_dv_ranges(
                                   markersize=4, color=BASELINE_COLOR,
                                   label="FFMP baseline"))
         ax.legend(handles=handles, loc="upper left",
-                  bbox_to_anchor=(1.005, 1.0), fontsize=6.5, frameon=False)
+                  bbox_to_anchor=(1.005, 1.0), frameon=False)
 
     # Family group labels above the top panel, under its padded title.
     edges = [0] + breaks + [n_vars]
     for a, b in zip(edges[:-1], edges[1:]):
         axes[0].text((a + b - 1) / 2.0, 1.02, _FAMILY_LABELS.get(fams[a], fams[a]),
                      transform=axes[0].get_xaxis_transform(), ha="center",
-                     va="bottom", fontsize=7.5, color="0.35")
+                     va="bottom", color="0.35")
 
     axes[-1].set_xticks(x)
-    axes[-1].set_xticklabels(names, rotation=90, fontsize=6.5)
+    axes[-1].set_xticklabels(names, rotation=90)
     fig.suptitle("Decision-variable ranges of criterion-satisfying subsets "
-                 f"({formulation}, front n={n_sol})", fontsize=11)
+                 f"({formulation}, front n={n_sol})")
     fig.tight_layout(rect=(0, 0, 0.90, 0.93))
     if output_file is not None:
         save_figure(fig, output_file)

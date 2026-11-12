@@ -157,10 +157,10 @@ def fig_marginals_range(axes_tab: pd.DataFrame, points: pd.DataFrame | None, dis
         if k % 3 == 0:
             ax.set_ylabel("cumulative fraction of members")
     handles, labels = axarr.flat[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False, fontsize=8.5,
+    fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False,
                bbox_to_anchor=(0.5, -0.01))
     fig.suptitle("Per-axis marginals in the selector's scaled coordinates "
-                 "(bars beneath: attained span of HF, MC, targets)", fontsize=10)
+                 "(bars beneath: attained span of HF, MC, targets)")
     fig.tight_layout(rect=(0, 0.06, 1, 0.96))
     save_figure(fig, scfg.hfm_figure_path("F1_marginals_range"))
     plt.close(fig)
@@ -182,10 +182,10 @@ def fig_coverage_diversity(summary: pd.DataFrame, dist: dict) -> None:
         _set_lines(ax_m, dd, "mst_levels", levels, draw_i)
     ax_c.set_xlabel("distance from a candidate realization\nto its nearest member (scaled units)")
     ax_c.set_ylabel("cumulative fraction of candidates")
-    ax_c.set_title("Coverage (triangle: minimax distance)", fontsize=10)
+    ax_c.set_title("Coverage (triangle: minimax distance)")
     ax_m.set_xlabel("minimum-spanning-tree edge length\namong members (scaled units)")
     ax_m.set_ylabel("cumulative fraction of edges")
-    ax_m.set_title("Diversity", fontsize=10)
+    ax_m.set_title("Diversity")
 
     metrics = [("minimax_distance", "minimax\ndistance"),
                ("mean_nearest_member_distance", "mean\nnearest-\nmember\ndistance"),
@@ -212,12 +212,12 @@ def fig_coverage_diversity(summary: pd.DataFrame, dist: dict) -> None:
                       label=SET_LABEL[name] if draw_i == 0 else None)
     ax_r.axhline(1.0, color=CAND_COLOR, lw=0.8, ls=":")
     ax_r.set_xticks(xs)
-    ax_r.set_xticklabels([lab for _, lab in metrics], fontsize=7.5)
+    ax_r.set_xticklabels([lab for _, lab in metrics])
     ax_r.set_xlim(-0.5, len(metrics) - 0.5)
     ax_r.set_ylabel("ratio to the mean of random N-subsets")
-    ax_r.set_title("Headline statistics relative to random", fontsize=10)
+    ax_r.set_title("Headline statistics relative to random")
     handles, labels = ax_c.get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False, fontsize=8.5,
+    fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False,
                bbox_to_anchor=(0.5, -0.02))
     fig.tight_layout(rect=(0, 0.08, 1, 1))
     save_figure(fig, scfg.hfm_figure_path("F2_coverage_diversity"))
@@ -254,10 +254,10 @@ def fig_target_displacement(points: pd.DataFrame, summary: pd.DataFrame) -> None
     ax_s.set_ylim(0, lim)
     ax_s.set_xlabel("displacement under the exact assignment (scaled units)")
     ax_s.set_ylabel("displacement under the sequential rule (scaled units)")
-    ax_s.legend(frameon=False, fontsize=8, loc="upper left")
+    ax_s.legend(frameon=False, loc="upper left")
     ax_e.set_xlabel("target displacement (scaled units)")
     ax_e.set_ylabel("cumulative fraction of targets")
-    ax_e.legend(frameon=False, fontsize=8.5, loc="lower right")
+    ax_e.legend(frameon=False, loc="lower right")
     fig.tight_layout()
     save_figure(fig, scfg.hfm_figure_path("F3_target_displacement"))
     plt.close(fig)
@@ -288,7 +288,7 @@ def fig_measure_weights(points: pd.DataFrame, dist: dict, manifest: dict) -> Non
     ax_w.set_yscale("log")
     ax_w.set_xlabel("members ranked by weight (fraction of N)")
     ax_w.set_ylabel("N w_i (redistributed mass relative to equal weights;\nzero clamped to 0.001)")
-    ax_w.legend(frameon=False, fontsize=8, loc="upper right")
+    ax_w.legend(frameon=False, loc="upper right")
 
     axis = "drought_magnitude"
     for draw_i, draw in enumerate(sorted(points["draw"].unique())):
@@ -304,7 +304,7 @@ def fig_measure_weights(points: pd.DataFrame, dist: dict, manifest: dict) -> Non
     ax_m.set_yscale("log")
     ax_m.set_xlabel(_axis_label(axis))
     ax_m.set_ylabel("N w_i (zero clamped to 0.001)")
-    ax_m.legend(frameon=False, fontsize=8.5, loc="upper right")
+    ax_m.legend(frameon=False, loc="upper right")
     fig.tight_layout()
     save_figure(fig, scfg.hfm_figure_path("F4_measure_weights"))
     plt.close(fig)

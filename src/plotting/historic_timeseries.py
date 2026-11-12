@@ -75,7 +75,7 @@ def _shade_spinup(ax, index, label: bool = False) -> None:
         ax.text(cutoff, 0.97, f"  {METRIC_EXCLUSION_MONTHS}-mo spin-up "
                               f"(excluded from every metric)",
                 transform=ax.get_xaxis_transform(), ha="left", va="top",
-                fontsize=7.5, color="0.35", clip_on=True)
+                color="0.35", clip_on=True)
 
 
 def nyc_delivery_series(data: dict) -> tuple:
@@ -146,12 +146,12 @@ def _panel_flow(ax, results: dict, colors: dict, column: str, name: str,
                 markersize=3.5, markeredgewidth=0.7, color=colors[label],
                 transform=ax.get_xaxis_transform(), clip_on=True)
     ax.axhline(target, color="0.2", ls="--", lw=1.1, zorder=5)
-    ax.text(0.002, target, f" Decree target {target:.0f} MGD", fontsize=7,
+    ax.text(0.002, target, f" Decree target {target:.0f} MGD",
             color="0.2", va="bottom", ha="left",
             transform=ax.get_yaxis_transform())
     ax.set_ylabel(f"{name} flow\n(weekly mean, MGD)")
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=7, loc="upper left", ncol=max(1, n // 2), framealpha=0.9)
+    ax.legend(loc="upper left", ncol=max(1, n // 2), framealpha=0.9)
 
 
 def _panel_diversion(ax, results: dict, colors: dict, resample: str) -> None:
@@ -243,7 +243,7 @@ def plot_historic_timeseries(
         _shade_spinup(ax, index, label=(k == 0))
         if date_range is not None:
             ax.set_xlim(pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1]))
-    axes[0].legend(fontsize=8, loc="lower left", ncol=min(4, len(results)),
+    axes[0].legend(loc="lower left", ncol=min(4, len(results)),
                    framealpha=0.9)
     axes[-1].set_xlabel("Date")
 
@@ -254,8 +254,7 @@ def plot_historic_timeseries(
                  f"  |  {model_mode} Pywr-DRB model for every trace{zoom}\n"
                  f"Violation weeks are objectives.weekly_flow_ok on the metric "
                  f"window; legend reliabilities are the whole-trace weekly "
-                 f"fraction, not the annual-unit search objective",
-                 fontsize=10)
+                 f"fraction, not the annual-unit search objective")
     fig.tight_layout(rect=(0, 0, 1, 0.965))
     if output_file is not None:
         save_figure(fig, output_file)

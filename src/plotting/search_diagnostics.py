@@ -43,7 +43,7 @@ from config import (ACTIVE_MOEA_CONFIG, FIGURES_DIR, active_scenario_name,
                     baseline_objectives_csv, run_output_dir)
 from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
-from src.plotting.style import apply_style
+from src.plotting.style import apply_style, save_figure
 from src.plotting.hypervolume_convergence import (
     SEED_COLORS, plot_hypervolume_convergence, seed_metrics_files,
     _load_metrics_file, _read_runtime_nfe,
@@ -155,12 +155,12 @@ def plot_seed_parallel_axes(
         frame, columns_axes=obj_names, axis_labels=wrap_axis_labels(obj_names),
         minmaxs=minmaxs_from_directions(directions),
         color_by_categorical="seed", color_dict_categorical=color_dict,
-        alpha_base=0.06, lw_base=0.5, fontsize=13, figsize=(13.5, 5.5),
+        alpha_base=0.06, lw_base=0.5, figsize=(13.5, 5.5),
         baseline=baseline_raw, baseline_label="FFMP baseline")
     ax.set_title(f"Equal-NFE archives by seed, {scenario}/{slug}",
-                 loc="left", fontsize=14)
+                 loc="left")
     fig.tight_layout()
-    fig.savefig(output_file, dpi=200, bbox_inches="tight")
+    save_figure(fig, output_file)
     plt.close(fig)
 
 
@@ -195,7 +195,7 @@ def plot_runtime_indicators(
                              label=f"seed {seed:02d}" if k == 0 else None)
 
     for k, (col, direction) in enumerate(INDICATORS):
-        axes[k].set_title(f"{col}  ({direction})", fontsize=9)
+        axes[k].set_title(f"{col}  ({direction})")
         axes[k].grid(True, alpha=0.3)
         if reporting_nfe is not None and used_nfe_axis:
             axes[k].axvline(reporting_nfe, color="0.4", lw=1.0, ls="--")
@@ -203,12 +203,12 @@ def plot_runtime_indicators(
               if used_nfe_axis else "Runtime snapshot index")
     for k in (3, 4, 5):
         axes[k].set_xlabel(xlabel)
-    axes[0].legend(fontsize=8, loc="lower right")
+    axes[0].legend(loc="lower right")
     fig.suptitle("Coordinator-archive runtime indicators vs the diagnostics "
-                 "reference set, one line per seed", fontsize=11)
+                 "reference set, one line per seed")
 
     fig.tight_layout(rect=(0, 0, 1, 0.97))
-    fig.savefig(output_file, dpi=200, bbox_inches="tight")
+    save_figure(fig, output_file)
     plt.close(fig)
 
 

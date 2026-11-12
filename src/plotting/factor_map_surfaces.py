@@ -42,7 +42,7 @@ from src.plotting.layout import (WIDTH_DOUBLE_COL, add_colorbar,
 from src.plotting.pareto_parallel import DESIGN_TITLES
 from src.plotting.style import (DESIGN_ORDER, ETEST, FACTOR_MAP_CMAP,
                                 FACTOR_MAP_MARKS, add_figure_footer,
-                                design_label, save_manuscript_figure,
+                                design_label, font_rc, save_manuscript_figure,
                                 short_label_for)
 from src.satisficing_criteria import focal_criterion
 
@@ -245,7 +245,7 @@ def _draw_surface_grid(ctx, out_stub: Path, table_dir: Path,
         title = (f"({letter}) {who}" if n_good < 0
                  else f"({letter}) {who}\n"
                       f"{detail}{n_good}/{n_sow} {spec.count_word}")
-        ax.set_title(title, fontsize=9)
+        ax.set_title(title)
         csv_rows.append({
             "design": design, "policy": policy, "criterion": focal.key,
             "axis_1": ax_names[0], "axis_2": ax_names[1],
@@ -349,6 +349,7 @@ def fig_regret_surfaces_worst(ctx, out_stub: Path, table_dir: Path) -> dict:
 # Variant C -- front-wide regret exposure (no single policy selected)
 ###############################################################################
 
+@plt.rc_context(font_rc(14))
 def fig_regret_exposure(ctx, out_stub: Path, table_dir: Path) -> dict:
     """Per-SOW share of each design's Pareto set that stays low-regret.
 
@@ -403,7 +404,7 @@ def fig_regret_exposure(ctx, out_stub: Path, table_dir: Path) -> dict:
         ax.set_title(f"({chr(ord('a') + i)}) "
                      f"{design_label(design).split(' (')[0]}\n"
                      f"median {share.median():.2f} "
-                     f"(n = {int(sub['n_policies'].iloc[0])})", fontsize=9)
+                     f"(n = {int(sub['n_policies'].iloc[0])})")
         rows += sub.assign(design=design).to_dict("records")
 
     fig.supxlabel(_THETA_LABELS.get(ax_names[0], ax_names[0]))
@@ -436,9 +437,6 @@ def fig_regret_exposure(ctx, out_stub: Path, table_dir: Path) -> dict:
 ###############################################################################
 # Manuscript Figure 8 -- combined robustness + regret surfaces (fig05 style)
 ###############################################################################
-
-#: Every character on the figure is drawn at >= this size (style guide).
-FONTSIZE = 14
 
 #: Canvas width in inches, matching figure 5's review-round sizing.
 FIG_WIDTH = 13.5
@@ -519,6 +517,7 @@ def _policy_labels(art: dict, design: str, policy: str, criterion: str,
     return sub
 
 
+@plt.rc_context(font_rc(14))
 def fig_robustness_regret_surfaces(ctx, out_stub: Path,
                                    table_dir: Path) -> dict:
     """Manuscript figure 8: All-Parties robustness AND regret surfaces.
@@ -537,7 +536,7 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
       the same classifier on a different colormap. No incumbent panel:
       its regret is zero by construction.
 
-    Style follows figure 5 (14 pt minimum, no bold, no footers; exact
+    Style follows figure 5 (no bold, no footers; exact
     numbers in the companion CSVs).
     """
     focal = focal_criterion()
@@ -582,8 +581,7 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
                else DESIGN_TITLES.get(design, design))
         ax.set_title(f"({letter}) {who}\n{n_good}/{n_sow} SOWs "
                      f"{count_word}",
-                     loc="left", fontsize=FONTSIZE)
-        ax.tick_params(labelsize=FONTSIZE)
+                     loc="left")
         ax.grid(False)
         for side in ax.spines.values():
             side.set_visible(True)
@@ -631,10 +629,8 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
         map_r = m if m is not None else map_r
 
     if shared_axes is not None:
-        fig.supxlabel(_THETA_LABELS.get(shared_axes[0], shared_axes[0]),
-                      fontsize=FONTSIZE + 1)
-        fig.supylabel(_THETA_LABELS.get(shared_axes[1], shared_axes[1]),
-                      fontsize=FONTSIZE + 1)
+        fig.supxlabel(_THETA_LABELS.get(shared_axes[0], shared_axes[0]))
+        fig.supylabel(_THETA_LABELS.get(shared_axes[1], shared_axes[1]))
     # Column 4 has no bottom-row panel, so the incumbent panel carries its
     # own x tick labels.
     axes[0, 3].tick_params(labelbottom=True)
@@ -650,8 +646,7 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
             continue
         cax = fig.add_axes([x0, -0.050, 0.30, 0.014])
         cb = fig.colorbar(mappable, cax=cax, orientation="horizontal")
-        cb.set_label(label, fontsize=FONTSIZE)
-        cb.ax.tick_params(labelsize=FONTSIZE)
+        cb.set_label(label)
         cb.outline.set_visible(False)
 
     m_ok, m_no = FACTOR_MAP_MARKS["success"], FACTOR_MAP_MARKS["failure"]
@@ -666,7 +661,7 @@ def fig_robustness_regret_surfaces(ctx, out_stub: Path,
                markeredgecolor=m_no["edgecolor"], markersize=9,
                label="SOW fails at least one criterion (top row) / "
                      "high-regret (bottom row)"),
-    ], ncol=2, y=-0.115, fontsize=FONTSIZE)
+    ], ncol=2, y=-0.115)
 
     save_manuscript_figure(fig, out_stub)
     plt.close(fig)

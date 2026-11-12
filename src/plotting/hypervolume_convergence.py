@@ -16,6 +16,8 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from src.plotting.style import save_figure
+
 #: Per-seed line colors (CVD-safe as adjacent pairs).
 SEED_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
 
@@ -133,12 +135,12 @@ def plot_hypervolume_convergence(
                   if used_nfe_axis else "Runtime snapshot index")
     ax.set_ylabel("Hypervolume")
     ax.set_title(f"Coordinator-archive hypervolume ({slug})")
-    ax.legend(fontsize=9, loc="lower right")
+    ax.legend(loc="lower right")
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     if output_file:
-        fig.savefig(output_file, dpi=200, bbox_inches="tight")
+        save_figure(fig, output_file)
         plt.close(fig)
     else:
         plt.show()

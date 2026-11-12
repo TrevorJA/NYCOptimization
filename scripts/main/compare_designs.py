@@ -1429,7 +1429,7 @@ def fig_threshold_sweep(sweep: pd.DataFrame, agreement: pd.DataFrame,
         ax.axvline(s_default, color="0.35", ls=":", lw=1.2)
         ax.annotate("registry-default\ncriterion", xy=(s_default, 1.0),
                     xytext=(3, -2), textcoords="offset points",
-                    va="top", fontsize=8, color="0.35")
+                    va="top", color="0.35")
         for d in designs:
             if d in dref.index and np.isfinite(dref[d]):
                 ax.plot([s_default], [dref[d]], marker="*", ms=11,
@@ -1438,7 +1438,7 @@ def fig_threshold_sweep(sweep: pd.DataFrame, agreement: pd.DataFrame,
     ax.set_ylabel("Multivariate satisficing robustness\n(solid: best solution; dashed: median solution)")
     ax.set_ylim(-0.02, 1.02)
     ax.set_title("Design robustness vs criterion stringency")
-    ax.legend(frameon=False, fontsize=8, loc="best")
+    ax.legend(frameon=False, loc="best")
 
     ax = axes[1]
     for statistic, ls in (("best", "-o"), ("median", "--s")):
@@ -1449,14 +1449,14 @@ def fig_threshold_sweep(sweep: pd.DataFrame, agreement: pd.DataFrame,
     ax.axhline(0.975, color="0.6", ls=":", lw=0.8)
     ax.annotate("stable (Bonham et al. 2024)", xy=(0.02, 0.975),
                 xycoords=("axes fraction", "data"), xytext=(0, -9),
-                textcoords="offset points", fontsize=7, color="0.4")
+                textcoords="offset points", color="0.4")
     if np.isfinite(s_default):
         ax.axvline(s_default, color="0.35", ls=":", lw=1.2)
     ax.set_xlabel("Satisficing stringency $s$")
     ax.set_ylabel(r"Kendall $\tau_b$ of the DESIGN ranking" "\n" r"vs the ranking at the default criterion")
     ax.set_ylim(-1.05, 1.05)
     ax.set_title("Is the design ranking threshold-invariant?")
-    ax.legend(frameon=False, fontsize=8, loc="lower left")
+    ax.legend(frameon=False, loc="lower left")
 
     fig.tight_layout()
     out = fig_dir / "threshold_sweep"
@@ -1491,11 +1491,10 @@ def fig_design_ranking_stability(tau: pd.DataFrame, fig_dir: Path) -> Path:
     fig, ax = plt.subplots(figsize=(8.0, 7.0))
     im = style.annotated_corr_heatmap(
         ax, tau.to_numpy(dtype=float), list(tau.columns),
-        label_fn=metric_label, box_threshold=None, fontsize=7,
+        label_fn=metric_label, box_threshold=None,
     )
     ax.set_title("Agreement among the DESIGN rankings induced by each metric\n"
-                 r"(Kendall $\tau_b$; low = metric choice changes the design ranking)",
-                 fontsize=10)
+                 r"(Kendall $\tau_b$; low = metric choice changes the design ranking)")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label=r"$\tau_b$")
     fig.tight_layout()
     out = fig_dir / "design_ranking_stability"
@@ -1542,15 +1541,14 @@ def fig_performance_distributions(perf: pd.DataFrame, thresholds: dict,
         # Only the leftmost column carries design names; repeating them on every
         # panel would crowd out the data.
         ax.set_yticklabels([labels[d] for d in designs] if i % ncol == 0
-                           else [""] * len(designs), fontsize=8)
+                           else [""] * len(designs))
         ax.set_ylim(-0.7, len(designs) - 0.3)
         ax.invert_yaxis()
-        ax.set_xlabel(style.label_for(name), fontsize=9)
+        ax.set_xlabel(style.label_for(name))
     for k in range(len(objectives), nrow * ncol):
         axes[k // ncol][k % ncol].axis("off")
     fig.suptitle("Re-evaluated performance on $E_{test}$ (median, IQR, 5-95%)\n"
-                 "dark = best solution, faint = median solution; dashed red = satisficing threshold",
-                 fontsize=10)
+                 "dark = best solution, faint = median solution; dashed red = satisficing threshold")
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     out = fig_dir / "performance_distributions"
     style.save_figure(fig, out)

@@ -32,7 +32,7 @@ from matplotlib.patches import Rectangle
 
 from src.formulations import get_obj_names, get_obj_directions, get_n_vars, get_n_objs
 from src.load.reference_set import load_reference_set
-from src.plotting.style import short_label_for
+from src.plotting.style import save_figure, short_label_for
 
 #: Style for rows screened out by brushing / ``highlight_mask``: faint grey
 #: underneath the surviving lines, matching the rest of the repo's figures.
@@ -104,7 +104,6 @@ def custom_parallel_coordinates(
     brushing_dict: dict = None,
     alpha_brush: float = 0.08,
     lw_base: float = 1.0,
-    fontsize: int = 9,
     figsize: tuple = (13, 5.5),
     single_color: str = "steelblue",
     single_label: str = None,
@@ -161,7 +160,6 @@ def custom_parallel_coordinates(
             the excluded region of each brushed axis is shaded.
         alpha_brush: Line alpha for greyed-out rows.
         lw_base: Line width for rows passing the brush/mask.
-        fontsize: Base font size (labels; annotations use ``fontsize - 2``).
         figsize: Figure size in inches (ignored when ``ax`` is given).
         single_color: Line colour when no coloring scheme is given.
         single_label: Legend entry for the single-colour rows (none by default).
@@ -188,7 +186,7 @@ def custom_parallel_coordinates(
             (up to 4). Pass 1 for a vertical legend parked outside-right.
         title: Optional axes title.
         ax: Optional existing axes to draw on (for panel figures).
-        save_fig_filename: If given, save (300 dpi, tight) and close; otherwise
+        save_fig_filename: If given, save (``style.save_figure``) and close; otherwise
             return the figure for further composition.
         axis_ranges: Optional ``(2, n_axes)`` raw (lo, hi) per axis, widened to
             include the drawn rows -- pass the same array across several calls
@@ -330,13 +328,13 @@ def custom_parallel_coordinates(
     for j in range(n_axes):
         ax.plot([j, j], [0, 1], c="0.25", lw=1.0, zorder=3)
         ax.annotate(_format_value(tops[j], col_max[j]), (j, 1.02),
-                    ha="center", va="bottom", fontsize=fontsize - 2,
+                    ha="center", va="bottom",
                     color="black", zorder=5)
         ax.annotate(_format_value(bottoms[j], col_max[j]), (j, -0.02),
-                    ha="center", va="top", fontsize=fontsize - 2,
+                    ha="center", va="top",
                     color="black", zorder=5)
         ax.annotate(axis_labels[j], (j, -0.09), ha="center", va="top",
-                    fontsize=fontsize - 1, zorder=5)
+                    zorder=5)
 
     ax.set_xticks([])
     ax.set_yticks([])
@@ -348,12 +346,12 @@ def custom_parallel_coordinates(
     ax.annotate("", xy=(-0.55, y_to), xytext=(-0.55, y_from),
                 arrowprops=dict(arrowstyle="-|>", color="black", lw=2.5))
     ax.text(-0.72, 0.5, "Preference", rotation=90,
-            ha="center", va="center", fontsize=fontsize - 1, color="black")
+            ha="center", va="center", color="black")
     ax.set_xlim(-0.95, n_axes - 1 + 0.4)
     ax.set_ylim(-0.42, 1.12)
 
     if title is not None:
-        ax.set_title(title, fontsize=fontsize + 2)
+        ax.set_title(title)
 
     # --- legend / colorbar
     handles = []
@@ -379,7 +377,7 @@ def custom_parallel_coordinates(
                        markersize=ov.get("markersize", 4), label=ov["label"])
                 for ov in overlays]
     if handles and add_legend:
-        kwargs = {"loc": legend_loc, "fontsize": fontsize - 1, "frameon": False,
+        kwargs = {"loc": legend_loc, "frameon": False,
                   "ncol": legend_ncol or min(4, len(handles))}
         if legend_bbox is not None:
             kwargs["bbox_to_anchor"] = legend_bbox
@@ -390,14 +388,12 @@ def custom_parallel_coordinates(
         mappable.set_clim(vmin=col_min[ci], vmax=col_max[ci])
         cb = fig.colorbar(mappable, ax=ax, orientation="horizontal",
                           shrink=0.35, pad=0.02)
-        cb.set_label(colorbar_label or axis_labels[ci].replace("\n", " "),
-                     fontsize=fontsize - 1)
+        cb.set_label(colorbar_label or axis_labels[ci].replace("\n", " "))
         if colorbar_ticks_continuous is not None:
             cb.set_ticks(colorbar_ticks_continuous)
-        cb.ax.tick_params(labelsize=fontsize - 2)
 
     if save_fig_filename is not None:
-        fig.savefig(save_fig_filename, dpi=300, bbox_inches="tight")
+        save_figure(fig, save_fig_filename)
         print(f"Saved: {save_fig_filename}")
         plt.close(fig)
         return None

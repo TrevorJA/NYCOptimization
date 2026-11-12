@@ -724,7 +724,7 @@ def plot_factor_map(res: DesignResult, slug: str, fig_sub: Path) -> Path | None:
     pos = np.arange(len(axes_n))
     axb.barh(pos, res.model.importances, color="steelblue")
     axb.set_yticks(pos)
-    axb.set_yticklabels(axes_n, fontsize=8)
+    axb.set_yticklabels(axes_n)
     axb.invert_yaxis()
     axb.set_xlabel("factor importance")
     axb.set_title("Hazard-axis importance (screened axes)")
@@ -763,7 +763,7 @@ def plot_mechanism(results: list[DesignResult], slug: str,
     ax.set_title("Mechanism test: do policies fail where their design\n"
                  "under-covered hazard space? (rising = yes)")
     ax.set_ylim(-0.02, 1.02)
-    ax.legend(fontsize=8, frameon=False)
+    ax.legend(frameon=False)
 
     # The verdict panel: AUC against its RANDOM-COVERAGE null, which is what the
     # claim is actually read off. The raw AUC alone is inflated by the geometry of
@@ -778,7 +778,7 @@ def plot_mechanism(results: list[DesignResult], slug: str,
                          fmt="none", ecolor="0.3", capsize=3, lw=1.0)
     axb.axvline(0.0, color="black", lw=1.0)
     axb.set_yticks(pos)
-    axb.set_yticklabels([r.design for r in usable], fontsize=8)
+    axb.set_yticklabels([r.design for r in usable])
     axb.invert_yaxis()
     axb.set_xlabel("AUC - random-coverage null  (>0 = mechanism supported)")
     axb.set_title("Excess association over random coverage\n(bars: +/-2 SD of the null)")

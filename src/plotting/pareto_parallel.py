@@ -30,18 +30,14 @@ from src.plotting.robustness_comparison import (
     _natural_front,
 )
 from src.plotting.satisficing_diagnostics import _designs
-from src.plotting.style import INCUMBENT_COLOR, label_for, save_figure
+from src.plotting.style import INCUMBENT_COLOR, font_rc, label_for, save_figure
 
 #: The objective whose value colors (and z-orders) every polyline. Edit here
 #: or set ``NYCOPT_PARALLEL_COLOR_OBJ`` to recolor without a code change.
 COLOR_BY_OBJECTIVE = os.environ.get("NYCOPT_PARALLEL_COLOR_OBJ",
                                     "nyc_storage_min_p01_pct")
 
-#: Base size handed to the renderer, which draws its smallest text (axis-end
-#: values) at ``FONTSIZE - 2`` -- so 16 keeps every character at >= 14 pt.
-FONTSIZE = 16
-
-#: Panel width in inches. Eight axes at 14 pt annotations need more room than
+#: Panel width in inches. Eight annotated axes need more room than
 #: the column-true 7.48 in; sized for legibility during review rounds.
 PANEL_WIDTH = 13.5
 
@@ -57,6 +53,7 @@ DESIGN_TITLES = {
 #: panel's own search ensemble, so it is scenario-matched to that panel.
 INCUMBENT_LEGEND = "Current FFMP policy evaluated in each corresponding scenario"
 
+@plt.rc_context(font_rc(14))
 def fig_pareto_parallel_axes(results: dict, out_stub: Path,
                              table_dir: Path) -> dict:
     """Each design's Pareto set on parallel axes, colored by one objective.
@@ -106,7 +103,6 @@ def fig_pareto_parallel_axes(results: dict, out_stub: Path,
             zorder_num_classes=40,
             alpha_base=float(np.clip(300.0 / n, 0.10, 0.60)),
             lw_base=2.4,
-            fontsize=FONTSIZE,
             baseline=baselines[d], baseline_label=INCUMBENT_LEGEND,
             ax=ax, axis_ranges=axis_ranges,
             # Frame flush with the normalized axis extent; the end-value
@@ -121,7 +117,7 @@ def fig_pareto_parallel_axes(results: dict, out_stub: Path,
         ax.set_title(f"({letter}) Search & evaluation scenario: "
                      f"{DESIGN_TITLES.get(d, d)} "
                      f"(n = {n} Pareto-approximate policies)",
-                     loc="left", fontsize=FONTSIZE)
+                     loc="left")
         for sid, vec in zip(results[d].raw.solution_ids,
                             frames[d].to_numpy()):
             rows.append({"design": d, "solution_id": int(sid),
@@ -136,12 +132,11 @@ def fig_pareto_parallel_axes(results: dict, out_stub: Path,
     mappable.set_clim(vmin=axis_ranges[0][ci], vmax=axis_ranges[1][ci])
     cax = fig.add_axes([0.36, -0.045, 0.28, 0.012])
     cb = fig.colorbar(mappable, cax=cax, orientation="horizontal")
-    cb.set_label(label_for(COLOR_BY_OBJECTIVE), fontsize=FONTSIZE - 1)
-    cb.ax.tick_params(labelsize=FONTSIZE - 2)
+    cb.set_label(label_for(COLOR_BY_OBJECTIVE))
     shared_legend(fig, [Line2D([], [], color=INCUMBENT_COLOR, lw=2.5,
                                marker="o", markersize=5,
                                label=INCUMBENT_LEGEND)],
-                  y=-0.105, fontsize=FONTSIZE - 1)
+                  y=-0.105)
 
     save_figure(fig, out_stub)
     plt.close(fig)

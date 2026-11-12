@@ -56,6 +56,7 @@ import pandas as pd
 
 import config
 import supplemental_config as scfg
+from src.plotting import style
 
 NMC = int(os.environ.get("NYCOPT_ANCHORNOISE_NMC", "4000"))
 SEED = int(os.environ.get("NYCOPT_ANCHORNOISE_SEED", "20260729"))
@@ -140,6 +141,7 @@ def _null_stats(deltas_layout: list[int], n_years: int, rho: float,
 
 
 def main() -> None:
+    style.apply_style()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -245,9 +247,9 @@ def main() -> None:
                     marker=mk, s=28, color="#c1272d", alpha=0.7, label=h)
     ax1.scatter([xpos[g] for g in order], gcm_means[order], marker="_",
                 s=300, color="k", label="GCM mean")
-    ax1.set_xticks(range(len(order)), order, rotation=45, ha="right", fontsize=7)
+    ax1.set_xticks(range(len(order)), order, rotation=45, ha="right")
     ax1.set_ylabel(r"sibling $\Delta\rho_1$ (future $-$ baseline)")
-    ax1.legend(frameon=False, fontsize=8)
+    ax1.legend(frameon=False)
     ax1.set_title("per-run persistence change vs sampling-noise null")
 
     xs = np.sort(fut["rho1"].to_numpy())
@@ -258,10 +260,10 @@ def main() -> None:
                 zorder=0, label="null p95 range")
     ax2.set_xlabel(r"future-run $\rho_1$")
     ax2.set_ylabel("ECDF")
-    ax2.legend(frameon=False, fontsize=8)
+    ax2.legend(frameon=False)
     ax2.set_title("future-run rho1 distribution vs null tail")
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "anchor_noise.png", dpi=200)
+    style.save_figure(fig, FIG_DIR / "anchor_noise.png")
 
     findings = {"NMC": NMC, "seed": SEED, "rho_pooled_bias_corrected": rho_bc,
                 "observed": obs, "nulls": nulls}

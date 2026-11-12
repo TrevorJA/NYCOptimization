@@ -419,7 +419,7 @@ def size_figure(all_results: dict, out_png: Path,
                 max_size: int = MAX_FRONT_SIZE):
     """Retained union size per candidate, one panel per design (dot plot)."""
     import matplotlib.pyplot as plt
-    from src.plotting.style import apply_style
+    from src.plotting.style import apply_style, save_figure
 
     apply_style()
     scenarios = list(all_results)
@@ -435,15 +435,15 @@ def size_figure(all_results: dict, out_png: Path,
         ax.plot([s for s in sizes if s is not None],
                 [yy for yy, s in zip(y, sizes) if s is not None],
                 "o", color="steelblue", markersize=5)
-        ax.set_title(sc, fontsize=10)
+        ax.set_title(sc)
         ax.set_xlabel("retained solutions (raw union)")
         ax.set_xscale("log")
         ax.grid(True, alpha=0.3, axis="x")
     axes[0].set_yticks(y)
-    axes[0].set_yticklabels(labels, fontsize=8)
-    axes[0].legend(loc="lower right", fontsize=8)
+    axes[0].set_yticklabels(labels)
+    axes[0].legend(loc="lower right")
     fig.tight_layout()
-    fig.savefig(out_png, dpi=200, bbox_inches="tight")
+    save_figure(fig, out_png)
     plt.close(fig)
     print(f"[figure] {out_png}")
 

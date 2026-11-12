@@ -30,15 +30,12 @@ import config
 from src.plotting.layout import shared_legend
 from src.plotting.pareto_parallel import DESIGN_TITLES
 from src.plotting.regret_summary import pareto_frontier
-from src.plotting.style import (DESIGN_ORDER, design_color,
+from src.plotting.style import (DESIGN_ORDER, design_color, font_rc,
                                 save_manuscript_figure)
 from src.satisficing_criteria import NAMED_SETS, criterion_by_key
 
-#: Every character on the figure is drawn at >= this size (style guide).
-FONTSIZE = 14
-
 #: Canvas size in inches for the one-set figure; the joint panel plus
-#: marginals, sized so 14 pt text fits cleanly.
+#: marginals, sized so the text fits cleanly.
 FIG_SIZE = (10.5, 8.5)
 
 #: Canvas size in inches for the 2x2 all-criteria variant.
@@ -164,7 +161,6 @@ def _draw_regret_panel(fig, subspec, cset, clouds: dict, *, xmax: int):
     ax.set_ylim(-1.5, 101.5)
     ax.set_xticks(np.arange(0, xmax + 1, 20 if xmax > 60 else 10))
     ax.set_yticks([0, 25, 50, 75, 100])
-    ax.tick_params(labelsize=FONTSIZE)
     ax.grid(color="0.90", lw=0.8)
     ax.set_axisbelow(True)
     for side in ax.spines.values():
@@ -190,6 +186,7 @@ def _shared_xmax(rows) -> int:
     return int(np.ceil(max(xmax, 10.0) / 10.0) * 10)
 
 
+@plt.rc_context(font_rc(14))
 def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
     """All-Parties robustness vs regret frequency against the incumbent.
 
@@ -213,12 +210,11 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
     gs = fig.add_gridspec(1, 1)
     ax, _ = _draw_regret_panel(fig, gs[0], cset, clouds,
                                xmax=_shared_xmax(rows))
-    ax.set_xlabel(f"All-Parties {XLABEL}", fontsize=FONTSIZE)
-    ax.set_ylabel(YLABEL, fontsize=FONTSIZE)
+    ax.set_xlabel(f"All-Parties {XLABEL}")
+    ax.set_ylabel(YLABEL)
 
     y0 = ax.get_position().y0
-    shared_legend(fig, _design_handles(clouds), ncol=3, y=y0 - 0.09,
-                  fontsize=FONTSIZE)
+    shared_legend(fig, _design_handles(clouds), ncol=3, y=y0 - 0.09)
     save_manuscript_figure(fig, out_stub)
     plt.close(fig)
 

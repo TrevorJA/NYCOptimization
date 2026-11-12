@@ -31,12 +31,9 @@ from src import results_data as rd
 from src.plotting.layout import shared_legend
 from src.plotting.pareto_parallel import DESIGN_TITLES
 from src.plotting.style import (DESIGN_ORDER, INCUMBENT_COLOR, ETEST,
-                                design_color, save_manuscript_figure,
+                                design_color, font_rc, save_manuscript_figure,
                                 short_label_for)
 from src.satisficing_criteria import NAMED_SETS
-
-#: Every character on the figure is drawn at >= this size (style guide).
-FONTSIZE = 14
 
 #: Canvas width in inches; the criteria box takes the right ~30%.
 FIG_WIDTH = 13.5
@@ -114,6 +111,7 @@ def _criteria_text(cset, kinds: dict) -> str:
     return "\n".join(lines)
 
 
+@plt.rc_context(font_rc(14))
 def fig_criteria_robustness(ctx, out_stub: Path, table_dir: Path) -> dict:
     """Sorted robustness-rank curves, one row per named criterion set.
 
@@ -159,15 +157,12 @@ def fig_criteria_robustness(ctx, out_stub: Path, table_dir: Path) -> dict:
                          "rank": -1, "rank_frac": np.nan,
                          "robustness_pct": 100.0 * incumbent[cset.key]})
 
-        ax.set_title(f"({chr(ord('a') + i)}) {cset.label}", loc="left",
-                     fontsize=FONTSIZE)
+        ax.set_title(f"({chr(ord('a') + i)}) {cset.label}", loc="left")
         ax.set_xlim(0, xmax)
         ax.set_ylim(0, 100)
         ax.set_yticks([0, 25, 50, 75, 100])
         ax.set_xticks(np.arange(0, xmax + 1, 200))
-        ax.tick_params(labelsize=FONTSIZE)
-        ax.set_ylabel(_SET_YLABELS.get(cset.key, f"Robustness (%)"),
-                      fontsize=FONTSIZE)
+        ax.set_ylabel(_SET_YLABELS.get(cset.key, f"Robustness (%)"))
         ax.grid(axis="y", color="0.90", lw=0.8)
         ax.set_axisbelow(True)
         for side in ("top", "right"):
@@ -175,8 +170,7 @@ def fig_criteria_robustness(ctx, out_stub: Path, table_dir: Path) -> dict:
         for side in ax.spines.values():
             side.set_linewidth(1.2)
         if i == len(sets) - 1:
-            ax.set_xlabel("Policy rank (most to least robust)",
-                          fontsize=FONTSIZE)
+            ax.set_xlabel("Policy rank (most to least robust)")
         else:
             ax.tick_params(labelbottom=False)
 
@@ -186,7 +180,7 @@ def fig_criteria_robustness(ctx, out_stub: Path, table_dir: Path) -> dict:
         for side in box.spines.values():
             side.set_visible(True)
             side.set_linewidth(1.2)
-        box.text(0.04, 0.5, _criteria_text(cset, kinds), fontsize=FONTSIZE,
+        box.text(0.04, 0.5, _criteria_text(cset, kinds),
                  ha="left", va="center", transform=box.transAxes,
                  linespacing=1.6)
 
@@ -199,7 +193,7 @@ def fig_criteria_robustness(ctx, out_stub: Path, table_dir: Path) -> dict:
                               ls=(0, (5, 3)), label=INCUMBENT_LEGEND))
     # Legend top anchored a fixed gap below the bottom panel's x-label.
     y0 = axes[-1, 0].get_position().y0
-    shared_legend(fig, handles, ncol=2, y=y0 - 0.06, fontsize=FONTSIZE)
+    shared_legend(fig, handles, ncol=2, y=y0 - 0.06)
 
     save_manuscript_figure(fig, out_stub)
     plt.close(fig)

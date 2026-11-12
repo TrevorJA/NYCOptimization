@@ -32,7 +32,8 @@ from matplotlib.figure import Figure
 from src.plotting.parallel_coordinates import (custom_parallel_coordinates,
                                                minmaxs_from_directions,
                                                wrap_axis_labels)
-from src.plotting.style import annotated_corr_heatmap, label_for, save_figure
+from src.plotting.style import (annotated_corr_heatmap, font_rc, label_for,
+                                save_figure)
 from src.solution_selection import dominance_mask, orient_maximize
 
 #: Reference-line colour for the FFMP baseline, matching search_diagnostics.
@@ -48,11 +49,11 @@ HIGHLIGHT_COLOR = "#2a78d6"
 POLICY_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#9467bd",
                  "#17becf"]
 
-#: Parallel-axis figure size and base font size (eight axes across).
+#: Parallel-axis figure size (eight axes across).
 PARALLEL_FIGSIZE = (13.5, 5.5)
-PARALLEL_FONTSIZE = 13
 
 
+@plt.rc_context(font_rc(13))
 def _parallel_axes(natural_obj, directions, obj_names, figsize, title,
                    output_file, **kwargs) -> Figure:
     """Draw one parallel-axis figure through the shared renderer and save it."""
@@ -61,8 +62,8 @@ def _parallel_axes(natural_obj, directions, obj_names, figsize, title,
         frame, columns_axes=list(obj_names),
         axis_labels=wrap_axis_labels(obj_names),
         minmaxs=minmaxs_from_directions(directions),
-        fontsize=PARALLEL_FONTSIZE, figsize=figsize, **kwargs)
-    ax.set_title(title, loc="left", fontsize=PARALLEL_FONTSIZE + 1)
+        figsize=figsize, **kwargs)
+    ax.set_title(title, loc="left")
     fig.tight_layout()
     if output_file is not None:
         save_figure(fig, output_file)
@@ -203,10 +204,10 @@ def plot_objective_tradeoffs(
     fig, ax = plt.subplots(figsize=figsize)
     im = annotated_corr_heatmap(ax, rho.to_numpy(), list(obj_names),
                                 label_fn=label_for,
-                                box_threshold=flag_threshold, fontsize=7)
+                                box_threshold=flag_threshold)
     ax.set_title("Objective trade-off structure across the front\n"
                  "Spearman rho in preference units "
-                 "(+ improve together, − trade off)", fontsize=10)
+                 "(+ improve together, − trade off)")
     fig.colorbar(im, ax=ax, shrink=0.8, label="Spearman rho")
     fig.tight_layout()
     if output_file is not None:

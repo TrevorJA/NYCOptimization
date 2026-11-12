@@ -40,7 +40,7 @@ from config import MONTAGUE_DECREE_TARGET_MGD
 from src.objectives import nyc_storage_pct_daily
 from src.plotting.front_overview import BASELINE_COLOR, POLICY_COLORS
 from src.plotting.historic_timeseries import nyc_delivery_series
-from src.plotting.style import apply_manuscript_style, save_figure
+from src.plotting.style import apply_style, save_figure
 from src.policy_simulation import BASELINE_NAME
 
 #: pywrdrb results sets the panels read; pass to ``load_policy_runs``.
@@ -171,7 +171,7 @@ def plot_policy_dynamics(runs: dict, labels: dict, *,
     if unknown:
         raise KeyError(f"unknown panels {unknown}; available: {list(PANELS)}")
 
-    apply_manuscript_style()
+    apply_style()
     colors = policy_colors(runs, baseline)
     n = len(panels)
     fig, axes = plt.subplots(n, 1, figsize=figsize or (11.0, 3.0 * n),

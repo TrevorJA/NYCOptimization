@@ -316,7 +316,7 @@ def fig_threshold_response(results: dict, out_stub: Path,
         if thr is not None:
             ax.axvline(thr, color=THRESHOLD_COLOR, ls="--", lw=1.3)
 
-        ax.set_title(label_for(name), fontsize=9)
+        ax.set_title(label_for(name))
         ax.set_ylim(-0.03, 1.03)
         ax.grid(color="0.92", lw=0.7)
         ax.set_axisbelow(True)
@@ -417,7 +417,7 @@ def fig_attainability_blockers(results: dict, out_stub: Path,
 
     n_sow = results[designs[0]].raw.n_sow
     ax.set_yticks(np.arange(n_pat)[::-1])
-    ax.set_yticklabels([_pattern_label(p) for p in patterns], fontsize=8.5)
+    ax.set_yticklabels([_pattern_label(p) for p in patterns])
     ax.set_xlabel(f"Number of {ETEST} SOWs (of {n_sow})")
     ax.grid(axis="x", color="0.9", lw=0.8)
     ax.set_axisbelow(True)
@@ -472,15 +472,15 @@ def fig_pairwise_cosatisficing(results: dict, out_stub: Path,
         for i in range(m):
             for j in range(i + 1):
                 v = mat[i, j]
-                ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=6,
+                ax.text(j, i, f"{v:.2f}", ha="center", va="center",
                         color="white" if v < 0.6 else "black")
         ax.set_xticks(range(m))
         ax.set_yticks(range(m))
         ax.set_xticklabels([short_label_for(n) for n in obj_names],
-                           rotation=45, ha="right", fontsize=7)
+                           rotation=45, ha="right")
         ax.set_yticklabels([short_label_for(n) for n in obj_names] if ax is axes[0]
-                           else [], fontsize=7)
-        ax.set_title(design_label(d), fontsize=9)
+                           else [])
+        ax.set_title(design_label(d))
     fig.colorbar(im, ax=list(axes), shrink=0.75, pad=0.02,
                  label="Best policy's joint SOW fraction (axis pair)")
     _add_footer(results, fig, y=-0.06,

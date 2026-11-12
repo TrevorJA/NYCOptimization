@@ -103,7 +103,7 @@ def plot_regret_robustness_plane(points: pd.DataFrame, out_file,
         ax.axvline(baseline_x, color="firebrick", lw=2.0, ls="--", zorder=1)
         ax.annotate("status-quo FFMP\n(low-regret frequency = 1 by definition)",
                     xy=(baseline_x, 1.0), xytext=(6, -12),
-                    textcoords="offset points", fontsize=8, color="firebrick",
+                    textcoords="offset points", color="firebrick",
                     va="top")
 
     ax.set_xlabel("Satisficing robustness on the re-evaluation ensemble\n"
@@ -111,12 +111,10 @@ def plot_regret_robustness_plane(points: pd.DataFrame, out_file,
     ax.set_ylabel("Low-regret frequency vs current operations\n"
                   "fraction of SOWs degrading NO objective beyond tolerance")
     ax.set_title("Robustness bought, and what it cost\n"
-                 "up = more robust; right = less regret vs the status quo",
-                 fontsize=10)
+                 "up = more robust; right = less regret vs the status quo")
     ax.set_ylim(-0.02, 1.02)
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8, loc="lower left", title="design frontier",
-              title_fontsize=8)
+    ax.legend(loc="lower left", title="design frontier")
     fig.tight_layout()
     out = Path(out_file)
     save_figure(fig, out)
@@ -164,10 +162,10 @@ def plot_regret_tolerance_sweep(sweep: pd.DataFrame, out_file,
                   "$k$ just-noticeable differences)")
     ax.set_ylabel(f"Low-regret frequency ({statistic} policy per run)")
     ax.set_title("How much tolerance does 'no degradation vs current operations'\n"
-                 "need before it holds?", fontsize=10)
+                 "need before it holds?")
     ax.set_ylim(-0.02, 1.02)
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8, loc="lower right")
+    ax.legend(loc="lower right")
     fig.tight_layout()
     out = Path(out_file)
     save_figure(fig, out)
@@ -239,15 +237,14 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
             ax.scatter(v, np.full(v.size, i + 1) + rng.normal(0, 0.06, v.size),
                        s=6, color=color, alpha=0.30, zorder=3)
         ax.set_yticks(np.arange(len(order)) + 1)
-        ax.set_yticklabels(ticks, fontsize=8)
+        ax.set_yticklabels(ticks)
         ax.set_xlabel("fraction of this objective's own maximum\n"
-                      "(natural units; axes are NOT comparable across objectives)",
-                      fontsize=8)
-        ax.set_title(title, fontsize=9)
+                      "(natural units; axes are NOT comparable across objectives)")
+        ax.set_title(title)
         ax.grid(True, axis="x", alpha=0.3)
 
     fig.suptitle("Regret against the status-quo FFMP policy, per objective "
-                 "(SOW unit, natural units)", fontsize=10)
+                 "(SOW unit, natural units)")
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     out = Path(out_file)
     save_figure(fig, out)

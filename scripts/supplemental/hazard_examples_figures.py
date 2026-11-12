@@ -38,7 +38,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 import config  # noqa: E402
 from src.plotting import hazard_examples as hex_  # noqa: E402
-from src.plotting.style import apply_manuscript_style, save_figure  # noqa: E402
+from src.plotting.style import apply_style, save_figure  # noqa: E402
 
 
 def write_examples_table(data: dict, targets: list, path: Path) -> None:
@@ -77,7 +77,7 @@ def main() -> None:
     scfg.HEX_TABLES_DIR.mkdir(parents=True, exist_ok=True)
     write_examples_table(data, targets, scfg.HEX_TABLES_DIR / f"examples_{slug}.csv")
 
-    apply_manuscript_style()
+    apply_style()
     for geometry in scfg.HEX_GEOMETRIES:
         fig = hex_.build_hazard_examples_figure(
             data["H"], data["axes"], data["sequences"],

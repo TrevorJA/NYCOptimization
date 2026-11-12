@@ -223,7 +223,7 @@ def _month_axis(ax) -> None:
     """Month-start ticks with single-letter labels on a day-of-year axis."""
     ax.set_xlim(1, 366)
     ax.set_xticks(MONTH_START_DOY)
-    ax.set_xticklabels(MONTH_LETTERS, fontsize=8)
+    ax.set_xticklabels(MONTH_LETTERS)
     ax.tick_params(axis="x", length=2.5)
 
 
@@ -236,7 +236,7 @@ def _season_shading(ax, labels: bool = False) -> None:
         marks["Win "] = 352  # winter wraps the year end
         for name, mid in marks.items():
             ax.text(mid, 0.97, name.strip(), transform=ax.get_xaxis_transform(),
-                    ha="center", va="top", fontsize=7, color="0.45")
+                    ha="center", va="top", color="0.45")
 
 
 def _rule_level_lines(ax, levels: list, primary_by_level: dict,
@@ -308,11 +308,11 @@ def _panel_delivery(ax_nyc, ax_nj, primary: dict, reference: dict | None) -> Non
                     lw=1.2, alpha=0.65)
         ax.set_ylim(0, cap_lim)
         ax.set_yticks(ticks)
-        ax.set_ylabel(label, fontsize=9)
+        ax.set_ylabel(label)
         ax.set_xticks(x)
         ax.tick_params(axis="x", length=2.5)
     ax_nyc.set_xticklabels([])
-    ax_nj.set_xticklabels(ZONE_TICK_LABELS, fontsize=8)
+    ax_nj.set_xticklabels(ZONE_TICK_LABELS)
     ax_nj.set_xlabel("Storage zone")
 
 
@@ -327,7 +327,7 @@ def _panel_release_schedules(axes, primary: dict, reference: dict | None) -> Non
         _month_axis(ax)
         # Headroom keeps season initials clear of tall summer plateaus.
         ax.set_ylim(0, 1.18 * y_top)
-        ax.set_title(res.capitalize(), fontsize=9.5, pad=3)
+        ax.set_title(res.capitalize(), pad=3)
         if i == 0:
             ax.set_ylabel("Min. release (MGD)")
 
@@ -359,10 +359,10 @@ def _panel_flow_targets(axes, primary: dict, reference: dict | None) -> None:
         span = max(y_top - y_lo, 1.0)
         _month_axis(ax)
         ax.set_ylim(y_lo - 0.15 * span, y_top + 0.15 * span)
-        ax.set_title(name, fontsize=9.5, pad=3)
+        ax.set_title(name, pad=3)
         if i == 0:
             ax.set_ylabel("Flow target (MGD)")
-            ax.text(0.99, decree, "Decree", color="0.35", fontsize=7,
+            ax.text(0.99, decree, "Decree", color="0.35",
                     va="bottom", ha="right",
                     transform=ax.get_yaxis_transform())
 
@@ -386,7 +386,7 @@ def _panel_flood_releases(ax, primary: dict, reference: dict | None,
                   lw=1.0, zorder=2)
         if i == 0:
             ax.text(i - 0.42, cap_mgd, "Max", color="0.35",
-                    fontsize=7, va="bottom", ha="left")
+                    va="bottom", ha="left")
         for lvl in FLOOD_ZONE_LEVELS:
             xc = i + sub_offsets[lvl]
             prim = float(np.max(primary["flood_releases"][res][lvl]))
@@ -398,10 +398,10 @@ def _panel_flood_releases(ax, primary: dict, reference: dict | None,
                 ax.bar(xc, prim, 0.30, color=color)
             tick_pos.append(xc)
             tick_labels.append(lvl.replace("level", "L"))
-        ax.text(i, -0.16, res.capitalize(), fontsize=8.5,
+        ax.text(i, -0.16, res.capitalize(),
                 ha="center", va="top", transform=ax.get_xaxis_transform())
     ax.set_xticks(tick_pos)
-    ax.set_xticklabels(tick_labels, fontsize=7.5)
+    ax.set_xticklabels(tick_labels)
     ax.tick_params(axis="x", length=0)
     ax.set_xlim(-0.55, len(config.NYC_RESERVOIRS) - 0.45)
     top_cap = max(primary["flood_caps"][r] for r in config.NYC_RESERVOIRS)
@@ -438,10 +438,9 @@ def _figure_legend(fig, mode: str, candidate_label: str) -> None:
     leg = fig.legend(handles=zone_handles, loc="lower center", ncol=3,
                      frameon=True, fancybox=False, framealpha=1.0,
                      edgecolor="0.7", facecolor="white", borderpad=0.7,
-                     fontsize=8.5, handlelength=1.5,
+                     handlelength=1.5,
                      columnspacing=2.4, title="Storage zone",
                      bbox_to_anchor=(0.5, 0.02))
-    leg.get_title().set_fontsize(8.5)
     leg.get_title().set_color("0.3")
     leg.get_frame().set_linewidth(0.8)
 
@@ -460,7 +459,7 @@ def _figure_legend(fig, mode: str, candidate_label: str) -> None:
         ))
         labels.append(candidate_label)
     fig.legend(handles=handles, labels=labels, loc="lower center",
-               ncol=len(handles), frameon=False, fontsize=9,
+               ncol=len(handles), frameon=False,
                handlelength=2.4, bbox_to_anchor=(0.5, -0.035),
                handler_map={tuple: HandlerTuple(ndivide=None, pad=0.5)})
 

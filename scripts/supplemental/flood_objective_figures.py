@@ -148,9 +148,9 @@ def block_a(cands: list) -> pd.DataFrame:
         ax.plot(sub["water_year"], sub["sim"], color=st["color"], lw=1.6,
                 label="simulated")
         r = df.loc[df["candidate"] == cand, "annual_spearman_rho"].iloc[0]
-        ax.set_title(f"{st['label']}\n$\\rho_S$ = {r:.2f}", fontsize=9)
+        ax.set_title(f"{st['label']}\n$\\rho_S$ = {r:.2f}")
         ax.set_ylabel(st["unit"].replace("/yr", "/WY"))
-    axes[0, 0].legend(frameon=False, fontsize=8)
+    axes[0, 0].legend(frameon=False)
     for ax in axes[1]:
         ax.set_xlabel("water year")
     fig.suptitle("Annual candidate values, gauge-experiment run vs observed "
@@ -216,7 +216,7 @@ def block_b(cube: dict) -> pd.DataFrame:
         ax.set_title(GAUGE_NAMES[g])
         ax.set_xlabel("discharge (1000 MGD)")
     axes[0].set_ylabel("stage (ft)")
-    axes[-1].legend(frameon=False, fontsize=8, loc="lower right")
+    axes[-1].legend(frameon=False, loc="lower right")
     fig.suptitle("Flood-day stage vs discharge against the rated range "
                  "(solid grey: minor; dotted: major)", y=1.02)
     fig.tight_layout()
@@ -267,7 +267,7 @@ def block_e_noise(cube: dict, cands: list) -> pd.DataFrame:
         ax.set_yscale("log")
         z = float((u == 0).mean())
         ax.set_title(f"{st['label']}\nzero units: {z:.0%}   "
-                     f"top unit: {u.max():.3g}", fontsize=9)
+                     f"top unit: {u.max():.3g}")
         ax.set_xlabel(f"unit-year value ({st['unit'].replace('/yr', '')})")
         if nz.size == 0:
             ax.text(0.5, 0.5, "all zero", transform=ax.transAxes,
@@ -370,7 +370,7 @@ def block_c(vals: dict, eps: pd.DataFrame, cube: dict,
             row = df[(df["domain"] == domain) & (df["candidate"] == cand)]
             ax.text(ci, 1.06, f"{int(row['n_distinct'].iloc[0])} distinct\n"
                     f"{int(row['n_epsilon_boxes'].iloc[0])} $\\epsilon$-boxes",
-                    ha="center", fontsize=7.5)
+                    ha="center")
         ax.set_xticks(range(len(cands)))
         ax.set_xticklabels([c.split("_")[0] for c in cands])
         ax.set_ylim(-0.05, 1.18)
@@ -394,8 +394,7 @@ def block_c(vals: dict, eps: pd.DataFrame, cube: dict,
     fig, ax = plt.subplots(figsize=(6.2, 5.4))
     im = annotated_corr_heatmap(
         ax, corr, cands,
-        label_fn=lambda n: CAND_STYLE[n]["label"].replace("$", ""),
-        fontsize=7)
+        label_fn=lambda n: CAND_STYLE[n]["label"].replace("$", ""))
     fig.colorbar(im, ax=ax, shrink=0.8, label="Spearman $\\rho_S$")
     ax.set_title("Candidate agreement across policies (KN ensemble)")
     fig.tight_layout()
@@ -457,7 +456,7 @@ def block_d(vals: dict, cube: dict, cands: list) -> pd.DataFrame:
                      else "KN ensemble (pooled-annual mean)")
         ax.set_xlim(-0.02, 1.02)
     axes[0].set_ylabel("candidate value, normalized to own range")
-    axes[1].legend(frameon=False, fontsize=7.5, loc="upper right")
+    axes[1].legend(frameon=False, loc="upper right")
     fig.suptitle("Monotone response to flood-release aggressiveness", y=1.02)
     fig.tight_layout()
     save_figure(fig, scfg.floodobj_figure_path("D_monotone_response"))

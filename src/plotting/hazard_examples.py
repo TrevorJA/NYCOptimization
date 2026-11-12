@@ -44,6 +44,7 @@ from matplotlib.patheffects import withStroke
 from matplotlib.ticker import MaxNLocator
 
 import config
+from src.plotting import style
 from src.plotting.ensemble_composition import (DEFAULT_SCATTER_TRIPLE,
                                                SCATTER_3D_VIEW, _style_cube)
 
@@ -87,8 +88,8 @@ GUIDE = "0.40"
 #: Share of each sequence panel's height the tallest flood bar may hang down.
 BAR_DEPTH_FRAC = 0.40
 
-#: Type size for this figure (above the 12 pt manuscript floor; the sequence
-#: panels are read at a steep reduction).
+#: Type floor for this figure, applied through :func:`style.font_rc` (above
+#: the 12 pt project floor; the sequence panels are read at a steep reduction).
 EXAMPLES_FONTSIZE: int = 16
 
 #: Run-theory settings the figure scores and delineates events with; passed
@@ -462,7 +463,7 @@ def draw_parallel_axes(ax, H: np.ndarray, axes: list[str], plot_axes: list[str],
         if unit:
             # Two-word units break at the space so neighbouring axes never touch.
             ax.text(j, -0.11, "(" + unit.replace(" ", "\n") + ")", ha="center",
-                    va="top", fontsize=fs - 4, color="0.35", linespacing=1.1)
+                    va="top", fontsize=style.MIN_FONTSIZE, color="0.35", linespacing=1.1)
     for k, seq in enumerate(sequences):
         color, marker = EXAMPLE_COLORS[k], EXAMPLE_MARKERS[k]
         ax.plot(xs, U[seq.index], color=color, lw=3.2, zorder=4,
@@ -547,13 +548,7 @@ def draw_sequence_panel(ax, seq: ExampleSequence, color: str, marker: str, *,
 # Figure
 # ---------------------------------------------------------------------------
 
-@plt.rc_context({
-    "font.size":       EXAMPLES_FONTSIZE,
-    "axes.labelsize":  EXAMPLES_FONTSIZE,
-    "xtick.labelsize": EXAMPLES_FONTSIZE,
-    "ytick.labelsize": EXAMPLES_FONTSIZE,
-    "axes.labelpad":   3.0,
-})
+@plt.rc_context({**style.font_rc(EXAMPLES_FONTSIZE), "axes.labelpad": 3.0})
 def build_hazard_examples_figure(
     H: np.ndarray, axes: list[str], sequences: list[ExampleSequence], *,
     left: str = "3d",

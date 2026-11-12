@@ -371,9 +371,9 @@ def fig_regret_vs_utilization(ctx, out_stub: Path, table_dir: Path) -> dict:
             ax.plot(g["u_mid"], g[f"gain_mean__{obj}"], "--s", ms=3.0, lw=1.2,
                     color=style.design_color(d), alpha=0.8)
         _band_lines(ax, axis="x")
-        ax.set_title(style.label_for(obj), fontsize=9)
+        ax.set_title(style.label_for(obj))
         ax.set_xlabel("Nominal entitlement utilization, $u$")
-        ax.set_ylabel("Regret (solid), gain (dashed)\nvs incumbent, natural units", fontsize=8)
+        ax.set_ylabel("Regret (solid), gain (dashed)\nvs incumbent, natural units")
         ax.grid(True, alpha=0.3)
 
     ax = flat[len(objectives)]
@@ -384,9 +384,9 @@ def fig_regret_vs_utilization(ctx, out_stub: Path, table_dir: Path) -> dict:
                 color=style.design_color(d), alpha=0.8)
     _band_lines(ax, axis="x")
     ax.set_ylim(-0.02, 1.02)
-    ax.set_title("Best policy per bin", fontsize=9)
+    ax.set_title("Best policy per bin")
     ax.set_xlabel("Nominal entitlement utilization, $u$")
-    ax.set_ylabel("Satisficing (solid),\nlow-regret frequency (dashed)", fontsize=8)
+    ax.set_ylabel("Satisficing (solid),\nlow-regret frequency (dashed)")
     ax.grid(True, alpha=0.3)
     for k in range(n_panels, nrow * ncol):
         flat[k].axis("off")

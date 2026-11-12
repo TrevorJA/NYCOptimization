@@ -200,21 +200,21 @@ def fig_event_anatomy(daily: dict, minor: pd.Series) -> None:
         for gi, g in enumerate(GAUGES):
             ax.plot(d, rel[:, gi], color=GAUGE_COLORS[g], lw=1.7,
                     label=GAUGE_LABELS[g])
-        ax.text(d[2], 0.12, "NWS flood stage", color="#555555", fontsize=8,
+        ax.text(d[2], 0.12, "NWS flood stage", color="#555555",
                 va="bottom")
         ax.set_title(f"{ev['start']:%b %Y} event — total exceedance "
-                     f"{ev['total_ftd']:.1f} ft·days", fontsize=10)
+                     f"{ev['total_ftd']:.1f} ft·days")
         if col == 0:
             ax.set_ylabel("stage relative to each gauge's\n"
                           "NWS flood stage (ft)")
-            ax.legend(frameon=False, fontsize=8, loc="upper left")
+            ax.legend(frameon=False, loc="upper left")
 
         axb = axes[1, col]
         axb.bar(d, env, width=0.85, color=SEVERITY_COLOR)
         axb.set_xlabel("date")
         axb.annotate(f"$\\Sigma$ = {env.sum():.1f} ft·days",
                      xy=(d[int(np.argmax(env))], env.max()),
-                     xytext=(8, -2), textcoords="offset points", fontsize=9)
+                     xytext=(8, -2), textcoords="offset points")
         if col == 0:
             axb.set_ylabel("daily exceedance\nincrement (ft)")
         for a in (ax, axb):
@@ -254,12 +254,11 @@ def fig_annual_series(daily: dict, minor: pd.Series) -> None:
     ax.axhline(hist_mean, color=SEVERITY_COLOR, ls="--", lw=1.3)
     ax.text(hist_wy.index[1], hist_mean + 0.25, "objective value: mean-annual "
             f"exceedance = {hist_mean:.2f} ft·days/yr",
-            va="bottom", fontsize=8.5, color=SEVERITY_COLOR)
+            va="bottom", color=SEVERITY_COLOR)
     for wy, v in hist_wy.nlargest(3).items():
         ax.annotate(f"WY{wy}", (wy, v), xytext=(0, 3),
-                    textcoords="offset points", ha="center", fontsize=8)
-    ax.set_title(f"historic trace (WY{hist_wy.index[0]}–{hist_wy.index[-1]})",
-                 fontsize=10)
+                    textcoords="offset points", ha="center")
+    ax.set_title(f"historic trace (WY{hist_wy.index[0]}–{hist_wy.index[-1]})")
     ax.set_ylabel("water-year exceedance\n(ft·days)")
     ax.set_xlabel("water year")
 
@@ -274,14 +273,13 @@ def fig_annual_series(daily: dict, minor: pd.Series) -> None:
         offset += len(u)
     tick_pos = [n_per / 2 + i * n_per for i in range(len(ens_units))]
     ax.set_xticks(tick_pos)
-    ax.set_xticklabels([f"realization {i + 1}" for i in range(len(ens_units))],
-                       fontsize=9)
+    ax.set_xticklabels([f"realization {i + 1}" for i in range(len(ens_units))])
     ax.axhline(pooled_mean, color=SEVERITY_COLOR, ls="--", lw=1.3)
     ax.text(1, pooled_mean + 0.55, "search objective: pooled-annual mean = "
-            f"{pooled_mean:.2f} ft·days/yr", va="bottom", fontsize=8.5,
+            f"{pooled_mean:.2f} ft·days/yr", va="bottom",
             color=SEVERITY_COLOR)
     ax.set_title("stationary Kirsch–Nowak baseline ensemble "
-                 f"({len(ens_units)} × {n_per} unit-years)", fontsize=10)
+                 f"({len(ens_units)} × {n_per} unit-years)")
     ax.set_ylabel("unit-year exceedance\n(ft·days)")
 
     fig.suptitle(
@@ -327,16 +325,16 @@ def fig_return_period(daily: dict, minor: pd.Series) -> None:
         zero_note.append(f"{zero_frac:.0%} of "
                          f"{label.split('(')[0].strip()} years are zero")
     ax.text(0.03, 0.74, "zero-exceedance years:\n  " + "\n  ".join(zero_note),
-            transform=ax.transAxes, fontsize=8.5, va="top",
+            transform=ax.transAxes, va="top",
             color=SEVERITY_COLOR)
     ax.set_xscale("log")
     ax.set_xlabel("return period of the water-year exceedance (years)")
     ax.set_ylabel("water-year exceedance (ft·days)")
-    ax.legend(frameon=False, fontsize=9, loc="upper left")
+    ax.legend(frameon=False, loc="upper left")
     ax.set_title(
         f"{METRIC_NAME.capitalize()} is episodic: most years contribute "
         "zero,\nthe objective integrates the exceedance of the rare flood "
-        "years", fontsize=10)
+        "years")
     fig.tight_layout()
     save_figure(fig, scfg.floodobj_figure_path("S_flood_exceedance_return_period"))
     plt.close(fig)

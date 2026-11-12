@@ -175,7 +175,7 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
         elif summary.loc[name, "no_gradient"]:
             note = "no gradient"
         if note:
-            ax.text(1.02, y, note, va="center", ha="left", fontsize=7,
+            ax.text(1.02, y, note, va="center", ha="left",
                     color="firebrick", transform=ax.get_yaxis_transform())
 
     if box_data:
@@ -200,16 +200,16 @@ def fig_discrimination(samples: pd.DataFrame, baseline: pd.Series | None,
                         label="FFMP baseline" if name == valid_mask[0][0] else None)
 
     ax.set_yticks([y for y, _ in labels])
-    ax.set_yticklabels([lab for _, lab in labels], fontsize=8)
+    ax.set_yticklabels([lab for _, lab in labels])
     ax.set_xlim(-0.03, 1.03)
     ax.set_xlabel("Objective value, min–max normalized per objective")
     ax.set_title("Objective discrimination across random policies\n"
                  "(wider box = stronger Pareto gradient; ↑ maximize, "
-                 "↓ minimize)", fontsize=10)
+                 "↓ minimize)")
     # Leave a blank strip under the last row for the legend.
     ax.set_ylim(-0.7, n + 0.7)
     if ax.get_legend_handles_labels()[0]:
-        ax.legend(loc="lower right", fontsize=8, frameon=True)
+        ax.legend(loc="lower right", frameon=True)
     fig.tight_layout()
     save_figure(fig, out_stub)
     plt.close(fig)
@@ -249,11 +249,11 @@ def fig_redundancy_heatmap(spearman: pd.DataFrame, threshold: float,
     m = spearman.shape[0]
     fig, ax = plt.subplots(figsize=(0.62 * m + 2.5, 0.62 * m + 2.0))
     im = annotated_corr_heatmap(ax, spearman.values, list(spearman.columns),
-                                box_threshold=threshold, fontsize=7)
+                                box_threshold=threshold)
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label("Spearman ρ")
     ax.set_title(f"Objective redundancy (Spearman ρ)\n"
-                 f"boxed cells: |ρ| > {threshold}", fontsize=10)
+                 f"boxed cells: |ρ| > {threshold}")
     fig.tight_layout()
     save_figure(fig, out_stub)
     plt.close(fig)

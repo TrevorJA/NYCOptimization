@@ -58,8 +58,6 @@ from src.formulations import get_obj_directions, get_obj_names  # noqa: E402
 #: fig05 convention.
 PANEL_WIDTH = 13.5
 PANEL_HEIGHT = 4.1
-#: The renderer draws its smallest text at ``fontsize - 2``.
-PA_FONTSIZE = 13
 _AXIS_LABEL_WRAP = 11
 
 #: Plain-language design names. Internal slugs never appear on a figure.
@@ -193,7 +191,7 @@ def fig_merged(frame: pd.DataFrame) -> None:
                            rotation=15, ha="right")
         ax.set_ylabel(ylab)
         ax.set_title(title)
-    axes[0].legend(title="Optimized under", frameon=False, fontsize="small")
+    axes[0].legend(title="Optimized under", frameon=False)
     fig.tight_layout()
     save_figure(fig, scfg.tev_figure_path("tev_merged_composition"))
     plt.close(fig)
@@ -216,7 +214,7 @@ def fig_hypervolume(frame: pd.DataFrame) -> None:
                        rotation=15, ha="right")
     ax.set_ylabel("Hypervolume (shared reference set)")
     ax.set_title("Hypervolume of each Pareto set under each evaluation ensemble")
-    ax.legend(title="Optimized under", frameon=False, fontsize="small")
+    ax.legend(title="Optimized under", frameon=False)
     fig.tight_layout()
     save_figure(fig, scfg.tev_figure_path("tev_hypervolume"))
     plt.close(fig)
@@ -239,12 +237,12 @@ def fig_path_consistency(frame: pd.DataFrame) -> None:
     ax.set_yscale("log")
     ax.set_xticks(x)
     ax.set_xticklabels([o.replace("_", " ") for o in objectives], rotation=30,
-                       ha="right", fontsize="small")
+                       ha="right")
     ax.set_ylabel("Max |difference| / epsilon")
     worst = float(np.nanmax(frame["max_diff_over_eps"]))
     ax.set_title("Search path versus driver path, in epsilon units "
                  f"(worst = {worst:.1e} eps)")
-    ax.legend(frameon=False, fontsize="small")
+    ax.legend(frameon=False)
     fig.tight_layout()
     save_figure(fig, scfg.tev_figure_path("tev_path_consistency"))
     plt.close(fig)
@@ -355,7 +353,7 @@ def fig_parallel_by_design(cells, baselines, obj_names, directions) -> None:
             columns_axes=obj_names, axis_labels=labels, minmaxs=minmaxs,
             color_by_categorical=sub["source"].to_numpy(),
             color_dict_categorical={d: design_color(d) for d in order},
-            alpha_base=0.05, lw_base=0.7, fontsize=PA_FONTSIZE,
+            alpha_base=0.05, lw_base=0.7,
             baseline=base, baseline_label=INCUMBENT_LABEL,
             ax=ax, axis_ranges=axis_ranges,
             add_colorbar=False, add_legend=False,
@@ -363,7 +361,7 @@ def fig_parallel_by_design(cells, baselines, obj_names, directions) -> None:
         _draw_design_medians(ax, sub, order, obj_names, axis_ranges, minmaxs)
         ax.set_title(f"({letter}) Evaluated under: {TARGET_LABEL.get(slug, slug)} "
                      f"— all {len(sub)} policies, bold lines are per-design medians",
-                     loc="left", fontsize=PA_FONTSIZE)
+                     loc="left")
         ax.add_patch(plt.Rectangle((0, 0), len(obj_names) - 1, 1, fill=False,
                                    edgecolor="black", lw=1.1, zorder=60,
                                    clip_on=False))
@@ -374,7 +372,7 @@ def fig_parallel_by_design(cells, baselines, obj_names, directions) -> None:
                for d in ROW_ORDER if d in set(cells["source"])]
     handles.append(Line2D([], [], color=INCUMBENT_COLOR, lw=2.5, marker="o",
                           markersize=5, label=INCUMBENT_LABEL))
-    shared_legend(fig, handles, y=-0.035, fontsize=PA_FONTSIZE - 1)
+    shared_legend(fig, handles, y=-0.035)
     save_figure(fig, scfg.tev_figure_path("tev_parallel_axes_by_design"))
     plt.close(fig)
 
@@ -419,7 +417,7 @@ def fig_parallel_merged_set(cells, baselines, obj_names, directions) -> None:
             columns_axes=obj_names, axis_labels=labels, minmaxs=minmaxs,
             color_by_categorical=members["source"].to_numpy(),
             color_dict_categorical={d: design_color(d) for d in order},
-            alpha_base=0.45, lw_base=1.3, fontsize=PA_FONTSIZE,
+            alpha_base=0.45, lw_base=1.3,
             baseline=base, baseline_label=INCUMBENT_LABEL,
             ax=ax, axis_ranges=axis_ranges,
             add_colorbar=False, add_legend=False,
@@ -429,7 +427,7 @@ def fig_parallel_merged_set(cells, baselines, obj_names, directions) -> None:
         made = ", ".join(f"{DESIGN_LABEL.get(d, d)} {counts[d]}" for d in order)
         ax.set_title(f"({letter}) Merged reference set for "
                      f"{TARGET_LABEL.get(slug, slug)} — {len(members)} members "
-                     f"({made})", loc="left", fontsize=PA_FONTSIZE)
+                     f"({made})", loc="left")
         ax.add_patch(plt.Rectangle((0, 0), len(obj_names) - 1, 1, fill=False,
                                    edgecolor="black", lw=1.1, zorder=60,
                                    clip_on=False))
@@ -440,7 +438,7 @@ def fig_parallel_merged_set(cells, baselines, obj_names, directions) -> None:
                for d in ROW_ORDER if d in set(cells["source"])]
     handles.append(Line2D([], [], color=INCUMBENT_COLOR, lw=2.5, marker="o",
                           markersize=5, label=INCUMBENT_LABEL))
-    shared_legend(fig, handles, y=-0.035, fontsize=PA_FONTSIZE - 1)
+    shared_legend(fig, handles, y=-0.035)
     save_figure(fig, scfg.tev_figure_path("tev_parallel_axes_merged_set"))
     plt.close(fig)
 
@@ -478,11 +476,11 @@ def fig_enrichment(enrich, loo) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels([f"{TARGET_LABEL.get(s, s).replace(' ensemble', '')}\n{arch_label[a]}"
                         for s in slugs for a in archives],
-                       rotation=22, ha="right", fontsize=9)
+                       rotation=22, ha="right")
     ax.set_ylabel("Enrichment  (share of merged set / share of pool)")
     ax.set_title("(a) Contribution relative to pool share\n"
                  "(dashed line = no design effect)", loc="left")
-    ax.legend(frameon=False, fontsize=9)
+    ax.legend(frameon=False)
 
     ax = axes[1]
     # Prefer an ensemble target over the single historic trace: the leave-one-out
@@ -500,7 +498,7 @@ def fig_enrichment(enrich, loo) -> None:
     ax.axhline(1.0, color="black", lw=1.4, ls="--")
     ax.set_xticks(xs)
     ax.set_xticklabels(["none (all 8)"] + [short_label_for(d) for d in order[1:]],
-                       rotation=35, ha="right", fontsize=9)
+                       rotation=35, ha="right")
     ax.set_xlabel("Objective removed before rebuilding the merged set")
     ax.set_ylabel("Enrichment")
     ax.set_title(f"(b) Leave-one-out, {TARGET_LABEL.get(slug, slug)}\n"

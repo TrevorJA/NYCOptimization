@@ -153,7 +153,7 @@ def fig_support_map(sow: pd.DataFrame) -> None:
     fig.colorbar(sc, ax=ax2, label=SCORE_LABEL)
     handles, labels = ax1.get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", frameon=False, ncol=3,
-               fontsize=8, title="each point is one test future", title_fontsize=8)
+               title="each point is one test future")
     fig.tight_layout(rect=(0, 0.10, 1, 1))
     save_figure(fig, scfg.hsd_figure_path("F1_support_map_theta"))
     plt.close(fig)
@@ -178,7 +178,7 @@ def fig_score_distribution(sow: pd.DataFrame) -> None:
     handles, labels = ax.get_legend_handles_labels()
     handles.append(Line2D([], [], color="0.35", lw=0.9, ls="--"))
     labels.append(f"group boundaries ({lo:g} and {hi:g} of a future's decades)")
-    ax.legend(handles, labels, frameon=False, loc="lower right", fontsize=8)
+    ax.legend(handles, labels, frameon=False, loc="lower right")
     fig.tight_layout()
     save_figure(fig, scfg.hsd_figure_path("F2_support_score_distribution"))
     plt.close(fig)
@@ -200,8 +200,7 @@ def fig_axis_excursion(axis_tab: pd.DataFrame) -> None:
                width=width, label=THIRD_LABELS[t],
                color=cmap(t / max(1, scfg.HSD_TERCILE_BINS - 1)))
     ax.set_xticks(x)
-    ax.set_xticklabels([METRIC_TICKS.get(a, a.replace("_", " ")) for a in axes],
-                       fontsize=9)
+    ax.set_xticklabels([METRIC_TICKS.get(a, a.replace("_", " ")) for a in axes])
     ax.set_ylabel("share of novel decades whose largest\nexceedance is on this hazard metric")
     ax.set_title("Which hazard metric carries the novelty, by how wet the future is")
     ax.legend(frameon=False, title="test futures split by mean-flow change")
@@ -230,15 +229,15 @@ def fig_reach_by_tercile(reach: pd.DataFrame) -> None:
                 ax.plot(t, float(row[q].iloc[0]), mk, color="#7a4fa3",
                         ms=6, mfc="none" if q != "q99" else "#7a4fa3")
         ax.set_xticks(range(scfg.HSD_TERCILE_BINS))
-        ax.set_xticklabels(THIRD_SHORT, fontsize=8)
+        ax.set_xticklabels(THIRD_SHORT)
         ax.set_xlim(-0.5, scfg.HSD_TERCILE_BINS - 0.5)
-        ax.set_title(_metric_label(axis, oneline=True), fontsize=9)
+        ax.set_title(_metric_label(axis, oneline=True))
     handles = [Line2D([], [], marker=mk, ls="", color="#7a4fa3",
                       mfc="none" if q != "q99" else "#7a4fa3", label=qlabels[q])
                for q, mk in zip(("q50", "q90", "q99"), markers)]
     handles.append(Patch(color="0.85",
                          label="range covered by the stationary candidate pool (1st–99th percentile)"))
-    fig.legend(handles=handles, loc="lower center", frameon=False, ncol=2, fontsize=9)
+    fig.legend(handles=handles, loc="lower center", frameon=False, ncol=2)
     fig.suptitle("How far test-future decades reach beyond the stationary pool, by hazard metric")
     fig.tight_layout(rect=(0, 0.09, 1, 1))
     save_figure(fig, scfg.hsd_figure_path("F4_reach_by_tercile"))
@@ -313,10 +312,10 @@ def fig_contrast(contrast: pd.DataFrame, boot: pd.DataFrame,
             ax.set_xticklabels(
                 [f"{_group_tick(partition, g)}\n"
                  f"(n = {int(b[b['group'] == g]['n_sow'].iloc[0])})"
-                 for g in groups], fontsize=8)
+                 for g in groups])
             ax.set_ylabel("advantage of hazard filling over random sampling\n"
                           "(difference in fraction of futures; > 0 favours hazard filling)")
-            ax.set_title(title, fontsize=10)
+            ax.set_title(title)
         handles = [
             Line2D([], [], marker="o", ls="", color="#222222",
                    label="difference between the two designs, with 95% interval\n"
@@ -324,7 +323,7 @@ def fig_contrast(contrast: pd.DataFrame, boot: pd.DataFrame,
             Line2D([], [], marker="o", ls="", color=design_color("hazard_filling_stationary"),
                    label="one independent ensemble draw"),
         ]
-        fig.legend(handles=handles, loc="lower center", frameon=False, ncol=2, fontsize=8)
+        fig.legend(handles=handles, loc="lower center", frameon=False, ncol=2)
         fig.suptitle(titles[partition])
         fig.tight_layout(rect=(0, 0.08, 1, 0.96))
         save_figure(fig, scfg.hsd_figure_path(figname, tagged=True))
@@ -345,7 +344,7 @@ def fig_pool_deficit(deficit: pd.DataFrame) -> None:
     ax.set_ylabel("fraction of futures where the policy fails\nthe compromise performance criteria")
     ax.set_title("Do policy failures sit where the stationary pool is sparse?\n"
                  "(test futures binned into tenths by pool sparseness)")
-    ax.legend(frameon=False, fontsize=8, loc="upper center",
+    ax.legend(frameon=False, loc="upper center",
               bbox_to_anchor=(0.5, -0.30), ncol=1)
     fig.tight_layout()
     save_figure(fig, scfg.hsd_figure_path("F7_pool_vs_design_deficit", tagged=True))

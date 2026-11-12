@@ -126,13 +126,14 @@ CMIP6 minimum) to 1.28, the seasonal amplitude `r₁` 0 to 0.33 and the semiannu
 (`assert_staged_etest_contract`) refuses a staging generated with an `axis_bounds` override or whose
 metadata does not record the box's `forcing_period`.
 Measured on paired 10-yr windows at fixed volume levels (`scripts/supplemental/dry_envelope_run.py`,
-`dryenv_levels.csv`; SI Figure S18): at the driest CMIP6 run [DRYENV_CMIP6_MIN_Q99] % of windows
-exceed the stationary generator's 99th-percentile controlling-event drought magnitude (1 % by
-construction), and at the 0.899 bound [DRYENV_BOUND_Q99] % do ([DRYENV_BOUND_Q99_SUMMED] % on the
-magnitude summed over all events in the window). Deeper levels are reported by the same diagnostic as
-a sensitivity of the envelope (wider margins on the dry side: e^m = 0.848, 0.799 and 0.754; 0.80 is
-the dry limit of the inflow multiplier of Herman et al. 2014 and Trindade et al. 2017): at 0.799,
-[DRYENV_080_Q99] % of windows exceed that percentile ([DRYENV_080_Q99_SUMMED] % summed). The
+`dryenv_levels.csv`, 60 paired windows per level; SI Figure S18): at the driest CMIP6 run no window
+exceeds the stationary generator's 99th-percentile controlling-event drought magnitude (1 % by
+construction), and at the 0.899 bound 8.3 % do (13 % on the magnitude summed over all events in the
+window), so the dry edge of the box reaches beyond the stationary drought envelope. Deeper levels are
+reported by the same diagnostic as a sensitivity of the envelope (wider margins on the dry side:
+e^m = 0.848, 0.799 and 0.754; 0.80 is the dry limit of the inflow multiplier of Herman et al. 2014
+and Trindade et al. 2017): 17 % of windows exceed that percentile at 0.848 (28 % summed), 22 % at
+0.799 (53 % summed) and 37 % at 0.754 (83 % summed). The
 non-campaign DU search designs (`campaign=False` in `src/scenario_designs.py`)
 sample the default `(5, 95)` box with `margin = 0`, so the test envelope strictly contains that box.
 

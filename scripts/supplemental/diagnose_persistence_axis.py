@@ -54,6 +54,7 @@ import supplemental_config as scfg
 from scengen.persistence import persistent_bootstrap_indices, wetness_rank_order
 
 from src.ensemble_generation import _fit_kirsch, _load_masked_flows
+from src.plotting import style
 
 R = int(os.environ.get("NYCOPT_PERSDIAG_R", "64"))
 YEARS = int(os.environ.get("NYCOPT_PERSDIAG_YEARS", "50"))
@@ -129,6 +130,7 @@ def _distortion_metrics(frames: list[pd.DataFrame]) -> dict:
 
 
 def main() -> None:
+    style.apply_style()
     TABLES_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -195,7 +197,7 @@ def main() -> None:
     ax1.axhspan(-0.10, 0.40, color="0.85", zorder=0, label="CMIP6 future p5-p95")
     ax1.set_xlabel(r"copula loading $\lambda$")
     ax1.set_ylabel(r"annual lag-1 autocorrelation $\rho_1$")
-    ax1.legend(frameon=False, fontsize=8)
+    ax1.legend(frameon=False)
     ax1.set_title("gain: interannual persistence")
 
     ax2.plot(main_curve["lam"], main_curve["adjacent_corr"], marker="o",
@@ -205,10 +207,10 @@ def main() -> None:
              label="cross-site corr")
     ax2.set_xlabel(r"copula loading $\lambda$")
     ax2.set_ylabel("pooled correlation")
-    ax2.legend(frameon=False, fontsize=8)
+    ax2.legend(frameon=False)
     ax2.set_title("distortion: within-year / cross-site structure")
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "persistence_axis.png", dpi=200)
+    style.save_figure(fig, FIG_DIR / "persistence_axis.png")
 
     findings = {
         "R": R, "years": YEARS, "seed": SEED,

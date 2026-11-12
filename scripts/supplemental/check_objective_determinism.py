@@ -476,21 +476,21 @@ def make_figures(summary_df, jitter: dict) -> None:
     ax.text(0.02, scfg.DETERMINISM_REL_TOL * 1.5,
             f"verdict threshold ({scfg.DETERMINISM_REL_TOL:g})",
             transform=ax.get_yaxis_transform(),
-            va="bottom", ha="left", fontsize=8, color="0.35")
+            va="bottom", ha="left", color="0.35")
     eps64 = np.finfo(float).eps
     ax.axhline(eps64, color="0.35", ls=":", lw=1)
     ax.text(0.02, eps64 * 1.5, "float64 eps",
             transform=ax.get_yaxis_transform(),
-            va="bottom", ha="left", fontsize=8, color="0.35")
+            va="bottom", ha="left", color="0.35")
     if (summary_df["max_rel_dev"] <= 0).any():
         ax.axhline(_ZERO_FLOOR, color="0.8", lw=0.8)
         ax.text(0.98, _ZERO_FLOOR * 1.6, "exact zero (plotted at floor)",
                 transform=ax.get_yaxis_transform(),
-                fontsize=8, color="0.5", va="bottom", ha="right")
+                color="0.5", va="bottom", ha="right")
     ax.set_yscale("log")
     ax.set_ylim(_ZERO_FLOOR / 5, max(1e-6, summary_df["max_rel_dev"].max() * 20))
     ax.set_xticks(x)
-    ax.set_xticklabels([short[o] for o in objectives], fontsize=8)
+    ax.set_xticklabels([short[o] for o in objectives])
     ax.set_ylabel("Max relative deviation across repeats")
     ax.set_title(
         f"Objective determinism: {scfg.DETERMINISM_N_REPEATS} fresh-process "
@@ -511,11 +511,11 @@ def make_figures(summary_df, jitter: dict) -> None:
     ax_a.set_yscale("log")
     ax_a.set_ylabel("Across-repeat range of daily\nNYC storage (% capacity points)")
     ax_a.set_title("(a) State-level jitter (baseline policy)")
-    ax_a.legend(frameon=False, fontsize=7.5)
+    ax_a.legend(frameon=False)
     if all(j["max_absdiff_pct_pts"] == 0 for j in jitter.values()):
         ax_a.text(0.5, 0.5, "no state-level jitter measured\n(all repeats "
                   "bitwise identical)", transform=ax_a.transAxes,
-                  ha="center", va="center", fontsize=9, color="0.4")
+                  ha="center", va="center", color="0.4")
 
     x = np.arange(len(objectives), dtype=float)
     offsets = np.linspace(-0.27, 0.27, len(paths))
@@ -535,11 +535,11 @@ def make_figures(summary_df, jitter: dict) -> None:
     ax_b.set_yscale("log")
     ax_b.set_ylim(_ZERO_FLOOR / 5, None)
     ax_b.set_xticks(x)
-    ax_b.set_xticklabels([short[o] for o in objectives], fontsize=7)
+    ax_b.set_xticklabels([short[o] for o in objectives])
     ax_b.set_ylabel("Max absolute deviation across repeats\n(natural units)")
     ax_b.set_title("(b) Objective-level agreement (worst policy;\n"
                    "dashed = that path's state-jitter max)")
-    ax_b.legend(frameon=False, fontsize=7.5, loc="center right")
+    ax_b.legend(frameon=False, loc="center right")
     fig.tight_layout()
     save_figure(fig, scfg.determinism_figure_path("f2_state_vs_objective"))
     plt.close(fig)

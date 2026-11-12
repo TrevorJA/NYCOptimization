@@ -5,12 +5,14 @@ All figure scripts import from here to ensure consistent aesthetics across
 manuscript figures and diagnostic plots.
 """
 
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 from matplotlib.patches import Rectangle
+from matplotlib.text import Text
 
 from config import FFMP_VR_N_SWEEP
 
@@ -290,48 +292,38 @@ FIGSIZE_WIDE   = (13, 5)
 # Shared rcParams
 # ---------------------------------------------------------------------------
 
-def apply_style() -> None:
-    """Apply project-wide matplotlib rcParams.
+# The ONE figure style of the project. Every figure, in every tier (manuscript,
+# SI, diagnostic), takes its type sizes, weights, spines and resolution from
+# :func:`apply_style` and is written by :func:`save_figure` or
+# :func:`save_manuscript_figure`. Figure code never passes a font size: text
+# inherits these rcParams, and a figure that needs larger type than the rest
+# raises the floor for its whole body with ``plt.rc_context(font_rc(14))``.
+# ``tests/test_figure_style.py`` enforces both rules on the source.
 
-    Call once at the top of each figure script's ``if __name__ == "__main__"``
-    block before any plotting calls.
-    """
-    plt.rcParams.update({
-        "font.family":       "sans-serif",
-        "font.size":         10,
-        "axes.titlesize":    11,
-        "axes.labelsize":    10,
-        "xtick.labelsize":   9,
-        "ytick.labelsize":   9,
-        "legend.fontsize":   9,
-        "figure.dpi":        150,
-        "savefig.dpi":       300,
-        "savefig.bbox":      "tight",
-        "axes.spines.top":   False,
-        "axes.spines.right": False,
-    })
+#: Smallest type size permitted in any figure (points), at the figure's own size.
+MIN_FONTSIZE: int = 12
 
 
-#: Smallest type size permitted in a main-manuscript figure (points). Journal
-#: figures are reduced on the page, so this is a floor on the RENDERED size, and
-#: every entry in :func:`apply_manuscript_style` sits at or above it.
-MANUSCRIPT_MIN_FONTSIZE: int = 12
+def font_rc(min_fontsize: int = MIN_FONTSIZE) -> dict:
+    """Type-size rcParams of the project style with ``min_fontsize`` as the floor.
 
-
-def manuscript_font_rc(min_fontsize: int = MANUSCRIPT_MIN_FONTSIZE) -> dict:
-    """Type-size rcParams of the manuscript style with ``min_fontsize`` as the floor.
-
-    :func:`apply_manuscript_style` applies these at the default floor. A figure
-    that needs larger type than the rest of the set wraps its plotting (through
-    the save) in ``plt.rc_context(manuscript_font_rc(14))``: the floor is raised
-    in one place, never by hand-editing individual ``fontsize`` arguments.
+    :func:`apply_style` applies these at :data:`MIN_FONTSIZE`. A figure that
+    needs larger type wraps its plotting (through the save) in
+    ``plt.rc_context(font_rc(14))``: the floor is raised in one place, never by
+    individual ``fontsize`` arguments.
 
     Args:
-        min_fontsize: Smallest rendered type size in the figure (points).
+        min_fontsize: Smallest type size in the figure (points).
 
     Returns:
         rcParams mapping for every text class matplotlib sizes.
+
+    Raises:
+        ValueError: If ``min_fontsize`` is below :data:`MIN_FONTSIZE`.
     """
+    if min_fontsize < MIN_FONTSIZE:
+        raise ValueError(
+            f"min_fontsize={min_fontsize} is below the project floor of {MIN_FONTSIZE} pt")
     fs = min_fontsize
     return {
         "font.size":             fs,
@@ -345,22 +337,27 @@ def manuscript_font_rc(min_fontsize: int = MANUSCRIPT_MIN_FONTSIZE) -> dict:
     }
 
 
-def apply_manuscript_style() -> None:
-    """Apply the main-manuscript figure style (>= 12 pt, no bold weights).
+#: Raster resolution (dpi) of saved figures: every tier, and the finer setting
+#: :func:`save_manuscript_figure` writes the main-text figures at.
+FIGURE_DPI: int = 300
+MANUSCRIPT_FIGURE_DPI: int = 400
 
-    Separate from :func:`apply_style`, which the ~20 SI/diagnostic scripts rely
-    on at its smaller 10 pt sizing. Call once at the top of a main-figure
-    script, before any plotting call.
+
+def apply_style() -> None:
+    """Apply the project figure style (type >= 12 pt, no bold weights).
+
+    Call once before any plotting call: at the top of a figure script's
+    ``main()``, or in the figure runner for registry-built figures.
     """
     plt.rcParams.update({
-        **manuscript_font_rc(),
+        **font_rc(),
         "font.family":        "sans-serif",
         "font.weight":        "normal",
         "axes.titleweight":   "normal",
         "axes.labelweight":   "normal",
         "figure.titleweight": "normal",
         "figure.dpi":         150,
-        "savefig.dpi":        400,
+        "savefig.dpi":        FIGURE_DPI,
         "savefig.bbox":       "tight",
         "axes.spines.top":    False,
         "axes.spines.right":  False,
@@ -372,33 +369,144 @@ def apply_manuscript_style() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Axis furniture
+# ---------------------------------------------------------------------------
+
+#: Recessive axis furniture: spines and ticks are thin and grey so the data
+#: carries the ink.
+AXIS_COLOR: str = "0.35"
+TICK_COLOR: str = "0.2"
+AXIS_LINEWIDTH: float = 0.9
+TICK_LENGTH: float = 3.5
+
+
+def style_axes(ax, box: bool = False) -> None:
+    """Recessive axes: thin grey spines and ticks, no grid.
+
+    Resets the major tick length on both axes, so call it BEFORE any per-axis
+    ``tick_params`` override.
+
+    Args:
+        ax: Target axes.
+        box: Draw the full frame; ``False`` keeps the left and bottom spines only.
+    """
+    for side, spine in ax.spines.items():
+        spine.set_visible(box or side in ("left", "bottom"))
+        spine.set_color(AXIS_COLOR)
+        spine.set_linewidth(AXIS_LINEWIDTH)
+    ax.tick_params(colors=TICK_COLOR, length=TICK_LENGTH, width=AXIS_LINEWIDTH)
+    ax.grid(False)
+
+
+def wrap_label(text: str) -> str:
+    """Break ``text`` into two balanced lines at a space outside parentheses.
+
+    Ties go to the later break, which leaves a trailing unit on its own line.
+    """
+    depth, breaks = 0, []
+    for i, ch in enumerate(text):
+        depth += (ch == "(") - (ch == ")")
+        if ch == " " and depth == 0:
+            breaks.append(i)
+    if not breaks:
+        return text
+    i = min(breaks, key=lambda b: (max(b, len(text) - b - 1), -b))
+    return f"{text[:i]}\n{text[i + 1:]}"
+
+
+def fit_ylabel(ax, text: str) -> None:
+    """Set the y label, on two lines when one line is longer than the axis.
+
+    Measures the rendered label against the axes box, so call it once the
+    axes position and the type size are final.
+    """
+    label = ax.set_ylabel(text)
+    if label.get_window_extent().height > ax.get_window_extent().height:
+        label.set_text(wrap_label(text))
+
+
+# ---------------------------------------------------------------------------
 # Shared figure helpers
 # ---------------------------------------------------------------------------
 
-#: Output formats for diagnostic figures. PNG only for now (drop vector copies).
-FIGURE_FORMATS: tuple = ("png",)
+def enforce_min_fontsize(fig) -> int:
+    """Raise every visible text in ``fig`` that is below :data:`MIN_FONTSIZE` to it.
 
-
-def save_figure(fig, out_stub) -> None:
-    """Save ``fig`` to ``{out_stub}.{ext}`` for each format in ``FIGURE_FORMATS``.
+    The save helpers call this, so the floor holds for a figure whatever
+    rcParams were active when it was built (a module run without
+    :func:`apply_style`, or text created by a third-party helper). A raise
+    is reported as a warning, because it marks figure code to correct.
 
     Args:
         fig: Matplotlib figure.
-        out_stub: Path or str without an extension (any existing suffix is replaced).
+
+    Returns:
+        Number of text artists whose size was raised.
     """
+    # Tick and offset labels get their text at draw time, so draw first.
+    fig.canvas.draw()
+    raised = 0
+    for ax in fig.axes:
+        for axis in (ax.xaxis, ax.yaxis, *([ax.zaxis] if hasattr(ax, "zaxis") else [])):
+            labels = axis.get_ticklabels(which="both")
+            if any(t.get_text() and t.get_fontsize() < MIN_FONTSIZE for t in labels):
+                # Through tick_params, so ticks created by a later draw keep the floor.
+                axis.set_tick_params(which="both", labelsize=MIN_FONTSIZE)
+                raised += 1
+    for text in fig.findobj(Text):
+        if text.get_visible() and text.get_text() and text.get_fontsize() < MIN_FONTSIZE:
+            text.set_fontsize(MIN_FONTSIZE)
+            raised += 1
+    if raised:
+        warnings.warn(
+            f"{raised} text artist(s) below {MIN_FONTSIZE} pt were raised to the floor; "
+            "call style.apply_style() before plotting and pass no font sizes.",
+            stacklevel=3)
+    return raised
+
+
+def _save(fig, out_stub, formats: tuple, **savefig_kwargs) -> list:
+    """Write ``fig`` to ``{out_stub}.{ext}`` per format after enforcing the type floor."""
     stub = Path(out_stub)
     stub.parent.mkdir(parents=True, exist_ok=True)
-    for ext in FIGURE_FORMATS:
-        fig.savefig(stub.with_suffix(f".{ext}"))
+    enforce_min_fontsize(fig)
+    written = []
+    for ext in formats:
+        path = stub.with_suffix(f".{ext}")
+        fig.savefig(path, **savefig_kwargs)
+        written.append(path)
+    return written
 
+
+#: Output formats for SI and diagnostic figures. PNG only for now (drop vector copies).
+FIGURE_FORMATS: tuple = ("png",)
 
 #: Output formats for main-manuscript figures. PNG only until the
 #: manuscript-final pass extends this tuple to ("png", "pdf").
 MANUSCRIPT_FIGURE_FORMATS: tuple = ("png",)
 
 
+def save_figure(fig, out_stub) -> list:
+    """Save an SI or diagnostic figure in every :data:`FIGURE_FORMATS` format.
+
+    The single way a figure is written outside the main-manuscript tier: it
+    enforces :data:`MIN_FONTSIZE` and takes resolution and bounding box from
+    the rcParams of :func:`apply_style`.
+
+    Args:
+        fig: Matplotlib figure.
+        out_stub: Path or str without an extension (any existing suffix is replaced).
+
+    Returns:
+        The written paths, in :data:`FIGURE_FORMATS` order.
+    """
+    return _save(fig, out_stub, FIGURE_FORMATS)
+
+
 def save_manuscript_figure(fig, out_stub) -> list:
-    """Save ``fig`` in every :data:`MANUSCRIPT_FIGURE_FORMATS` format; return the paths.
+    """Save a main-manuscript figure in every :data:`MANUSCRIPT_FIGURE_FORMATS` format.
+
+    As :func:`save_figure`, at :data:`MANUSCRIPT_FIGURE_DPI`.
 
     Args:
         fig: Matplotlib figure.
@@ -407,14 +515,7 @@ def save_manuscript_figure(fig, out_stub) -> list:
     Returns:
         The written paths, in :data:`MANUSCRIPT_FIGURE_FORMATS` order.
     """
-    stub = Path(out_stub)
-    stub.parent.mkdir(parents=True, exist_ok=True)
-    written = []
-    for ext in MANUSCRIPT_FIGURE_FORMATS:
-        path = stub.with_suffix(f".{ext}")
-        fig.savefig(path)
-        written.append(path)
-    return written
+    return _save(fig, out_stub, MANUSCRIPT_FIGURE_FORMATS, dpi=MANUSCRIPT_FIGURE_DPI)
 
 
 def criterion_condition(name: str, threshold: float, kind: str) -> str:
@@ -463,8 +564,8 @@ def criteria_lines(thresholds: dict, kinds: dict, obj_order=None,
 
 
 def add_figure_footer(fig, lines, *, x: float = 0.5, y: float = 0.0,
-                      ha: str = "center", fontsize: float = 7.0) -> None:
-    """Attach a boxed provenance/criteria footer below a figure.
+                      ha: str = "center") -> None:
+    """Attach a boxed provenance/criteria footer below a figure, at the rcParams type size.
 
     Args:
         fig: The figure.
@@ -476,19 +577,18 @@ def add_figure_footer(fig, lines, *, x: float = 0.5, y: float = 0.0,
             axis labels and legends (``savefig.bbox='tight'`` keeps it in
             frame even at negative y).
         ha: Horizontal anchor of the box at ``x``.
-        fontsize: Footer text size.
     """
     fig.text(x, y, "\n".join(lines), ha=ha, va="top",
-             fontsize=fontsize, linespacing=1.55, color="0.15",
+             linespacing=1.55, color="0.15",
              multialignment="left",
              bbox=dict(boxstyle="round,pad=0.55", facecolor="0.965",
                        edgecolor="0.75", lw=0.8))
 
 
 def annotated_corr_heatmap(ax, data, labels, *, label_fn=label_for,
-                           box_threshold=None, fontsize: int = 6,
+                           box_threshold=None,
                            vmin: float = -1.0, vmax: float = 1.0):
-    """Draw an annotated correlation/agreement heatmap on ``ax``.
+    """Draw an annotated correlation/agreement heatmap on ``ax``, at the rcParams type size.
 
     Shared by the redundancy (Spearman) and operator-agreement (Kendall tau_b)
     diagnostics. NaN cells render grey; cells with ``|value| > box_threshold``
@@ -500,7 +600,6 @@ def annotated_corr_heatmap(ax, data, labels, *, label_fn=label_for,
         labels: Row/column names (length matches ``data``).
         label_fn: Maps a name to its tick label (default :func:`label_for`).
         box_threshold: If set, outline off-diagonal cells exceeding it.
-        fontsize: Tick-label font size (cell annotations use ``fontsize - 1``).
         vmin: Colour-scale minimum.
         vmax: Colour-scale maximum.
 
@@ -514,16 +613,14 @@ def annotated_corr_heatmap(ax, data, labels, *, label_fn=label_for,
     im = ax.imshow(np.ma.masked_invalid(arr), cmap=cmap, vmin=vmin, vmax=vmax)
     ax.set_xticks(range(m))
     ax.set_yticks(range(m))
-    ax.set_xticklabels([label_fn(n) for n in labels], rotation=45, ha="right",
-                       fontsize=fontsize)
-    ax.set_yticklabels([label_fn(n) for n in labels], fontsize=fontsize)
+    ax.set_xticklabels([label_fn(n) for n in labels], rotation=45, ha="right")
+    ax.set_yticklabels([label_fn(n) for n in labels])
     for i in range(m):
         for j in range(m):
             v = arr[i, j]
             if not np.isfinite(v):
                 continue
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
-                    fontsize=max(5, fontsize - 1),
                     color="white" if abs(v) > 0.55 else "black")
             if box_threshold is not None and i != j and abs(v) > box_threshold:
                 ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,

@@ -94,7 +94,7 @@ def fig_fit(fits):
     ax.set_xticks(T); ax.set_xticklabels(WY)
     ax.set(xlabel="month (water year)", ylabel="change factor $a_j$",
            title=f"(a) Harmonic decomposition\n{df.gcm[rep]} ssp{df.ssp[rep]} {df.period[rep]}")
-    ax.legend(fontsize=7.5)
+    ax.legend()
 
     ax = fig.add_subplot(1, 3, 2)
     for profile in recon:
@@ -106,7 +106,7 @@ def fig_fit(fits):
     ax.set_xticks(T); ax.set_xticklabels(WY)
     ax.set(xlabel="month (water year)", ylabel="change factor $a_j$",
            title="(b) 2-harmonic fits, all CMIP6 futures")
-    ax.legend(fontsize=8)
+    ax.legend()
 
     ax = fig.add_subplot(1, 3, 3)
     ax.hist(df.shape_R2, bins=np.linspace(0.0, 1.0, 21), color="#1f77b4",
@@ -115,7 +115,7 @@ def fig_fit(fits):
                label=f"median={df.shape_R2.median():.2f}")
     ax.set(xlabel="per-profile shape $R^2$ (2 harmonics)", ylabel="# CMIP6 futures",
            title="(c) Fit quality")
-    ax.legend(fontsize=8)
+    ax.legend()
 
     style.save_figure(fig, OUT / "SI_harmonic_fit"); plt.close(fig)
 
@@ -153,10 +153,10 @@ def fig_param_space(fits):
                   markersize=9, label="SSP2-4.5"),
            Line2D([0], [0], marker="o", color="w", markerfacecolor=SSP_C["370"],
                   markersize=9, label="SSP3-7.0")]
-    fig.legend(handles=leg, loc="lower center", ncol=2, fontsize=9,
+    fig.legend(handles=leg, loc="lower center", ncol=2,
                bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(f"{fspace.cmip6_period_label(fits['period'])} runs in interpretable "
-                 "harmonic-parameter space", fontsize=12)
+                 "harmonic-parameter space")
     style.save_figure(fig, OUT / "SI_harmonic_param_space"); plt.close(fig)
 
 
@@ -208,7 +208,7 @@ def fig_lhs_sampling(fits, sample):
            ylabel="annual amplitude $r_1$",
            title="(c) phase fixed at canonical CMIP6 shape")
     ax.set_xticks(range(12)); ax.set_xticklabels(WY)
-    ax.legend(fontsize=7.5, loc="upper right")
+    ax.legend(loc="upper right")
 
     leg = [Line2D([0], [0], marker="s", color="w", mfc="0.7", ms=9,
                   label=f"E$_{{test}}$ LHS draws (n={sample['n_sow']})"),
@@ -220,10 +220,9 @@ def fig_lhs_sampling(fits, sample):
                   label="E$_{test}$ box (full CMIP6 range +25%)"),
            Line2D([0], [0], ls=":", color="0.35",
                   label="search-pool box (CMIP6 90% range)")]
-    fig.legend(handles=leg, loc="lower center", ncol=3, fontsize=8.5,
+    fig.legend(handles=leg, loc="lower center", ncol=3,
                bbox_to_anchor=(0.5, -0.10))
-    fig.suptitle("Fixed-phase sampling amid the CMIP6 fitted harmonic parameters",
-                 fontsize=12)
+    fig.suptitle("Fixed-phase sampling amid the CMIP6 fitted harmonic parameters")
     style.save_figure(fig, OUT / "SI_harmonic_lhs_sampling"); plt.close(fig)
 
 
@@ -246,10 +245,9 @@ def fig_best_worst(fits):
         ax.axhline(1, color="k", lw=0.6, ls=":")
         ax.set_xticks(range(12)); ax.set_xticklabels(WY)
         ax.set(xlabel="month (water year)", title=title)
-        ax.legend(fontsize=7.5, loc="upper right")
+        ax.legend(loc="upper right")
     axes[0].set_ylabel("change factor $a_j$  (points = CMIP6, line = fit)")
-    fig.suptitle("Range of CMIP6 change-profile behaviors and their harmonic fits",
-                 fontsize=12)
+    fig.suptitle("Range of CMIP6 change-profile behaviors and their harmonic fits")
     style.save_figure(fig, OUT / "SI_harmonic_best_worst_fits"); plt.close(fig)
 
 
@@ -277,7 +275,7 @@ def fig_monthly_flow(fits, sample):
     ax.set_xticks(T); ax.set_xticklabels(WY)
     ax.set(xlabel="month (water year)", ylabel="monthly mean change factor $a_j$",
            title="(a) Change factor: E$_{test}$ sample vs CMIP6")
-    ax.legend(fontsize=8, ncol=2, loc="upper right")
+    ax.legend(ncol=2, loc="upper right")
 
     ax = axes[1]
     band(ax, base_wy[None, :] * A, "#7f7f7f", "CMIP6 (raw)")
@@ -286,10 +284,9 @@ def fig_monthly_flow(fits, sample):
     ax.set_xticks(T); ax.set_xticklabels(WY)
     ax.set(xlabel="month (water year)", ylabel="monthly mean NYC inflow (MGD)",
            title="(b) Resulting monthly flow: E$_{test}$ sample vs CMIP6")
-    ax.legend(fontsize=8, ncol=2, loc="upper right")
+    ax.legend(ncol=2, loc="upper right")
 
-    fig.suptitle("Monthly flow change of the sampled forcing space vs the CMIP6 range",
-                 fontsize=12)
+    fig.suptitle("Monthly flow change of the sampled forcing space vs the CMIP6 range")
     style.save_figure(fig, OUT / "SI_harmonic_monthly_flow_comparison"); plt.close(fig)
 
     extend = (np.maximum(0, A.min(0) - a_sample.min(0))

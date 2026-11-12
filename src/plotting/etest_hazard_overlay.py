@@ -269,10 +269,9 @@ def build_overlay_figure(
             if j > 0 and i != j:
                 ax.set_yticklabels([])
             if i == m - 1:
-                ax.set_xlabel(HAZARD_AXIS_LABELS.get(ax_x, ax_x), fontsize=8)
+                ax.set_xlabel(HAZARD_AXIS_LABELS.get(ax_x, ax_x))
             if j == 0 and i > 0:
-                ax.set_ylabel(HAZARD_AXIS_LABELS.get(ax_y, ax_y), fontsize=8)
-            ax.tick_params(labelsize=7)
+                ax.set_ylabel(HAZARD_AXIS_LABELS.get(ax_y, ax_y))
 
     handles = [
         Line2D([], [], marker="s", ls="", color="0.7", label="candidate pool (log density)"),
@@ -286,8 +285,8 @@ def build_overlay_figure(
         for layer in layers
     ]
     fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.98, 0.98),
-               frameon=False, fontsize=9)
+               frameon=False)
     fig.suptitle("E_test hazard-space coverage vs candidate pool and search ensembles",
-                 x=0.02, ha="left", fontsize=12)
+                 x=0.02, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     return fig

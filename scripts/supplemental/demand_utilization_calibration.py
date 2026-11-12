@@ -72,7 +72,7 @@ def render_figure() -> None:
 
     spec = by_name("demand_utilization_calibration")
     ctx = FigureContext()
-    style.apply_manuscript_style()
+    style.apply_style()
     out_stub = spec.out_dir() / spec.stem
     spec.builder(ctx, out_stub, ctx.tables(spec.kind))
     print(f"[demand-calibration] figure -> {out_stub}.png")

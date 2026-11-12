@@ -119,13 +119,13 @@ def figure(df: pd.DataFrame) -> None:
                         ms=3.5, color=ln.get_color(), label=design)
         for ax in (ax_rel, ax_tau):
             ax.axvline(_SHIPPED_FACTOR, color="0.35", lw=0.9, ls=(0, (4, 3)))
-        ax_rel.set_ylabel(label_for(nm), fontsize=7)
+        ax_rel.set_ylabel(label_for(nm))
         ax_tau.set_ylim(-0.03, 1.03)
         if i == 0:
             ax_rel.set_title("Annual reliability at shipped k\n"
-                             "(median ± IQR/2; dotted = baseline)", fontsize=8)
-            ax_tau.set_title(r"$\tau_b$ of ranking vs factor 0.99", fontsize=8)
-            ax_tau.legend(fontsize=6, frameon=False)
+                             "(median ± IQR/2; dotted = baseline)")
+            ax_tau.set_title(r"$\tau_b$ of ranking vs factor 0.99")
+            ax_tau.legend(frameon=False)
     axes[-1, 0].set_xlabel("weekly satisfaction factor")
     axes[-1, 1].set_xlabel("weekly satisfaction factor")
     save_figure(fig, scfg.sf_figure_path("satisfaction_factor_sweep"))

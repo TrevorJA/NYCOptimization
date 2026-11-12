@@ -201,7 +201,7 @@ def _flow_threshold_panel(ax, policies, flow_key: str, target: float,
     ax.set_ylim(target * 0.4, target * 7)
     ax.set_ylabel("Weekly-mean flow (MGD)")
     _style_time_axis(ax)
-    ax.legend(loc="lower left", framealpha=0.9, fontsize=8)
+    ax.legend(loc="lower left", framealpha=0.9)
 
 
 def _tail_panel(ax, policies, deficit_getter, obj_name: str,
@@ -238,7 +238,7 @@ def _tail_panel(ax, policies, deficit_getter, obj_name: str,
     handles, _ = ax.get_legend_handles_labels()
     handles.append(Patch(facecolor="0.85", alpha=0.6,
                          label=f"worst {tail_pct:.0f}% (CVaR90 tail; ● = score)"))
-    ax.legend(handles=handles, loc="upper right", framealpha=0.9, fontsize=8)
+    ax.legend(handles=handles, loc="upper right", framealpha=0.9)
 
 
 def _annual_strip(ax, policies, annual_getter, index_getter, *, ylabel: str,
@@ -264,7 +264,7 @@ def _annual_strip(ax, policies, annual_getter, index_getter, *, ylabel: str,
     ax.set_xlabel("Water year")
     ax.set_ylabel(ylabel)
     ax.margins(x=0.01)
-    ax.legend(loc="upper left", framealpha=0.9, fontsize=8)
+    ax.legend(loc="upper left", framealpha=0.9)
 
 
 # ---------------------------------------------------------------------------
@@ -311,10 +311,9 @@ def plot_delivery_anatomy(policies, *, output_file=None,
                linestyle=":", label="NYC demand (entitlement cap)")
     ax_ts.set_ylabel("Weekly-mean NYC diversion (MGD)")
     _style_time_axis(ax_ts)
-    ax_ts.legend(loc="lower left", framealpha=0.9, fontsize=8, ncol=1)
+    ax_ts.legend(loc="lower left", framealpha=0.9, ncol=1)
     ax_ts.set_title("NYC diversion — reliability & deficit "
-                    "(shaded = weeks below 99% of running-avg entitlement)",
-                    fontsize=10)
+                    "(shaded = weeks below 99% of running-avg entitlement)")
 
     # (b) CVaR90 deficit tail.
     _tail_panel(ax_tail, policies,
@@ -326,7 +325,7 @@ def plot_delivery_anatomy(policies, *, output_file=None,
                   lambda p: _nyc_delivery_failure_weeks_annual(p.data),
                   lambda p: p.data["ibt_demands"]["demand_nyc"].index,
                   ylabel="Failing weeks / water-year")
-    ax_strip.set_title("Annual-unit view", fontsize=9)
+    ax_strip.set_title("Annual-unit view")
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -374,7 +373,7 @@ def _plot_flow_anatomy(policies, *, flow_key: str, target: float,
 
     _flow_threshold_panel(ax_ts, policies, flow_key, target, rel_name,
                           target_label=target_label, strict=strict)
-    ax_ts.set_title(title, fontsize=10)
+    ax_ts.set_title(title)
 
     _tail_panel(
         ax_tail, policies,
@@ -386,7 +385,7 @@ def _plot_flow_anatomy(policies, *, flow_key: str, target: float,
     _annual_strip(ax_strip, policies, annual_getter,
                   lambda p: p.data["major_flow"][flow_key].index,
                   ylabel=strip_ylabel)
-    ax_strip.set_title("Annual-unit view", fontsize=9)
+    ax_strip.set_title("Annual-unit view")
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -464,9 +463,9 @@ def plot_storage_anatomy(policies, *, output_file=None,
     ax_ts.set_ylabel("Combined NYC storage (% capacity)")
     ax_ts.set_ylim(0, 100)
     _style_time_axis(ax_ts)
-    ax_ts.legend(loc="lower left", framealpha=0.9, fontsize=8)
+    ax_ts.legend(loc="lower left", framealpha=0.9)
     ax_ts.set_title("NYC storage resilience — daily combined storage "
-                    "(horizontal line = 5th percentile)", fontsize=10)
+                    "(horizontal line = 5th percentile)")
 
     # (b) storage duration (exceedance) curve with the p5 score marked at 95%.
     for pol in policies:
@@ -484,14 +483,14 @@ def plot_storage_anatomy(policies, *, output_file=None,
     handles, _ = ax_dur.get_legend_handles_labels()
     handles.append(Line2D([0], [0], color=THRESHOLD_COLOR, lw=0.9, linestyle=":",
                           label="95% exceedance (● = p5 score)"))
-    ax_dur.legend(handles=handles, loc="upper right", framealpha=0.9, fontsize=8)
+    ax_dur.legend(handles=handles, loc="upper right", framealpha=0.9)
 
     # (c) §2 per-FFMP-year annual-minimum storage %.
     _annual_strip(ax_strip, policies,
                   lambda p: _nyc_storage_min_annual(p.data),
                   lambda p: p.data["res_storage"].index,
                   ylabel="Annual-min storage (%)")
-    ax_strip.set_title("Annual-unit view", fontsize=9)
+    ax_strip.set_title("Annual-unit view")
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -531,10 +530,9 @@ def plot_flood_anatomy(policies, *, output_file=None,
         ax_stage.axhline(minor, color=c, lw=0.8, linestyle=":", alpha=0.8)
     ax_stage.set_ylabel("Gauge stage (ft)")
     _style_time_axis(ax_stage)
-    ax_stage.legend(loc="upper left", framealpha=0.9, fontsize=8, ncol=3)
+    ax_stage.legend(loc="upper left", framealpha=0.9, ncol=3)
     ax_stage.set_title(f"Downstream flooding — {base.label} tail-gauge stage "
-                       "(dotted = NWS minor stage; a flood day = any gauge above)",
-                       fontsize=10)
+                       "(dotted = NWS minor stage; a flood day = any gauge above)")
 
     # (b) §2 per-FFMP-year flood-day count, both policies; §1 mean annotated
     #     (registered diagnostic, scored here since it is not in the active set).
@@ -549,8 +547,8 @@ def plot_flood_anatomy(policies, *, output_file=None,
     ax_strip.set_xlabel("Water year")
     ax_strip.set_ylabel("Minor-flood days / water-year")
     ax_strip.margins(x=0.01)
-    ax_strip.legend(loc="upper left", framealpha=0.9, fontsize=8)
-    ax_strip.set_title("Annual-unit view", fontsize=9)
+    ax_strip.legend(loc="upper left", framealpha=0.9)
+    ax_strip.set_title("Annual-unit view")
 
     if output_file is not None:
         save_figure(fig, output_file)
@@ -623,7 +621,7 @@ def plot_objective_parallel_axes(policies, obj_names, directions, *,
 
     labels = [label_for(nm) for nm in obj_names]
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_xticklabels(labels)
     ax.set_xlim(-0.3, n - 0.7)
     ax.set_ylim(-0.16, 1.16)
     ax.set_yticks([])
@@ -633,17 +631,17 @@ def plot_objective_parallel_axes(policies, obj_names, directions, *,
     for i in range(n):
         best = col_max[i] if dirs[i] == 1 else col_min[i]
         worst = col_min[i] if dirs[i] == 1 else col_max[i]
-        ax.text(i, 1.05, _fmt_obj(best), ha="center", va="bottom", fontsize=7,
+        ax.text(i, 1.05, _fmt_obj(best), ha="center", va="bottom",
                 color="0.4")
-        ax.text(i, -0.05, _fmt_obj(worst), ha="center", va="top", fontsize=7,
+        ax.text(i, -0.05, _fmt_obj(worst), ha="center", va="top",
                 color="0.4")
 
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=2,
-              frameon=False, fontsize=9)
+              frameon=False)
     if title is None:
         title = ("Objective comparison — baseline vs storage-conservative "
                  "(each axis native-scaled to the two policies; top = better)")
-    ax.set_title(title, fontsize=10)
+    ax.set_title(title)
     for side in ("left", "right", "top"):
         ax.spines[side].set_visible(False)
 

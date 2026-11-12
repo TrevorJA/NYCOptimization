@@ -724,15 +724,16 @@ def _fig_axis_screen(red: dict, screen: dict, selection_axes: list[str], out: Pa
     labels = [names[i] for i in order]
     a.set_xticks(range(len(labels)))
     a.set_yticks(range(len(labels)))
-    a.set_xticklabels(labels, rotation=90, fontsize=6)
-    a.set_yticklabels(labels, fontsize=6)
+    a.set_xticklabels(labels, rotation=90)
+    a.set_yticklabels(labels)
     for tick in a.get_xticklabels() + a.get_yticklabels():
         tick.set_color("black" if tick.get_text() in selection_axes else "0.45")
-    a.set_title("|Spearman ρ| (selection axes black, other metrics gray)", fontsize=9)
+    a.set_title("|Spearman ρ| (selection axes black, other metrics gray)")
     fig.colorbar(im, ax=a, fraction=0.046)
 
     dendrogram(Z, labels=names, ax=a2, color_threshold=0.0,
-               above_threshold_color="0.3", leaf_rotation=90, leaf_font_size=6)
+               above_threshold_color="0.3", leaf_rotation=90,
+               leaf_font_size=plt.rcParams["xtick.labelsize"])
     for tick in a2.get_xticklabels():
         tick.set_color("black" if tick.get_text() in selection_axes else "0.45")
     dup = 1.0 - screen["dedupe_threshold"]
@@ -742,8 +743,8 @@ def _fig_axis_screen(red: dict, screen: dict, selection_axes: list[str], out: Pa
     a2.axhline(cut, color="0.2", lw=1.0, ls=":",
                label=f"cluster cut (1−|ρ| = {cut:g}; {len(red['clusters'])} clusters)")
     a2.set_ylabel("1 − |ρ_S| (average linkage)")
-    a2.set_title("Cluster tree (diagnostic only)", fontsize=9)
-    a2.legend(loc="upper left", fontsize=7)
+    a2.set_title("Cluster tree (diagnostic only)")
+    a2.legend(loc="upper left")
 
     k = np.arange(1, len(red["explained"]) + 1)
     a3.bar(k, red["explained"], color="#1f6fb4", width=0.7, label="component share")
@@ -756,8 +757,8 @@ def _fig_axis_screen(red: dict, screen: dict, selection_axes: list[str], out: Pa
     a3.set_ylim(0, 1.02)
     a3.set_title(f"PCA: {red['n_components']} components reach "
                  f"{scfg.SELDIAG_PCA_VARIANCE_SHARE:.0%}; participation ratio "
-                 f"{red['participation_ratio']:.1f}", fontsize=9)
-    a3.legend(loc="center right", fontsize=7)
+                 f"{red['participation_ratio']:.1f}")
+    a3.legend(loc="center right")
     fig.tight_layout()
     save_figure(fig, out / "figures" / "F6_axis_screen")
     plt.close(fig)
@@ -790,12 +791,11 @@ def _fig_selection_set_profile(table: pd.DataFrame, dim: pd.DataFrame,
           capsize=2)
     a.axhline(TAIL_NULL_SHARE, color="0.4", lw=1, ls="--", label="i.i.d. share")
     a.set_xticks(x)
-    a.set_xticklabels(names, rotation=40, ha="right", fontsize=7)
+    a.set_xticklabels(names, rotation=40, ha="right")
     a.set_ylabel("share in the hazard-direction pool tail")
     a.set_title(f"Selection set (m={len(axes)}): tail share on every candidate metric "
-                f"(N={N_SELECT}, {N_SEEDS} seeds; own axes coloured; whisker = 2 seed SD)",
-                fontsize=9)
-    a.legend(fontsize=7)
+                f"(N={N_SELECT}, {N_SEEDS} seeds; own axes coloured; whisker = 2 seed SD)")
+    a.legend()
     g = dim.loc[dim.m_set == _SET_NAME]
     for p, (column, label) in enumerate(scalars):
         b = fig.add_subplot(gs[0, 2 + p])
@@ -805,7 +805,7 @@ def _fig_selection_set_profile(table: pd.DataFrame, dim: pd.DataFrame,
         if column == "tail_share_min":
             b.axhline(TAIL_NULL_SHARE, color="0.5", lw=1, ls="--")
         b.set_xticks([])
-        b.set_title(label, fontsize=7.5)
+        b.set_title(label)
     save_figure(fig, out / "figures" / "F11_selection_set_profile")
     plt.close(fig)
 
@@ -832,9 +832,9 @@ def _fig_per_axis_coverage(per_axis, axes, out) -> None:
             a.axhline(ref, color="0.5", lw=1, ls="--",
                       label=f"i.i.d. reference ({ref:g})")
         a.set_xticks(xs)
-        a.set_xticklabels(axes, rotation=40, ha="right", fontsize=7)
+        a.set_xticklabels(axes, rotation=40, ha="right")
         a.set_ylabel(label)
-        a.legend(fontsize=7)
+        a.legend()
     fig.suptitle(f"Per-axis marginal coverage + tail enrichment on the selection axes "
                  f"(N={N_SELECT})")
     fig.tight_layout(rect=(0, 0, 1, 0.93))
@@ -867,7 +867,7 @@ def _fig_n_sweep(nsw, out) -> None:
         a.set_xlabel("ensemble size N")
         a.set_ylabel(label)
         if p == 0:
-            a.legend(fontsize=6.5)
+            a.legend()
     fig.suptitle("Tail enrichment and coverage vs N on the selection axes "
                  "(dashed = matched random null)")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
@@ -891,10 +891,10 @@ def _fig_invariance(inv, contributions, out) -> None:
                    label="add-one-metric-back" if i == min(
                        j for j, x in enumerate(order) if x in add.index) else None)
     a.set_yticks(range(len(order)))
-    a.set_yticklabels(order, fontsize=7)
+    a.set_yticklabels(order)
     a.set_xlabel("Jaccard overlap with the selection-set selection")
     a.set_xlim(0, 1)
-    a.legend(fontsize=7)
+    a.legend()
     a.set_title("Selection invariance to single axes")
 
     a2 = ax[1]
@@ -904,11 +904,11 @@ def _fig_invariance(inv, contributions, out) -> None:
     a2.bar(range(len(names)), [per[n] for n in names], color=colors)
     a2.axhline(1.0 / len(names), color="0.5", lw=1, ls="--", label="equal weighting")
     a2.set_xticks(range(len(names)))
-    a2.set_xticklabels(names, rotation=40, ha="right", fontsize=7)
+    a2.set_xticklabels(names, rotation=40, ha="right")
     a2.set_ylabel("mean share of squared snap distance")
     a2.set_title(f"Implicit axis weighting (dry {contributions['dry_group']:.2f} / "
                  f"wet {contributions['wet_group']:.2f})")
-    a2.legend(fontsize=7)
+    a2.legend()
     fig.tight_layout()
     save_figure(fig, out / "figures" / "F10_invariance")
     plt.close(fig)

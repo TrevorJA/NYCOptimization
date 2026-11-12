@@ -38,7 +38,7 @@ import config
 from src.plotting.policy_rules_compact import (
     plot_policy_rules_compact, plot_policy_rules_grid,
 )
-from src.plotting.style import apply_manuscript_style
+from src.plotting.style import apply_style
 from src.policy_simulation import read_selection_labels
 from src.solution_selection import (
     compromise_scores, load_natural_front, select_diverse,
@@ -100,7 +100,7 @@ def main() -> None:
     explore_dir = config.figure_dir_for(args.scenario, args.slug, "explore")
     print(f"set file : {set_file}\nout dir  : {out_dir}")
 
-    apply_manuscript_style()
+    apply_style()
     policies = select_policies(set_file, args.formulation, explore_dir,
                                args.n_policies)
 
