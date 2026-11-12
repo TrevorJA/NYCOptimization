@@ -151,13 +151,17 @@ Kirsch transform, and `variance_axis=False` is exactly the `v = 1` (CV-preservin
 The injection is verified end-to-end: the generated log-space monthly SD matches the eqs. 10–11
 target at machine precision (the realized *real-space* CV tracks `v_j` only approximately, because
 the normal-score transform departs from exact lognormality — largest in the winter boundary months).
-The campaign runs with the axis **off** (3-D box `[m, r₁, r₂]`): the paired hazard-footprint
-diagnostic (`scripts/supplemental/diagnose_cv_axis_footprint.py`, N=48 paired realizations over the
-E_test box) measured that adding the CV axis does not widen tail stress — the dry-axis spans are
-essentially unchanged (0.88–1.20×) and all three flood-axis spans *contract* (0.72–0.83×, p95 down
-~0.2 control-spans), because the CMIP6 envelope reduces CV in the winter/spring flood season. Three
-extra DU dimensions would therefore dilute LHS stratification without adding stress coverage. The
-axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitivity.
+The campaign runs with the axis **off** (3-D box `[m, r₁, r₂]`): E_test perturbs the mean seasonal
+profile at a preserved coefficient of variation and does not sample variance change. The paired
+hazard-footprint diagnostic (`scripts/supplemental/diagnose_cv_axis_footprint.py`, N=48 paired
+realizations over the E_test box) measures what that leaves out. With the axis on, the five drought
+axes are unchanged (p5–p95 span ratios 0.89–1.03) and so is flood pulse duration (1.00), while the
+spans of flood peak discharge and flood rise rate widen (1.69× and 2.04×; p95 up 0.71 and 1.07
+control-spans). The widening sits in the upper tail (median paired change +2 % and +11 %): the CMIP6
+envelope lowers CV in winter (median sampled `v` 0.75 in January and February) and raises it in late
+summer and autumn (1.14–1.24 in August to October, up to 1.7). The flood-magnitude stress of E_test
+is therefore a lower bound on that of a variance-perturbed envelope, and its drought stress is
+unaffected. The axis stays wired (`NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS`) as an opt-in sensitivity.
 
 ## Demand-utilization axis
 

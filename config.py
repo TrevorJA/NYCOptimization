@@ -370,8 +370,9 @@ ENSEMBLE_FORCING_STD_CSV = _parse_path_env(
     _CMIP6_STATS_DIR / "datasets_nyc_inflow_monthly_stds.csv",
 )
 # OFF for the campaign: the forcing space is the 3-D mean box [m, r1, r2] with
-# the CV-preserving c = a (the CV axis adds DU dimensions without widening
-# hazard-space tail stress). Opt-in sensitivity via the env var.
+# the CV-preserving c = a (variance change is not sampled; the CV axis leaves
+# the drought axes unchanged and widens the flood-magnitude tail,
+# forcing_parameterization.md "Variance axis"). Opt-in sensitivity via the env var.
 ENSEMBLE_FORCING_VARIANCE_AXIS = _parse_bool_env("NYCOPT_ENSEMBLE_FORCING_VARIANCE_AXIS", False)
 # CMIP6 projection period the forcing space is anchored to: the harmonic box,
 # the canonical phases and every figure that draws the CMIP6 runs read the runs
