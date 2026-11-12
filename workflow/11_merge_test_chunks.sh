@@ -2,7 +2,7 @@
 # Step 11: Merge a chunked test-ensemble re-evaluation (metrics-only).
 #
 # Companion to step 10 run with NYCOPT_CHUNK_MERGE=off (the campaign mode):
-# the simulate jobs only write per-(solution, chunk) unit files; this job
+# the simulate jobs only write per-(solution, chunk, block) unit files; this job
 # assembles them into reeval_raw.parquet + objectives_summary.csv + the
 # robustness scorecards through the same persist path, so the artifacts are
 # byte-compatible with an in-job merge. Single process, resumable, refuses on

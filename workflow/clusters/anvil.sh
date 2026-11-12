@@ -14,7 +14,7 @@ _nycopt_profile_begin "anvil"
 : "${NYCOPT_RANKS_PER_NODE=128}"           # measured wholenode packing
 : "${NYCOPT_NODE_MEMORY_GB=256}"
 : "${NYCOPT_WALL_CAP_HOURS=96}"            # wholenode per-job maximum
-: "${NYCOPT_REEVAL_UNIT_MINUTES=80}"       # one (policy, chunk) unit per rank, measured
+: "${NYCOPT_REEVAL_UNIT_MINUTES=80}"       # rank-minutes per policy per 500-realization chunk, measured
 : "${NYCOPT_PYTHON_MODULE=}"               # none: python comes from the conda env
 : "${NYCOPT_CONDA_MODULE=anaconda/2024.02-py311}"
 : "${NYCOPT_CONDA_ENV=venv}"

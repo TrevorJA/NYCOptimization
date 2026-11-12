@@ -10,7 +10,10 @@
 #                                    (campaign: etest_kn_50yr_n12500)
 #   NYCOPT_CHUNK_POLICIES            'baseline' (default) or a .ref reference set
 #   NYCOPT_SEARCH_REALIZATION_BATCH  realizations per within-chunk sim batch
-#                                    (bounds RAM; required above 64 ranks/node)
+#                                    (bounds RAM; required above 64 ranks/node).
+#                                    Also the work-unit size: a unit is a
+#                                    (policy, chunk, batch), so one policy on
+#                                    25 chunks of 500 at batch 25 is 500 units
 #   NYCOPT_CHUNK_SIM_MODE            single | mpi (default mpi)
 #   NYCOPT_CHUNK_SIM_NODES / _RANKS  local (non-SLURM) mpi fallback only
 #                                    (default 4 x 16); under SLURM the rank
@@ -23,17 +26,17 @@
 #   NYCOPT_CHUNK_SCHEDULE            claim (default) | interleave | contiguous
 #   NYCOPT_CHUNK_MERGE               job (default) | off — campaign runs use
 #                                    off + workflow/11_merge_test_chunks.sh
-#   NYCOPT_CHUNK_UNIT_SECONDS        measured per-unit wall (enables the
-#                                    stop-before-the-wall guard)
+#   NYCOPT_CHUNK_UNIT_SECONDS        wall of one unit, i.e. one batch (enables
+#                                    the stop-before-the-wall guard)
 #
 # Campaign submission: through the helper, never typed at the prompt:
 #   bash workflow/submit_reeval_chunks.sh <design> [--nodes N]   # steps 10 + 11
-#   bash workflow/submit_reeval_chunks.sh baseline              # incumbent cube
+#   bash workflow/submit_reeval_chunks.sh baseline [--nodes N]  # incumbent cube
 # Measured geometry (ANVIL_NOTES.md, 2026-11-05): `wholenode`, 128 single-
 # threaded ranks per node, NYCOPT_SEARCH_REALIZATION_BATCH=25 (~1.2 GB per
 # rank; batch 50 measured at 1.54 GB), NYCOPT_CHUNK_MERGE=off, step 11 chained;
-# ~80 min and 1.3 SU per (policy, chunk) unit. A truncated pass is resumed by
-# resubmitting (--no-merge), then --merge-only. Dense packing is the 33 SU per
+# ~80 rank-minutes and 1.3 SU per policy per chunk (20 units of ~4 min). A
+# truncated pass is resumed by resubmitting (--no-merge), then --merge-only. Dense packing is the 33 SU per
 # policy basis; 16 ranks x 8 cpus on `shared` bills 8x for the same wall.
 #
 # Output: outputs/{scenario}/{slug}/reeval/{preset}[/seed_NN]/ (reeval_raw.parquet + meta);

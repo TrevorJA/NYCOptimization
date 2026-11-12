@@ -852,8 +852,12 @@ SIM_PHASE_TIMING = _parse_int_env("NYCOPT_SIM_PHASE_TIMING", 0)
 # None of these change results: unit rows are keyed by (solution id, GLOBAL
 # realization id, objective), so layout, scheduling and merge placement cannot
 # alter the merged cube (tests/test_chunk_reeval.py). Single documented copy.
+# A work unit is a (solution, chunk, block): one simulation batch of a chunk
+# (NYCOPT_SEARCH_REALIZATION_BATCH realizations, widened to whole SOWs), or
+# the whole chunk when no batch is set. A resumed pass must use the batch of
+# the pass that wrote the units (recorded in partial/units/layout.json).
 #
-# CHUNK_INCREMENTAL  1: flush each (solution, chunk) unit atomically and skip
+# CHUNK_INCREMENTAL  1: flush each unit atomically and skip
 #                    done units on restart (resubmitting IS the resume); 0:
 #                    accumulate in memory, one write per rank at the end.
 # CHUNK_SCHEDULE     claim: ranks pull units via O_CREAT|O_EXCL claim files;
@@ -864,7 +868,8 @@ SIM_PHASE_TIMING = _parse_int_env("NYCOPT_SIM_PHASE_TIMING", 0)
 # CHUNK_DONE_DEADLINE_S      await_all_done deadline for the in-job merge.
 # CHUNK_RETRY_FAILED 1: a resume re-attempts units whose previous run raised.
 # CHUNK_STOP_EPOCH / CHUNK_UNIT_SECONDS  wall guard: no unit starts within
-#                    1.25 x CHUNK_UNIT_SECONDS of CHUNK_STOP_EPOCH (unix time).
+#                    1.25 x CHUNK_UNIT_SECONDS (the wall of ONE unit, i.e. one
+#                    block) of CHUNK_STOP_EPOCH (unix time).
 CHUNK_INCREMENTAL = _parse_int_env("NYCOPT_CHUNK_INCREMENTAL", 1)
 CHUNK_SCHEDULE = os.environ.get("NYCOPT_CHUNK_SCHEDULE", "claim")
 CHUNK_MERGE = os.environ.get("NYCOPT_CHUNK_MERGE", "job")

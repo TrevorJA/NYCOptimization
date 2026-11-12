@@ -1,14 +1,14 @@
 """tests/test_chunk_reeval.py - Chunk-and-aggregate re-evaluation correctness (no pywrdrb sim).
 
-The machinery in ``src.chunk_reeval`` is the chunking bookkeeping: distribute (solution, chunk)
-units, pool each chunk's realizations into per-SOW annual-unit objective rows keyed by GLOBAL SOW
-id, reassemble per-solution ``(n_sow, M)`` matrices, and persist via the re-eval path. This test
+The machinery in ``src.chunk_reeval`` is the chunking bookkeeping: distribute (solution, chunk,
+block) units, pool each block's realizations into per-SOW annual-unit objective rows keyed by GLOBAL
+SOW id, reassemble per-solution ``(n_sow, M)`` matrices, and persist via the re-eval path. This test
 verifies that bookkeeping deterministically by stubbing ``src.simulation.evaluate_annual_units``
 (so no Pywr-DRB run is needed): the stub returns a stage-(i) ``(R, M, U)`` unit tensor that is a
 pure function of (global realization id, objective index, unit index), so every merged per-SOW
 value is EXACTLY computable by an inline re-implementation of the §2 unit operators — and a
-chunked run over a fake 2-chunk master must reproduce it cell for cell, whatever the persistence
-layout, scheduling, or merge placement.
+chunked run over a fake 2-chunk master must reproduce it cell for cell, whatever the unit
+granularity, persistence layout, scheduling, or merge placement.
 """
 
 from __future__ import annotations
@@ -144,20 +144,30 @@ def _setup_campaign(tmp_path, monkeypatch):
     return staged, dvs
 
 
-def _install_stub(monkeypatch, staged, *, failing=frozenset(), calls=None):
-    """Stub evaluate_annual_units; optionally raise on chosen (sol, chunk) units."""
+def _install_stub(monkeypatch, staged, *, failing=frozenset(), calls=None,
+                  unit_calls=None):
+    """Stub evaluate_annual_units; optionally raise on chosen (sol, chunk) units.
+
+    The stub honors the spec it is handed: it returns rows for exactly
+    ``ensemble_spec.realization_indices`` (the chunk's local ids of one block),
+    so a unit that asked for the wrong realizations cannot reproduce the truth.
+    ``unit_calls`` records ``(sol, chunk, first local id, n realizations)``.
+    """
     def _fake(dv_vector, *, formulation_name, objective_set,
               ensemble_spec, realization_batch=None):
         sol = 0 if abs(float(dv_vector[0]) - 0.10) < 1e-9 else 1
         j = int(ensemble_spec.inflow_type.rsplit("chunk", 1)[1])
+        local = list(ensemble_spec.realization_indices)
         if calls is not None:
             calls.append((sol, j))
+        if unit_calls is not None:
+            unit_calls.append((sol, j, local[0], len(local)))
         if (sol, j) in failing:
             raise RuntimeError("transient failure (test)")
         meta = json.loads(
             (staged / ensemble_spec.inflow_type / "_meta.json").read_text())
-        gids = meta["global_realization_ids"]
-        # (R, M, U) in the chunk's LOCAL row order + the ANNUAL objective names.
+        gids = [meta["global_realization_ids"][i] for i in local]
+        # (R, M, U) in the block's LOCAL row order + the ANNUAL objective names.
         return _truth_units(dv_vector, gids), [o.name for o in objective_set]
 
     monkeypatch.setattr("src.simulation.evaluate_annual_units", _fake)
@@ -181,10 +191,11 @@ def _read_long(reeval_dir: Path) -> pd.DataFrame:
                           ).reset_index(drop=True)
 
 
-def _run(reeval_dir: Path, dvs) -> None:
+def _run(reeval_dir: Path, dvs, *, batch=None) -> None:
     reeval_dir.mkdir(exist_ok=True)
     chunk_reeval.simulate_test_chunks("ffmp", dvs, solution_ids=[0, 1],
-                                      seed=0, reeval_dir=reeval_dir)
+                                      seed=0, reeval_dir=reeval_dir,
+                                      realization_batch=batch)
 
 
 ###############################################################################
@@ -299,8 +310,8 @@ def test_resume_matches_oneshot(tmp_path, monkeypatch):
     resumed = tmp_path / "resumed"
     _run(resumed, dvs)
     units_dir = resumed / "partial" / "units"
-    assert (units_dir / "chunk001" / "sol00000.failed").exists()
-    assert (units_dir / "chunk000" / "sol00001.failed").exists()
+    assert (units_dir / "chunk001" / "sol00000_b000.failed").exists()
+    assert (units_dir / "chunk000" / "sol00001_b000.failed").exists()
 
     # Run B: stub healthy again; resume re-attempts ONLY the failed units.
     calls: list = []
@@ -308,7 +319,7 @@ def test_resume_matches_oneshot(tmp_path, monkeypatch):
     _set_knobs(monkeypatch, retry_failed=1, job_id="job_b")
     _run(resumed, dvs)
     assert sorted(calls) == sorted(failing)  # skip-idempotency
-    assert not (units_dir / "chunk001" / "sol00000.failed").exists()
+    assert not (units_dir / "chunk001" / "sol00000_b000.failed").exists()
 
     pd.testing.assert_frame_equal(
         _read_long(tmp_path / "oneshot"), _read_long(resumed))
@@ -332,7 +343,7 @@ def test_standalone_merge_matches_injob(tmp_path, monkeypatch):
 
     # Partial merge: a deleted unit refuses by default, NaN-fills when allowed.
     # chunk 001 holds global SOWs 4..7, so exactly sol 1's rows there go NaN.
-    stem = deferred / "partial" / "units" / "chunk001" / "sol00001"
+    stem = deferred / "partial" / "units" / "chunk001" / "sol00001_b000"
     victims = [p for p in (stem.with_suffix(".parquet"), stem.with_suffix(".csv.gz"))
                if p.exists()]
     assert victims, "expected a persisted unit file to delete"
@@ -354,3 +365,157 @@ def test_standalone_merge_matches_injob(tmp_path, monkeypatch):
            .pivot_table(index="sow_id", columns="objective", values="value")
            .reindex(index=range(N_SOW), columns=_TEST_OBJECTIVES))
     assert np.allclose(piv.to_numpy(dtype=float), _expected_sow_matrix(dvs[0]))
+
+
+###############################################################################
+# Unit granularity: (solution, chunk, block) units are output-invariant
+###############################################################################
+
+def test_unit_layout_follows_the_batch_and_keeps_whole_sows():
+    """A block is one batch, widened to whole SOWs; no batch keeps the chunk whole."""
+    chunks = [(None, list(range(0, 8))), (None, list(range(8, 16)))]
+    assert chunk_reeval.unit_block_size(None, 2) == 0
+    assert chunk_reeval.unit_block_size(0, 2) == 0
+    assert chunk_reeval.unit_block_size(2, 2) == 2
+    assert chunk_reeval.unit_block_size(3, 2) == 6      # lcm: never split a SOW
+    assert chunk_reeval.unit_layout(chunks, 0, 2) == [[(0, 8)], [(0, 8)]]
+    assert chunk_reeval.unit_layout(chunks, 2, 2) == [
+        [(0, 2), (2, 4), (4, 6), (6, 8)]] * 2
+    assert chunk_reeval.unit_layout(chunks, 3, 2) == [[(0, 6), (6, 8)]] * 2
+    assert chunk_reeval.unit_layout(chunks, 64, 2) == [[(0, 8)], [(0, 8)]]
+    with pytest.raises(ValueError, match="whole SOWs"):
+        chunk_reeval.unit_layout([(None, list(range(7)))], 2, 2)
+
+
+@pytest.mark.parametrize("batch,blocks_per_chunk", [(2, 4), (4, 2), (3, 2)])
+def test_block_units_match_chunk_units(batch, blocks_per_chunk, tmp_path, monkeypatch):
+    """Splitting each chunk into block units cannot change the merged cube, and
+    each unit simulates exactly its own block's realizations."""
+    staged, dvs = _setup_campaign(tmp_path, monkeypatch)
+    _install_stub(monkeypatch, staged)
+    _set_knobs(monkeypatch, job_id="job_chunk")
+    _run(tmp_path / "chunk_units", dvs)                       # batch unset: one unit per chunk
+
+    unit_calls: list = []
+    _install_stub(monkeypatch, staged, unit_calls=unit_calls)
+    _set_knobs(monkeypatch, job_id="job_block")
+    blocked = tmp_path / "block_units"
+    _run(blocked, dvs, batch=batch)
+
+    pd.testing.assert_frame_equal(
+        _read_long(tmp_path / "chunk_units"), _read_long(blocked))
+    for sol, dv in zip((0, 1), dvs):
+        long_df = _read_long(blocked)
+        piv = (long_df[long_df.solution_id == sol]
+               .pivot_table(index="sow_id", columns="objective", values="value")
+               .reindex(index=range(N_SOW), columns=_TEST_OBJECTIVES))
+        assert np.allclose(piv.to_numpy(dtype=float), _expected_sow_matrix(dv))
+
+    # One call and one unit file per (solution, chunk, block); the blocks of a
+    # chunk tile its realizations without overlap.
+    n_chunks = N_M // CHUNK
+    assert len(unit_calls) == 2 * n_chunks * blocks_per_chunk
+    for sol in (0, 1):
+        for j in range(n_chunks):
+            spans = sorted((r0, n) for s_, j_, r0, n in unit_calls if (s_, j_) == (sol, j))
+            covered = [i for r0, n in spans for i in range(r0, r0 + n)]
+            assert covered == list(range(CHUNK))
+    units_dir = blocked / "partial" / "units"
+    files = sorted(p.name for p in (units_dir / "chunk000").iterdir())
+    assert len(files) == 2 * blocks_per_chunk
+    assert files[0].startswith("sol00000_b000.")
+    layout = json.loads((units_dir / "layout.json").read_text())
+    assert layout["realization_batch"] == batch
+    assert [len(c) for c in layout["blocks"]] == [blocks_per_chunk] * n_chunks
+
+
+def test_block_units_schedule_and_oneshot_invariance(tmp_path, monkeypatch):
+    """Block units give one cube under every schedule and the one-shot path."""
+    staged, dvs = _setup_campaign(tmp_path, monkeypatch)
+    _install_stub(monkeypatch, staged)
+
+    frames = {}
+    for schedule in ("contiguous", "interleave", "claim"):
+        _set_knobs(monkeypatch, schedule=schedule, job_id=f"job_{schedule}")
+        _run(tmp_path / schedule, dvs, batch=2)
+        frames[schedule] = _read_long(tmp_path / schedule)
+    _set_knobs(monkeypatch, incremental=0)
+    _run(tmp_path / "oneshot", dvs, batch=2)
+    frames["oneshot"] = _read_long(tmp_path / "oneshot")
+
+    for name in ("interleave", "claim", "oneshot"):
+        pd.testing.assert_frame_equal(frames["contiguous"], frames[name])
+
+
+def test_standalone_merge_reads_the_recorded_layout(tmp_path, monkeypatch):
+    """The merge takes the block layout from layout.json, not from its own env,
+    and a missing block is reported by (solution, chunk, block)."""
+    staged, dvs = _setup_campaign(tmp_path, monkeypatch)
+    _install_stub(monkeypatch, staged)
+
+    _set_knobs(monkeypatch, job_id="job_ref")
+    _run(tmp_path / "ref", dvs)
+
+    _set_knobs(monkeypatch, merge="off", job_id="job_off")
+    deferred = tmp_path / "deferred"
+    _run(deferred, dvs, batch=2)
+    monkeypatch.setattr(config, "SEARCH_REALIZATION_BATCH", 0)   # the merge job's env
+    chunk_reeval.merge_test_chunks("ffmp", [0, 1], seed=0, reeval_dir=deferred)
+    pd.testing.assert_frame_equal(_read_long(tmp_path / "ref"), _read_long(deferred))
+
+    stem = deferred / "partial" / "units" / "chunk001" / "sol00001_b002"
+    for p in (stem.with_suffix(".parquet"), stem.with_suffix(".csv.gz")):
+        if p.exists():
+            p.unlink()
+    with pytest.raises(FileNotFoundError, match="sol1/chunk1/block2"):
+        chunk_reeval.merge_test_chunks("ffmp", [0, 1], seed=0, reeval_dir=deferred)
+
+    with pytest.raises(FileNotFoundError, match="layout.json"):
+        (tmp_path / "empty").mkdir()
+        chunk_reeval.merge_test_chunks("ffmp", [0, 1], seed=0, reeval_dir=tmp_path / "empty")
+
+
+def test_resume_refuses_another_unit_layout(tmp_path, monkeypatch):
+    """A resumed pass with another batch, or over units of the earlier
+    (solution, chunk) layout, must stop instead of mixing unit files."""
+    staged, dvs = _setup_campaign(tmp_path, monkeypatch)
+    _install_stub(monkeypatch, staged)
+
+    _set_knobs(monkeypatch, merge="off", job_id="job_a")
+    out = tmp_path / "out"
+    _run(out, dvs, batch=2)
+    _set_knobs(monkeypatch, merge="off", job_id="job_b")
+    with pytest.raises(RuntimeError, match="unit layout"):
+        _run(out, dvs, batch=4)
+    _run(out, dvs, batch=2)          # the same layout resumes (nothing left to do)
+
+    legacy = tmp_path / "legacy_dir"
+    units_dir = legacy / "partial" / "units" / "chunk000"
+    units_dir.mkdir(parents=True)
+    (units_dir / "sol00000.parquet").write_bytes(b"")
+    _set_knobs(monkeypatch, merge="off", job_id="job_c")
+    with pytest.raises(RuntimeError, match="earlier layout"):
+        _run(legacy, dvs, batch=2)
+
+
+def test_failed_block_resumes_alone(tmp_path, monkeypatch):
+    """Only the failed units are re-attempted on resume, block by block."""
+    staged, dvs = _setup_campaign(tmp_path, monkeypatch)
+    _install_stub(monkeypatch, staged)
+    _set_knobs(monkeypatch, job_id="job_ref")
+    _run(tmp_path / "oneshot", dvs, batch=2)
+
+    _install_stub(monkeypatch, staged, failing={(1, 0)})
+    _set_knobs(monkeypatch, merge="off", job_id="job_a")
+    resumed = tmp_path / "resumed"
+    _run(resumed, dvs, batch=2)
+    failed = sorted((resumed / "partial" / "units" / "chunk000").glob("*.failed"))
+    assert [p.name for p in failed] == [f"sol00001_b{k:03d}.failed" for k in range(4)]
+
+    unit_calls: list = []
+    _install_stub(monkeypatch, staged, unit_calls=unit_calls)
+    _set_knobs(monkeypatch, retry_failed=1, job_id="job_b")
+    _run(resumed, dvs, batch=2)
+    assert sorted(unit_calls) == [(1, 0, r0, 2) for r0 in (0, 2, 4, 6)]
+    pd.testing.assert_frame_equal(
+        _read_long(tmp_path / "oneshot"), _read_long(resumed))

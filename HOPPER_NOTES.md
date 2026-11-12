@@ -58,6 +58,23 @@ Historic single-trace evaluation (`src.simulation.evaluate`, trimmed model,
 - One clean EPYC node does the work of about 12 loaded Xeon nodes, or about 5
   healthy ones.
 
+E_test staging (`etest_kn_50yr_n12500`, 12,500 realizations x 50 yr in 25
+chunks; `submit_etest_staging.sh all` on the EPYC nodes, 2026-11-12, jobs
+1484419 to 1484425), 59 min end to end:
+
+| Step | Tasks | Wall per task |
+|---|---|---|
+| Generation shards (single process each) | 25 | 45-47 min, of which ~2,670 s is the daily disaggregation |
+| Merge | 1 | 16 s |
+| Utilization column | 1 | 6 s |
+| Per-chunk pywrdrb inputs (33 MPI ranks each, default transport) | 25 | 3.6-5.8 min |
+| Realized utilization and contract check | 1 | 5 s |
+| Hazard-image shards | 25 | 1.3-1.4 min |
+| Hazard-image merge | 1 | 3 s |
+
+Staged size 117 GB under `outputs/synthetic_ensembles/`. Anvil's generation
+shards took 92 min each for the same 500 realizations.
+
 ## Sizing rules
 
 MM-Borg wall time = NFE × simulated fraction × seconds per evaluation ÷ workers,
@@ -128,3 +145,13 @@ Sibling repos must match Anvil: Pywr-DRB on `nyc_opt` (`9619a90`), scengen
   (`config.ENSEMBLE_FORCING_PERIOD`) after that chain was submitted, so its
   output samples another box and is not the campaign E_test. Not yet cancelled
   or resubmitted from the updated code (`TODO.md` rerun chain, item 0).
+- 2026-11-12: that chain (1484206, 1484235 to 1484240) was cancelled at ~13:40 EST
+  before any chunk was written, and its empty staging directory and shard logs
+  were deleted. E_test resubmitted at 15:15 EST from the mid-century forcing box
+  (repo `a3aede7`, scengen `b882693`) with `submit_etest_staging.sh all`: shards
+  1484419 (14 on c0023, 11 on c0024), merge 1484420, utilization 1484421,
+  per-chunk inputs 1484422, realized utilization 1484423, hazard-image shards
+  1484424 and merge 1484425.
+- 2026-11-12: E_test chain completed at 16:14 EST, every job COMPLETED (timings
+  above). `etest_kn_50yr_n12500` passes the staged contract (LHS, R = 25,
+  `forcing_period` 2020_2059, utilization column; 500 of 500 SOWs realized).
