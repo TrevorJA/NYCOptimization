@@ -44,7 +44,7 @@ job writes a reproducibility manifest (config + env snapshots, git state) to
 | 08 | `08_extract_reference_set.sh` | `shared`, 4 cpu, 1 h | **required** | Equal-NFE reference set from the island runtime files: `--seed N` extracts one seed's coordinator-archive snapshot at the reporting NFE; `--merge --install` unions the seeds and installs `{slug}_merged.set`, the step-10 input |
 | 09 | `09_run_diagnostics.sh` | `shared`, 8 cpu, 1 h (or `bash`) | optional | MOEAFramework runtime diagnostics on the per-seed coordinator archive (island runtime files merged snapshot by snapshot with the project's epsilon archive; six MOEAFramework indicators vs total NFE; diagnostics reference set `{slug}_diagnostics_reference.set`, never the campaign `{slug}_merged.set`); default target = the env file's active slug at `DRAW=k` (positional literal slugs override) |
 | 10 | `10_simulate_test_chunks.sh` | via `submit_reeval_chunks.sh`: `wholenode`, 128 ranks per node, batch 25 (baseline cube: `shared`, 25 ranks × 2 cpus, 3 h) | **required** (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`, `NYCOPT_CHUNK_POLICIES`) | Chunked, metrics-only E_test re-evaluation (MPI chunk-and-aggregate, resumable); the campaign path, with `NYCOPT_CHUNK_MERGE=off`; `NYCOPT_CHUNK_POLICIES=baseline` simulates the incumbent cube |
-| 11 | `11_merge_test_chunks.sh` | `shared`, 8 cpu, 128 G, 4 h | **required** (same identity as the 10 submission) | Merge the per-(solution, chunk) units into the re-eval cube + robustness scorecards |
+| 11 | `11_merge_test_chunks.sh` | `shared`, 8 cpu, 128 G, 4 h | **required** (same identity as the 10 submission) | Merge the per-(solution, chunk, block) units into the re-eval cube + robustness scorecards |
 | 12 | `12_compare_designs.sh` | `shared`, 4 cpu, 1 h (or `bash`) | optional (+ `NYCOPT_REEVAL_ENSEMBLE_PRESET`) | Cross-design comparison of the re-evaluated Pareto sets (criterion sweep, scorecards, ranking stability) |
 | 13 | `13_main_figures.sh` | `shared`, 4 cpu, 2 h | optional | Render the manuscript-tier figures from `src/figures/registry.py` |
 | 14 | `14_results_figures.sh` | `shared`, 4 cpu, 30 min | optional | Render the SI-tier figures from the same registry |
@@ -236,9 +236,11 @@ pilots can pass `sbatch --time=...`.
 - `submit_reeval_chunks.sh <baseline|design> [--nodes N] [--no-merge | --merge-only]
   [--dry-run] [sbatch args]` — steps 10 + 11 at the measured geometry
   (`wholenode`, 128 ranks per node, batch 25, step 11 chained `afterok`; the
-  one-policy baseline cube on `shared`, one rank per chunk × 2 cpus). Sizes
-  the wall from the installed set and the chunk count; a truncated pass is
-  finished with `--no-merge` passes, then `--merge-only`.
+  one-policy baseline cube on `shared`, one rank per chunk × 2 cpus, or on
+  whole nodes with `--nodes N`). A work unit is a (policy, chunk, batch), so
+  the baseline alone is 500 units. Sizes the wall from the installed set, the
+  chunk count and the batch; a truncated pass is finished with `--no-merge`
+  passes, then `--merge-only`.
 ## Development utilities (not replication)
 
 - `submit_smoke.sh` — one tiny-NFE end-to-end check per formulation

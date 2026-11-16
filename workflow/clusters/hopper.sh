@@ -46,6 +46,10 @@ case "${_nycopt_class}" in
 esac
 unset _nycopt_class
 
+# Slurm counts hardware threads here (2 per core, CR_CORE): a rank needs 2
+# cpus to own a physical core. With 1, two ranks share each core and run at
+# about half speed (measured 2026-11-12, job 1484562).
+: "${NYCOPT_CPUS_PER_RANK=2}"
 : "${NYCOPT_PARTITION_SERIAL=normal}"
 : "${NYCOPT_PARTITION_MPI=normal}"
 : "${NYCOPT_PARTITION_DEBUG=normal}"
