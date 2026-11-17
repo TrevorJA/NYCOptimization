@@ -35,6 +35,7 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.pyplot  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
@@ -46,12 +47,23 @@ from src.formulations import get_obj_directions, get_obj_names  # noqa: E402
 from src.plotting.parallel_coordinates import (  # noqa: E402
     custom_parallel_coordinates, minmaxs_from_directions, wrap_axis_labels,
 )
+from src.plotting.style import font_rc, save_figure  # noqa: E402
 from src.solution_selection import dominance_mask, n_objectives_beaten  # noqa: E402
 
 DEMAND_TITLES = {
     "constant_max": "constant 800 MGD NYC demand",
     "historical": "time-varying NYC demand (control)",
 }
+
+
+def _render(objs: pd.DataFrame, title: str, out: Path, **kw) -> None:
+    """Draw one panel in the shared parallel-axis style and save it."""
+    with matplotlib.pyplot.rc_context(font_rc(13)):
+        fig, ax = matplotlib.pyplot.subplots(figsize=(15, 6))
+        custom_parallel_coordinates(objs, ax=ax, **kw)
+        ax.set_title(title, loc="left")
+        save_figure(fig, out.with_suffix(""))
+        matplotlib.pyplot.close(fig)
 
 
 def main() -> None:
@@ -87,12 +99,14 @@ def main() -> None:
         minmaxs=minmaxs_from_directions(directions),
         baseline=baseline,
         alpha_base=float(np.clip(300.0 / len(natural), 0.10, 0.60)),
-        figsize=(13, 5.5),
+        # Style shared with reeval_robustness_parallel_figures.py.
+        lw_base=1.8, frame=True, baseline_label="Current FFMP policy",
     )
 
     out = fig_dir / f"{stem}.png"
-    custom_parallel_coordinates(pd.DataFrame(natural, columns=obj_names),
-                                title=title, save_fig_filename=out, **common)
+    # Single-color panel: lighter lines so 240 overlapping polylines stay readable.
+    _render(pd.DataFrame(natural, columns=obj_names), title, out,
+            **{**common, "alpha_base": 0.22})
     print(f"[figure] -> {out}")
 
     if baseline is None:
@@ -104,13 +118,13 @@ def main() -> None:
           f"baseline under {DEMAND_TITLES[args.demand]}; objectives-beaten "
           f"distribution {np.bincount(beaten, minlength=len(obj_names) + 1).tolist()}")
     out = fig_dir / f"{stem}_dominance.png"
-    custom_parallel_coordinates(
-        pd.DataFrame(natural, columns=obj_names),
-        title=f"{title}\n{int(dom.sum())} of {len(natural)} dominate the FFMP baseline",
-        highlight_mask=dom,
-        highlight_label="dominates FFMP baseline",
-        exclude_label="does not dominate",
-        save_fig_filename=out, **common)
+    _render(pd.DataFrame(natural, columns=obj_names),
+            f"{title}\n{int(dom.sum())} of {len(natural)} policies dominate the "
+            f"current FFMP policy (others grey)", out,
+            highlight_mask=dom,
+            highlight_label="dominates current FFMP policy",
+            exclude_label="does not dominate",
+            **common)
     print(f"[figure] -> {out}")
 
 

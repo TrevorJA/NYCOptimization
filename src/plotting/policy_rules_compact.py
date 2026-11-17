@@ -47,6 +47,7 @@ from matplotlib.figure import Figure
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.path import Path as MplPath
 from matplotlib.ticker import MaxNLocator
 
 import config
@@ -362,6 +363,32 @@ def panel_release(ax: Axes, primary: dict, reference: Optional[dict], *,
         fit_ylabel(ax, YLABELS["release"])
 
 
+def _curtailment_ylim(ax: Axes, lo: float, hi: float) -> None:
+    """Y range of a curtailment panel, ticked at the quarter marks it spans."""
+    ax.set_ylim(lo, hi)
+    ax.set_yticks([t for t in (0, 25, 50, 75, 100) if t >= lo])
+
+
+def _clear_actor_legend(ax: Axes, legend, steps: Sequence[MplPath],
+                        drop: float = 5.0) -> None:
+    """Lower the y-axis floor until no stepped line crosses the in-panel legend.
+
+    The legend rests on the panel floor, so a policy that curtails deeply
+    would otherwise run through it; lowering the floor moves the legend below
+    the data. A panel whose lines already clear the legend is left untouched.
+    """
+    renderer = ax.figure.canvas.get_renderer()
+    pad = MS * ax.figure.dpi / 72.0  # one marker of clearance, in pixels
+    lo, hi = ax.get_ylim()
+    while lo > 0:
+        box = (legend.get_window_extent(renderer).padded(pad)
+               .transformed(ax.transData.inverted()))
+        if not any(p.intersects_bbox(box, filled=False) for p in steps):
+            return
+        lo -= drop
+        _curtailment_ylim(ax, lo, hi)
+
+
 def panel_curtailment(ax: Axes, primary: dict, reference: Optional[dict],
                       actors: Sequence[str], *, ylabel: Optional[str],
                       xlabels: bool = True, ylim: tuple = (45, 104),
@@ -371,25 +398,29 @@ def panel_curtailment(ax: Axes, primary: dict, reference: Optional[dict],
 
     Each zone's value runs rightward from the marker on its own tick, so
     every step change sits on a zone tick; a half-step tail gives L5 its run.
-    ``actor_legend`` keys the marker shapes in the panel's lower-left corner;
-    ``zone_label`` names the x axis.
+    ``actor_legend`` keys the marker shapes in the panel's lower-left corner,
+    lowering the y-axis floor below ``ylim`` when a step would cross that key
+    (:func:`_clear_actor_legend`); ``zone_label`` names the x axis.
     """
     idx = [ZONES7.index(z) for z in CURT_ZONES]
     x = np.arange(len(CURT_ZONES))
     x_step = np.append(x, x[-1] + STEP_TAIL)
+    steps = []  # the drawn step polylines, in data coordinates
     for name in reversed(actors):  # the first-listed actor is drawn on top
         marker, getter = ACTORS[name]
         for rules, color, lw, ls, z0 in _policy_pairs(primary, reference):
             v = np.asarray(getter(rules), dtype=float)[idx]
-            ax.step(x_step, np.append(v, v[-1]), where="post", color=color,
+            v_step = np.append(v, v[-1])
+            ax.step(x_step, v_step, where="post", color=color,
                     lw=lw, ls=ls, zorder=z0, solid_capstyle="round")
+            steps.append(MplPath(np.column_stack(
+                [np.repeat(x_step, 2)[1:], np.repeat(v_step, 2)[:-1]])))
             _markers(ax, x, v, marker, candidate=(rules is primary),
                      zorder=z0 + 1)
     ax.set_xlim(-0.4, x[-1] + STEP_TAIL + 0.2)
     ax.set_xticks(x)
     ax.set_xticklabels(CURT_TICKS if xlabels else [])
-    ax.set_ylim(*ylim)
-    ax.set_yticks([50, 75, 100])
+    _curtailment_ylim(ax, *ylim)
     style_axes(ax, box=BOXED)
     if ylabel:
         fit_ylabel(ax, ylabel)
@@ -397,10 +428,11 @@ def panel_curtailment(ax: Axes, primary: dict, reference: Optional[dict],
     if zone_label:
         ax.set_xlabel(ZONE_AXIS_LABEL)
     if actor_legend:
-        ax.legend(handles=_actor_handles(actors), labels=list(actors),
-                  loc="lower left", frameon=False, borderpad=0,
-                  borderaxespad=0.35, handlelength=1.2, handletextpad=0.4,
-                  labelspacing=0.3)
+        legend = ax.legend(handles=_actor_handles(actors), labels=list(actors),
+                           loc="lower left", frameon=False, borderpad=0,
+                           borderaxespad=0.35, handlelength=1.2,
+                           handletextpad=0.4, labelspacing=0.3)
+        _clear_actor_legend(ax, legend, steps)
 
 
 def panel_spill(ax: Axes, primary: dict, reference: Optional[dict], *,
@@ -568,6 +600,9 @@ def plot_policy_rules_compact(
     panel_curtailment(axes["tgt"], primary, reference, TARGET_ACTORS,
                       ylabel=YLABELS["tgt"], actor_legend=True,
                       zone_label=True)
+    floor = min(axes[k].get_ylim()[0] for k in ("div", "tgt"))
+    for k in ("div", "tgt"):  # (c) and (d) keep one shared scale
+        _curtailment_ylim(axes[k], floor, axes[k].get_ylim()[1])
     panel_release(axes["release"], primary, reference, compact=True)
     for letter, key in zip("abcde", PANEL_KEYS):
         _title(axes[key], f"({letter}) {TITLES_WRAPPED[key]}")
