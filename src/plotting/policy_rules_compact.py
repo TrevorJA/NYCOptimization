@@ -47,6 +47,7 @@ from matplotlib.figure import Figure
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.ticker import MaxNLocator
 
 import config
 from src.formulations import get_baseline_values
@@ -111,35 +112,42 @@ TARGET_ACTORS = ["Montague", "Trenton"]
 
 PANEL_KEYS = ["zones", "spill", "div", "tgt", "release"]
 TITLES = {
-    "zones": "Storage zone boundaries",
-    "release": "NYC minimum daily release",
+    "zones": "Storage-zone boundary curves",
+    "release": "NYC reservoir minimum releases",
     "div": "Diversion curtailments",
-    "tgt": "Flow target curtailments",
+    "tgt": "Flow-target reductions",
     "spill": "Spill-mitigation releases",
 }
 #: Two-line titles for panels narrower than their title (single layout).
 TITLES_WRAPPED = {
-    "zones": "Storage zone boundaries",
-    "release": "NYC minimum\ndaily release",
+    "zones": "Storage-zone boundary curves",
+    "release": "NYC reservoir\nminimum releases",
     "div": "Diversion\ncurtailments",
-    "tgt": "Flow target\ncurtailments",
+    "tgt": "Flow-target\nreductions",
     "spill": "Spill-mitigation\nreleases",
 }
+#: Y labels name the quantity, then its unit. "Combined" is the sum over the
+#: three NYC reservoirs; "normal" is the L2 flow target (the Decree's at
+#: Montague, the Water Code's at Trenton). The spill-mitigation bar is the
+#: highest value of the zone's schedule over the year; the label does not say
+#: "max", which is reserved for the absolute maximum allowable release.
 YLABELS = {
-    "zones": "NYC storage (% of capacity)",
-    "release": "Combined release (MGD)",
-    "div": "% of allocation",
-    "tgt": "% of Decree target",
-    "spill": "Spill release (MGD)",
+    "zones": "Combined NYC storage (% of capacity)",
+    "release": "Combined minimum daily release (MGD)",
+    "div": "Allowed diversion (% of allocation)",
+    "tgt": "Mean flow target (% of normal)",
+    "spill": "Combined release (MGD)",
 }
 #: Two-line y labels for the shallow rows of the grid layout.
 YLABELS_GRID = {
     "zones": "NYC storage\n(% capacity)",
-    "release": "Release\n(MGD)",
+    "release": "Min. release\n(MGD)",
     "div": "Diversion\n(% allocation)",
-    "tgt": "Flow target\n(% Decree)",
-    "spill": "Spill release\n(MGD)",
+    "tgt": "Flow target\n(% normal)",
+    "spill": "Release\n(MGD)",
 }
+#: Axis label and legend title that introduce the L-codes.
+ZONE_AXIS_LABEL = "Storage zone"
 
 _DOY = pr._DOY
 
@@ -347,6 +355,7 @@ def panel_release(ax: Axes, primary: dict, reference: Optional[dict], *,
                     alpha=1.0 if rules is primary else 0.7, zorder=z0)
             top = max(top, float(y.max()))
     ax.set_ylim(0, y_top if y_top is not None else 1.15 * top)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 5, 10]))
     style_axes(ax, box=BOXED)
     _month_axis(ax, xlabels, compact)
     if ylabel:
@@ -356,12 +365,14 @@ def panel_release(ax: Axes, primary: dict, reference: Optional[dict], *,
 def panel_curtailment(ax: Axes, primary: dict, reference: Optional[dict],
                       actors: Sequence[str], *, ylabel: Optional[str],
                       xlabels: bool = True, ylim: tuple = (45, 104),
-                      actor_legend: bool = False) -> None:
+                      actor_legend: bool = False,
+                      zone_label: bool = False) -> None:
     """(c)/(d) Curtailment stepped over zones L2-L5, one marker per actor.
 
     Each zone's value runs rightward from the marker on its own tick, so
     every step change sits on a zone tick; a half-step tail gives L5 its run.
-    ``actor_legend`` keys the marker shapes in the panel's lower-left corner.
+    ``actor_legend`` keys the marker shapes in the panel's lower-left corner;
+    ``zone_label`` names the x axis.
     """
     idx = [ZONES7.index(z) for z in CURT_ZONES]
     x = np.arange(len(CURT_ZONES))
@@ -383,6 +394,8 @@ def panel_curtailment(ax: Axes, primary: dict, reference: Optional[dict],
     if ylabel:
         fit_ylabel(ax, ylabel)
     _color_zone_ticks(ax, CURT_ZONES)
+    if zone_label:
+        ax.set_xlabel(ZONE_AXIS_LABEL)
     if actor_legend:
         ax.legend(handles=_actor_handles(actors), labels=list(actors),
                   loc="lower left", frameon=False, borderpad=0,
@@ -392,7 +405,8 @@ def panel_curtailment(ax: Axes, primary: dict, reference: Optional[dict],
 
 def panel_spill(ax: Axes, primary: dict, reference: Optional[dict], *,
                 xlabels: bool = True, ylabel: Optional[str] = None,
-                y_top: Optional[float] = None) -> None:
+                y_top: Optional[float] = None,
+                zone_label: bool = False) -> None:
     """(b) Combined NYC spill-mitigation release per flood zone, paired bars."""
     x = np.arange(len(pr.FLOOD_ZONE_LEVELS))
     top = float(primary["combined_spill"].max())
@@ -412,6 +426,8 @@ def panel_spill(ax: Axes, primary: dict, reference: Optional[dict], *,
     if ylabel:
         fit_ylabel(ax, ylabel)
     _color_zone_ticks(ax, pr.FLOOD_ZONE_LEVELS)
+    if zone_label:
+        ax.set_xlabel(ZONE_AXIS_LABEL)
 
 
 # ---------------------------------------------------------------------------
@@ -453,19 +469,23 @@ def _bottom_legend(fig: Figure, reference: bool, candidate_label: str,
                    actors: bool = True) -> None:
     """Frameless legend blocks side by side below the figure, tops aligned.
 
-    Policies, actors (optional), then the zones stacked top to bottom in the
-    order of their storage curves. The row of blocks is centred on the figure
-    and rests on its bottom edge.
+    Policies (only when a baseline is drawn beside the candidate: a lone
+    policy needs no key), actors (optional), then the zones stacked top to
+    bottom in the order of their storage curves. The row of blocks is centred
+    on the figure and rests on its bottom edge.
     """
-    blocks = [(*_policy_handles(reference, candidate_label), dict(
-        handlelength=2.6,
-        handler_map={tuple: HandlerTuple(ndivide=None, pad=0.6)}))]
+    blocks = []
+    if reference:
+        blocks.append((*_policy_handles(reference, candidate_label), dict(
+            handlelength=2.6,
+            handler_map={tuple: HandlerTuple(ndivide=None, pad=0.6)})))
     if actors:
         names = DIVERSION_ACTORS + TARGET_ACTORS
         blocks.append((_actor_handles(names), names, dict(
             handlelength=1.2, handletextpad=0.5)))
     blocks.append((*_zone_handles(), dict(
-        handlelength=2.0, handletextpad=0.6, handler_map=_TUPLE_HANDLER)))
+        handlelength=2.0, handletextpad=0.6, handler_map=_TUPLE_HANDLER,
+        title=ZONE_AXIS_LABEL, alignment="left")))
     legends = [fig.legend(handles=h, labels=l, loc="upper left", frameon=False,
                           borderpad=0, borderaxespad=0, labelspacing=0.4, **kw)
                for h, l, kw in blocks]
@@ -526,10 +546,10 @@ def plot_policy_rules_compact(
     else:
         primary, reference = extract_rules(dv_vector, formulation), baseline
 
-    fig = plt.figure(figsize=(WIDTH_DOUBLE_COL, 6.2))
+    fig = plt.figure(figsize=(WIDTH_DOUBLE_COL, 6.5))
     gs = fig.add_gridspec(2, 2, height_ratios=[1.15, 1.0],
                           width_ratios=[2.35, 1.0],
-                          left=0.12, right=0.985, top=0.917, bottom=0.275,
+                          left=0.12, right=0.985, top=0.921, bottom=0.315,
                           hspace=0.95, wspace=0.56)
     curtail = gs[1, 0].subgridspec(1, 2, wspace=0.72)
     axes = {
@@ -540,11 +560,14 @@ def plot_policy_rules_compact(
         "release": fig.add_subplot(gs[1, 1]),
     }
     panel_zones(axes["zones"], primary, reference)
-    panel_spill(axes["spill"], primary, reference, ylabel=YLABELS["spill"])
+    panel_spill(axes["spill"], primary, reference, ylabel=YLABELS["spill"],
+                zone_label=True)
     panel_curtailment(axes["div"], primary, reference, DIVERSION_ACTORS,
-                      ylabel=YLABELS["div"], actor_legend=True)
+                      ylabel=YLABELS["div"], actor_legend=True,
+                      zone_label=True)
     panel_curtailment(axes["tgt"], primary, reference, TARGET_ACTORS,
-                      ylabel=YLABELS["tgt"], actor_legend=True)
+                      ylabel=YLABELS["tgt"], actor_legend=True,
+                      zone_label=True)
     panel_release(axes["release"], primary, reference, compact=True)
     for letter, key in zip("abcde", PANEL_KEYS):
         _title(axes[key], f"({letter}) {TITLES_WRAPPED[key]}")
