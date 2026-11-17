@@ -2,8 +2,9 @@
 
 The study's PRIMARY scenario-discovery factor maps: for each campaign design's
 per-criterion-set analysis policy (max robustness, min regret; plus the FFMP incumbent), label every
-E_test SOW success/failure under the criterion set and fit the boosted-tree
-success classifier of ``src.factor_mapping`` on the SOW's coordinates --
+E_test SOW success/failure under the criterion set and fit the success
+classifier of ``src.factor_mapping`` (boosted trees by default; logistic
+regression under ``NYCOPT_FM_MODEL=logit``) on the SOW's coordinates --
 THETA space ``(e^m, r1, r2)`` primary (the sampled DU input space, the
 Hadjimichael et al. 2020 / Gold et al. 2022 setting), hazard space as the
 supplemental view (screened realized-sequence descriptors, rank space).
@@ -28,9 +29,17 @@ column, fitted for the SAME compromise policies as the success/failure maps so
 the two figures are read panel-for-panel. The incumbent has no regret panel: regret is
 measured against it, so its label is zero in every SOW by construction.
 
+A non-default classifier family writes to its own sibling directory
+(``factor_mapping_logit/{criterion}/``, same file names), so a logit run never
+overwrites the boosted-tree artifacts and the two fits tables join on
+``(design, policy, criterion, space)``. A logit run's fits tables also carry
+the logistic diagnostics (``pseudo_r2``, ``fs_order``, ``fs_r2__*``,
+``coef__*``; see ``src.factor_mapping.fit_diagnostics``).
+
 Settings via env (repo rule: no CLI value flags):
   NYCOPT_FM_CRITERIA   comma-separated criterion-set keys (default: all named)
   NYCOPT_FM_SPACES     comma-separated in {theta, hazard} (default: both)
+  NYCOPT_FM_MODEL      classifier family in {gbt, logit} (default: gbt)
   NYCOPT_FM_*          classifier settings (see src.factor_mapping)
 
 Run::
@@ -190,7 +199,8 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
         if hz is not None:
             features["hazard"] = hz
 
-    root = config.OUTPUTS_DIR / "comparison" / slug / tag / "factor_mapping"
+    root = (config.OUTPUTS_DIR / "comparison" / slug / tag
+            / fm.artifact_dirname())
     n_fits = 0
     for cset in criteria:
         fit_rows, label_rows, surfaces = [], [], {}
@@ -260,6 +270,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
                             "top_axis_1": names[a1], "top_axis_2": names[a2],
                             **{f"imp__{n}": float(v) for n, v in
                                zip(names, np.atleast_1d(fit.importances))},
+                            **fm.fit_diagnostics(fit),
                         })
                         n_fits += 1
 
@@ -306,6 +317,7 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
                         "top_axis_1": names[a1], "top_axis_2": names[a2],
                         **{f"imp__{n}": float(v) for n, v in
                            zip(names, np.atleast_1d(fit.importances))},
+                        **fm.fit_diagnostics(fit),
                     })
                     n_fits += 1
 
@@ -339,13 +351,10 @@ def run(formulation: str, reeval_tag: str | None) -> dict:
             "policy_selection": {"rule": "max_robustness_min_regret",
                                  "per_design": selected_policies},
             "spaces": sorted(features), "n_sow": first.n_sow,
-            "gbm": {"n_estimators": fm.FM_N_TREES,
-                    "max_depth": fm.FM_MAX_DEPTH,
-                    "learning_rate": fm.FM_LEARNING_RATE,
-                    "cv_folds": fm.FM_CV_FOLDS},
+            "classifier": fm.classifier_settings(),
             "designs": list(results),
         }, indent=2))
-        print(f"[factor_mapping] {cset.key}: "
+        print(f"[factor_mapping] {cset.key} ({fm.resolve_model()}): "
               f"{len(fit_rows)} fits -> {out}")
 
     return {"criteria": [c.key for c in criteria], "spaces": sorted(features),

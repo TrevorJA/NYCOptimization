@@ -21,7 +21,9 @@ neutral at the drawn P = 0.5 contour, under the raw E_test SOW labels (white
 circles = good, dark X = bad).
 
 Data: the ``factor_mapping/{criterion}/`` artifacts written by
-``scripts/main/factor_mapping_run.py``; no cubes needed. CV skill per fit goes
+``scripts/main/factor_mapping_run.py`` (``factor_mapping_logit/`` under
+``NYCOPT_FM_MODEL=logit``, where the surfaces are logistic-regression fits and
+the figure stem gains a ``_logit`` suffix); no cubes needed. CV skill per fit goes
 to the companion CSV, never into the panels.
 """
 
@@ -44,6 +46,7 @@ from src.plotting.style import (DESIGN_ORDER, ETEST, FACTOR_MAP_CMAP,
                                 FACTOR_MAP_MARKS, add_figure_footer,
                                 design_label, font_rc, save_manuscript_figure,
                                 short_label_for)
+from src.factor_mapping import artifact_dirname
 from src.satisficing_criteria import focal_criterion
 
 #: Axis display names for the theta features.
@@ -106,14 +109,30 @@ REGRET_WORST_MAP = _MapSpec(
 )
 
 
+def _artifact_root(ctx, criterion: str) -> Path:
+    """The factor-mapping artifact dir of the ACTIVE classifier family.
+
+    ``factor_mapping/`` for the boosted-tree default, ``factor_mapping_logit/``
+    under ``NYCOPT_FM_MODEL=logit`` (``src.factor_mapping.artifact_dirname``).
+    """
+    return ctx.comparison_dir() / artifact_dirname() / criterion
+
+
+def _surface_phrase(meta: dict) -> str:
+    """How a footer names the fitted surfaces, from the run's own metadata."""
+    model = (meta.get("classifier") or {}).get("model", "gbt")
+    return {"logit": "logistic-regression"}.get(model, "boosted-tree")
+
+
 def _load_artifacts(ctx, criterion: str, prefix: str) -> dict:
     """Load one map's persisted fits, labels, surfaces, and shared metadata."""
-    root = ctx.comparison_dir() / "factor_mapping" / criterion
+    root = _artifact_root(ctx, criterion)
     fits_path = root / f"{prefix}_fits.csv"
     if not fits_path.exists():
         raise FileNotFoundError(
             f"{prefix} artifacts not found at {fits_path} -- run "
-            f"scripts/main/factor_mapping_run.py first (Anvil)."
+            f"scripts/main/factor_mapping_run.py first (Anvil), with the "
+            f"same NYCOPT_FM_MODEL."
         )
     out = {
         "fits": pd.read_csv(fits_path),
@@ -313,16 +332,17 @@ def _footer(fig, meta: dict, focal, spec: _MapSpec) -> None:
                 dict(meta["criterion_kinds"]),
                 obj_order=list(meta["criterion_thresholds"]), y=-0.16,
                 provenance=(f"Per-set compromise policies + incumbent on "
-                            f"{n_sow} {ETEST} SOWs; boosted-tree surfaces "
-                            f"(CV skill in the companion table)."))
+                            f"{n_sow} {ETEST} SOWs; {_surface_phrase(meta)} "
+                            f"surfaces (CV skill in the companion table)."))
         return
 
     # Regret: the criteria that matter are the TOLERANCES, not the satisficing
     # thresholds, so the footer states tau per member axis in its own units.
     tau = meta.get("regret_tau") or {}
     lines = [
-        f"One policy per design on {n_sow} {ETEST} SOWs; boosted-tree "
-        f"surfaces (CV skill in the companion table). No incumbent panel: "
+        f"One policy per design on {n_sow} {ETEST} SOWs; "
+        f"{_surface_phrase(meta)} surfaces (CV skill in the companion "
+        f"table). No incumbent panel: "
         f"regret is measured against it.",
         "",
         f"A SOW is HIGH REGRET when the policy is worse than the FFMP "
@@ -365,7 +385,7 @@ def fig_regret_exposure(ctx, out_stub: Path, table_dir: Path) -> dict:
     with the same blue = good orientation.
     """
     focal = focal_criterion()
-    root = ctx.comparison_dir() / "factor_mapping" / focal.key
+    root = _artifact_root(ctx, focal.key)
     path = root / "regret_exposure.csv"
     if not path.exists():
         raise FileNotFoundError(

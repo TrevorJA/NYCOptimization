@@ -4,10 +4,10 @@ factor_mapping.py - Success/failure surface classification over SOW spaces.
 The scenario-discovery classification layer, shared by the scenario-discovery mechanism
 test (`scripts/main/scenario_discovery.py`) and the factor-map figure sequence:
 label each held-out E_test SOW success/failure for a policy under a satisficing
-criterion set, fit a gradient-boosted classifier of that label on the SOW's
-coordinates, and expose the fitted probability surface, factor importances, and
-cross-validated skill for figures and tables. Pure computation -- no file or
-figure output (orchestration lives in ``scripts/main/factor_mapping_run.py``).
+criterion set, fit a classifier of that label on the SOW's coordinates, and
+expose the fitted probability surface, factor importances, and cross-validated
+skill for figures and tables. Pure computation -- no file or figure output
+(orchestration lives in ``scripts/main/factor_mapping_run.py``).
 
 Two SOW coordinate systems are supported:
 
@@ -21,9 +21,24 @@ Two SOW coordinate systems are supported:
   screened for redundancy first (:func:`screen_hazard_axes`); the space of the
   scenario-discovery coverage-deficit mechanism test.
 
-Classifier: ``GradientBoostingClassifier`` with 250 trees, ``max_depth=2``,
-``learning_rate=0.1`` (between Lau et al. 2023 and Gold et al. 2022).
-Stratified k-fold CV AUC is reported with every fit.
+Two classifier families share one interface (:func:`fit_classifier`), selected
+by ``NYCOPT_FM_MODEL`` or the ``model=`` argument:
+
+- ``"gbt"`` (DEFAULT): ``GradientBoostingClassifier`` with 250 trees,
+  ``max_depth=2``, ``learning_rate=0.1`` (between Lau et al. 2023 and Gold
+  et al. 2022). Importances are the trees' impurity-reduction importances.
+- ``"logit"``: logistic regression in the scenario-discovery idiom of Quinn
+  (2018, Water Programming, "Logistic regression for scenario discovery",
+  https://waterprogramming.wpcomstaging.com/2018/05/04/logistic-regression-for-scenario-discovery/):
+  ``ln(p / (1 - p))`` linear in the standardized factors plus, by default,
+  every pairwise interaction. Factors are ranked by greedy forward selection
+  on McFadden's pseudo-R^2, and each factor's importance is its pseudo-R^2
+  gain on that path.
+
+Stratified k-fold CV AUC is reported with every fit, computed identically for
+both families -- the like-for-like skill comparison. :func:`compare_models`
+fits both on one label; :func:`model_suffix` namespaces the non-default
+family's artifacts so the two never overwrite each other.
 """
 
 from __future__ import annotations
@@ -43,8 +58,12 @@ from src import robustness as rob
 
 try:  # sklearn is the intended backend; the fallback is declared, never silent.
     from sklearn.ensemble import GradientBoostingClassifier
+    from sklearn.exceptions import ConvergenceWarning
+    from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_auc_score
     from sklearn.model_selection import StratifiedKFold
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
     _HAS_SKLEARN = True
 except ImportError:  # pragma: no cover - exercised only on a stripped env
@@ -54,6 +73,31 @@ except ImportError:  # pragma: no cover - exercised only on a stripped env
 ###############################################################################
 # Settings (module constants; env-overridable. NO CLI value flags -- repo rule)
 ###############################################################################
+
+#: Classifier family: ``"gbt"`` (gradient-boosted trees) or ``"logit"``
+#: (logistic regression). Read through :func:`resolve_model`, never directly.
+FM_MODEL: str = os.environ.get("NYCOPT_FM_MODEL", "gbt").strip().lower()
+
+#: The supported classifier families and the ``FactorMapFit.backend`` each
+#: one records.
+MODELS: tuple = ("gbt", "logit")
+MODEL_BACKENDS: dict = {"gbt": "gradient_boosting",
+                        "logit": "logistic_regression"}
+
+#: Logistic regression: inverse L2 penalty strength on the STANDARDIZED terms.
+#: Large = effectively maximum likelihood; the residual penalty only keeps the
+#: coefficients finite when a label is (quasi-)separable, where the MLE does
+#: not exist.
+FM_LOGIT_C: float = float(os.environ.get("NYCOPT_FM_LOGIT_C", "1e4"))
+
+#: Logistic regression: include every pairwise interaction term (``x_i * x_j``
+#: of the standardized factors) alongside the main effects. ``0`` = main
+#: effects only (the linear-boundary model of the blog post).
+FM_LOGIT_INTERACTIONS: bool = (
+    os.environ.get("NYCOPT_FM_LOGIT_INTERACTIONS", "1").strip() != "0")
+
+#: Logistic regression: solver iteration cap (near-separable labels need many).
+FM_LOGIT_MAX_ITER: int = int(os.environ.get("NYCOPT_FM_LOGIT_MAX_ITER", "5000"))
 
 #: Gradient-boosted classifier hyperparameters (see module docstring).
 FM_N_TREES: int = int(os.environ.get("NYCOPT_FM_N_TREES", "250"))
@@ -331,7 +375,57 @@ def screen_hazard_axes(H: np.ndarray, axes: list,
 
 
 ###############################################################################
-# Classifier (Gold et al. 2022; Lau et al. 2023)
+# Classifier family selection (gbt | logit)
+###############################################################################
+
+def resolve_model(model: str = None) -> str:
+    """The classifier family to use: ``model`` or the :data:`FM_MODEL` default.
+
+    Raises:
+        ValueError: For a name outside :data:`MODELS`.
+    """
+    name = (FM_MODEL if model is None else str(model)).strip().lower()
+    if name not in MODELS:
+        raise ValueError(
+            f"unknown classifier model {name!r}; expected one of {MODELS} "
+            f"(set NYCOPT_FM_MODEL)."
+        )
+    return name
+
+
+def model_suffix(model: str = None) -> str:
+    """Artifact-name suffix for a family: ``""`` for gbt, ``"_logit"`` for logit.
+
+    The gbt default keeps its historical, unsuffixed paths; every other
+    family is namespaced so a comparison run never overwrites the gbt
+    artifacts.
+    """
+    name = resolve_model(model)
+    return "" if name == "gbt" else f"_{name}"
+
+
+def artifact_dirname(model: str = None) -> str:
+    """The ``comparison/{slug}/{tag}/`` subdirectory holding a family's fits."""
+    return f"factor_mapping{model_suffix(model)}"
+
+
+def classifier_settings(model: str = None) -> dict:
+    """The active family's settings, for run metadata (JSON-serializable)."""
+    name = resolve_model(model)
+    out = {"model": name, "backend": MODEL_BACKENDS[name],
+           "cv_folds": FM_CV_FOLDS}
+    if name == "gbt":
+        out.update({"n_estimators": FM_N_TREES, "max_depth": FM_MAX_DEPTH,
+                    "learning_rate": FM_LEARNING_RATE})
+    else:
+        out.update({"C": FM_LOGIT_C, "interactions": FM_LOGIT_INTERACTIONS,
+                    "max_iter": FM_LOGIT_MAX_ITER, "standardized": True,
+                    "importance": "forward-selection McFadden pseudo-R2 gain"})
+    return out
+
+
+###############################################################################
+# Classifier (Gold et al. 2022; Lau et al. 2023; Quinn 2018 for logit)
 ###############################################################################
 
 @dataclass
@@ -345,8 +439,11 @@ class FactorMapFit:
     Attributes:
         space: ``"theta"`` or ``"hazard"``.
         axes: Feature names, in feature order.
-        importances: Per-axis factor importance, summing to 1.
-        backend: ``"gradient_boosting"`` or the declared ks/k-NN fallback.
+        importances: Per-axis factor importance, summing to 1. Impurity
+            reduction for ``gradient_boosting``; forward-selection McFadden
+            pseudo-R^2 gain for ``logistic_regression``.
+        backend: ``"gradient_boosting"``, ``"logistic_regression"``,
+            ``"single_class"``, or the declared ks/k-NN fallback.
         predict_proba: Probability surface callable.
         train_accuracy: Resubstitution accuracy (a fit diagnostic, not skill).
         cv_auc: Stratified k-fold ROC AUC -- the over-trust guard. NaN when
@@ -356,7 +453,11 @@ class FactorMapFit:
         n_pos: Positive-class count in the training labels.
         n_neg: Negative-class count.
         cv_note: Why CV was skipped, when it was ("" otherwise).
-        meta: Hyperparameters and fold count actually used.
+        meta: Hyperparameters and fold count actually used. A logistic fit
+            also carries its diagnostics here (``pseudo_r2``, ``terms``,
+            ``coef_std``, ``intercept_std``, ``forward_order``,
+            ``forward_pseudo_r2``, ``converged``); :func:`fit_diagnostics`
+            flattens them for a table row.
     """
 
     space: str
@@ -405,14 +506,192 @@ def _cross_validate(X: np.ndarray, y: np.ndarray, folds: int,
             float(np.mean(accs)), "")
 
 
+def mcfadden_r2(y: np.ndarray, p: np.ndarray) -> float:
+    """McFadden's pseudo-R^2: ``1 - lnL(model) / lnL(intercept only)``.
+
+    The model-comparison metric of the logistic scenario-discovery idiom
+    (Quinn 2018). Probabilities are clipped away from 0/1 so a separable fit
+    scores just under 1 rather than overflowing.
+
+    Args:
+        y: Length-``n`` 0/1 labels.
+        p: Length-``n`` fitted ``P(y = 1)``.
+
+    Returns:
+        The pseudo-R^2, or NaN for a single-class label (no null deviance).
+    """
+    y = np.asarray(y).astype(int)
+
+    def _loglik(prob: np.ndarray) -> float:
+        prob = np.clip(np.asarray(prob, dtype=float), 1e-12, 1.0 - 1e-12)
+        return float(np.where(y == 1, np.log(prob), np.log1p(-prob)).sum())
+
+    ll_null = _loglik(np.full(len(y), y.mean()))
+    if not np.isfinite(ll_null) or ll_null == 0.0 or y.min() == y.max():
+        return float("nan")
+    return 1.0 - _loglik(p) / ll_null
+
+
+def _fit_gbt(X: np.ndarray, y: np.ndarray, axes: list, space: str,
+             n_estimators: int, max_depth: int, learning_rate: float,
+             cv: int, random_state: int, n_pos: int, n_neg: int,
+             meta: dict) -> FactorMapFit:
+    """The gradient-boosted fit (``model="gbt"``) of :func:`fit_classifier`."""
+
+    def make_clf():
+        return GradientBoostingClassifier(
+            n_estimators=n_estimators, max_depth=max_depth,
+            learning_rate=learning_rate, random_state=random_state,
+        )
+
+    clf = make_clf().fit(X, y)
+    cv_auc, cv_auc_std, cv_acc, note = _cross_validate(X, y, cv, make_clf)
+    return FactorMapFit(
+        space=space, axes=list(axes),
+        importances=np.asarray(clf.feature_importances_, dtype=float),
+        backend="gradient_boosting",
+        predict_proba=lambda g: clf.predict_proba(np.atleast_2d(g))[:, 1],
+        train_accuracy=float(clf.score(X, y)),
+        cv_auc=cv_auc, cv_auc_std=cv_auc_std, cv_accuracy=cv_acc,
+        n_pos=n_pos, n_neg=n_neg, cv_note=note, meta=meta,
+    )
+
+
+def _make_logit(interactions: bool, C: float):
+    """Standardize -> (pairwise interactions) -> near-unpenalized logit.
+
+    Standardizing FIRST centres the factors, so each interaction term is the
+    product of two z-scores: it is not collinear with its main effects and
+    its coefficient is on the same scale as theirs.
+    """
+    steps = [("scale", StandardScaler())]
+    if interactions:
+        steps.append(("interact", PolynomialFeatures(
+            degree=2, interaction_only=True, include_bias=False)))
+    steps.append(("logit", LogisticRegression(
+        C=C, max_iter=FM_LOGIT_MAX_ITER)))
+    return Pipeline(steps)
+
+
+def _logit_term_names(clf, axes: list) -> list:
+    """Model-term names in coefficient order: ``"em"``, ..., ``"em:r1"``, ..."""
+    if "interact" not in clf.named_steps:
+        return list(axes)
+    powers = clf.named_steps["interact"].powers_
+    return [":".join(a for a, p in zip(axes, row) if p) for row in powers]
+
+
+def _logit_forward_selection(X: np.ndarray, y: np.ndarray,
+                             make_clf) -> tuple[list, list]:
+    """Greedy forward selection of FACTORS on McFadden's pseudo-R^2.
+
+    Start from the intercept-only model; at each step add the factor whose
+    inclusion raises pseudo-R^2 the most. Adding a factor brings in its main
+    effect AND (when the model has interactions) its interaction with every
+    factor already in the model, so the path is hierarchical and its last
+    step is exactly the full model.
+
+    Returns:
+        ``(order, cumulative)``: feature indices in entry order and the
+        model's pseudo-R^2 after each entry.
+    """
+    remaining = list(range(X.shape[1]))
+    order, cumulative = [], []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        while remaining:
+            scores = []
+            for k in remaining:
+                cols = order + [k]
+                sub = make_clf().fit(X[:, cols], y)
+                scores.append(
+                    mcfadden_r2(y, sub.predict_proba(X[:, cols])[:, 1]))
+            best = int(np.argmax(scores))
+            order.append(remaining.pop(best))
+            cumulative.append(float(scores[best]))
+    return order, cumulative
+
+
+def _fit_logit(X: np.ndarray, y: np.ndarray, axes: list, space: str,
+               interactions: bool, cv: int, n_pos: int, n_neg: int,
+               meta: dict) -> FactorMapFit:
+    """The logistic-regression fit (``model="logit"``) of :func:`fit_classifier`.
+
+    The surface, CV skill, and coefficients come from the FULL model (every
+    factor, plus every pairwise interaction when enabled). The forward
+    selection only ranks the factors: each one's importance is the
+    pseudo-R^2 it added when it entered, normalized to sum to 1. An
+    interaction's contribution is therefore credited to whichever of its two
+    factors entered LATER -- the ranking is path-dependent wherever
+    interactions matter, which the recorded ``forward_order`` makes explicit.
+    """
+
+    def make_clf():
+        return _make_logit(interactions, FM_LOGIT_C)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        clf = make_clf().fit(X, y)
+        cv_auc, cv_auc_std, cv_acc, note = _cross_validate(X, y, cv, make_clf)
+    logit = clf.named_steps["logit"]
+    converged = bool(np.max(logit.n_iter_) < FM_LOGIT_MAX_ITER)
+    if not converged:
+        warnings.warn(
+            f"logistic regression hit the {FM_LOGIT_MAX_ITER}-iteration cap "
+            f"on a {space}-space fit ({n_pos} positive / {n_neg} negative): "
+            f"the label is probably (quasi-)separable. Raise "
+            f"NYCOPT_FM_LOGIT_MAX_ITER or lower NYCOPT_FM_LOGIT_C."
+        )
+
+    order, cumulative = _logit_forward_selection(X, y, make_clf)
+    # Nested near-MLE models cannot lose likelihood; enforce that against
+    # optimizer noise so no factor is credited a negative gain.
+    cum = np.maximum.accumulate(np.clip(np.nan_to_num(cumulative), 0.0, None))
+    importances = np.zeros(X.shape[1])
+    importances[order] = np.diff(cum, prepend=0.0)
+    total = float(importances.sum())
+    importances = (importances / total if total > 0
+                   else np.full(len(importances), 1.0 / len(importances)))
+
+    terms = _logit_term_names(clf, axes)
+    meta = {
+        **meta,
+        "pseudo_r2": mcfadden_r2(y, clf.predict_proba(X)[:, 1]),
+        "terms": terms,
+        # Coefficients on the standardized terms (z-scores and their products).
+        "coef_std": {t: float(c) for t, c in zip(terms, logit.coef_[0])},
+        "intercept_std": float(logit.intercept_[0]),
+        "forward_order": [axes[k] for k in order],
+        "forward_pseudo_r2": [float(v) for v in cum],
+        "converged": converged,
+    }
+    return FactorMapFit(
+        space=space, axes=list(axes), importances=importances,
+        backend="logistic_regression",
+        predict_proba=lambda g: clf.predict_proba(np.atleast_2d(g))[:, 1],
+        train_accuracy=float(clf.score(X, y)),
+        cv_auc=cv_auc, cv_auc_std=cv_auc_std, cv_accuracy=cv_acc,
+        n_pos=n_pos, n_neg=n_neg, cv_note=note, meta=meta,
+    )
+
+
 def fit_classifier(X: np.ndarray, y: np.ndarray, axes: list,
                    space: str = "theta", n_estimators: int = None,
                    max_depth: int = None, learning_rate: float = None,
-                   cv: int = None, random_state: int = 0) -> FactorMapFit:
-    """Fit ``P(y = 1)`` on SOW coordinates with boosted trees + CV skill.
+                   cv: int = None, random_state: int = 0,
+                   model: str = None,
+                   interactions: bool = None) -> FactorMapFit:
+    """Fit ``P(y = 1)`` on SOW coordinates + CV skill, with either family.
 
-    Trees are monotone-invariant, so rank-space and raw-value fits are
-    equivalent; pass whichever coordinates the figure will be drawn in.
+    ``model="gbt"`` (the default) fits boosted trees. Trees are
+    monotone-invariant, so rank-space and raw-value fits are equivalent; pass
+    whichever coordinates the figure will be drawn in.
+
+    ``model="logit"`` fits a logistic regression on the standardized factors
+    and, by default, every pairwise interaction (:func:`_fit_logit`). Unlike
+    trees it is NOT monotone-invariant: the log-odds are linear (bilinear with
+    interactions) in the coordinates as passed, so a fit on ``e^m`` differs
+    from one on ``m``, and a rank-space fit from a raw-value one.
 
     If sklearn is unavailable the model degrades -- loudly, never silently --
     to KS-statistic importances with a k-NN probability surface, which
@@ -424,30 +703,43 @@ def fit_classifier(X: np.ndarray, y: np.ndarray, axes: list,
             ``predict_proba`` reports).
         axes: Length-``m`` feature names.
         space: Recorded on the fit (``"theta"`` | ``"hazard"``).
-        n_estimators, max_depth, learning_rate, cv: Overrides of the module
-            defaults (``FM_*``).
-        random_state: Seed for the fit and the CV shuffle.
+        n_estimators, max_depth, learning_rate: gbt-only overrides of the
+            module defaults (``FM_*``); ignored by ``"logit"``.
+        cv: Override of :data:`FM_CV_FOLDS` (both families).
+        random_state: Seed for the gbt fit. The CV shuffle is fixed, so both
+            families are scored on the SAME folds.
+        model: ``"gbt"`` | ``"logit"``; default :data:`FM_MODEL`
+            (``NYCOPT_FM_MODEL``).
+        interactions: logit-only override of :data:`FM_LOGIT_INTERACTIONS`.
 
     Returns:
         A :class:`FactorMapFit`.
     """
     X = np.asarray(X, dtype=float)
     y = np.asarray(y).astype(int)
+    model = resolve_model(model)
     n_estimators = FM_N_TREES if n_estimators is None else int(n_estimators)
     max_depth = FM_MAX_DEPTH if max_depth is None else int(max_depth)
     learning_rate = (FM_LEARNING_RATE if learning_rate is None
                      else float(learning_rate))
+    interactions = (FM_LOGIT_INTERACTIONS if interactions is None
+                    else bool(interactions))
     cv = FM_CV_FOLDS if cv is None else int(cv)
     n_pos, n_neg = int((y == 1).sum()), int((y == 0).sum())
-    meta = {"n_estimators": n_estimators, "max_depth": max_depth,
-            "learning_rate": learning_rate, "cv_folds_requested": cv}
+    if model == "gbt":
+        meta = {"model": model, "n_estimators": n_estimators,
+                "max_depth": max_depth, "learning_rate": learning_rate,
+                "cv_folds_requested": cv}
+    else:
+        meta = {"model": model, "C": FM_LOGIT_C, "interactions": interactions,
+                "max_iter": FM_LOGIT_MAX_ITER, "cv_folds_requested": cv}
 
     if not _HAS_SKLEARN:
         warnings.warn(
             "scikit-learn is not installed: falling back to KS-statistic "
             "importances + a k-NN probability surface. The reported "
-            "importances are NOT gradient-boosted factor importances -- say "
-            "so when reporting."
+            f"importances are NOT {MODEL_BACKENDS[model]} factor importances "
+            "-- say so when reporting."
         )
         ks = np.array([
             ks_2samp(X[y == 1, a], X[y == 0, a]).statistic
@@ -460,12 +752,6 @@ def fit_classifier(X: np.ndarray, y: np.ndarray, axes: list,
             backend="ks_knn_fallback", predict_proba=_knn_probability(X, y),
             n_pos=n_pos, n_neg=n_neg, cv_note="CV skipped: no sklearn",
             meta=meta,
-        )
-
-    def make_clf():
-        return GradientBoostingClassifier(
-            n_estimators=n_estimators, max_depth=max_depth,
-            learning_rate=learning_rate, random_state=random_state,
         )
 
     if n_pos == 0 or n_neg == 0:
@@ -482,17 +768,57 @@ def fit_classifier(X: np.ndarray, y: np.ndarray, axes: list,
             meta=meta,
         )
 
-    clf = make_clf().fit(X, y)
-    cv_auc, cv_auc_std, cv_acc, note = _cross_validate(X, y, cv, make_clf)
-    return FactorMapFit(
-        space=space, axes=list(axes),
-        importances=np.asarray(clf.feature_importances_, dtype=float),
-        backend="gradient_boosting",
-        predict_proba=lambda g: clf.predict_proba(np.atleast_2d(g))[:, 1],
-        train_accuracy=float(clf.score(X, y)),
-        cv_auc=cv_auc, cv_auc_std=cv_auc_std, cv_accuracy=cv_acc,
-        n_pos=n_pos, n_neg=n_neg, cv_note=note, meta=meta,
-    )
+    if model == "logit":
+        return _fit_logit(X, y, axes, space, interactions, cv, n_pos, n_neg,
+                          meta)
+    return _fit_gbt(X, y, axes, space, n_estimators, max_depth, learning_rate,
+                    cv, random_state, n_pos, n_neg, meta)
+
+
+def fit_diagnostics(fit: FactorMapFit) -> dict:
+    """Flat, table-ready diagnostics a fit carries beyond the shared fields.
+
+    Empty for every backend but ``logistic_regression``, so a fits table gains
+    columns only in a logit run (and a degenerate single-class fit inside one
+    leaves them blank).
+
+    Returns:
+        ``pseudo_r2`` (McFadden, full model), ``converged``, ``fs_order``
+        (factors in forward-selection entry order, ``">"``-joined),
+        ``fs_r2__{axis}`` (cumulative pseudo-R^2 once that factor entered),
+        ``intercept_std`` and ``coef__{term}`` (coefficients on the
+        standardized terms; interactions are named ``a:b``).
+    """
+    meta = fit.meta or {}
+    if "pseudo_r2" not in meta:
+        return {}
+    out = {"pseudo_r2": meta["pseudo_r2"], "converged": meta["converged"],
+           "fs_order": ">".join(meta["forward_order"])}
+    out.update({f"fs_r2__{a}": v for a, v in
+                zip(meta["forward_order"], meta["forward_pseudo_r2"])})
+    out["intercept_std"] = meta["intercept_std"]
+    out.update({f"coef__{t}": c for t, c in meta["coef_std"].items()})
+    return out
+
+
+def compare_models(X: np.ndarray, y: np.ndarray, axes: list,
+                   space: str = "theta", models: tuple = MODELS,
+                   **kwargs) -> dict:
+    """Fit every classifier family on ONE label, for a side-by-side read.
+
+    The CV folds are identical across families (fixed shuffle), so the
+    ``cv_auc`` / ``cv_accuracy`` of the returned fits compare like for like.
+
+    Args:
+        X, y, axes, space: As :func:`fit_classifier`.
+        models: Families to fit (default: all of :data:`MODELS`).
+        **kwargs: Forwarded to :func:`fit_classifier`.
+
+    Returns:
+        ``{model: FactorMapFit}`` in ``models`` order.
+    """
+    return {m: fit_classifier(X, y, axes, space=space, model=m, **kwargs)
+            for m in models}
 
 
 def probability_surface(fit: FactorMapFit, X: np.ndarray, ax1: int, ax2: int,

@@ -69,7 +69,8 @@ def _need_available(need: str, ctx: FigureContext) -> bool:
         from scripts.main.forcing_fdc_cache import DEFAULT_CACHE
         return DEFAULT_CACHE.is_file()
     if need == "factor_mapping":
-        return (ctx.comparison_dir() / "factor_mapping").is_dir()
+        from src.factor_mapping import artifact_dirname
+        return (ctx.comparison_dir() / artifact_dirname()).is_dir()
     if need == "demand_calibration":
         from src.demand_utilization import CALIBRATION_CSV, REFERENCE_SERIES_CSV
         return Path(CALIBRATION_CSV).is_file() and Path(REFERENCE_SERIES_CSV).is_file()
@@ -114,7 +115,18 @@ def _render(spec: FigureSpec, ctx: FigureContext) -> bool:
 
     out_stub = spec.out_dir() / spec.stem
     table_dir = ctx.tables(spec.kind, spec.needs)
-    print(f"[figures] building {spec.stem} ({spec.tier}, section {spec.section})")
+    if "factor_mapping" in spec.needs:
+        # A non-default classifier family (NYCOPT_FM_MODEL=logit) renders
+        # beside the boosted-tree figure, never over it: suffixed stem, and
+        # its companion tables in their own subdirectory.
+        from src.factor_mapping import model_suffix
+        suffix = model_suffix()
+        if suffix:
+            out_stub = spec.out_dir() / f"{spec.stem}{suffix}"
+            table_dir = table_dir / suffix.lstrip("_")
+            table_dir.mkdir(parents=True, exist_ok=True)
+    print(f"[figures] building {out_stub.name} ({spec.tier}, "
+          f"section {spec.section})")
     try:
         spec.builder(ctx, out_stub, table_dir)
     except Exception:  # noqa: BLE001 - one bad figure must not kill the pass

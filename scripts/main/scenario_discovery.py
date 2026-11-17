@@ -830,7 +830,9 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
     tag = tag_of(spec)
     slug = config.results_slug(tag, formulation)
     label = resolve_sd_label()
-    label_slug = label.replace(":", "_")
+    # A non-default classifier family (NYCOPT_FM_MODEL=logit) suffixes the
+    # label dir, so its tables and figures sit beside the boosted-tree ones.
+    label_slug = label.replace(":", "_") + fm.model_suffix()
     # Namespaced by slug/tag/label so successive runs never overwrite each
     # other, and resolved here (not at import) because the tag is run identity.
     table_dir = (config.OUTPUTS_DIR / "comparison" / slug / tag
@@ -890,7 +892,8 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
           "backend": r.model.backend, "train_accuracy": r.model.train_accuracy,
           "cv_auc": r.model.cv_auc, "cv_auc_std": r.model.cv_auc_std,
           "cv_accuracy": r.model.cv_accuracy, "cv_note": r.model.cv_note,
-          **dict(zip(r.model.axes, r.model.importances))} for r in results]
+          **dict(zip(r.model.axes, r.model.importances)),
+          **fm.fit_diagnostics(r.model)} for r in results]
     )
     imp.to_csv(table_dir / "factor_importances.csv", index=False)
 
@@ -910,8 +913,7 @@ def run(formulation: str, designs: list[str], reeval_tag: str | None,
         "label": label,
         "compromise_rule": COMPROMISE_RULE,
         "classifier_backend": results[0].model.backend,
-        "gbc": {"n_estimators": fm.FM_N_TREES, "max_depth": fm.FM_MAX_DEPTH,
-                "learning_rate": fm.FM_LEARNING_RATE},
+        "classifier": fm.classifier_settings(),
         "redundancy_threshold": fm.FM_RHO_THRESHOLD,
         "hazard_axes_all": list(etest["hazard_axes"]),
         "hazard_axes_retained": screen["retained"],
