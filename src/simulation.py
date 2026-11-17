@@ -200,6 +200,7 @@ def _get_cached_model_dict(use_trimmed: bool = None, nyc_config=None,
         use_trimmed,
         ensemble_spec.preset_name,
         ensemble_spec.du_factor_signature,
+        _NYC_DEMAND_OVERRIDE,
     )
     if key not in _CACHED_MODEL_DICTS:
         mb = _build_model_builder(
@@ -865,13 +866,57 @@ def compute_constraint_violations(dv_vector,
 # Model Building Helpers
 ###############################################################################
 
+# NYC demand-source override for the supplemental constant-demand sensitivity
+# re-evaluation only (see config.NYC_DEMAND_SENSITIVITY_SOURCES). None = the
+# study's time-dynamic source. Set only through nyc_demand_sensitivity().
+_NYC_DEMAND_OVERRIDE: Optional[str] = None
+
+
+class nyc_demand_sensitivity:
+    """Context manager: build models with a sensitivity NYC demand source.
+
+    Only sources in ``config.NYC_DEMAND_SENSITIVITY_SOURCES`` are accepted
+    (``"constant_max"``: NYC demand held at the 800 MGD FFMP maximum). The
+    override enters the model-dict cache key, so models built inside and
+    outside the context never share a cached dict. Everything else about the
+    model (window, trimmed model and presim, NJ demand, flow-prediction mode,
+    objectives) is unchanged.
+
+    Example:
+        with nyc_demand_sensitivity("constant_max"):
+            objs = evaluate(dv, "ffmp", objective_set=obj_set)
+    """
+
+    def __init__(self, source: str):
+        from config import NYC_DEMAND_SENSITIVITY_SOURCES
+        if source not in NYC_DEMAND_SENSITIVITY_SOURCES:
+            raise ValueError(
+                f"NYC demand sensitivity source {source!r} is not one of "
+                f"{NYC_DEMAND_SENSITIVITY_SOURCES}."
+            )
+        self.source = source
+        self._previous = None
+
+    def __enter__(self):
+        global _NYC_DEMAND_OVERRIDE
+        self._previous = _NYC_DEMAND_OVERRIDE
+        _NYC_DEMAND_OVERRIDE = self.source
+        return self
+
+    def __exit__(self, *exc):
+        global _NYC_DEMAND_OVERRIDE
+        _NYC_DEMAND_OVERRIDE = self._previous
+        return False
+
+
 def _demand_options(is_ensemble: bool) -> dict:
     """pywrdrb demand options: time-dynamic NYC demand, constant NJ quantity.
 
     NYC demand is the extrapolated diversion series (per realization for an
     ensemble, the historic-flow series for the single trace); a constant
-    800 MGD NYC demand is refused by ``config.assert_time_dynamic_nyc_demand``.
-    NJ demand is the constant 100 MGD Decree quantity.
+    800 MGD NYC demand is refused by ``config.assert_time_dynamic_nyc_demand``
+    except inside :class:`nyc_demand_sensitivity` (supplemental sensitivity
+    re-evaluation only). NJ demand is the constant 100 MGD Decree quantity.
 
     Args:
         is_ensemble: Whether the model is built for a staged ensemble.
@@ -880,8 +925,11 @@ def _demand_options(is_ensemble: bool) -> dict:
         The ``nyc_nj_demand_source`` / ``nj_demand_source`` entries of the
         ModelBuilder options dict.
     """
-    nyc_source = nyc_demand_source(is_ensemble)
-    assert_time_dynamic_nyc_demand(nyc_source)
+    if _NYC_DEMAND_OVERRIDE is not None:
+        nyc_source = _NYC_DEMAND_OVERRIDE
+    else:
+        nyc_source = nyc_demand_source(is_ensemble)
+        assert_time_dynamic_nyc_demand(nyc_source)
     return {"nyc_nj_demand_source": nyc_source, "nj_demand_source": NJ_DEMAND_SOURCE}
 
 

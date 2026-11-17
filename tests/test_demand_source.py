@@ -56,3 +56,33 @@ def test_no_env_file_selects_a_demand_source():
 
 def test_demand_series_is_part_of_the_staging_contract():
     assert STAGED_ENSEMBLE_FILES["diversion_nyc_extrapolated_mgd.hdf5"] == "04"
+
+
+def test_constant_demand_sensitivity_is_scoped():
+    """The supplemental constant-demand sensitivity opts in from code only and
+    reverts on exit; the cache key separates its model dicts."""
+    with sim.nyc_demand_sensitivity("constant_max"):
+        assert sim._demand_options(False)["nyc_nj_demand_source"] == "constant_max"
+        assert sim._demand_options(False)["nj_demand_source"] == "constant_max"
+    assert sim._NYC_DEMAND_OVERRIDE is None
+    assert sim._demand_options(False)["nyc_nj_demand_source"] == "historical"
+
+
+def test_constant_demand_sensitivity_refuses_other_sources():
+    with pytest.raises(ValueError):
+        sim.nyc_demand_sensitivity("historical")
+
+
+def test_constant_demand_sensitivity_has_one_caller():
+    """Only the supplemental constant-demand re-evaluation may switch NYC demand
+    to the constant; any new caller must be added here deliberately."""
+    allowed = {"scripts/supplemental/constant_demand_reeval.py"}
+    callers = set()
+    for sub in ("src", "scripts", "workflow"):
+        for p in (PROJECT_DIR / sub).rglob("*.py"):
+            rel = p.relative_to(PROJECT_DIR).as_posix()
+            if rel == "src/simulation.py":
+                continue
+            if "nyc_demand_sensitivity(" in p.read_text(encoding="utf-8", errors="ignore"):
+                callers.add(rel)
+    assert callers == allowed, f"unexpected constant-demand callers: {callers - allowed}"

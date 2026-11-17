@@ -296,9 +296,17 @@ PYWRDRB_FLOW_PREDICTION_MODE = "perfect_foresight"
 # assert_time_dynamic_nyc_demand() refuses it at every model build. There is
 # no env knob. NJ demand is the 100 MGD Decree quantity held constant
 # ("constant_max"); it is not a study factor.
+#
+# One exception, outside the campaign: the constant-demand sensitivity
+# re-evaluation (scripts/supplemental/constant_demand_reeval.py) re-scores the
+# searched policies with NYC demand held at the 800 MGD FFMP maximum. It opts
+# in from code only, through src.simulation.nyc_demand_sensitivity(), which
+# accepts only the sources in NYC_DEMAND_SENSITIVITY_SOURCES; there is still
+# no env knob, and no campaign step calls it.
 NYC_DEMAND_SOURCE_ENSEMBLE = "custom"
 NYC_DEMAND_SOURCE_SINGLE_TRACE = "historical"
 NJ_DEMAND_SOURCE = "constant_max"
+NYC_DEMAND_SENSITIVITY_SOURCES = ("constant_max",)
 
 
 def nyc_demand_source(is_ensemble: bool) -> str:
