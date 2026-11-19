@@ -5,8 +5,10 @@ All figure scripts import from here to ensure consistent aesthetics across
 manuscript figures and diagnostic plots.
 """
 
+import re
 import warnings
 from pathlib import Path
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -205,6 +207,86 @@ OBJ_SHORT_LABELS: dict[str, str] = {
 def short_label_for(name: str) -> str:
     """Very short display label for an objective name; falls back to label_for."""
     return OBJ_SHORT_LABELS.get(name, label_for(name))
+
+
+# ---------------------------------------------------------------------------
+# Deeply-uncertain (DU) factor labels
+# ---------------------------------------------------------------------------
+
+#: THE labeling key of the deeply-uncertain factors that define a state of the
+#: world: ``{coordinate: (display name, math symbol)}``. Every figure that
+#: shows one of these factors (axis, colorbar, legend, title) takes its text
+#: from here through :func:`factor_label` / :func:`factor_symbol`, so a factor
+#: is renamed for all figures by editing its entry. Coordinates: ``em`` the
+#: annual-mean change factor e^m, ``r1`` / ``r2`` the annual / semiannual
+#: harmonic amplitudes, ``u`` the nominal fraction of NYC's diversion
+#: allocation in use.
+DU_FACTOR_LABELS: dict[str, tuple[str, str]] = {
+    "em": ("Annual mean flow scaling",       "$e^{m}$"),
+    "r1": ("Seasonal amplitude of monthly flow scaling", "$r_1$"),
+    "r2": ("Semiannual amplitude",           "$r_2$"),
+    "u":  ("NYC Diversion Allocation Usage", "$u$"),
+}
+
+
+def factor_symbol(name: str) -> str:
+    """Math symbol of a DU factor, e.g. ``$e^{m}$``; falls back to the name."""
+    return DU_FACTOR_LABELS[name][1] if name in DU_FACTOR_LABELS else name
+
+
+def _balanced_lines(tokens: list, width: int) -> list:
+    """Fill ``tokens`` into the fewest lines of at most ``width`` visible
+    characters, then narrow the lines until they are of even length.
+
+    Mathtext markup (``$ _ ^ { } \\``) is not counted: it does not render.
+    """
+    def visible(token: str) -> int:
+        return len(re.sub(r"[$_^{}\\]", "", token))
+
+    def fill(limit: int) -> list:
+        lines, current, used = [], [], 0
+        for token in tokens:
+            need = visible(token) + (1 if current else 0)
+            if current and used + need > limit:
+                lines.append(" ".join(current))
+                current, used = [token], visible(token)
+            else:
+                current.append(token)
+                used += need
+        return lines + [" ".join(current)]
+
+    best = fill(width)
+    while width > 1:
+        narrower = fill(width - 1)
+        if len(narrower) > len(best):
+            break
+        best, width = narrower, width - 1
+    return best
+
+
+def factor_label(name: str, sep: str = " ", width: Optional[int] = None) -> str:
+    """Display label of a DU factor: its name, then its symbol in parentheses.
+
+    Args:
+        name: Factor coordinate (a key of :data:`DU_FACTOR_LABELS`). Any other
+            name (e.g. a hazard-space axis) is returned unchanged.
+        sep: Text between the name and the symbol; ``"\n"`` puts the symbol
+            on its own line for a narrow panel.
+        width: Longest line, in visible characters. A label longer than this
+            is wrapped at word breaks into lines of even length (for an axis
+            too short to hold it on one line); a shorter one is unchanged.
+
+    Returns:
+        E.g. ``Annual mean flow scaling ($e^{m}$)``.
+    """
+    if name not in DU_FACTOR_LABELS:
+        return name
+    text, symbol = DU_FACTOR_LABELS[name]
+    if width is None:
+        return f"{text}{sep}({symbol})"
+    if sep == " ":
+        return "\n".join(_balanced_lines(text.split() + [f"({symbol})"], width))
+    return "\n".join(_balanced_lines(text.split(), width)) + f"{sep}({symbol})"
 
 
 # Two objective naming conventions only: the long form (`label_for` /
@@ -518,20 +600,30 @@ def save_manuscript_figure(fig, out_stub) -> list:
     return _save(fig, out_stub, MANUSCRIPT_FIGURE_FORMATS, dpi=MANUSCRIPT_FIGURE_DPI)
 
 
-def criterion_condition(name: str, threshold: float, kind: str) -> str:
+def criterion_condition(name: str, threshold: float, kind: str,
+                        long: bool = False) -> str:
     """One satisficing condition as compact text, e.g. ``NYC Rel. (ann) >= 0.65``.
 
     A non-finite threshold (the axis-disabling convention of
     ``src.results_data.relax_axes``) renders as "no requirement".
+
+    Args:
+        name: Objective name.
+        threshold: The satisficing threshold.
+        kind: ``"ge"`` or ``"le"``.
+        long: Name the objective by its long label (:func:`label_for`), e.g.
+            ``NYC Diversion Reliability (annual) >= 0.65``, where there is
+            room to spell the condition out.
     """
-    label = short_label_for(name)
+    label = label_for(name) if long else short_label_for(name)
     if threshold is None or not np.isfinite(threshold):
         return f"{label}: no requirement"
     op = "≥" if kind == "ge" else "≤"
     unit = ""
     if name.endswith("_pct"):
         unit = "%"
-        label = label.removesuffix(" %")
+        # The unit moves from the label to the threshold.
+        label = label.removesuffix(" %").replace(", %)", ")")
     elif "flood_exceedance" in name:
         unit = " ft·d/yr"
     return f"{label} {op} {threshold:g}{unit}"

@@ -509,6 +509,29 @@ FIGURES: tuple[FigureSpec, ...] = (
         per_policy=True,
     ),
     FigureSpec(
+        name="policy_profile_joint_failure_map",
+        builder=_lazy("src.plotting.policy_profile",
+                      "fig_policy_profile_joint_failure_map"),
+        tier="si", number=None, section="4.3", kind="policy_profile",
+        needs=frozenset({"profile_cube", "ensemble"}),
+        caption="One policy: logistic-regression factor map of the focal "
+                "joint criterion on the (annual mean flow scaling, NYC "
+                "allocation usage) and (annual mean flow scaling, seasonal "
+                "amplitude) planes, with the member conditions written out.",
+        per_policy=True,
+    ),
+    FigureSpec(
+        name="policy_profile_joint_failure_map_gbt",
+        builder=_lazy("src.plotting.policy_profile",
+                      "fig_policy_profile_joint_failure_map_gbt"),
+        tier="si", number=None, section="4.3", kind="policy_profile",
+        needs=frozenset({"profile_cube", "ensemble"}),
+        caption="One policy: the joint-criterion factor map with a "
+                "gradient-boosted classifier in place of the logistic "
+                "regression.",
+        per_policy=True,
+    ),
+    FigureSpec(
         name="policy_profile_value_map_volume_utilization",
         builder=_lazy("src.plotting.policy_profile",
                       "fig_policy_profile_value_map_volume_utilization"),

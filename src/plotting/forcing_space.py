@@ -48,6 +48,8 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 
+from src.plotting.style import factor_label
+
 # ---------------------------------------------------------------------------
 # Shared visual vocabulary (identical across every panel)
 # ---------------------------------------------------------------------------
@@ -437,8 +439,8 @@ def panel_parameter_space(ax, fits: dict, sample: dict) -> None:
     ax.axvline(1.0, color="0.55", lw=0.8, ls=":", zorder=0)
     _cmip6_scatter(ax, df.vol_mult_expm, df.r1_annual_amp)
 
-    ax.set_xlabel("Water-year volume multiplier, $e^{m}$")
-    ax.set_ylabel("Seasonal amplitude, $r_1$")
+    ax.set_xlabel(factor_label("em"))
+    ax.set_ylabel(factor_label("r1", width=36))
     ax.set_title("(b) Sampled forcing space", loc="left")
 
     # The E_test blues, then the CMIP6 vermillion; one column, since two do

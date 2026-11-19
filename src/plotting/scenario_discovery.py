@@ -24,14 +24,15 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.plotting.style import save_figure
+from src.plotting.style import factor_label, save_figure
 
-#: Interpretable axis labels for the sampled theta factors. ``m`` is shown as the
-#: volume multiplier e^m (more legible than the log coordinate).
+#: Interpretable axis labels for the sampled theta factors: the project's
+#: DU-factor label over a reading hint. ``m`` is shown as the change factor
+#: e^m (more legible than the log coordinate).
 _THETA_LABEL = {
-    "m": "Water-year volume multiplier  e^m\n(drier < 1 < wetter)",
-    "r1": "Seasonal amplitude  r1\n(winter-wet / summer-dry)",
-    "r2": "Semiannual amplitude  r2\n(snowmelt shoulder)",
+    "m": f"{factor_label('em')}\n(drier < 1 < wetter)",
+    "r1": f"{factor_label('r1', width=36)}\n(winter-wet / summer-dry)",
+    "r2": f"{factor_label('r2')}\n(snowmelt shoulder)",
 }
 
 

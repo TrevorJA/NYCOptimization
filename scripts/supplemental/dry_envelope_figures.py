@@ -33,7 +33,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
-from src.plotting.style import apply_style, save_figure  # noqa: E402
+from src.plotting.style import apply_style, factor_label, save_figure  # noqa: E402
 
 TABLES = scfg.DRYENV_TABLES_DIR
 FIGURES = scfg.DRYENV_FIGURES_DIR
@@ -94,7 +94,7 @@ def figure_local() -> None:
     a.scatter([em.max() + 0.03], [dor], marker="*", s=110, color=COLOR_HIST, zorder=6)
     for x, ls, col in ((cur, "-.", "0.6"), (cmip, ":", "0.6"), (adopted, "-", COLOR_HIST)):
         a.axvline(x, color=col, ls=ls, lw=0.9)
-    a.set_xlabel("annual-volume multiplier of the forcing profile")
+    a.set_xlabel(factor_label("em"))
     a.set_ylabel(AXIS_LABELS[ax_name])
     a.set_xlim(em.min() - 0.03, em.max() + 0.06)
     handles = [
@@ -124,7 +124,7 @@ def figure_local() -> None:
     b.axhline(0.10, color=COLOR_STAT, ls="--", lw=0.8)
     for x, ls, col in ((cur, "-.", "0.6"), (cmip, ":", "0.6"), (adopted, "-", COLOR_HIST)):
         b.axvline(x, color=col, ls=ls, lw=0.9)
-    b.set_xlabel("annual-volume multiplier of the forcing profile")
+    b.set_xlabel(factor_label("em"))
     b.set_ylabel("share of windows beyond the stationary tail")
     b.set_ylim(-0.02, 1.02)
     b.legend(frameon=False, ncol=2, loc="upper right")
@@ -156,7 +156,7 @@ def figure_production() -> None:
         ax.plot(sub["x"], sub["tail99"], marker="o", ms=4, color=COLOR_LEVEL,
                 label="E_test sub-windows q99")
         ax.set_title(SHORT[axn])
-        ax.set_xlabel("annual-volume multiplier (bin centre)")
+        ax.set_xlabel(f"{factor_label('em')}\n(bin centre)")
     axs[0].set_ylabel("hazard value")
     axs[0].legend(frameon=False)
     fig.tight_layout()

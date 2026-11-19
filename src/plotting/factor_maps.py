@@ -38,7 +38,7 @@ from src import results_data as rd
 from src.satisficing_criteria import focal_criterion
 from src.plotting.forcing_space import load_etest_sample
 from src.plotting.satisficing_diagnostics import _add_footer, _designs
-from src.plotting.style import ETEST, design_label, save_figure
+from src.plotting.style import ETEST, design_label, factor_label, save_figure
 
 #: Pass/fail mark styling (Okabe-Ito green for the rare pass class; light grey
 #: for the failing majority so the success region pops).
@@ -132,8 +132,8 @@ def fig_factor_maps_theta_focal(results: dict, out_stub: Path,
 
     picks = select_focal_policies(results)
     n = len(picks)
-    rows_spec = [(r1, "Seasonal amplitude, $r_1$"),
-                 (r2, "Semiannual amplitude, $r_2$")]
+    rows_spec = [(r1, factor_label("r1", width=30)),
+                 (r2, factor_label("r2", width=30))]
 
     rows = []
     fig, axes = plt.subplots(2, n, figsize=(2.75 * n, 6.2),
@@ -152,7 +152,7 @@ def fig_factor_maps_theta_focal(results: dict, out_stub: Path,
             if ci == 0:
                 ax.set_ylabel(ylab)
             if ri == 1:
-                ax.set_xlabel("Water-year volume\nmultiplier, $e^{m}$")
+                ax.set_xlabel(factor_label("em", sep="\n"))
         rows += [{"design": pick["design"],
                   "solution_id": (-1 if pick["solution_id"] is None
                                   else pick["solution_id"]),

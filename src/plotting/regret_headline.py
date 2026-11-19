@@ -66,15 +66,16 @@ def _scale_last_line(ax, *, axis: str):
     return x, y
 
 
-def _load_clouds(ctx, cset) -> tuple[dict, list]:
+def _load_clouds(ctx, cset, designs=DESIGN_ORDER) -> tuple[dict, list]:
     """Per-design (robustness %, regret %) frames for one criterion set.
 
     Returns ``(clouds, rows)``: the plotted points keyed by design, and the
-    companion-CSV rows (with ``on_frontier`` flags).
+    companion-CSV rows (with ``on_frontier`` flags). ``designs`` restricts
+    the designs read (default: every design with a scorecard on this tag).
     """
     xcol, ycol = f"sat_set__{cset.key}", f"no_harm_freq_tau__{cset.key}"
     clouds, rows = {}, []
-    for d in DESIGN_ORDER:
+    for d in designs:
         path = (config.OUTPUTS_DIR / d / ctx.slug / "reeval" / ctx.tag
                 / "robustness_scorecard_criteria.csv")
         if not path.exists():
@@ -187,7 +188,8 @@ def _shared_xmax(rows) -> int:
 
 
 @plt.rc_context(font_rc(14))
-def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
+def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path,
+                            designs=DESIGN_ORDER) -> dict:
     """All-Parties robustness vs regret frequency against the incumbent.
 
     x = ``sat_set__compromise``, y = ``1 - no_harm_freq_tau__compromise`` per
@@ -195,10 +197,11 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path) -> dict:
     non-dominated frontier (max x, min y) on top, marginal KDEs per design
     along the top (robustness) and right (regret) edges. The lower-right
     corner is the RQ1 target: robust AND never leaves the Decree parties
-    worse off than the status quo.
+    worse off than the status quo. ``designs`` restricts the figure to a
+    subset of the designs (one design's own results figure).
     """
     cset = criterion_by_key(CRITERION_KEY)
-    clouds, rows = _load_clouds(ctx, cset)
+    clouds, rows = _load_clouds(ctx, cset, designs)
     if not clouds:
         raise FileNotFoundError(
             f"no robustness_scorecard_criteria.csv with the "

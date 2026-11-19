@@ -21,12 +21,28 @@ profiles of different policies coexist. Figures:
 
 - distributions: per-objective empirical CDFs of the per-SOW annual-unit
   values with the adopted threshold and the failing side marked;
+- performance CDFs: per objective, the SOW fraction performing at least as
+  well as a value (every axis oriented so performance degrades to the
+  right), for the policy and the incumbent over every policy of the same
+  re-evaluated Pareto set;
 - satisficing: SOW satisficing fractions per objective (adopted thresholds)
   and per named criterion set (``src.satisficing_criteria``);
 - failure maps: per-objective pass/fail of every SOW at its forcing-space
   coordinates, on the (volume multiplier, utilization) and (volume
   multiplier, seasonal amplitude) planes, with the focal joint criterion as
   the last panel;
+- regret maps (design policies only): the same grids with each SOW labelled
+  low/high regret against the FFMP incumbent, per objective at the scored
+  tolerance, with the focal set's joint low-regret label as the last panel
+  (the per-SOW decomposition of ``no_harm_freq_tau__{focal}``);
+- factor-mapped variants of both map families (``surface_model="logit"``,
+  used by ``scripts/supplemental/robust_policy_figures.py``): each panel's
+  label is fitted on the SOW coordinates with ``src.factor_mapping`` and the
+  panel shows the fitted probability field and its P = 0.5 boundary under
+  the SOW labels; fit skill goes to a companion CSV, never into the figure;
+- joint factor map: the focal joint criterion alone, factor-mapped on both
+  planes side by side, with its member conditions written out in full above
+  the panels (the last panel of the two failure-map grids, enlarged);
 - value maps: the per-SOW objective values themselves over the (volume
   multiplier, utilization) plane, with the count of failed adopted axes per
   SOW as the last panel.
@@ -37,6 +53,7 @@ no in-panel annotations beyond the pass fraction in a title.
 
 from __future__ import annotations
 
+import json
 import os
 import textwrap
 from dataclasses import dataclass
@@ -46,24 +63,32 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.colors import BoundaryNorm, ListedColormap, to_hex
 from matplotlib.lines import Line2D
 
 import config
+from src import factor_mapping as fm
 from src import results_data as rd
 from src import robustness as rob
 from src.reeval_core import _CUBE_FILES, find_incumbent_cube, incumbent_cube_dir
 from src.satisficing_criteria import ALL_SETS, focal_criterion
+from src.plotting.factor_map_surfaces import REGRET_CMAP
 from src.plotting.factor_maps import FAIL_COLOR, PASS_COLOR
 from src.plotting.forcing_space import load_etest_sample
 from src.plotting.layout import INCUMBENT_LABEL, add_colorbar
 from src.plotting.style import (
+    DU_FACTOR_LABELS,
     ETEST,
+    FACTOR_MAP_CMAP,
+    FACTOR_MAP_MARKS,
     INCUMBENT_COLOR,
     THRESHOLD_COLOR,
     criterion_condition,
     design_color,
     design_label,
+    factor_label,
+    factor_symbol,
+    font_rc,
     label_for,
     save_figure,
     short_label_for,
@@ -72,16 +97,28 @@ from src.plotting.style import (
 #: Env var naming the profiled policy (see the module docstring).
 PROFILE_POLICY_ENV = "NYCOPT_PROFILE_POLICY"
 
+#: Low/high-regret mark colours: the two ends of the regret colormap of the
+#: surface maps (purple = low regret), so a regret label is never read as a
+#: satisficing one.
+LOW_REGRET_COLOR, HIGH_REGRET_COLOR = (
+    to_hex(plt.get_cmap(REGRET_CMAP)(v)) for v in (0.85, 0.25))
+
 #: Panel letters for multi-panel grids.
 _LETTERS = "abcdefghijklmnop"
 
-#: Axis labels of the forcing-space planes, keyed by coordinate name.
-_COORD_LABELS = {
-    "em": "Water-year volume multiplier, $e^{m}$",
-    "r1": "Seasonal amplitude, $r_1$",
-    "r2": "Semiannual amplitude, $r_2$",
-    "u": "Nominal entitlement utilization, $u$",
-}
+#: Axis labels of the forcing-space planes, keyed by coordinate name (the
+#: project's DU-factor labeling key, in its coordinate order).
+_COORD_LABELS = {c: factor_label(c) for c in DU_FACTOR_LABELS}
+
+#: The no-change reference line (``e^m = 1``) of the factor-mapped grids.
+_REFERENCE_LINE = {"color": "0.05", "lw": 1.3, "ls": (0, (4, 3))}
+
+#: Longest line, in characters, of a factor label on a panel's vertical axis;
+#: a longer label is wrapped (``style.factor_label``).
+_YLABEL_WIDTH = 36
+
+#: Math symbols of the same coordinates, for legend prose.
+_COORD_SYMBOLS = {c: factor_symbol(c) for c in DU_FACTOR_LABELS}
 
 
 @dataclass
@@ -334,6 +371,163 @@ def fig_policy_profile_distributions(ctx, out_stub: Path,
 
 
 ###############################################################################
+# Performance CDFs: the policy against its Pareto set and the incumbent
+###############################################################################
+
+#: Line color of the profiled policy in the performance-CDF figure. Not the
+#: design color: the Pareto-set lines behind it are grey, as some designs are.
+_CDF_POLICY_COLOR = "#0072B2"
+
+#: Height on each highlighted curve at which its identifying marker sits.
+_CDF_MARK_LEVELS = {"policy": 0.62, "incumbent": 0.38}
+
+
+def _attainment_curve(v: np.ndarray, kind: str) -> tuple[np.ndarray, np.ndarray]:
+    """Step curve of the SOW fraction performing at least as well as a value.
+
+    Args:
+        v: ``(G,)`` per-SOW values of one objective.
+        kind: ``"ge"`` (higher is better) or ``"le"`` (lower is better).
+
+    Returns:
+        ``(x, y)`` with ``x`` ordered best to worst over the finite entries and
+        ``y`` the fraction of ALL SOWs at least as good as ``x`` (a leading
+        ``y = 0`` point closes the curve at the best value).
+    """
+    finite = np.sort(v[np.isfinite(v)])
+    xs = finite[::-1] if kind == "ge" else finite
+    ys = np.arange(1, len(xs) + 1) / len(v)
+    if xs.size:
+        xs, ys = np.concatenate([xs[:1], xs]), np.concatenate([[0.0], ys])
+    return xs, ys
+
+
+@plt.rc_context(font_rc(16))
+def fig_policy_profile_performance_cdfs(ctx, out_stub: Path, table_dir: Path,
+                                        axes: str = "focal") -> dict:
+    """Performance across the E_test SOWs as cumulative curves, one panel per
+    objective: the profiled policy and the FFMP incumbent over every policy
+    of the same re-evaluated Pareto set.
+
+    Every horizontal axis is oriented so performance degrades to the right,
+    and each curve is the fraction of SOWs performing at least as well as the
+    value: a curve further up and to the left is better, and its height at
+    the threshold line is the fraction of SOWs meeting that threshold.
+
+    Args:
+        ctx: Figure context (tag, slug).
+        out_stub: Output stub for ``save_figure``.
+        table_dir: Directory of the companion CSV.
+        axes: ``"focal"`` for the member axes of the focal criterion set at
+            its thresholds (one row of panels), ``"all"`` for every objective
+            at the adopted thresholds.
+
+    Returns:
+        The profiled policy, the plotted objectives and the set size.
+    """
+    if axes not in ("focal", "all"):
+        raise ValueError(f"axes={axes!r}: expected 'focal' or 'all'")
+    prof = load_profile(ctx)
+    kinds = prof.raw.kinds
+    if axes == "focal":
+        thr = _criterion_vector(prof, focal_criterion())
+        shown = [n for n in prof.obj_names if np.isfinite(thr[n])]
+    else:
+        thr, shown = prof.raw.thresholds, prof.obj_names
+    cols = [prof.obj_names.index(n) for n in shown]
+    cube = prof.raw.cube                                   # (S, G, M)
+    show_set = cube.shape[0] > 1
+    ok_set = rob._satisfy(cube, prof.obj_names, thr, kinds)            # (S, G, M)
+
+    ncol = min(4, len(shown))
+    nrow = int(np.ceil(len(shown) / ncol))
+    fig, axs = plt.subplots(nrow, ncol, figsize=(4.1 * ncol, 4.5 * nrow + 1.3),
+                            sharey=True, constrained_layout=True, squeeze=False)
+    highlighted = [("policy", prof.values, _CDF_POLICY_COLOR, "o", "-")]
+    if prof.incumbent is not None:
+        highlighted.append(("incumbent", prof.incumbent, INCUMBENT_COLOR, "^",
+                            (0, (5, 1.5))))
+
+    rows = []
+    for i, ax in enumerate(axs.ravel()):
+        if i >= len(shown):
+            ax.axis("off")
+            continue
+        name, k = shown[i], cols[i]
+        kind = kinds[name]
+        if show_set:
+            for s in range(cube.shape[0]):
+                ax.step(*_attainment_curve(cube[s, :, k], kind), where="post",
+                        color="0.70", lw=0.6, alpha=0.55, zorder=2,
+                        rasterized=True)
+        for key, values, color, marker, ls in highlighted:
+            xs, ys = _attainment_curve(values[:, k], kind)
+            ax.step(xs, ys, where="post", color=color, lw=2.8, ls=ls, zorder=5)
+            j = int(np.searchsorted(ys, _CDF_MARK_LEVELS[key]))
+            ax.plot(xs[min(j, len(xs) - 1)], ys[min(j, len(ys) - 1)],
+                    marker=marker, ms=12, color=color, markerfacecolor="white",
+                    markeredgewidth=2.6, ls="none", zorder=6)
+        ax.axvline(thr[name], color="0.1", ls=(0, (1.5, 1.5)), lw=1.8, zorder=4)
+
+        pooled = np.concatenate([cube[:, :, k].ravel(), [thr[name]]])
+        lo, hi = np.nanmin(pooled), np.nanmax(pooled)
+        pad = 0.03 * (hi - lo if hi > lo else 1.0)
+        # Best value on the left: a higher-is-better axis runs high to low.
+        ax.set_xlim((hi + pad, lo - pad) if kind == "ge" else (lo - pad, hi + pad))
+        ax.set_ylim(0.0, 1.02)
+        ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
+        ax.grid(color="0.92", lw=0.7)
+        ax.set_axisbelow(True)
+        # The condition without its objective name (the x label carries it).
+        condition = criterion_condition(name, thr[name], kind)
+        condition = condition[max(condition.find("≥"), condition.find("≤")):]
+        ax.set_title(f"({_LETTERS[i]}) Threshold: {condition}", loc="left")
+        ax.set_xlabel(textwrap.fill(label_for(name), 26))
+        if i % ncol == 0:
+            ax.set_ylabel("Fraction of SOWs performing\nat least this well")
+
+        row = {"objective": name, "threshold": thr[name], "kind": kind,
+               "sat_fraction": float(ok_set[prof.row, :, k].mean()),
+               "q50": float(np.nanmedian(prof.values[:, k]))}
+        if prof.incumbent is not None:
+            row["incumbent_sat_fraction"] = float(
+                _pass_matrix(prof, prof.incumbent, thr)[:, k].mean())
+            row["incumbent_q50"] = float(np.nanmedian(prof.incumbent[:, k]))
+        if show_set:
+            frac = ok_set[:, :, k].mean(axis=1)
+            row.update({"set_size": int(cube.shape[0]),
+                        "set_sat_fraction_min": float(frac.min()),
+                        "set_sat_fraction_median": float(np.median(frac)),
+                        "set_sat_fraction_max": float(frac.max())})
+        rows.append(row)
+
+    handles = [Line2D([], [], color=color, lw=2.8, ls=ls, marker=marker, ms=12,
+                      markerfacecolor="white", markeredgewidth=2.6,
+                      label=prof.label if key == "policy" else INCUMBENT_LABEL)
+               for key, _, color, marker, ls in highlighted]
+    if show_set:
+        short = design_label(prof.design).split(" (")[0]
+        handles.append(Line2D([], [], color="0.70", lw=1.2,
+                              label=f"All {cube.shape[0]} {short} "
+                                    f"Pareto-approximate policies"))
+    handles.append(Line2D([], [], color="0.1", ls=(0, (1.5, 1.5)), lw=1.8,
+                          label="Satisficing threshold"))
+    fig.legend(handles=handles, loc="outside upper center", ncol=2,
+               frameon=False)
+    fig.supxlabel("Degrading performance  →")
+    save_figure(fig, out_stub)
+    plt.close(fig)
+
+    table = pd.DataFrame(rows)
+    for key, val in _provenance(prof).items():
+        table[key] = val
+    table.to_csv(table_dir / f"policy_profile_performance_cdfs_{axes}_"
+                             f"{prof.key}.csv", index=False)
+    return {"policy": prof.key, "objectives": shown,
+            "set_size": int(cube.shape[0])}
+
+
+###############################################################################
 # Figure 2: satisficing fractions per objective and per criterion set
 ###############################################################################
 
@@ -446,11 +640,14 @@ def _pack_lines(items: list, width: int = 40, sep: str = ", ") -> str:
 
 
 def _failure_map(ctx, out_stub: Path, table_dir: Path,
-                 xname: str, yname: str) -> dict:
+                 xname: str, yname: str,
+                 surface_model: Optional[str] = None) -> dict:
     """3 x 3 grid: pass/fail per objective at the SOW coordinates, plus the
     focal joint criterion as the last panel. Each panel title states its
     satisficing condition (the joint panel lists its member conditions) and
-    the passing SOW fraction."""
+    the passing SOW fraction. With ``surface_model`` (``"logit"``), each
+    panel also carries that classifier's fitted probability of passing
+    (:func:`_draw_surface_grid`)."""
     prof = load_profile(ctx)
     x, y = _plane(prof, xname, yname)
     names = prof.obj_names
@@ -466,67 +663,547 @@ def _failure_map(ctx, out_stub: Path, table_dir: Path,
     members = [names.index(n) for n in names if np.isfinite(focal_thr[n])]
     if all(focal_thr[names[k]] == thr[names[k]] for k in members):
         # Member conditions are exactly the panels above: cite them by letter.
-        refs = [f"({_LETTERS[k]})" for k in members]
-        cited = ", ".join(refs[:-1]) + f" and {refs[-1]}" if len(refs) > 1 else refs[0]
-        joint_title = f"{focal.label}:\n{cited} jointly"
+        joint_title = f"{focal.label}:\n{_cite_panels(members)} jointly"
     else:
         conds = [criterion_condition(names[k], focal_thr[names[k]], kinds[names[k]])
                  for k in members]
         joint_title = f"{focal.label}, all of:\n" + _pack_lines(conds)
     panels.append((joint_title, joint_ok))
-    ncol = 3
-    nrow = int(np.ceil(len(panels) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(4.2 * ncol, 3.9 * nrow),
-                             sharex=True, sharey=True, constrained_layout=True)
-    for i, ax in enumerate(axes.ravel()):
-        if i >= len(panels):
-            ax.axis("off")
-            continue
-        title, p = panels[i]
-        ax.scatter(x[~p], y[~p], s=14, color=FAIL_COLOR, lw=0, alpha=0.85,
-                   zorder=3)
-        ax.scatter(x[p], y[p], s=20, color=PASS_COLOR, lw=0, zorder=4)
-        ax.grid(color="0.93", lw=0.6)
-        ax.set_axisbelow(True)
-        ax.set_title(f"({_LETTERS[i]}) {title}\n{p.mean():.2f} of SOWs pass",
-                     loc="left")
-        if i % ncol == 0:
-            ax.set_ylabel(_COORD_LABELS[yname])
-        if i >= len(panels) - ncol:
-            ax.set_xlabel(_COORD_LABELS[xname])
-    if xname == "em":
-        for ax in axes.ravel():
-            ax.axvline(1.0, color="0.55", lw=0.8, ls=":", zorder=0)
-
-    handles = [
-        Line2D([], [], marker="o", ls="none", ms=7, color=PASS_COLOR,
-               label=f"SOW meets the criterion under {prof.label}"),
-        Line2D([], [], marker="o", ls="none", ms=6, color=FAIL_COLOR,
-               label="SOW fails the criterion"),
-    ]
-    fig.legend(handles=handles, loc="outside lower center", ncol=2,
-               frameon=False)
-    save_figure(fig, out_stub)
-    plt.close(fig)
+    good_label = f"SOW meets the criterion under {prof.label}"
+    if surface_model is None:
+        _draw_label_grid(
+            panels, x, y, xname, yname, out_stub, count_phrase="pass",
+            good=(PASS_COLOR, good_label),
+            bad=(FAIL_COLOR, "SOW fails the criterion"))
+    else:
+        _draw_surface_grid(
+            prof, panels, xname, yname, out_stub, model=surface_model,
+            count_phrase="pass", cmap=FACTOR_MAP_CMAP, good_label=good_label,
+            bad_label="SOW fails the criterion",
+            quantity="Probability that a SOW meets the criterion",
+        ).to_csv(table_dir / f"policy_profile_failure_map_{surface_model}"
+                             f"_fits_{xname}_{yname}_{prof.key}.csv",
+                 index=False)
 
     table = _sow_table(prof)
     table[f"pass__joint_{focal.key}"] = joint_ok
     table.to_csv(table_dir / f"policy_profile_failure_map_{xname}_{yname}_{prof.key}.csv",
                  index=False)
-    return {"policy": prof.key, "plane": (xname, yname),
-            "focal": focal.key, "joint_pass": float(joint_ok.mean())}
+    return {"policy": prof.key, "plane": (xname, yname), "focal": focal.key,
+            "joint_pass": float(joint_ok.mean()),
+            "surface_model": surface_model}
 
 
-def fig_policy_profile_failure_map_volume_utilization(ctx, out_stub: Path,
-                                                      table_dir: Path) -> dict:
+def _cite_panels(members: list) -> str:
+    """Panel letters of the member axes as prose, e.g. ``(a), (c) and (f)``."""
+    refs = [f"({_LETTERS[k]})" for k in members]
+    return ", ".join(refs[:-1]) + f" and {refs[-1]}" if len(refs) > 1 else refs[0]
+
+
+def _label_grid(panels: list, xname: str, yname: str, count_phrase: str,
+                panel_size: tuple = (4.2, 3.9)):
+    """Three-column, shared-axis panel grid with titles and outer axis labels.
+
+    Args:
+        panels: ``(title, good_mask)`` per panel; each title gains the good
+            class's SOW fraction as ``"{fraction} of SOWs {count_phrase}"``.
+        xname, yname: Coordinate names of the plotted plane.
+        count_phrase: Words naming the good class in the panel titles.
+        panel_size: ``(width, height)`` of one panel, inches.
+
+    Returns:
+        ``(fig, axes)``; panels beyond ``len(panels)`` are switched off.
+    """
+    ncol = 3
+    nrow = int(np.ceil(len(panels) / ncol))
+    fig, axes = plt.subplots(
+        nrow, ncol, figsize=(panel_size[0] * ncol, panel_size[1] * nrow),
+        sharex=True, sharey=True, constrained_layout=True)
+    for i, ax in enumerate(axes.ravel()):
+        if i >= len(panels):
+            ax.axis("off")
+            continue
+        title, p = panels[i]
+        ax.set_title(f"({_LETTERS[i]}) {title}\n"
+                     f"{p.mean():.2f} of SOWs {count_phrase}", loc="left")
+        if i % ncol == 0:
+            ax.set_ylabel(factor_label(yname, width=_YLABEL_WIDTH))
+        if i >= len(panels) - ncol:
+            ax.set_xlabel(_COORD_LABELS[xname])
+    return fig, axes
+
+
+def _draw_label_grid(panels: list, x: np.ndarray, y: np.ndarray, xname: str,
+                     yname: str, out_stub: Path, *, count_phrase: str,
+                     good: tuple, bad: tuple, front: str = "good") -> None:
+    """Three-column grid of two-class SOW scatters, one panel per label vector.
+
+    Args:
+        panels: ``(title, good_mask)`` per panel (see :func:`_label_grid`).
+        x, y: SOW coordinates on the ``(xname, yname)`` plane.
+        out_stub: Output stub for ``save_figure``.
+        count_phrase: Words naming the good class in the panel titles.
+        good, bad: ``(color, legend label)`` of each class.
+        front: The class drawn on top, with the larger mark.
+    """
+    fig, axes = _label_grid(panels, xname, yname, count_phrase)
+    for ax, (_, p) in zip(axes.ravel(), panels):
+        layers = [(~p, bad[0]), (p, good[0])]
+        (m_back, c_back), (m_front, c_front) = (
+            layers if front == "good" else layers[::-1])
+        ax.scatter(x[m_back], y[m_back], s=14, color=c_back, lw=0, alpha=0.85,
+                   zorder=3)
+        ax.scatter(x[m_front], y[m_front], s=20, color=c_front, lw=0, zorder=4)
+        ax.grid(color="0.93", lw=0.6)
+        ax.set_axisbelow(True)
+    if xname == "em":
+        for ax in axes.ravel():
+            ax.axvline(1.0, color="0.55", lw=0.8, ls=":", zorder=0)
+
+    handles = [Line2D([], [], marker="o", ls="none", ms=7, color=color,
+                      label=label) for color, label in (good, bad)]
+    fig.legend(handles=handles, loc="outside lower center", ncol=2,
+               frameon=False)
+    save_figure(fig, out_stub)
+    plt.close(fig)
+
+
+def _factor_matrix(prof: PolicyProfile) -> tuple[list, np.ndarray]:
+    """The staged DU coordinates of the SOWs as ``(factor names, (G, m))``."""
+    factors = [c for c in _COORD_LABELS if c in prof.coords]
+    return factors, np.column_stack([prof.coords[c] for c in factors])
+
+
+def _draw_surface_panel(ax, fit, X: np.ndarray, p: np.ndarray, i1: int,
+                        i2: int, cmap: str, *, reference: bool,
+                        mark_sizes: tuple = (20, 30)):
+    """One factor-map panel: the fitted probability field of ``fit`` on the
+    plane of features ``(i1, i2)``, its P = 0.5 boundary and the SOW labels.
+
+    Args:
+        ax: Target axes.
+        fit: The :class:`src.factor_mapping.FactorMapFit` of the label ``p``
+            on ``X``. A single-class fit draws the constant field of its class.
+        X: ``(G, m)`` SOW coordinates the fit was trained on.
+        p: ``(G,)`` good-class mask of the SOWs.
+        i1, i2: Feature indices on the horizontal and vertical axis.
+        cmap: Diverging colormap of the field (high = the good class).
+        reference: Draw the no-change reference line at 1 on the horizontal
+            axis (the volume multiplier).
+        mark_sizes: Scatter areas of the (good, bad) SOW marks.
+
+    Returns:
+        The field's mappable, for the shared colorbar.
+    """
+    x, y = X[:, i1], X[:, i2]
+    extent = (x.min(), x.max(), y.min(), y.max())
+    m_ok, m_no = FACTOR_MAP_MARKS["success"], FACTOR_MAP_MARKS["failure"]
+    if fit.backend == "single_class":
+        P = np.full((2, 2), float(p.all()))
+    else:
+        g1, g2, P = fm.probability_surface(fit, X, i1, i2)
+        ax.contour(g1, g2, P, levels=[0.5], colors="0.05", linewidths=2.4,
+                   zorder=3)
+    # The surface grid spans exactly the sampled range of each factor.
+    mappable = ax.imshow(P, extent=extent, origin="lower", aspect="auto",
+                         interpolation="bilinear", cmap=cmap, vmin=0.0,
+                         vmax=1.0, alpha=0.85, zorder=1)
+    if reference:
+        # Dark dashes on a white bed: legible over both ends of the field.
+        ax.axvline(1.0, color="white", lw=2.6, zorder=2)
+        ax.axvline(1.0, zorder=2, **_REFERENCE_LINE)
+    ax.scatter(x[p], y[p], s=mark_sizes[0], marker=m_ok["marker"],
+               facecolors=m_ok["facecolor"], edgecolors=m_ok["edgecolor"],
+               linewidths=0.6, zorder=4, clip_on=False)
+    ax.scatter(x[~p], y[~p], s=mark_sizes[1], marker=m_no["marker"],
+               facecolors=m_no["facecolor"], edgecolors=m_no["edgecolor"],
+               linewidths=0.5, zorder=5, clip_on=False)
+    ax.set_xlim(extent[:2])
+    ax.set_ylim(extent[2:])
+    return mappable
+
+
+def _surface_fit_row(fit, factors: list, panel: str, title: str, xname: str,
+                     yname: str) -> dict:
+    """One companion-table row of a factor-map panel: class counts, CV skill,
+    factor importances and the family's own diagnostics."""
+    return {
+        "panel": panel, "label": " ".join(title.split()),
+        "plane": f"{xname}:{yname}", "backend": fit.backend,
+        "n_good": fit.n_pos, "n_bad": fit.n_neg,
+        "train_accuracy": fit.train_accuracy, "cv_auc": fit.cv_auc,
+        "cv_auc_std": fit.cv_auc_std, "cv_accuracy": fit.cv_accuracy,
+        "cv_note": fit.cv_note,
+        **{f"imp__{n}": float(v) for n, v in
+           zip(factors, np.atleast_1d(fit.importances))},
+        **fm.fit_diagnostics(fit),
+    }
+
+
+def _surface_legend_handles(good_label: str, bad_label: str, *,
+                            reference: bool,
+                            boundary_label: str = "Fitted boundary: "
+                                                  "probability = 0.5",
+                            reference_label: Optional[str] = None) -> list:
+    """Legend handles of a factor map: the two SOW marks, the P = 0.5
+    boundary and (``reference``) the no-change volume line."""
+    m_ok, m_no = FACTOR_MAP_MARKS["success"], FACTOR_MAP_MARKS["failure"]
+    handles = [
+        Line2D([], [], ls="none", marker=m_ok["marker"], ms=10,
+               markerfacecolor=m_ok["facecolor"],
+               markeredgecolor=m_ok["edgecolor"], label=good_label),
+        Line2D([], [], ls="none", marker=m_no["marker"], ms=11,
+               markerfacecolor=m_no["facecolor"],
+               markeredgecolor=m_no["edgecolor"], label=bad_label),
+        Line2D([], [], color="0.05", lw=2.4, label=boundary_label),
+    ]
+    if reference:
+        handles.append(Line2D(
+            [], [], **_REFERENCE_LINE,
+            label=reference_label or ("No change in annual mean flow "
+                                      f"({_COORD_SYMBOLS['em']} = 1)")))
+    return handles
+
+
+@plt.rc_context(font_rc(14))
+def _draw_surface_grid(prof: PolicyProfile, panels: list, xname: str,
+                       yname: str, out_stub: Path, *, model: str,
+                       count_phrase: str, cmap: str, good_label: str,
+                       bad_label: str, quantity: str) -> pd.DataFrame:
+    """The label grid as factor maps: fitted probability field under the SOWs.
+
+    Each panel's label is fitted on ALL of the SOWs' DU coordinates with
+    :func:`src.factor_mapping.fit_classifier` and its probability of the good
+    class is drawn on the ``(xname, yname)`` plane with the other coordinates
+    held at their median (:func:`src.factor_mapping.probability_surface`),
+    with the P = 0.5 boundary and the raw SOW labels on top. A label with one
+    class has no fit: its panel is the constant field of that class. Fit
+    skill is returned for the companion table and never drawn.
+
+    Args:
+        prof: The profiled policy (supplies the SOW coordinates).
+        panels: ``(title, good_mask)`` per panel (see :func:`_label_grid`).
+        xname, yname: Coordinate names of the plotted plane.
+        out_stub: Output stub for ``save_figure``.
+        model: Classifier family (``src.factor_mapping.MODELS``).
+        count_phrase: Words naming the good class in the panel titles.
+        cmap: Diverging colormap of the field (high = the good class).
+        good_label, bad_label: Legend text of each SOW mark.
+        quantity: What the field's probability is of, for the colorbar.
+
+    Returns:
+        One row per panel: class counts, CV skill, factor importances and the
+        family's own diagnostics (``src.factor_mapping.fit_diagnostics``).
+    """
+    factors, X = _factor_matrix(prof)
+    i1, i2 = factors.index(xname), factors.index(yname)
+
+    fig, axes = _label_grid(panels, xname, yname, count_phrase,
+                            panel_size=(4.7, 4.3))
+    mappable, rows = None, []
+    for i, (ax, (title, p)) in enumerate(zip(axes.ravel(), panels)):
+        fit = fm.fit_classifier(X, p, factors, space="theta", model=model)
+        mappable = _draw_surface_panel(ax, fit, X, p, i1, i2, cmap,
+                                       reference=xname == "em")
+        rows.append(_surface_fit_row(fit, factors, _LETTERS[i], title,
+                                     xname, yname))
+
+    method = fm.MODEL_BACKENDS[fm.resolve_model(model)].replace("_", " ")
+    fitted_on = ", ".join(_COORD_SYMBOLS[c] for c in factors)
+    held = ", ".join(f"{_COORD_SYMBOLS[c]} = {np.nanmedian(X[:, k]):.2f}"
+                     for k, c in enumerate(factors) if k not in (i1, i2))
+    cbar = add_colorbar(
+        fig, mappable, list(axes.ravel()), location="bottom", shrink=0.55,
+        aspect=42, pad=0.025, ticks=[0.0, 0.25, 0.5, 0.75, 1.0],
+        label=(f"{quantity}: {method} on {fitted_on}\n"
+               f"(surface drawn with the other factors at their median: "
+               f"{held})"))
+    cbar.ax.axvline(0.5, color="0.05", lw=2.4)
+
+    fig.legend(handles=_surface_legend_handles(good_label, bad_label,
+                                               reference=xname == "em"),
+               loc="outside lower center", ncol=2, frameon=False)
+    save_figure(fig, out_stub)
+    plt.close(fig)
+    return pd.DataFrame(rows)
+
+
+###############################################################################
+# Joint-criterion factor map: the focal criterion alone, on both planes
+###############################################################################
+
+#: The two planes of the joint-criterion figure: (horizontal, vertical).
+_JOINT_PLANES = (("em", "u"), ("em", "r1"))
+
+
+@plt.rc_context(font_rc(18))
+def _draw_joint_surface_pair(prof: PolicyProfile, joint_ok: np.ndarray,
+                             criterion_label: str, conditions: list,
+                             out_stub: Path, *, model: str,
+                             cmap: str) -> pd.DataFrame:
+    """The joint criterion's factor map on both planes, side by side.
+
+    One classifier is fitted to the joint pass/fail label on all of the SOWs'
+    DU coordinates; each panel is the same fit drawn on one plane of
+    :data:`_JOINT_PLANES` with the off-plane factors at their median (named
+    in the panel title). The criterion's member conditions are written out
+    above the panels, and the legend carries the pass and fail SOW counts.
+
+    Args:
+        prof: The profiled policy (supplies the SOW coordinates).
+        joint_ok: ``(G,)`` mask of the SOWs meeting every member condition.
+        criterion_label: Display name of the joint criterion.
+        conditions: The member conditions as text, one per entry.
+        out_stub: Output stub for ``save_figure``.
+        model: Classifier family (``src.factor_mapping.MODELS``).
+        cmap: Diverging colormap of the field (high = passing).
+
+    Returns:
+        One row per panel (:func:`_surface_fit_row`).
+    """
+    factors, X = _factor_matrix(prof)
+    fit = fm.fit_classifier(X, joint_ok, factors, space="theta", model=model)
+    n_cond, n_pass = len(conditions), int(joint_ok.sum())
+
+    # Figure height: the header (a title line over the conditions in two
+    # columns), the panels, and the colorbar and legend below them.
+    fs = plt.rcParams["font.size"]
+    pitch = 1.5 * fs                                   # header line pitch, pt
+    n_rows = int(np.ceil(n_cond / 2))
+    head_h = (n_rows + 1.85) * pitch / 72.0
+    panel_h, foot_h = 6.6, 8.0 * pitch / 72.0
+    fig = plt.figure(figsize=(15.5, head_h + panel_h + foot_h),
+                     constrained_layout=True)
+    gs = fig.add_gridspec(2, len(_JOINT_PLANES),
+                          height_ratios=[head_h, panel_h])
+
+    # Header text is stacked upward from the bottom of its row in points, so
+    # it sits just above the panel titles whatever height the layout gives
+    # the row; each column starts where the widest entry before it ends.
+    head = fig.add_subplot(gs[0, :])
+    head.axis("off")
+    renderer = fig.canvas.get_renderer()
+
+    def _line(text, x_pt, row_from_bottom, **kwargs):
+        return head.annotate(
+            text, xy=(0.0, 0.0), xycoords="axes fraction",
+            xytext=(x_pt, (row_from_bottom + 0.45) * pitch),
+            textcoords="offset points",
+            ha="left", va="bottom", annotation_clip=False, **kwargs)
+
+    x_pt = 0.8 * fs
+    for col in range(0, n_cond, n_rows):
+        entries = [_line(f"•  {cond}", x_pt, n_rows - 1 - r)
+                   for r, cond in enumerate(conditions[col:col + n_rows])]
+        widest = max(t.get_window_extent(renderer).width for t in entries)
+        x_pt += widest * 72.0 / fig.dpi + 2.5 * fs
+    _line(f"{criterion_label} satisficing criteria: a SOW passes only if "
+          f"all {n_cond} hold", 0.0, n_rows + 0.25,
+          fontsize=plt.rcParams["figure.titlesize"])
+
+    axes, mappable, rows = [], None, []
+    for i, (xname, yname) in enumerate(_JOINT_PLANES):
+        _plane(prof, xname, yname)
+        ax = fig.add_subplot(gs[1, i])
+        i1, i2 = factors.index(xname), factors.index(yname)
+        mappable = _draw_surface_panel(ax, fit, X, joint_ok, i1, i2, cmap,
+                                       reference=xname == "em",
+                                       mark_sizes=(46, 64))
+        held = ", ".join(f"{_COORD_SYMBOLS[c]} = {np.nanmedian(X[:, k]):.2f}"
+                         for k, c in enumerate(factors) if k not in (i1, i2))
+        ax.set_title(f"({_LETTERS[i]}) Other factors at median: {held}",
+                     loc="left")
+        # The two factor names are the figure's main reading aid: set them
+        # above the tick and legend type.
+        axis_label_size = plt.rcParams["axes.labelsize"] + 4
+        ax.set_xlabel(_COORD_LABELS[xname], fontsize=axis_label_size)
+        ax.set_ylabel(factor_label(yname, width=_YLABEL_WIDTH),
+                      fontsize=axis_label_size)
+        axes.append(ax)
+        rows.append(_surface_fit_row(fit, factors, _LETTERS[i],
+                                     f"{criterion_label} (joint)",
+                                     xname, yname))
+
+    method = fm.MODEL_BACKENDS[fm.resolve_model(model)].replace("_", " ")
+    fitted_on = ", ".join(_COORD_SYMBOLS[c] for c in factors)
+    cbar = add_colorbar(
+        fig, mappable, axes, location="bottom", shrink=0.5, aspect=28,
+        pad=0.03, ticks=[0.0, 0.25, 0.5, 0.75, 1.0],
+        label=(f"Probability that a SOW meets all {n_cond} criteria\n"
+               f"({method} on {fitted_on})"))
+    cbar.ax.axvline(0.5, color="0.05", lw=2.4)
+    # Name the two ends, so the field reads without decoding the hue.
+    cbar.ax.text(-0.03, 0.5, "Fails", ha="right", va="center",
+                 transform=cbar.ax.transAxes)
+    cbar.ax.text(1.03, 0.5, "Passes", ha="left", va="center",
+                 transform=cbar.ax.transAxes)
+
+    fig.legend(
+        handles=_surface_legend_handles(
+            f"SOW meets all {n_cond} criteria under {prof.label}: "
+            f"{n_pass} of {joint_ok.size} SOWs",
+            f"SOW fails at least one criterion: "
+            f"{joint_ok.size - n_pass} of {joint_ok.size} SOWs",
+            reference=True),
+        loc="outside lower center", ncol=2, frameon=False)
+    save_figure(fig, out_stub)
+    plt.close(fig)
+    return pd.DataFrame(rows)
+
+
+def fig_policy_profile_joint_failure_map(
+        ctx, out_stub: Path, table_dir: Path,
+        surface_model: str = "logit") -> dict:
+    """The focal joint criterion alone, factor-mapped on the (volume
+    multiplier, utilization) and (volume multiplier, seasonal amplitude)
+    planes: the last panel of the two failure-map grids, enlarged, with the
+    member conditions written out in full above the panels."""
+    prof = load_profile(ctx)
+    focal = focal_criterion()
+    kinds = prof.raw.kinds
+    focal_thr = _criterion_vector(prof, focal)
+    joint_ok = _pass_matrix(prof, prof.values, focal_thr).all(axis=1)
+    conditions = [criterion_condition(n, focal_thr[n], kinds[n], long=True)
+                  for n in prof.obj_names if np.isfinite(focal_thr[n])]
+
+    _draw_joint_surface_pair(
+        prof, joint_ok, focal.label, conditions, out_stub,
+        model=surface_model, cmap=FACTOR_MAP_CMAP,
+    ).to_csv(table_dir / f"policy_profile_joint_failure_map_{surface_model}"
+                         f"_fits_{prof.key}.csv", index=False)
+    return {"policy": prof.key, "planes": _JOINT_PLANES, "focal": focal.key,
+            "joint_pass": float(joint_ok.mean()),
+            "surface_model": surface_model}
+
+
+def fig_policy_profile_joint_failure_map_gbt(ctx, out_stub: Path,
+                                             table_dir: Path) -> dict:
+    """:func:`fig_policy_profile_joint_failure_map` with the gradient-boosted
+    classifier in place of the logistic regression (the registry's builders
+    take no model argument)."""
+    return fig_policy_profile_joint_failure_map(ctx, out_stub, table_dir,
+                                                surface_model="gbt")
+
+
+def fig_policy_profile_failure_map_volume_utilization(
+        ctx, out_stub: Path, table_dir: Path,
+        surface_model: Optional[str] = None) -> dict:
     """Pass/fail per objective over the (volume multiplier, utilization) plane."""
-    return _failure_map(ctx, out_stub, table_dir, "em", "u")
+    return _failure_map(ctx, out_stub, table_dir, "em", "u", surface_model)
 
 
-def fig_policy_profile_failure_map_volume_seasonality(ctx, out_stub: Path,
-                                                      table_dir: Path) -> dict:
+def fig_policy_profile_failure_map_volume_seasonality(
+        ctx, out_stub: Path, table_dir: Path,
+        surface_model: Optional[str] = None) -> dict:
     """Pass/fail per objective over the (volume multiplier, seasonal amplitude) plane."""
-    return _failure_map(ctx, out_stub, table_dir, "em", "r1")
+    return _failure_map(ctx, out_stub, table_dir, "em", "r1", surface_model)
+
+
+###############################################################################
+# Regret maps: low/high regret against the incumbent over the forcing space
+###############################################################################
+
+def _regret_tolerance(prof: PolicyProfile) -> dict:
+    """The per-objective regret tolerance the cube was SCORED with.
+
+    Read from the run's ``robustness_meta.json`` so the labels decompose the
+    scorecard's ``no_harm_freq_tau`` columns whatever the live environment;
+    ``robustness.tau_ladder`` only when the run has not been scored.
+    """
+    meta = prof.path / "robustness_meta.json"
+    if meta.exists():
+        tau = json.loads(meta.read_text()).get("regret_tau")
+        if tau:
+            return {n: float(tau[n]) for n in prof.obj_names}
+    return rob.tau_ladder(prof.obj_names)
+
+
+def _tolerance_text(name: str, tau: float) -> str:
+    """One regret tolerance as compact text, e.g. ``NYC Rel. (ann): τ = 0.02``."""
+    unit = (" pp" if name.endswith("_pct")
+            else " ft·d/yr" if "flood_exceedance" in name else "")
+    return f"{short_label_for(name).removesuffix(' %')}: τ = {tau:g}{unit}"
+
+
+def _regret_map(ctx, out_stub: Path, table_dir: Path,
+                xname: str, yname: str,
+                surface_model: Optional[str] = None) -> dict:
+    """3 x 3 grid: low/high regret per objective at the SOW coordinates, plus
+    the focal set's joint low-regret label as the last panel.
+
+    A SOW is HIGH regret on an objective when the policy is worse than the
+    FFMP incumbent there, in that same SOW, by more than the tolerance (a
+    non-finite difference counts as regret, as in
+    ``robustness.regret_frequencies``). The joint panel requires low regret
+    on every member axis of the focal criterion set. With ``surface_model``
+    (``"logit"``), each panel also carries that classifier's fitted
+    probability of low regret (:func:`_draw_surface_grid`).
+    """
+    prof = load_profile(ctx)
+    if prof.incumbent is None:
+        raise ValueError(
+            f"regret is measured against the FFMP incumbent, so it needs a "
+            f"design policy with an incumbent cube on the same tag; set "
+            f"{PROFILE_POLICY_ENV}=<design>:<solution_id> (got '{prof.key}').")
+    x, y = _plane(prof, xname, yname)
+    names = prof.obj_names
+    tau = _regret_tolerance(prof)
+    # Signed advantage over the incumbent, positive = better
+    # (robustness.incumbent_advantage, for the profiled policy alone).
+    adv = prof.raw.direction_signs()[None, :] * (prof.values - prof.incumbent)
+    low = np.isfinite(adv) & (adv >= -np.array([tau[n] for n in names]))
+
+    focal = focal_criterion()
+    members = [k for k, n in enumerate(names) if n in set(focal.axes)]
+    joint_low = low[:, members].all(axis=1)
+    panels = [(_tolerance_text(n, tau[n]), low[:, k])
+              for k, n in enumerate(names)]
+    panels.append((f"{focal.label}:\n{_cite_panels(members)} jointly",
+                   joint_low))
+    good_label = (f"{prof.label}: low regret (within τ of the FFMP "
+                  f"incumbent, or better)")
+    bad_label = "High regret (worse than the FFMP incumbent by more than τ)"
+    if surface_model is None:
+        _draw_label_grid(
+            panels, x, y, xname, yname, out_stub, count_phrase="low regret",
+            good=(LOW_REGRET_COLOR, good_label),
+            bad=(HIGH_REGRET_COLOR, bad_label), front="bad")
+    else:
+        _draw_surface_grid(
+            prof, panels, xname, yname, out_stub, model=surface_model,
+            count_phrase="low regret", cmap=REGRET_CMAP,
+            good_label=good_label, bad_label=bad_label,
+            quantity="Probability that a SOW is low regret",
+        ).to_csv(table_dir / f"policy_profile_regret_map_{surface_model}"
+                             f"_fits_{xname}_{yname}_{prof.key}.csv",
+                 index=False)
+
+    table = pd.DataFrame({"sow_id": prof.raw.sow_labels})
+    for c, arr in prof.coords.items():
+        table[c] = arr
+    for k, name in enumerate(names):
+        table[f"advantage__{name}"] = adv[:, k]
+        table[f"low_regret__{name}"] = low[:, k]
+    table[f"low_regret__joint_{focal.key}"] = joint_low
+    table.to_csv(table_dir / f"policy_profile_regret_map_{xname}_{yname}_{prof.key}.csv",
+                 index=False)
+    return {"policy": prof.key, "plane": (xname, yname), "focal": focal.key,
+            "tau": tau, "joint_low_regret": float(joint_low.mean()),
+            "surface_model": surface_model}
+
+
+def fig_policy_profile_regret_map_volume_utilization(
+        ctx, out_stub: Path, table_dir: Path,
+        surface_model: Optional[str] = None) -> dict:
+    """Low/high regret per objective over the (volume multiplier, utilization) plane."""
+    return _regret_map(ctx, out_stub, table_dir, "em", "u", surface_model)
+
+
+def fig_policy_profile_regret_map_volume_seasonality(
+        ctx, out_stub: Path, table_dir: Path,
+        surface_model: Optional[str] = None) -> dict:
+    """Low/high regret per objective over the (volume multiplier, seasonal amplitude) plane."""
+    return _regret_map(ctx, out_stub, table_dir, "em", "r1", surface_model)
 
 
 ###############################################################################

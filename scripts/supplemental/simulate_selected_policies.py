@@ -10,8 +10,9 @@ under ``outputs/{scenario}/{slug}/timeseries/{tag}/``.
 
 Other policy sets: ``--all-rules`` adds every single-objective and compromise
 optimum of the table, ``--rows`` names explicit reference-set rows,
-``--set-file`` / ``--selection-csv`` point at other searches, and ``--tag``
-keeps several collections side by side. Load the results later with
+``--set-file`` / ``--selection-csv`` point at other searches, ``--tag``
+keeps several collections side by side, and ``--nyc-demand constant_max``
+simulates under the constant 800 MGD NYC demand (sensitivity runs only). Load the results later with
 ``src.policy_simulation.load_policy_runs(run_dir)``.
 
 Usage (from repo root, via sbatch; never on a login node):
@@ -27,7 +28,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
 
-from config import OUTPUTS_DIR, figure_dir_for
+from config import NYC_DEMAND_SENSITIVITY_SOURCES, OUTPUTS_DIR, figure_dir_for
 from src.policy_simulation import (
     PolicySet, default_run_dir, read_selection_labels, simulate_policy_set,
 )
@@ -81,6 +82,11 @@ def main() -> None:
                     help="re-simulate policies whose HDF5 already exists")
     ap.add_argument("--no-objectives", action="store_true",
                     help="skip recomputing the active objective set")
+    ap.add_argument("--nyc-demand", default=None,
+                    choices=list(NYC_DEMAND_SENSITIVITY_SOURCES),
+                    help="sensitivity NYC demand source (constant_max = "
+                         "constant 800 MGD); default: the study's time-dynamic "
+                         "demand. Give such a set its own --tag")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir) if args.out_dir else default_run_dir(
@@ -89,6 +95,7 @@ def main() -> None:
     manifest = simulate_policy_set(
         policy_set, out_dir, use_trimmed=args.trimmed,
         overwrite=args.overwrite, compute_objectives=not args.no_objectives,
+        nyc_demand=args.nyc_demand,
         log=lambda msg: print(msg, flush=True))
     print(f"\n{len(manifest)} policies recorded in {out_dir / 'manifest.csv'}")
 

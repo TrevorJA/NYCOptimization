@@ -275,6 +275,7 @@ def simulate_or_load(dv: np.ndarray, hdf5: Path, formulation: str = "ffmp", *,
 def simulate_policy_set(policy_set: PolicySet, out_dir: Path, *,
                         use_trimmed: bool = False, overwrite: bool = False,
                         compute_objectives: bool = True,
+                        nyc_demand: "str | None" = None,
                         log=print) -> pd.DataFrame:
     """Simulate every policy to ``{out_dir}/{name}.hdf5`` and write the tables.
 
@@ -283,10 +284,20 @@ def simulate_policy_set(policy_set: PolicySet, out_dir: Path, *,
     need not be the set the policies were searched under) are written for the
     runs simulated in this call and merged into an existing objectives table.
 
+    Args:
+        nyc_demand: Sensitivity NYC demand source
+            (``config.NYC_DEMAND_SENSITIVITY_SOURCES``, e.g. ``"constant_max"``
+            for the constant 800 MGD maximum); None keeps the study's
+            time-dynamic demand. Recorded in the manifest. Use a separate
+            ``out_dir`` per source: existing runs are reused by name.
+
     Returns:
         The manifest written to ``out_dir`` (one row per policy).
     """
+    import contextlib
+
     from config import get_objective_set
+    from src.simulation import nyc_demand_sensitivity
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -294,21 +305,26 @@ def simulate_policy_set(policy_set: PolicySet, out_dir: Path, *,
     objective_set = get_objective_set() if compute_objectives else None
     log(f"policies : {len(policy_set)} ({policy_set.source})")
     log(f"model    : {model_mode}, {config.START_DATE} -> {config.END_DATE}")
+    log(f"NYC demand: {nyc_demand or 'time-dynamic (study default)'}")
     log(f"out dir  : {out_dir}")
 
     manifest, obj_rows = [], []
     for name, dv in policy_set:
         hdf5 = out_dir / f"{name}.hdf5"
-        data, simulated = simulate_or_load(
-            dv, hdf5, policy_set.formulation, use_trimmed=use_trimmed,
-            overwrite=overwrite, load_existing=False,
-            log=lambda msg, n=name: log(f"[{n}] {msg}"))
+        demand_ctx = (nyc_demand_sensitivity(nyc_demand) if nyc_demand
+                      else contextlib.nullcontext())
+        with demand_ctx:
+            data, simulated = simulate_or_load(
+                dv, hdf5, policy_set.formulation, use_trimmed=use_trimmed,
+                overwrite=overwrite, load_existing=False,
+                log=lambda msg, n=name: log(f"[{n}] {msg}"))
         if simulated and objective_set is not None:
             obj_rows.append({"policy": name, **dict(zip(
                 objective_set.names, objective_set.compute([data])))})
         manifest.append({
             "policy": name, "labels": "; ".join(policy_set.labels[name]),
             "hdf5": hdf5.name, "model_mode": model_mode,
+            "nyc_demand": nyc_demand or "time_dynamic",
             "formulation": policy_set.formulation,
             "start_date": config.START_DATE, "end_date": config.END_DATE,
             "source": policy_set.source,

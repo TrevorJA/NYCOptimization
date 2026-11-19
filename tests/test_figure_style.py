@@ -153,3 +153,36 @@ def test_a_figure_built_under_the_style_saves_without_a_warning(tmp_path):
             warnings.simplefilter("error")
             style.save_manuscript_figure(fig, tmp_path / "styled")
         plt.close(fig)
+
+
+def test_factor_labels_come_from_the_one_key():
+    name, symbol = style.DU_FACTOR_LABELS["em"]
+    assert style.factor_label("em") == f"{name} ({symbol})"
+    assert style.factor_label("em", sep="\n") == f"{name}\n({symbol})"
+    assert style.factor_symbol("u") == style.DU_FACTOR_LABELS["u"][1]
+    # A label that fits the width is unchanged; a longer one wraps evenly
+    # and never splits the symbol.
+    assert style.factor_label("em", width=200) == style.factor_label("em")
+    wrapped = style.factor_label("em", width=14).split("\n")
+    assert len(wrapped) > 1 and wrapped[-1].endswith(f"({symbol})")
+    assert " ".join(wrapped) == style.factor_label("em")
+    # Names outside the key (hazard-space axes) pass through unchanged.
+    assert style.factor_label("lowflow_min_12month") == "lowflow_min_12month"
+    assert style.factor_symbol("lowflow_min_12month") == "lowflow_min_12month"
+
+
+def test_no_figure_source_spells_out_a_factor_label():
+    """A DU factor's display name next to its symbol is written only in
+    ``style.DU_FACTOR_LABELS``; figure code calls ``style.factor_label``."""
+    found = []
+    for path in _figure_sources():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+                continue
+            text = node.value.lower()
+            for name, symbol in style.DU_FACTOR_LABELS.values():
+                if name.lower() in text and symbol.lower() in text:
+                    found.append(f"{path.relative_to(REPO).as_posix()}:{node.lineno} "
+                                 f"hard-coded label of '{name}'")
+    assert not found, "\n".join(found)

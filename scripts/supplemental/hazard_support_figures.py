@@ -45,7 +45,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 
-from src.plotting.style import apply_style, design_color, save_figure  # noqa: E402
+from src.plotting.style import (apply_style, design_color, factor_label,  # noqa: E402
+                                save_figure)
 
 ###############################################################################
 # Plain-language vocabulary (the only place figure wording is defined)
@@ -100,8 +101,9 @@ DESIGN_PLAIN: dict = {
     "historic": "historic record only",
 }
 
-X_MEANFLOW = "mean-flow change of the future\n(multiplier on annual volume; 1 = no change)"
-Y_SEASONAL = "seasonal-cycle change of the future\n(annual harmonic amplitude)"
+X_MEANFLOW = f"{factor_label('em')}\n(1 = no change from the record)"
+Y_SEASONAL = (f"{factor_label('r1', width=36)}\n"
+              "(annual harmonic of the change factor)")
 SCORE_LABEL = ("fraction of the future's decades whose hazards\n"
                "lie beyond the stationary pool's range")
 

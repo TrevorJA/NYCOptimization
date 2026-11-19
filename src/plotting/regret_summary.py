@@ -210,13 +210,13 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
     harm_rank = [np.nanmean(mags[f"regret_q90__{n}"].to_numpy()) > 0 for n in names]
     order = sorted(range(len(names)), key=lambda k: -float(harm_rank[k]))
 
-    fig, axes = plt.subplots(1, 2, figsize=figsize, sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=figsize, sharey=True,
+                             constrained_layout=True)
     for ax, (prefix, title, color) in zip(axes, (
         ("regret_q90", "A. Tail regret vs current operations\n"
                        "90th-percentile shortfall across SOWs", "#c0392b"),
         ("gain_mean", "B. Mean gain vs current operations\n"
-                      "the companion: zero regret can just mean 'unchanged'",
-         "#2a7ab9"),
+                      "zero regret can just mean 'unchanged'", "#2a7ab9"),
     )):
         data, ticks = [], []
         for k in order:
@@ -238,14 +238,17 @@ def plot_regret_decomposition(reeval_dir, out_file, accepted_ids=None,
                        s=6, color=color, alpha=0.30, zorder=3)
         ax.set_yticks(np.arange(len(order)) + 1)
         ax.set_yticklabels(ticks)
-        ax.set_xlabel("fraction of this objective's own maximum\n"
-                      "(natural units; axes are NOT comparable across objectives)")
-        ax.set_title(title)
+        ax.set_title(title, loc="left")
         ax.grid(True, axis="x", alpha=0.3)
 
+    # One x label and a left-aligned title per panel: at this canvas the
+    # per-panel labels and centred titles overprint their neighbours.
+    fig.supxlabel("Fraction of each objective's own maximum across policies\n"
+                  "(natural-unit maximum on the tick label; scales are NOT "
+                  "comparable across objectives)",
+                  fontsize=plt.rcParams["axes.labelsize"])
     fig.suptitle("Regret against the status-quo FFMP policy, per objective "
                  "(SOW unit, natural units)")
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
     out = Path(out_file)
     save_figure(fig, out)
     plt.close(fig)

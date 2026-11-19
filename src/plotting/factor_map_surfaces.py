@@ -44,15 +44,14 @@ from src.plotting.layout import (WIDTH_DOUBLE_COL, add_colorbar,
 from src.plotting.pareto_parallel import DESIGN_TITLES
 from src.plotting.style import (DESIGN_ORDER, ETEST, FACTOR_MAP_CMAP,
                                 FACTOR_MAP_MARKS, add_figure_footer,
-                                design_label, font_rc, save_manuscript_figure,
+                                design_label, factor_label, font_rc,
+                                save_manuscript_figure,
                                 short_label_for)
 from src.factor_mapping import artifact_dirname
 from src.satisficing_criteria import focal_criterion
 
-#: Axis display names for the theta features.
-_THETA_LABELS = {"em": "Water-year volume multiplier, $e^{m}$",
-                 "r1": "Seasonal amplitude, $r_1$",
-                 "r2": "Semiannual amplitude, $r_2$"}
+#: Axis display names for the theta features (the project's DU-factor key).
+_THETA_LABELS = {c: factor_label(c) for c in ("em", "r1", "r2")}
 
 
 @dataclass(frozen=True)

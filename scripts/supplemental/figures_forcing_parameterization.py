@@ -128,7 +128,8 @@ def fig_param_space(fits):
     ax = fig.add_subplot(2, 2, 1)
     _cmip_scatter(ax, df, df.vol_mult_expm, df.r1_annual_amp)
     ax.axvline(1, color="0.6", lw=0.7, ls=":")
-    ax.set(xlabel="annual volume multiplier $e^{m}$", ylabel="annual amplitude $r_1$",
+    ax.set(xlabel=style.factor_label("em"),
+           ylabel=style.factor_label("r1", width=36),
            title="(a) Seasonality vs volume")
 
     ax = fig.add_subplot(2, 2, 2, projection="polar")
@@ -140,13 +141,15 @@ def fig_param_space(fits):
 
     ax = fig.add_subplot(2, 2, 3)
     _cmip_scatter(ax, df, df.r1_annual_amp, df.r2_semiann_amp)
-    ax.set(xlabel="annual amplitude $r_1$", ylabel="semiannual amplitude $r_2$",
+    ax.set(xlabel=style.factor_label("r1"), ylabel=style.factor_label("r2"),
            title="(c) Second- vs first-harmonic")
 
     ax = fig.add_subplot(2, 2, 4, projection="3d")
     _cmip_scatter(ax, df, df.vol_mult_expm, df.r1_annual_amp, df.r2_semiann_amp,
                   size=40, linewidth=0.3)
-    ax.set_xlabel("$e^{m}$"); ax.set_ylabel("$r_1$"); ax.set_zlabel("$r_2$")
+    ax.set_xlabel(style.factor_symbol("em"))
+    ax.set_ylabel(style.factor_symbol("r1"))
+    ax.set_zlabel(style.factor_symbol("r2"))
     ax.set_title("(d) Joint parameter cloud"); ax.view_init(elev=22, azim=-60)
 
     leg = [Line2D([0], [0], marker="o", color="w", markerfacecolor=SSP_C["245"],
@@ -191,21 +194,23 @@ def fig_lhs_sampling(fits, sample):
     _box(ax, np.exp(s_lo[k_m]), np.exp(s_hi[k_m]), s_lo[k_r1], s_hi[k_r1],
          colour="0.35", ls=":")
     ax.axvline(1, color="0.6", lw=0.7, ls=":")
-    ax.set(xlabel="annual volume multiplier $e^{m}$", ylabel="annual amplitude $r_1$",
+    ax.set(xlabel=style.factor_label("em"),
+           ylabel=style.factor_label("r1", width=36),
            title="(a) volume vs seasonality")
 
     ax = axes[1]
     ax.scatter(r1, r2, s=7, c="0.7", alpha=0.5, zorder=1)
     _cmip_scatter(ax, df, df.r1_annual_amp, df.r2_semiann_amp)
     _box(ax, e_lo[k_r1], e_hi[k_r1], e_lo[k_r2], e_hi[k_r2])
-    ax.set(xlabel="annual amplitude $r_1$", ylabel="semiannual amplitude $r_2$",
+    ax.set(xlabel=style.factor_label("r1", width=36),
+           ylabel=style.factor_label("r2"),
            title="(b) first vs second harmonic")
 
     ax = axes[2]
     _cmip_scatter(ax, df, df.peak1_wy_month, df.r1_annual_amp)
     ax.axvline(peak_canon, color="k", ls="--", lw=1.6, label="fixed canonical phase")
     ax.set(xlabel="annual-harmonic peak month (WY index)",
-           ylabel="annual amplitude $r_1$",
+           ylabel=style.factor_label("r1", width=36),
            title="(c) phase fixed at canonical CMIP6 shape")
     ax.set_xticks(range(12)); ax.set_xticklabels(WY)
     ax.legend(loc="upper right")

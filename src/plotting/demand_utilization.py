@@ -112,7 +112,7 @@ def fig_demand_utilization_calibration(ctx, out_stub: Path, table_dir: Path) -> 
     ax.axhline(1.0, color="0.55", lw=0.8, ls=":", zorder=0)
     _band_lines(ax, axis="y")
     ax.set_xlabel("Demand scale, $k$")
-    ax.set_ylabel("Nominal entitlement utilization, $u$")
+    ax.set_ylabel(style.factor_label("u"))
     ax.set_ylim(0.0, 1.05)
     ax.set_title("(a) Calibration of the demand scale", loc="left")
     ax.legend(frameon=False, loc="lower right")
@@ -193,9 +193,9 @@ def fig_demand_utilization_sampling(ctx, out_stub: Path, table_dir: Path) -> dic
 
     fig, axes = plt.subplots(1, 2, figsize=style.FIGSIZE_WIDE)
     panels = (
-        (axes[0], em, "Water-year volume multiplier, $e^{m}$",
+        (axes[0], em, style.factor_label("em"),
          (np.exp(lo[k_m]), np.exp(hi[k_m])), "(a) Volume and utilization"),
-        (axes[1], r1, "Seasonal amplitude, $r_1$",
+        (axes[1], r1, style.factor_label("r1"),
          (lo[k_r1], hi[k_r1]), "(b) Seasonal amplitude and utilization"),
     )
     for ax, x, xlabel, (x0, x1), title in panels:
@@ -204,7 +204,7 @@ def fig_demand_utilization_sampling(ctx, out_stub: Path, table_dir: Path) -> dic
                                edgecolor=fspace.ETEST_COLOR, ls="--", lw=1.6, zorder=4))
         _band_lines(ax, axis="y")
         ax.set_xlabel(xlabel)
-        ax.set_ylabel("Nominal entitlement utilization, $u$")
+        ax.set_ylabel(style.factor_label("u"))
         ax.set_title(title, loc="left")
     axes[0].axvline(1.0, color="0.55", lw=0.8, ls=":", zorder=0)
     handles = [
@@ -282,7 +282,7 @@ def fig_demand_utilization_realized(ctx, out_stub: Path, table_dir: Path) -> dic
     if em is not None:
         sc = ax.scatter(x, y, c=em, cmap="viridis", s=14, linewidths=0, zorder=3)
         cbar = fig.colorbar(sc, ax=ax, pad=0.02)
-        cbar.set_label("Water-year volume multiplier, $e^{m}$")
+        cbar.set_label(style.factor_label("em"))
     else:
         ax.scatter(x, y, color=_REALIZED_COLOR, s=14, linewidths=0, zorder=3)
     span = (min(float(x.min()), float(np.nanmin(y - lo))) - 0.02,
@@ -291,7 +291,7 @@ def fig_demand_utilization_realized(ctx, out_stub: Path, table_dir: Path) -> dic
     _band_lines(ax, axis="x")
     ax.set_xlim(*span)
     ax.set_ylim(*span)
-    ax.set_xlabel("Nominal entitlement utilization, $u$")
+    ax.set_xlabel(style.factor_label("u"))
     ax.set_ylabel("Realized utilization (mean over FFMP years / 800 MGD)")
     ax.set_title("Nominal versus realized NYC entitlement utilization", loc="left")
     handles = [
@@ -372,7 +372,7 @@ def fig_regret_vs_utilization(ctx, out_stub: Path, table_dir: Path) -> dict:
                     color=style.design_color(d), alpha=0.8)
         _band_lines(ax, axis="x")
         ax.set_title(style.label_for(obj))
-        ax.set_xlabel("Nominal entitlement utilization, $u$")
+        ax.set_xlabel(style.factor_label("u"))
         ax.set_ylabel("Regret (solid), gain (dashed)\nvs incumbent, natural units")
         ax.grid(True, alpha=0.3)
 
@@ -385,7 +385,7 @@ def fig_regret_vs_utilization(ctx, out_stub: Path, table_dir: Path) -> dict:
     _band_lines(ax, axis="x")
     ax.set_ylim(-0.02, 1.02)
     ax.set_title("Best policy per bin")
-    ax.set_xlabel("Nominal entitlement utilization, $u$")
+    ax.set_xlabel(style.factor_label("u"))
     ax.set_ylabel("Satisficing (solid),\nlow-regret frequency (dashed)")
     ax.grid(True, alpha=0.3)
     for k in range(n_panels, nrow * ncol):
