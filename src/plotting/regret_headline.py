@@ -8,7 +8,10 @@ Both are percentages of the held-out E_test SOWs; the lower-right corner
 (robust, zero regret) is the target. A faint cloud per scenario design with
 the per-design non-dominated frontier drawn on top, and the marginal
 distribution of each axis as a KDE per design (seaborn) along the top and
-right edges, each curve scaled to unit peak (shape, not mass).
+right edges, each curve scaled to unit peak (shape, not mass). A caller may
+mark a named subset of each design's policies on top of the cloud
+(``highlight``), e.g. the policies that dominate the incumbent on the historic
+trace.
 
 Builder: :func:`fig_regret_vs_incumbent` (the All-Parties criterion set).
 
@@ -46,6 +49,10 @@ MARGINAL_RATIO = 0.22
 #: The registered figure's criterion set: figure 6 panel (d).
 CRITERION_KEY = "compromise"
 
+#: Marker colour of the ``highlight`` policies: the "dominates current FFMP
+#: policy" colour of the parallel-axis dominance figure.
+HIGHLIGHT_COLOR = "steelblue"
+
 #: Axis names shared by both builders.
 XLABEL = "Robustness (%)"
 YLABEL = "Regret Frequency Relative to Current FFMP (%)"
@@ -66,12 +73,15 @@ def _scale_last_line(ax, *, axis: str):
     return x, y
 
 
-def _load_clouds(ctx, cset, designs=DESIGN_ORDER) -> tuple[dict, list]:
+def _load_clouds(ctx, cset, designs=DESIGN_ORDER,
+                 highlight=None) -> tuple[dict, list]:
     """Per-design (robustness %, regret %) frames for one criterion set.
 
     Returns ``(clouds, rows)``: the plotted points keyed by design, and the
-    companion-CSV rows (with ``on_frontier`` flags). ``designs`` restricts
-    the designs read (default: every design with a scorecard on this tag).
+    companion-CSV rows (with ``on_frontier`` flags, and ``highlighted`` flags
+    when ``highlight`` -- ``{design: solution_ids}`` -- is given). ``designs``
+    restricts the designs read (default: every design with a scorecard on
+    this tag).
     """
     xcol, ycol = f"sat_set__{cset.key}", f"no_harm_freq_tau__{cset.key}"
     clouds, rows = {}, []
@@ -94,20 +104,25 @@ def _load_clouds(ctx, cset, designs=DESIGN_ORDER) -> tuple[dict, list]:
                                     -pts[ycol].to_numpy())
         on_front = np.zeros(len(pts), dtype=bool)
         on_front[front_idx] = True
+        marked = ({} if highlight is None
+                  else {"highlighted": set(map(int, highlight.get(d, ())))})
         rows += [{"criterion": cset.key, "design": d, "solution_id": int(sid),
                   "robustness_pct": float(r.iloc[0]),
                   "regret_pct": float(r.iloc[1]),
-                  "on_frontier": bool(f)}
+                  "on_frontier": bool(f),
+                  **{k: int(sid) in ids for k, ids in marked.items()}}
                  for (sid, r), f in zip(pts.iterrows(), on_front)]
     return clouds, rows
 
 
-def _draw_regret_panel(fig, subspec, cset, clouds: dict, *, xmax: int):
+def _draw_regret_panel(fig, subspec, cset, clouds: dict, *, xmax: int,
+                       highlight=None):
     """One joint panel (scatter + frontiers) with top/right marginal KDEs.
 
     ``subspec`` is a gridspec slot; the panel claims a nested 2x2 grid in it.
     Axis limits are set from ``xmax`` so multi-panel callers share them.
-    Returns the joint axes.
+    ``highlight`` (``{design: solution_ids}``) marks those policies on top of
+    the cloud, each labelled with its solution id. Returns the joint axes.
     """
     gs = subspec.subgridspec(2, 2, width_ratios=[1.0, MARGINAL_RATIO],
                              height_ratios=[MARGINAL_RATIO, 1.0],
@@ -128,6 +143,19 @@ def _draw_regret_panel(fig, subspec, cset, clouds: dict, *, xmax: int):
         # be a single point: draw its markers large enough to read.
         ax.plot(front[xcol], front[ycol], color=color, lw=2.4, marker="o",
                 ms=10, mec="white", mew=1.0, zorder=4, solid_capstyle="round")
+        # Smaller than the frontier markers, so a highlighted frontier policy
+        # keeps a ring of its design's colour.
+        marked = pts.loc[pts.index.intersection(
+            list((highlight or {}).get(d, ())))]
+        ax.scatter(marked[xcol], marked[ycol], s=64, color=HIGHLIGHT_COLOR,
+                   ec="white", lw=1.0, zorder=5)
+        for sid, (x, y) in marked[[xcol, ycol]].iterrows():
+            # Labels go right of the point, or left of it near the right edge.
+            side = -1 if x > 0.85 * xmax else 1
+            ax.annotate(f"#{sid}", (x, y), xytext=(6 * side, 5),
+                        textcoords="offset points", color=HIGHLIGHT_COLOR,
+                        ha="right" if side < 0 else "left",
+                        fontweight="bold", zorder=6)
 
     # Marginal KDEs: both metrics are bounded on [0, 100], so the density is
     # clipped there (no mass leaking past the edges). Each curve is rescaled
@@ -189,7 +217,8 @@ def _shared_xmax(rows) -> int:
 
 @plt.rc_context(font_rc(14))
 def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path,
-                            designs=DESIGN_ORDER) -> dict:
+                            designs=DESIGN_ORDER, highlight=None,
+                            highlight_label: str = "highlighted") -> dict:
     """All-Parties robustness vs regret frequency against the incumbent.
 
     x = ``sat_set__compromise``, y = ``1 - no_harm_freq_tau__compromise`` per
@@ -199,9 +228,13 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path,
     corner is the RQ1 target: robust AND never leaves the Decree parties
     worse off than the status quo. ``designs`` restricts the figure to a
     subset of the designs (one design's own results figure).
+
+    ``highlight`` (``{design: solution_ids}``) marks a subset of the policies
+    on the cloud, labelled with their solution ids, under the legend entry
+    ``highlight_label``; the companion table gains a ``highlighted`` column.
     """
     cset = criterion_by_key(CRITERION_KEY)
-    clouds, rows = _load_clouds(ctx, cset, designs)
+    clouds, rows = _load_clouds(ctx, cset, designs, highlight)
     if not clouds:
         raise FileNotFoundError(
             f"no robustness_scorecard_criteria.csv with the "
@@ -212,12 +245,20 @@ def fig_regret_vs_incumbent(ctx, out_stub: Path, table_dir: Path,
     fig = plt.figure(figsize=FIG_SIZE)
     gs = fig.add_gridspec(1, 1)
     ax, _ = _draw_regret_panel(fig, gs[0], cset, clouds,
-                               xmax=_shared_xmax(rows))
+                               xmax=_shared_xmax(rows), highlight=highlight)
     ax.set_xlabel(f"All-Parties {XLABEL}")
     ax.set_ylabel(YLABEL)
 
+    handles = _design_handles(clouds)
+    if highlight is not None:
+        n = sum(r["highlighted"] for r in rows)
+        handles.append(Line2D([], [], color=HIGHLIGHT_COLOR, lw=0, marker="o",
+                              ms=8, mec="white", mew=1.0,
+                              label=f"{highlight_label} (n = {n})"))
     y0 = ax.get_position().y0
-    shared_legend(fig, _design_handles(clouds), ncol=3, y=y0 - 0.09)
+    # The highlight entry is a full sentence: stack it under the designs.
+    shared_legend(fig, handles, ncol=3 if highlight is None else 1,
+                  y=y0 - 0.09)
     save_manuscript_figure(fig, out_stub)
     plt.close(fig)
 

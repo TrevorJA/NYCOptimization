@@ -97,6 +97,10 @@ from src.plotting.style import (
 #: Env var naming the profiled policy (see the module docstring).
 PROFILE_POLICY_ENV = "NYCOPT_PROFILE_POLICY"
 
+#: Env var overriding the display name of a profiled searched policy (legend
+#: text); unset, the name is ``"{design} policy #{solution_id}"``.
+PROFILE_LABEL_ENV = "NYCOPT_PROFILE_LABEL"
+
 #: Low/high-regret mark colours: the two ends of the regret colormap of the
 #: surface maps (purple = low regret), so a regret label is never read as a
 #: satisficing one.
@@ -221,7 +225,8 @@ def load_profile(ctx) -> PolicyProfile:
         label, color = INCUMBENT_LABEL, INCUMBENT_COLOR
     else:
         short = design_label(target["design"]).split(" (")[0]
-        label = f"{short} policy #{target['solution_id']}"
+        label = (os.environ.get(PROFILE_LABEL_ENV, "").strip()
+                 or f"{short} policy #{target['solution_id']}")
         color = design_color(target["design"])
         base_dir = find_incumbent_cube(target["path"])
         if base_dir is not None:
@@ -404,7 +409,8 @@ def _attainment_curve(v: np.ndarray, kind: str) -> tuple[np.ndarray, np.ndarray]
 
 @plt.rc_context(font_rc(16))
 def fig_policy_profile_performance_cdfs(ctx, out_stub: Path, table_dir: Path,
-                                        axes: str = "focal") -> dict:
+                                        axes: str = "focal",
+                                        set_label: Optional[str] = None) -> dict:
     """Performance across the E_test SOWs as cumulative curves, one panel per
     objective: the profiled policy and the FFMP incumbent over every policy
     of the same re-evaluated Pareto set.
@@ -421,6 +427,8 @@ def fig_policy_profile_performance_cdfs(ctx, out_stub: Path, table_dir: Path,
         axes: ``"focal"`` for the member axes of the focal criterion set at
             its thresholds (one row of panels), ``"all"`` for every objective
             at the adopted thresholds.
+        set_label: Legend text of the Pareto-set curves, with ``{n}`` for the
+            set size; unset, the set is named after its design.
 
     Returns:
         The profiled policy, the plotted objectives and the set size.
@@ -507,9 +515,9 @@ def fig_policy_profile_performance_cdfs(ctx, out_stub: Path, table_dir: Path,
                for key, _, color, marker, ls in highlighted]
     if show_set:
         short = design_label(prof.design).split(" (")[0]
+        set_label = set_label or f"All {{n}} {short} Pareto-approximate policies"
         handles.append(Line2D([], [], color="0.70", lw=1.2,
-                              label=f"All {cube.shape[0]} {short} "
-                                    f"Pareto-approximate policies"))
+                              label=set_label.format(n=cube.shape[0])))
     handles.append(Line2D([], [], color="0.1", ls=(0, (1.5, 1.5)), lw=1.8,
                           label="Satisficing threshold"))
     fig.legend(handles=handles, loc="outside upper center", ncol=2,

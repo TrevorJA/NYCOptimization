@@ -205,6 +205,7 @@ def baseline_objectives_csv(formulation: str = "ffmp",
 FIGURE_KINDS_STABLE = frozenset({
     "convergence", "pareto", "parallel_coords", "policy_inspection",
     "robustness", "satisficing", "criteria", "robustness_cdf", "factor_maps",
+    "decision_variables",
 })
 
 #: Figure kinds routed EXPLICITLY to the exploratory tree (internal
